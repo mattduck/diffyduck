@@ -17,17 +17,123 @@ type FileWithLines struct {
 	AlignedLines []aligner.AlignedLine
 }
 
+type NavigableLineRef struct {
+	FileIndex int
+	LineIndex int
+}
+
 type Model struct {
 	filesWithLines []FileWithLines
 	viewport viewport.Model
 	ready bool
 	width int
+	cursorLine int
+	navigableLines []NavigableLineRef
 }
 
 func NewModel(filesWithLines []FileWithLines) Model {
-	return Model{
+	model := Model{
 		filesWithLines: filesWithLines,
+		cursorLine: 0,
 	}
+	model.navigableLines = model.buildNavigableLines()
+	return model
+}
+
+func (m Model) buildNavigableLines() []NavigableLineRef {
+	var navigable []NavigableLineRef
+	
+	for fileIndex, fileWithLines := range m.filesWithLines {
+		inDeletionBlock := false
+		
+		for lineIndex, line := range fileWithLines.AlignedLines {
+			if line.NewLine != nil && line.LineType != aligner.Unchanged {
+				// Line exists in new version and is part of the diff (added or modified)
+				navigable = append(navigable, NavigableLineRef{
+					FileIndex: fileIndex,
+					LineIndex: lineIndex,
+				})
+				inDeletionBlock = false
+			} else if line.LineType == aligner.Deleted && !inDeletionBlock {
+				// First line of a deletion block - navigable
+				navigable = append(navigable, NavigableLineRef{
+					FileIndex: fileIndex,
+					LineIndex: lineIndex,
+				})
+				inDeletionBlock = true
+			}
+			// Skip unchanged lines and subsequent lines in deletion block
+		}
+	}
+	
+	return navigable
+}
+
+func (m Model) isCursorAt(fileIndex, lineIndex int) bool {
+	if m.cursorLine >= len(m.navigableLines) {
+		return false
+	}
+	cursorRef := m.navigableLines[m.cursorLine]
+	return cursorRef.FileIndex == fileIndex && cursorRef.LineIndex == lineIndex
+}
+
+func (m *Model) scrollToCursor() {
+	if m.cursorLine >= len(m.navigableLines) || m.viewport.Height <= 0 {
+		return
+	}
+	
+	// Calculate the rendered line number for the cursor position
+	cursorRef := m.navigableLines[m.cursorLine]
+	renderedLineNum := m.calculateRenderedLineNumber(cursorRef.FileIndex, cursorRef.LineIndex)
+	
+	// Get viewport dimensions
+	viewportTop := m.viewport.YOffset
+	viewportBottom := viewportTop + m.viewport.Height - 1
+	
+	// Add some margin to keep cursor away from edges
+	margin := 2
+	
+	// Scroll if cursor is outside viewport or too close to edges
+	if renderedLineNum < viewportTop + margin {
+		newOffset := renderedLineNum - margin
+		if newOffset < 0 {
+			newOffset = 0
+		}
+		m.viewport.SetYOffset(newOffset)
+	} else if renderedLineNum > viewportBottom - margin {
+		newOffset := renderedLineNum - m.viewport.Height + margin + 1
+		if newOffset < 0 {
+			newOffset = 0
+		}
+		m.viewport.SetYOffset(newOffset)
+	}
+}
+
+func (m Model) calculateRenderedLineNumber(targetFileIndex, targetLineIndex int) int {
+	lineCount := 0
+	
+	for fileIndex, fileWithLines := range m.filesWithLines {
+		if fileIndex > 0 {
+			lineCount++ // newline between files
+		}
+		
+		// File header
+		lineCount++
+		// Column headers  
+		lineCount++
+		// Separator line
+		lineCount++
+		
+		// Check each line in this file
+		for lineIndex := range fileWithLines.AlignedLines {
+			if fileIndex == targetFileIndex && lineIndex == targetLineIndex {
+				return lineCount
+			}
+			lineCount++
+		}
+	}
+	
+	return lineCount
 }
 
 func (m Model) Init() tea.Cmd {
@@ -41,9 +147,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "j", "down":
-			m.viewport.LineDown(1)
+			if m.cursorLine < len(m.navigableLines)-1 {
+				m.cursorLine++
+				m.viewport.SetContent(m.renderContent())
+				m.scrollToCursor()
+			}
 		case "k", "up":
-			m.viewport.LineUp(1)
+			if m.cursorLine > 0 {
+				m.cursorLine--
+				m.viewport.SetContent(m.renderContent())
+				m.scrollToCursor()
+			}
 		case "d":
 			m.viewport.HalfViewDown()
 		case "u":
@@ -66,8 +180,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Only pass non-cursor navigation messages to viewport
 	var cmd tea.Cmd
-	m.viewport, cmd = m.viewport.Update(msg)
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
+		case "j", "k", "down", "up":
+			// Don't pass cursor navigation keys to viewport
+		default:
+			m.viewport, cmd = m.viewport.Update(msg)
+		}
+	} else {
+		m.viewport, cmd = m.viewport.Update(msg)
+	}
 	return m, cmd
 }
 
@@ -187,7 +311,7 @@ func (m Model) renderContent() string {
 		content.WriteString("\n")
 		
 		// Render aligned lines for this file
-		for _, line := range fileWithLines.AlignedLines {
+		for lineIndex, line := range fileWithLines.AlignedLines {
 			var leftContent, rightContent string
 			var leftLineNumBlock, rightLineNumBlock string
 			
@@ -207,15 +331,26 @@ func (m Model) renderContent() string {
 			// Format right side
 			if line.NewLine != nil {
 				rightContent = " " + *line.NewLine
+				// Check if cursor is on this line
+				cursorMarker := " "
+				if m.isCursorAt(fileIndex, lineIndex) {
+					cursorMarker = "*"
+				}
+				
 				if line.LineType == aligner.Added {
-					rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d ", line.NewLineNum))
+					rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d%s", line.NewLineNum, cursorMarker))
 				} else if line.LineType == aligner.Modified {
-					rightLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d ", line.NewLineNum))
+					rightLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d%s", line.NewLineNum, cursorMarker))
 				} else {
-					rightLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.NewLineNum)) + " "
+					rightLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.NewLineNum)) + cursorMarker
 				}
 			} else {
-				rightLineNumBlock = strings.Repeat(" ", lineNumWidth + changeMarkerWidth)
+				// For deletion blocks, check if cursor is on this line (first line of deletion block)
+				cursorMarker := " "
+				if m.isCursorAt(fileIndex, lineIndex) {
+					cursorMarker = "*"
+				}
+				rightLineNumBlock = strings.Repeat(" ", lineNumWidth) + cursorMarker
 			}
 			
 			content.WriteString(lipgloss.JoinHorizontal(
