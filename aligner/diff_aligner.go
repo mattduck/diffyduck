@@ -198,6 +198,25 @@ func (a *DiffAligner) detectModifications(lines []AlignedLine) []AlignedLine {
 }
 
 func (a *DiffAligner) computeWordDiff(oldLine, newLine string) *WordDiff {
+	// Handle identical strings quickly
+	if oldLine == newLine {
+		if oldLine == "" {
+			return &WordDiff{
+				OldSegments: []types.DiffSegment{},
+				NewSegments: []types.DiffSegment{},
+			}
+		}
+		// Both lines are identical and non-empty
+		segments := []types.DiffSegment{{
+			Text: oldLine,
+			Type: diffmatchpatch.DiffEqual,
+		}}
+		return &WordDiff{
+			OldSegments: segments,
+			NewSegments: segments,
+		}
+	}
+
 	// Tokenize by words/whitespace for better diffs
 	oldTokens := a.tokenize(oldLine)
 	newTokens := a.tokenize(newLine)
@@ -216,9 +235,29 @@ func (a *DiffAligner) computeWordDiff(oldLine, newLine string) *WordDiff {
 }
 
 func (a *DiffAligner) tokenize(text string) []string {
+	// Handle empty string case
+	if text == "" {
+		return []string{}
+	}
+
 	// Split on word boundaries: capture words and whitespace separately
 	re := regexp.MustCompile(`(\w+|\s+|[^\w\s]+)`)
-	return re.FindAllString(text, -1)
+	tokens := re.FindAllString(text, -1)
+
+	// Filter out any empty tokens (shouldn't happen with this regex, but defensive)
+	if tokens == nil {
+		return []string{}
+	}
+
+	// Remove any empty strings that might slip through
+	filtered := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if token != "" {
+			filtered = append(filtered, token)
+		}
+	}
+
+	return filtered
 }
 
 func (a *DiffAligner) buildSegments(diffs []diffmatchpatch.Diff, isOld bool) []types.DiffSegment {
@@ -261,6 +300,17 @@ func (a *DiffAligner) computeTokenDiff(oldTokens, newTokens []string) []diffmatc
 }
 
 func (a *DiffAligner) wordLevelDiff(oldTokens, newTokens []string) []diffmatchpatch.Diff {
+	// Handle trivial cases first
+	if len(oldTokens) == 0 && len(newTokens) == 0 {
+		return []diffmatchpatch.Diff{}
+	}
+	if len(oldTokens) == 0 {
+		return a.allInsertions(newTokens)
+	}
+	if len(newTokens) == 0 {
+		return a.allDeletions(oldTokens)
+	}
+
 	// Simple word-level diff using dynamic programming
 	m, n := len(oldTokens), len(newTokens)
 
@@ -285,35 +335,74 @@ func (a *DiffAligner) wordLevelDiff(oldTokens, newTokens []string) []diffmatchpa
 		}
 	}
 
-	// Trace back to build diff sequence
-	var diffs []diffmatchpatch.Diff
+	// Trace back to build diff sequence (in reverse, then reverse the result)
+	diffs := make([]diffmatchpatch.Diff, 0, m+n) // Pre-allocate with worst-case capacity
 	i, j := m, n
 
 	for i > 0 || j > 0 {
 		if i > 0 && j > 0 && oldTokens[i-1] == newTokens[j-1] {
 			// Equal tokens
-			diffs = append([]diffmatchpatch.Diff{{
+			diffs = append(diffs, diffmatchpatch.Diff{
 				Type: diffmatchpatch.DiffEqual,
 				Text: oldTokens[i-1],
-			}}, diffs...)
+			})
 			i--
 			j--
 		} else if i > 0 && (j == 0 || lcs[i-1][j] >= lcs[i][j-1]) {
 			// Deletion
-			diffs = append([]diffmatchpatch.Diff{{
+			diffs = append(diffs, diffmatchpatch.Diff{
 				Type: diffmatchpatch.DiffDelete,
 				Text: oldTokens[i-1],
-			}}, diffs...)
+			})
 			i--
 		} else {
 			// Insertion
-			diffs = append([]diffmatchpatch.Diff{{
+			diffs = append(diffs, diffmatchpatch.Diff{
 				Type: diffmatchpatch.DiffInsert,
 				Text: newTokens[j-1],
-			}}, diffs...)
+			})
 			j--
 		}
 	}
 
+	// Reverse the diffs since we built them backwards
+	for i := 0; i < len(diffs)/2; i++ {
+		diffs[i], diffs[len(diffs)-1-i] = diffs[len(diffs)-1-i], diffs[i]
+	}
+
+	return diffs
+}
+
+func (a *DiffAligner) allInsertions(tokens []string) []diffmatchpatch.Diff {
+	if len(tokens) == 0 {
+		return []diffmatchpatch.Diff{}
+	}
+
+	diffs := make([]diffmatchpatch.Diff, 0, len(tokens))
+	for _, token := range tokens {
+		if token != "" { // Skip empty tokens
+			diffs = append(diffs, diffmatchpatch.Diff{
+				Type: diffmatchpatch.DiffInsert,
+				Text: token,
+			})
+		}
+	}
+	return diffs
+}
+
+func (a *DiffAligner) allDeletions(tokens []string) []diffmatchpatch.Diff {
+	if len(tokens) == 0 {
+		return []diffmatchpatch.Diff{}
+	}
+
+	diffs := make([]diffmatchpatch.Diff, 0, len(tokens))
+	for _, token := range tokens {
+		if token != "" { // Skip empty tokens
+			diffs = append(diffs, diffmatchpatch.Diff{
+				Type: diffmatchpatch.DiffDelete,
+				Text: token,
+			})
+		}
+	}
 	return diffs
 }
