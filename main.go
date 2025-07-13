@@ -7,7 +7,6 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/mattn/go-isatty"
 
 	"duckdiff/aligner"
 	"duckdiff/git"
@@ -53,82 +52,12 @@ func main() {
 		})
 	}
 
-	if isatty.IsTerminal(os.Stdout.Fd()) {
-		model := ui.NewModel(filesWithLines)
-		p := tea.NewProgram(model)
+	model := ui.NewModel(filesWithLines)
+	p := tea.NewProgram(model)
 
-		if _, err := p.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		// For non-interactive mode, show line numbers too
-		const lineNumWidth = 5
-		const contentWidth = 80
-		
-		for fileIndex, fileWithLines := range filesWithLines {
-			if fileIndex > 0 {
-				fmt.Println()
-			}
-			
-			// Determine file status
-			var fileStatus string
-			if fileWithLines.FileDiff.OldPath == "/dev/null" {
-				fileStatus = "NEW FILE"
-			} else if fileWithLines.FileDiff.NewPath == "/dev/null" {
-				fileStatus = "DELETED"
-			} else {
-				fileStatus = "MODIFIED"
-			}
-			
-			fileName := fileWithLines.FileDiff.NewPath
-			if fileWithLines.FileDiff.NewPath == "/dev/null" {
-				fileName = fileWithLines.FileDiff.OldPath
-			}
-			
-			fmt.Printf("=== %s: %s ===\n", fileStatus, fileName)
-			
-			for _, line := range fileWithLines.AlignedLines {
-				var leftContent, rightContent string
-				var leftLineNum, rightLineNum string
-				var leftMarker, rightMarker string
-				
-				// Handle different line types
-				switch line.LineType {
-				case aligner.Modified:
-					// For modified lines, show both sides with ~ marker
-					leftContent = " " + *line.OldLine
-					rightContent = " " + *line.NewLine
-					leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
-					rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
-					leftMarker = "~"
-					rightMarker = "~"
-				case aligner.Deleted:
-					leftContent = " " + *line.OldLine
-					leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
-					leftMarker = "-"
-					rightLineNum = "     "
-					rightMarker = " "
-				case aligner.Added:
-					rightContent = " " + *line.NewLine
-					rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
-					rightMarker = "+"
-					leftLineNum = "     "
-					leftMarker = " "
-				default: // Unchanged
-					leftContent = " " + *line.OldLine
-					rightContent = " " + *line.NewLine
-					leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
-					rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
-					leftMarker = " "
-					rightMarker = " "
-				}
-				
-				fmt.Printf("%s%s | %-*s | %s%s | %s\n", 
-					leftLineNum, leftMarker, contentWidth, leftContent,
-					rightLineNum, rightMarker, rightContent)
-			}
-		}
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
+		os.Exit(1)
 	}
 }
 
