@@ -319,6 +319,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		// TODO: Re-enable cursor navigation - j/k for line-by-line movement through navigable lines
+		// This feature allows precise navigation through diff changes only (skipping unchanged lines)
+		// To restore: uncomment the cases below and remove "j", "k" from viewport key blocking (line ~361)
+		// Related functions: scrollToCursor(), buildNavigableLines(), navigableLines field
+		/*
 		case "j", "down":
 			if m.cursorLine < len(m.navigableLines)-1 {
 				m.cursorLine++
@@ -326,6 +331,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scrollToCursor()
 			}
 		case "k", "up":
+			if m.cursorLine > 0 {
+				m.cursorLine--
+				m.viewport.SetContent(m.renderContent())
+				m.scrollToCursor()
+			}
+		*/
+		case "down":
+			if m.cursorLine < len(m.navigableLines)-1 {
+				m.cursorLine++
+				m.viewport.SetContent(m.renderContent())
+				m.scrollToCursor()
+			}
+		case "up":
 			if m.cursorLine > 0 {
 				m.cursorLine--
 				m.viewport.SetContent(m.renderContent())
@@ -358,8 +376,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
-		case "j", "k", "down", "up":
+		case "down", "up":
 			// Don't pass cursor navigation keys to viewport
+			// TODO: Add "j", "k" back to this list when re-enabling cursor navigation
 		default:
 			m.viewport, cmd = m.viewport.Update(msg)
 		}
