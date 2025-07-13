@@ -48,6 +48,9 @@ func (a *DiffAligner) AlignFile(oldLines, newLines []string, hunks []parser.Hunk
 	
 	result = append(result, a.addUnchangedLines(oldLines, newLines, oldPos, newPos, len(oldLines)+1, len(newLines)+1)...)
 	
+	// Post-process to detect modifications
+	result = a.detectModifications(result)
+	
 	return result
 }
 
@@ -125,4 +128,59 @@ func (a *DiffAligner) processHunk(hunk parser.Hunk, oldLines, newLines []string,
 	}
 	
 	return result, currentOldPos, currentNewPos
+}
+
+func (a *DiffAligner) detectModifications(lines []AlignedLine) []AlignedLine {
+	var result []AlignedLine
+	i := 0
+	
+	for i < len(lines) {
+		if i < len(lines) && lines[i].LineType == Deleted {
+			// Collect consecutive deletions
+			deletions := []AlignedLine{}
+			for i < len(lines) && lines[i].LineType == Deleted {
+				deletions = append(deletions, lines[i])
+				i++
+			}
+			
+			// Collect consecutive additions immediately following
+			additions := []AlignedLine{}
+			for i < len(lines) && lines[i].LineType == Added {
+				additions = append(additions, lines[i])
+				i++
+			}
+			
+			// Pair them up as modifications
+			pairs := len(deletions)
+			if len(additions) < pairs {
+				pairs = len(additions)
+			}
+			
+			for p := 0; p < pairs; p++ {
+				result = append(result, AlignedLine{
+					OldLine:    deletions[p].OldLine,
+					NewLine:    additions[p].NewLine,
+					LineType:   Modified,
+					OldLineNum: deletions[p].OldLineNum,
+					NewLineNum: additions[p].NewLineNum,
+				})
+			}
+			
+			// Add remaining unpaired deletions
+			for p := pairs; p < len(deletions); p++ {
+				result = append(result, deletions[p])
+			}
+			
+			// Add remaining unpaired additions
+			for p := pairs; p < len(additions); p++ {
+				result = append(result, additions[p])
+			}
+		} else {
+			// Not a deletion, just copy the line
+			result = append(result, lines[i])
+			i++
+		}
+	}
+	
+	return result
 }

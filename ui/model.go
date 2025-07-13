@@ -111,6 +111,12 @@ func (m Model) renderContent() string {
 		Align(lipgloss.Right).
 		Background(lipgloss.Color("1")). // standard ANSI red
 		Foreground(lipgloss.Color("0"))  // black text
+		
+	modifiedLineNumStyle := lipgloss.NewStyle().
+		Width(lineNumWidth + changeMarkerWidth).
+		Align(lipgloss.Right).
+		Background(lipgloss.Color("4")). // standard ANSI blue
+		Foreground(lipgloss.Color("0"))  // black text
 	
 	for _, fileDiff := range m.fileDiffs {
 		content.WriteString(lipgloss.NewStyle().Bold(true).Render("=== " + fileDiff.NewPath + " ==="))
@@ -150,6 +156,8 @@ func (m Model) renderContent() string {
 			leftContent = " " + *line.OldLine
 			if line.LineType == aligner.Deleted {
 				leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
+			} else if line.LineType == aligner.Modified {
+				leftLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
 			} else {
 				leftLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.OldLineNum)) + " "
 			}
@@ -162,6 +170,8 @@ func (m Model) renderContent() string {
 			rightContent = " " + *line.NewLine
 			if line.LineType == aligner.Added {
 				rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d ", line.NewLineNum))
+			} else if line.LineType == aligner.Modified {
+				rightLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d ", line.NewLineNum))
 			} else {
 				rightLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.NewLineNum)) + " "
 			}

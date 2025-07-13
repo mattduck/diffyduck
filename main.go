@@ -68,23 +68,34 @@ func main() {
 			var leftLineNum, rightLineNum string
 			var leftMarker, rightMarker string
 			
-			// Format left side
-			if line.OldLine != nil {
+			// Handle different line types
+			switch line.LineType {
+			case aligner.Modified:
+				// For modified lines, show both sides with ~ marker
+				leftContent = " " + *line.OldLine
+				rightContent = " " + *line.NewLine
+				leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
+				rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
+				leftMarker = "~"
+				rightMarker = "~"
+			case aligner.Deleted:
 				leftContent = " " + *line.OldLine
 				leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
-				leftMarker = " "
-			} else {
-				leftLineNum = "     "
-				leftMarker = " "
-			}
-			
-			// Format right side
-			if line.NewLine != nil {
+				leftMarker = "-"
+				rightLineNum = "     "
+				rightMarker = " "
+			case aligner.Added:
 				rightContent = " " + *line.NewLine
 				rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
-				rightMarker = " "
-			} else {
-				rightLineNum = "     "
+				rightMarker = "+"
+				leftLineNum = "     "
+				leftMarker = " "
+			default: // Unchanged
+				leftContent = " " + *line.OldLine
+				rightContent = " " + *line.NewLine
+				leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
+				rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
+				leftMarker = " "
 				rightMarker = " "
 			}
 			
