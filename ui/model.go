@@ -540,8 +540,12 @@ func (m Model) renderContent() string {
 			var leftLineNumBlock, rightLineNumBlock string
 
 			if line.OldLine != nil {
-				content := *line.OldLine
-				content = m.highlighter.HighlightLine(content, fileWithLines.FileDiff.OldPath)
+				var content string
+				if line.LineType == aligner.Modified && line.WordDiff != nil {
+					content = m.highlighter.HighlightLineWithWordDiff(*line.OldLine, fileWithLines.FileDiff.OldPath, line.WordDiff.OldSegments)
+				} else {
+					content = m.highlighter.HighlightLine(*line.OldLine, fileWithLines.FileDiff.OldPath)
+				}
 				leftContent = " " + content
 				if line.LineType == aligner.Deleted {
 					leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
@@ -556,8 +560,12 @@ func (m Model) renderContent() string {
 
 			// Format right side
 			if line.NewLine != nil {
-				content := *line.NewLine
-				content = m.highlighter.HighlightLine(content, fileWithLines.FileDiff.NewPath)
+				var content string
+				if line.LineType == aligner.Modified && line.WordDiff != nil {
+					content = m.highlighter.HighlightLineWithWordDiff(*line.NewLine, fileWithLines.FileDiff.NewPath, line.WordDiff.NewSegments)
+				} else {
+					content = m.highlighter.HighlightLine(*line.NewLine, fileWithLines.FileDiff.NewPath)
+				}
 				rightContent = " " + content
 				// Check if cursor is on this line
 				cursorMarker := " "

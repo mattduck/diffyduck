@@ -1,7 +1,12 @@
 package aligner
 
 import (
+	"regexp"
+	"strings"
+
 	"duckdiff/parser"
+	"duckdiff/types"
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 type LineType int
@@ -13,12 +18,18 @@ const (
 	Modified
 )
 
+type WordDiff struct {
+	OldSegments []types.DiffSegment
+	NewSegments []types.DiffSegment
+}
+
 type AlignedLine struct {
 	OldLine    *string
 	NewLine    *string
 	LineType   LineType
 	OldLineNum int
 	NewLineNum int
+	WordDiff   *WordDiff
 }
 
 type DiffAligner struct{}
@@ -157,12 +168,14 @@ func (a *DiffAligner) detectModifications(lines []AlignedLine) []AlignedLine {
 			}
 
 			for p := 0; p < pairs; p++ {
+				wordDiff := a.computeWordDiff(*deletions[p].OldLine, *additions[p].NewLine)
 				result = append(result, AlignedLine{
 					OldLine:    deletions[p].OldLine,
 					NewLine:    additions[p].NewLine,
 					LineType:   Modified,
 					OldLineNum: deletions[p].OldLineNum,
 					NewLineNum: additions[p].NewLineNum,
+					WordDiff:   wordDiff,
 				})
 			}
 
@@ -183,4 +196,64 @@ func (a *DiffAligner) detectModifications(lines []AlignedLine) []AlignedLine {
 	}
 
 	return result
+}
+
+func (a *DiffAligner) computeWordDiff(oldLine, newLine string) *WordDiff {
+	dmp := diffmatchpatch.New()
+
+	// Tokenize by words/whitespace for better diffs
+	oldTokens := a.tokenize(oldLine)
+	newTokens := a.tokenize(newLine)
+
+	// Compute diff on tokenized text
+	diffs := dmp.DiffMain(strings.Join(oldTokens, ""), strings.Join(newTokens, ""), false)
+
+	// Build segment lists for old and new versions
+	oldSegments := a.buildSegments(diffs, true)
+	newSegments := a.buildSegments(diffs, false)
+
+	return &WordDiff{
+		OldSegments: oldSegments,
+		NewSegments: newSegments,
+	}
+}
+
+func (a *DiffAligner) tokenize(text string) []string {
+	// Split on word boundaries while preserving whitespace
+	re := regexp.MustCompile(`(\s+|\S+)`)
+	return re.FindAllString(text, -1)
+}
+
+func (a *DiffAligner) buildSegments(diffs []diffmatchpatch.Diff, isOld bool) []types.DiffSegment {
+	var segments []types.DiffSegment
+
+	for _, diff := range diffs {
+		switch diff.Type {
+		case diffmatchpatch.DiffEqual:
+			segments = append(segments, types.DiffSegment{
+				Text: diff.Text,
+				Type: diffmatchpatch.DiffEqual,
+			})
+		case diffmatchpatch.DiffDelete:
+			if isOld {
+				// Include deleted text in old version
+				segments = append(segments, types.DiffSegment{
+					Text: diff.Text,
+					Type: diffmatchpatch.DiffDelete,
+				})
+			}
+			// Don't include deleted text in new version
+		case diffmatchpatch.DiffInsert:
+			if !isOld {
+				// Include inserted text in new version
+				segments = append(segments, types.DiffSegment{
+					Text: diff.Text,
+					Type: diffmatchpatch.DiffInsert,
+				})
+			}
+			// Don't include inserted text in old version
+		}
+	}
+
+	return segments
 }

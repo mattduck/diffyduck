@@ -64,6 +64,7 @@ func (r *Renderer) renderAlignedLines(alignedLines []aligner.AlignedLine) {
 
 		if line.OldLine != nil {
 			oldContent := *line.OldLine
+
 			if len(oldContent) > leftWidth-2 {
 				oldContent = oldContent[:leftWidth-5] + "..."
 			}
@@ -79,6 +80,7 @@ func (r *Renderer) renderAlignedLines(alignedLines []aligner.AlignedLine) {
 
 		if line.NewLine != nil {
 			newContent := *line.NewLine
+
 			if len(newContent) > leftWidth-2 {
 				newContent = newContent[:leftWidth-5] + "..."
 			}
