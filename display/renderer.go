@@ -56,7 +56,7 @@ func (r *Renderer) renderSingleFile(fileDiff parser.FileDiff) error {
 func (r *Renderer) renderAlignedLines(alignedLines []aligner.AlignedLine) {
 	const leftWidth = 60
 	
-	fmt.Printf("%-*s | %s\n", leftWidth, "OLD", "NEW")
+	fmt.Printf("%-*s | %s\n", leftWidth, "", "")
 	fmt.Printf("%s-+-%s\n", strings.Repeat("-", leftWidth), strings.Repeat("-", leftWidth))
 	
 	for _, line := range alignedLines {

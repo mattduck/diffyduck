@@ -264,7 +264,7 @@ func TestModel_renderContent(t *testing.T) {
 				},
 			},
 			width:        100,
-			containsText: []string{"~ test.go", "unchanged line", "OLD", "NEW"},
+			containsText: []string{"~ test.go", "unchanged line"},
 		},
 		{
 			name: "file with modification",

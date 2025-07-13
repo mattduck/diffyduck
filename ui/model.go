@@ -162,11 +162,11 @@ func (m Model) renderContent() string {
 			lipgloss.Top,
 			strings.Repeat(" ", lineNumWidth + changeMarkerWidth),
 			" │ ",
-			leftColumnStyle.Render("OLD"),
+			leftColumnStyle.Render(""),
 			" │ ",
 			strings.Repeat(" ", lineNumWidth + changeMarkerWidth),
 			" │ ",
-			rightColumnStyle.Render("NEW"),
+			rightColumnStyle.Render(""),
 		))
 		content.WriteString("\n")
 		
