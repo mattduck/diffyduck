@@ -53,6 +53,8 @@ func main() {
 	}
 
 	model := ui.NewModel(filesWithLines)
+	defer model.Close()
+	
 	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {

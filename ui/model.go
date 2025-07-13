@@ -11,6 +11,7 @@ import (
 
 	"duckdiff/aligner"
 	"duckdiff/parser"
+	"duckdiff/syntax"
 )
 
 type FileWithLines struct {
@@ -31,12 +32,14 @@ type Model struct {
 	cursorLine int
 	navigableLines []NavigableLineRef
 	gPressed bool
+	highlighter *syntax.Highlighter
 }
 
 func NewModel(filesWithLines []FileWithLines) Model {
 	model := Model{
 		filesWithLines: filesWithLines,
 		cursorLine: 0,
+		highlighter: syntax.NewHighlighter(),
 	}
 	model.navigableLines = model.buildNavigableLines()
 	return model
@@ -373,6 +376,13 @@ func (m Model) View() string {
 	return m.viewport.View()
 }
 
+func (m *Model) Close() {
+	if m.highlighter != nil {
+		m.highlighter.Close()
+		m.highlighter = nil
+	}
+}
+
 func (m Model) renderContent() string {
 	var content strings.Builder
 	
@@ -487,7 +497,11 @@ func (m Model) renderContent() string {
 			var leftLineNumBlock, rightLineNumBlock string
 			
 			if line.OldLine != nil {
-				leftContent = " " + *line.OldLine
+				content := *line.OldLine
+				if m.highlighter.IsGoFile(fileWithLines.FileDiff.OldPath) {
+					content = m.highlighter.HighlightLine(content, "go")
+				}
+				leftContent = " " + content
 				if line.LineType == aligner.Deleted {
 					leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
 				} else if line.LineType == aligner.Modified {
@@ -501,7 +515,11 @@ func (m Model) renderContent() string {
 			
 			// Format right side
 			if line.NewLine != nil {
-				rightContent = " " + *line.NewLine
+				content := *line.NewLine
+				if m.highlighter.IsGoFile(fileWithLines.FileDiff.NewPath) {
+					content = m.highlighter.HighlightLine(content, "go")
+				}
+				rightContent = " " + content
 				// Check if cursor is on this line
 				cursorMarker := " "
 				if m.isCursorAt(fileIndex, lineIndex) {
