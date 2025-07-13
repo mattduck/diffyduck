@@ -27,9 +27,9 @@ func TestNewModel(t *testing.T) {
 			AlignedLines: []aligner.AlignedLine{},
 		},
 	}
-	
+
 	model := NewModel(filesWithLines)
-	
+
 	assert.Equal(t, filesWithLines, model.filesWithLines)
 	assert.False(t, model.ready)
 	assert.Equal(t, 0, model.width)
@@ -44,7 +44,7 @@ func TestModel_Init(t *testing.T) {
 func TestModel_Update_WindowSize(t *testing.T) {
 	// Set consistent color profile for testing
 	lipgloss.SetColorProfile(termenv.TrueColor)
-	
+
 	model := NewModel([]FileWithLines{
 		{
 			FileDiff: parser.FileDiff{
@@ -63,16 +63,16 @@ func TestModel_Update_WindowSize(t *testing.T) {
 			},
 		},
 	})
-	
+
 	// Test window size message
 	msg := tea.WindowSizeMsg{
 		Width:  100,
 		Height: 30,
 	}
-	
+
 	updatedModel, cmd := model.Update(msg)
 	assert.Nil(t, cmd)
-	
+
 	modelCast := updatedModel.(Model)
 	assert.True(t, modelCast.ready)
 	assert.Equal(t, 100, modelCast.width)
@@ -83,7 +83,7 @@ func TestModel_Update_WindowSize(t *testing.T) {
 func TestModel_Update_KeyMessages(t *testing.T) {
 	// Set consistent color profile for testing
 	lipgloss.SetColorProfile(termenv.TrueColor)
-	
+
 	// Create a model that's already ready
 	model := NewModel([]FileWithLines{
 		{
@@ -103,16 +103,16 @@ func TestModel_Update_KeyMessages(t *testing.T) {
 			},
 		},
 	})
-	
+
 	// Initialize the model first
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := model.Update(windowMsg)
 	model = updatedModel.(Model)
-	
+
 	tests := []struct {
-		name        string
-		key         string
-		expectQuit  bool
+		name       string
+		key        string
+		expectQuit bool
 	}{
 		{
 			name:       "quit with q",
@@ -172,7 +172,7 @@ func TestModel_Update_KeyMessages(t *testing.T) {
 				Type:  tea.KeyRunes,
 				Runes: []rune(tt.key),
 			}
-			
+
 			// Handle special keys
 			switch tt.key {
 			case "ctrl+c":
@@ -184,9 +184,9 @@ func TestModel_Update_KeyMessages(t *testing.T) {
 			default:
 				keyMsg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(tt.key)}
 			}
-			
+
 			_, cmd := model.Update(keyMsg)
-			
+
 			if tt.expectQuit {
 				// Check if the command is a quit command
 				assert.NotNil(t, cmd)
@@ -202,7 +202,7 @@ func TestModel_Update_KeyMessages(t *testing.T) {
 func TestModel_View(t *testing.T) {
 	// Set consistent color profile for testing
 	lipgloss.SetColorProfile(termenv.TrueColor)
-	
+
 	tests := []struct {
 		name           string
 		ready          bool
@@ -224,9 +224,9 @@ func TestModel_View(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			model := NewModel([]FileWithLines{})
 			model.ready = tt.ready
-			
+
 			view := model.View()
-			
+
 			if !tt.ready {
 				assert.Equal(t, tt.expectedOutput, view)
 			} else {
@@ -240,18 +240,18 @@ func TestModel_View(t *testing.T) {
 func TestModel_renderContent(t *testing.T) {
 	// Set consistent color profile for testing
 	lipgloss.SetColorProfile(termenv.TrueColor)
-	
+
 	tests := []struct {
-		name            string
-		filesWithLines  []FileWithLines
-		width           int
-		containsText    []string
+		name           string
+		filesWithLines []FileWithLines
+		width          int
+		containsText   []string
 	}{
 		{
-			name:            "empty files",
-			filesWithLines:  []FileWithLines{},
-			width:           100,
-			containsText:    []string{},
+			name:           "empty files",
+			filesWithLines: []FileWithLines{},
+			width:          100,
+			containsText:   []string{},
 		},
 		{
 			name: "single file with unchanged line",
@@ -351,9 +351,9 @@ func TestModel_renderContent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			model := NewModel(tt.filesWithLines)
 			model.width = tt.width
-			
+
 			content := model.renderContent()
-			
+
 			for _, text := range tt.containsText {
 				assert.Contains(t, content, text, "Expected to find '%s' in rendered content", text)
 			}
@@ -364,7 +364,7 @@ func TestModel_renderContent(t *testing.T) {
 func TestModel_WithTeatest(t *testing.T) {
 	// Set consistent color profile for testing
 	lipgloss.SetColorProfile(termenv.TrueColor)
-	
+
 	filesWithLines := []FileWithLines{
 		{
 			FileDiff: parser.FileDiff{
@@ -383,29 +383,29 @@ func TestModel_WithTeatest(t *testing.T) {
 			},
 		},
 	}
-	
+
 	model := NewModel(filesWithLines)
-	
+
 	// Test with teatest
 	tm := teatest.NewTestModel(
 		t, model,
 		teatest.WithInitialTermSize(80, 24),
 	)
-	
+
 	// Send a quit command after a short delay to test the UI
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
-	
+
 	// Wait for the program to finish
 	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
-	
+
 	// Get the final output
 	out := tm.FinalOutput(t)
 	require.NotNil(t, out)
-	
+
 	// Read the output to verify we got something
 	outBytes, err := io.ReadAll(out)
 	require.NoError(t, err)
-	
+
 	// We can't easily assert on the exact output due to ANSI codes and formatting,
 	// but we can verify the program ran and exited properly
 	assert.Greater(t, len(outBytes), 0, "Expected some output from the UI")
@@ -543,9 +543,9 @@ func TestModel_buildNavigableLines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := NewModel(tt.filesWithLines)
-			
+
 			navigableLines := model.buildNavigableLines()
-			
+
 			assert.Equal(t, tt.expectedCount, len(navigableLines), "Expected %d navigable lines, got %d", tt.expectedCount, len(navigableLines))
 			assert.Equal(t, tt.expectedRefs, navigableLines, "Navigable line refs don't match expected")
 		})
@@ -563,7 +563,7 @@ func TestModel_BlockNavigation(t *testing.T) {
 				{OldLine: nil, NewLine: stringPtr("added2"), LineType: aligner.Added, NewLineNum: 2},
 				// Context (index 2) - breaks the block
 				{OldLine: stringPtr("context"), NewLine: stringPtr("context"), LineType: aligner.Unchanged, OldLineNum: 3, NewLineNum: 3},
-				// Block 2: Added lines (indices 3-4) 
+				// Block 2: Added lines (indices 3-4)
 				{OldLine: nil, NewLine: stringPtr("added3"), LineType: aligner.Added, NewLineNum: 4},
 				{OldLine: nil, NewLine: stringPtr("added4"), LineType: aligner.Added, NewLineNum: 5},
 				// Context again (index 5)
@@ -576,11 +576,11 @@ func TestModel_BlockNavigation(t *testing.T) {
 	}
 
 	tests := []struct {
-		name               string
-		startCursor        int
-		action             string
-		expectedCursor     int
-		expectedNoChange   bool
+		name             string
+		startCursor      int
+		action           string
+		expectedCursor   int
+		expectedNoChange bool
 	}{
 		{
 			name:           "gj from first block to second block",
@@ -590,7 +590,7 @@ func TestModel_BlockNavigation(t *testing.T) {
 		},
 		{
 			name:           "gj from second block to third block",
-			startCursor:    2, // Block 2, line 0  
+			startCursor:    2, // Block 2, line 0
 			action:         "gj",
 			expectedCursor: 4, // Block 3, line 0 (navigableLines index 4 = AlignedLines index 6)
 		},
@@ -604,7 +604,7 @@ func TestModel_BlockNavigation(t *testing.T) {
 		{
 			name:           "gk from third block to second block",
 			startCursor:    4, // Block 3, line 0
-			action:         "gk", 
+			action:         "gk",
 			expectedCursor: 2, // Block 2, line 0
 		},
 		{
@@ -626,7 +626,7 @@ func TestModel_BlockNavigation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			model := NewModel(filesWithLines)
 			model.cursorLine = tt.startCursor
-			
+
 			// Execute the action
 			switch tt.action {
 			case "gj":
@@ -634,7 +634,7 @@ func TestModel_BlockNavigation(t *testing.T) {
 			case "gk":
 				model.gotoPrevBlock()
 			}
-			
+
 			if tt.expectedNoChange {
 				assert.Equal(t, tt.startCursor, model.cursorLine, "Cursor should not move when at boundary")
 			} else {
@@ -652,7 +652,7 @@ func TestModel_BlockNavigationWithDifferentTypes(t *testing.T) {
 			AlignedLines: []aligner.AlignedLine{
 				// Block 1: Added (index 0)
 				{OldLine: nil, NewLine: stringPtr("added"), LineType: aligner.Added, NewLineNum: 1},
-				// Block 2: Modified (index 1) 
+				// Block 2: Modified (index 1)
 				{OldLine: stringPtr("old"), NewLine: stringPtr("new"), LineType: aligner.Modified, OldLineNum: 2, NewLineNum: 2},
 				// Block 3: Deleted (index 2)
 				{OldLine: stringPtr("deleted"), NewLine: nil, LineType: aligner.Deleted, OldLineNum: 3},
@@ -661,25 +661,25 @@ func TestModel_BlockNavigationWithDifferentTypes(t *testing.T) {
 	}
 
 	model := NewModel(filesWithLines)
-	
+
 	// Should have 3 navigable lines: Added, Modified, Deleted
 	assert.Equal(t, 3, len(model.navigableLines))
-	
+
 	// Test gj: Added -> Modified -> Deleted
 	model.cursorLine = 0
 	model.gotoNextBlock()
 	assert.Equal(t, 1, model.cursorLine, "Should move from Added to Modified")
-	
-	model.gotoNextBlock() 
+
+	model.gotoNextBlock()
 	assert.Equal(t, 2, model.cursorLine, "Should move from Modified to Deleted")
-	
+
 	// Test gk: Deleted -> Modified -> Added
 	model.gotoNextBlock() // Should not move (at end)
 	assert.Equal(t, 2, model.cursorLine, "Should stay at Deleted (last block)")
-	
+
 	model.gotoPrevBlock()
 	assert.Equal(t, 1, model.cursorLine, "Should move from Deleted to Modified")
-	
+
 	model.gotoPrevBlock()
 	assert.Equal(t, 0, model.cursorLine, "Should move from Modified to Added")
 }
@@ -702,17 +702,17 @@ func TestModel_BlockNavigationAcrossFiles(t *testing.T) {
 	}
 
 	model := NewModel(filesWithLines)
-	
+
 	// Should have 2 navigable lines across 2 files
 	assert.Equal(t, 2, len(model.navigableLines))
 	assert.Equal(t, 0, model.navigableLines[0].FileIndex)
 	assert.Equal(t, 1, model.navigableLines[1].FileIndex)
-	
+
 	// Test navigation across files
 	model.cursorLine = 0
 	model.gotoNextBlock()
 	assert.Equal(t, 1, model.cursorLine, "Should move from file1 to file2")
-	
+
 	model.gotoPrevBlock()
 	assert.Equal(t, 0, model.cursorLine, "Should move back from file2 to file1")
 }
@@ -720,7 +720,7 @@ func TestModel_BlockNavigationAcrossFiles(t *testing.T) {
 func TestModel_KeySequences(t *testing.T) {
 	// Set consistent color profile for testing
 	lipgloss.SetColorProfile(termenv.TrueColor)
-	
+
 	// Create test data with multiple blocks
 	filesWithLines := []FileWithLines{
 		{
@@ -791,18 +791,18 @@ func TestModel_KeySequences(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := NewModel(filesWithLines)
-			
+
 			// Initialize model with window size
 			windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 			updatedModel, _ := model.Update(windowMsg)
 			model = updatedModel.(Model)
-			
+
 			// Execute key sequence
 			for _, keyMsg := range tt.keySequence {
 				updatedModel, _ := model.Update(keyMsg)
 				model = updatedModel.(Model)
 			}
-			
+
 			assert.Equal(t, tt.expectedCursor, model.cursorLine, tt.description)
 		})
 	}
@@ -822,10 +822,10 @@ func TestModel_CursorPositioning(t *testing.T) {
 
 	model := NewModel(filesWithLines)
 	model.width = 100
-	
+
 	// Test cursor at different positions
 	testCases := []struct {
-		position int
+		position  int
 		fileIndex int
 		lineIndex int
 	}{
@@ -835,11 +835,11 @@ func TestModel_CursorPositioning(t *testing.T) {
 
 	for _, tc := range testCases {
 		model.cursorLine = tc.position
-		
+
 		// Test isCursorAt function
-		assert.True(t, model.isCursorAt(tc.fileIndex, tc.lineIndex), 
+		assert.True(t, model.isCursorAt(tc.fileIndex, tc.lineIndex),
 			"isCursorAt should return true for cursor position %d", tc.position)
-		
+
 		// Test cursor positioning doesn't crash rendering
 		content := model.renderContent()
 		assert.NotEmpty(t, content, "Rendering should not be empty")
@@ -851,7 +851,7 @@ func TestModel_CursorPositioning(t *testing.T) {
 func BenchmarkModel_renderContent(b *testing.B) {
 	// Set consistent color profile for benchmarking
 	lipgloss.SetColorProfile(termenv.TrueColor)
-	
+
 	// Create a model with several files and lines
 	filesWithLines := make([]FileWithLines, 5)
 	for i := 0; i < 5; i++ {
@@ -865,7 +865,7 @@ func BenchmarkModel_renderContent(b *testing.B) {
 				NewLineNum: j + 1,
 			}
 		}
-		
+
 		filesWithLines[i] = FileWithLines{
 			FileDiff: parser.FileDiff{
 				OldPath: "a/file" + string(rune(i)) + ".txt",
@@ -875,10 +875,10 @@ func BenchmarkModel_renderContent(b *testing.B) {
 			AlignedLines: alignedLines,
 		}
 	}
-	
+
 	model := NewModel(filesWithLines)
 	model.width = 120
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = model.renderContent()

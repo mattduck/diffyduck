@@ -2,7 +2,7 @@ package languages
 
 import (
 	"unsafe"
-	
+
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
 )
 
@@ -30,7 +30,7 @@ func (g *GoLanguage) GetKeywordNodeTypes() []string {
 func (g *GoLanguage) GetStringNodeTypes() []string {
 	return []string{
 		"interpreted_string_literal",
-		"raw_string_literal", 
+		"raw_string_literal",
 		"rune_literal",
 	}
 }

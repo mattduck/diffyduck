@@ -9,10 +9,10 @@ import (
 
 func TestDiffParser_Parse(t *testing.T) {
 	tests := []struct {
-		name           string
-		diffContent    string
-		expectedFiles  []FileDiff
-		expectedError  bool
+		name          string
+		diffContent   string
+		expectedFiles []FileDiff
+		expectedError bool
 	}{
 		{
 			name: "simple file modification",
@@ -241,8 +241,8 @@ index 1234567..abcdefg 100644
 			expectedError: false,
 		},
 		{
-			name: "empty diff",
-			diffContent: "",
+			name:          "empty diff",
+			diffContent:   "",
 			expectedFiles: nil,
 			expectedError: false,
 		},
@@ -280,15 +280,15 @@ index 1234567..abcdefg 100644
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			parser := NewDiffParser()
 			result, err := parser.Parse(tt.diffContent)
-			
+
 			if tt.expectedError {
 				assert.Error(t, err)
 				return
 			}
-			
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedFiles, result)
 		})
@@ -297,7 +297,7 @@ index 1234567..abcdefg 100644
 
 func TestNewDiffParser(t *testing.T) {
 	parser := NewDiffParser()
-	
+
 	assert.NotNil(t, parser)
 	assert.NotNil(t, parser.fileHeaderRe)
 	assert.NotNil(t, parser.hunkHeaderRe)
@@ -307,7 +307,7 @@ func TestNewDiffParser(t *testing.T) {
 
 func TestDiffParser_RegexPatterns(t *testing.T) {
 	parser := NewDiffParser()
-	
+
 	tests := []struct {
 		name    string
 		regex   string
@@ -349,7 +349,7 @@ func TestDiffParser_RegexPatterns(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			var matches []string
 			switch tt.regex {
 			case "fileHeaderRe":
@@ -361,7 +361,7 @@ func TestDiffParser_RegexPatterns(t *testing.T) {
 			case "newFileRe":
 				matches = parser.newFileRe.FindStringSubmatch(tt.input)
 			}
-			
+
 			assert.Equal(t, tt.matches, matches)
 		})
 	}
@@ -380,7 +380,7 @@ index 1234567..abcdefg 100644
  }`
 
 	parser := NewDiffParser()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := parser.Parse(diffContent)
@@ -407,7 +407,7 @@ index 1234567..abcdefg 100644
 	}
 
 	parser := NewDiffParser()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := parser.Parse(largeDiff)

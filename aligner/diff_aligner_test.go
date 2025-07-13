@@ -10,10 +10,10 @@ import (
 
 func TestDiffAligner_AlignFile(t *testing.T) {
 	tests := []struct {
-		name         string
-		oldLines     []string
-		newLines     []string
-		hunks        []parser.Hunk
+		name          string
+		oldLines      []string
+		newLines      []string
+		hunks         []parser.Hunk
 		expectedLines []AlignedLine
 	}{
 		{
@@ -181,10 +181,10 @@ func TestDiffAligner_AlignFile(t *testing.T) {
 			},
 		},
 		{
-			name: "empty files",
-			oldLines: []string{},
-			newLines: []string{},
-			hunks: []parser.Hunk{},
+			name:          "empty files",
+			oldLines:      []string{},
+			newLines:      []string{},
+			hunks:         []parser.Hunk{},
 			expectedLines: nil,
 		},
 		{
@@ -192,7 +192,7 @@ func TestDiffAligner_AlignFile(t *testing.T) {
 			oldLines: []string{
 				"line1",
 				"del1",
-				"del2", 
+				"del2",
 				"line4",
 			},
 			newLines: []string{
@@ -265,10 +265,10 @@ func TestDiffAligner_AlignFile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			aligner := NewDiffAligner()
 			result := aligner.AlignFile(tt.oldLines, tt.newLines, tt.hunks)
-			
+
 			assert.Equal(t, tt.expectedLines, result)
 		})
 	}
@@ -276,13 +276,13 @@ func TestDiffAligner_AlignFile(t *testing.T) {
 
 func TestDiffAligner_addUnchangedLines(t *testing.T) {
 	tests := []struct {
-		name        string
-		oldLines    []string
-		newLines    []string
-		oldStart    int
-		newStart    int
-		oldEnd      int
-		newEnd      int
+		name          string
+		oldLines      []string
+		newLines      []string
+		oldStart      int
+		newStart      int
+		oldEnd        int
+		newEnd        int
 		expectedLines []AlignedLine
 	}{
 		{
@@ -326,10 +326,10 @@ func TestDiffAligner_addUnchangedLines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			aligner := NewDiffAligner()
 			result := aligner.addUnchangedLines(tt.oldLines, tt.newLines, tt.oldStart, tt.newStart, tt.oldEnd, tt.newEnd)
-			
+
 			assert.Equal(t, tt.expectedLines, result)
 		})
 	}
@@ -337,15 +337,15 @@ func TestDiffAligner_addUnchangedLines(t *testing.T) {
 
 func TestDiffAligner_processHunk(t *testing.T) {
 	tests := []struct {
-		name              string
-		hunk              parser.Hunk
-		oldLines          []string
-		newLines          []string
-		oldPos            int
-		newPos            int
-		expectedLines     []AlignedLine
-		expectedOldPos    int
-		expectedNewPos    int
+		name           string
+		hunk           parser.Hunk
+		oldLines       []string
+		newLines       []string
+		oldPos         int
+		newPos         int
+		expectedLines  []AlignedLine
+		expectedOldPos int
+		expectedNewPos int
 	}{
 		{
 			name: "simple hunk with deletion and addition",
@@ -407,10 +407,10 @@ func TestDiffAligner_processHunk(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			aligner := NewDiffAligner()
 			result, oldPos, newPos := aligner.processHunk(tt.hunk, tt.oldLines, tt.newLines, tt.oldPos, tt.newPos)
-			
+
 			assert.Equal(t, tt.expectedLines, result)
 			assert.Equal(t, tt.expectedOldPos, oldPos)
 			assert.Equal(t, tt.expectedNewPos, newPos)
@@ -503,10 +503,10 @@ func TestDiffAligner_detectModifications(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			aligner := NewDiffAligner()
 			result := aligner.detectModifications(tt.inputLines)
-			
+
 			assert.Equal(t, tt.expectedLines, result)
 		})
 	}
@@ -531,7 +531,7 @@ func BenchmarkDiffAligner_AlignFile(b *testing.B) {
 		"line4",
 		"line5",
 	}
-	
+
 	newLines := []string{
 		"line1",
 		"new line",
@@ -539,7 +539,7 @@ func BenchmarkDiffAligner_AlignFile(b *testing.B) {
 		"line4",
 		"line5",
 	}
-	
+
 	hunks := []parser.Hunk{
 		{
 			OldStart: 2,
@@ -554,7 +554,7 @@ func BenchmarkDiffAligner_AlignFile(b *testing.B) {
 	}
 
 	aligner := NewDiffAligner()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = aligner.AlignFile(oldLines, newLines, hunks)
@@ -565,7 +565,7 @@ func BenchmarkDiffAligner_AlignFileLarge(b *testing.B) {
 	// Create large files with many lines
 	oldLines := make([]string, 1000)
 	newLines := make([]string, 1000)
-	
+
 	for i := 0; i < 1000; i++ {
 		if i == 500 {
 			oldLines[i] = "old line 500"
@@ -575,7 +575,7 @@ func BenchmarkDiffAligner_AlignFileLarge(b *testing.B) {
 			newLines[i] = "line " + string(rune(i))
 		}
 	}
-	
+
 	hunks := []parser.Hunk{
 		{
 			OldStart: 501,
@@ -590,7 +590,7 @@ func BenchmarkDiffAligner_AlignFileLarge(b *testing.B) {
 	}
 
 	aligner := NewDiffAligner()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = aligner.AlignFile(oldLines, newLines, hunks)

@@ -61,7 +61,7 @@ func (p *DiffParser) Parse(diffContent string) ([]FileDiff, error) {
 			// Update old path from --- line (handles /dev/null for new files)
 			currentFile.OldPath = matches[1]
 		} else if matches := p.newFileRe.FindStringSubmatch(line); matches != nil && currentFile != nil {
-			// Update new path from +++ line (handles /dev/null for deleted files) 
+			// Update new path from +++ line (handles /dev/null for deleted files)
 			newPath := matches[1]
 			if strings.HasPrefix(newPath, "b/") {
 				newPath = newPath[2:] // Remove "b/" prefix
