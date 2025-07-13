@@ -434,17 +434,20 @@ func (m Model) renderContent() string {
 	addedLineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth + changeMarkerWidth).
 		Align(lipgloss.Right).
-		Foreground(lipgloss.Color("2")) // standard ANSI green
+		Foreground(lipgloss.Color("2")).  // standard ANSI green
+		Background(lipgloss.Color("16")) // dark background for non-context lines
 		
 	deletedLineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth + changeMarkerWidth).
 		Align(lipgloss.Right).
-		Foreground(lipgloss.Color("1")) // standard ANSI red
+		Foreground(lipgloss.Color("1")).  // standard ANSI red
+		Background(lipgloss.Color("16")) // dark background for non-context lines
 		
 	modifiedLineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth + changeMarkerWidth).
 		Align(lipgloss.Right).
-		Foreground(lipgloss.Color("4")) // standard ANSI blue
+		Foreground(lipgloss.Color("4")).  // standard ANSI blue
+		Background(lipgloss.Color("16")) // dark background for non-context lines
 	
 	for fileIndex, fileWithLines := range m.filesWithLines {
 		if fileIndex > 0 {
