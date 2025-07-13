@@ -16,6 +16,7 @@ type Model struct {
 	alignedLines []aligner.AlignedLine
 	viewport viewport.Model
 	ready bool
+	width int
 }
 
 func NewModel(fileDiffs []parser.FileDiff, alignedLines []aligner.AlignedLine) Model {
@@ -45,6 +46,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.HalfViewUp()
 		}
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, msg.Height-1)
 			m.viewport.SetContent(m.renderContent())
@@ -52,6 +54,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.viewport.Width = msg.Width
 			m.viewport.Height = msg.Height - 1
+			m.viewport.SetContent(m.renderContent())
 		}
 	}
 
@@ -70,12 +73,18 @@ func (m Model) View() string {
 func (m Model) renderContent() string {
 	var content strings.Builder
 	
+	// Calculate column widths: leave 3 chars for " | " separator
+	columnWidth := (m.width - 3) / 2
+	if columnWidth < 20 {
+		columnWidth = 20 // minimum width
+	}
+	
 	leftColumnStyle := lipgloss.NewStyle().
-		Width(60).
+		Width(columnWidth).
 		Align(lipgloss.Left)
 		
 	rightColumnStyle := lipgloss.NewStyle().
-		Width(60).
+		Width(columnWidth).
 		Align(lipgloss.Left)
 	
 	addedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
@@ -95,9 +104,9 @@ func (m Model) renderContent() string {
 		
 		content.WriteString(lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			strings.Repeat("─", 60),
+			strings.Repeat("─", columnWidth),
 			"─┼─",
-			strings.Repeat("─", 60),
+			strings.Repeat("─", columnWidth),
 		))
 		content.WriteString("\n")
 		break

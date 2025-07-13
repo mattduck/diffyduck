@@ -59,6 +59,8 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
+		// For non-interactive mode, use a reasonable default width
+		const fallbackWidth = 80
 		for _, line := range allAlignedLines {
 			var leftContent, rightContent string
 			
@@ -80,7 +82,7 @@ func main() {
 				}
 			}
 			
-			fmt.Printf("%-60s | %s\n", leftContent, rightContent)
+			fmt.Printf("%-*s | %s\n", fallbackWidth, leftContent, rightContent)
 		}
 	}
 }
