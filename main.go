@@ -59,30 +59,38 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		// For non-interactive mode, use a reasonable default width
-		const fallbackWidth = 80
+		// For non-interactive mode, show line numbers too
+		const lineNumWidth = 5
+		const contentWidth = 80
+		
 		for _, line := range allAlignedLines {
 			var leftContent, rightContent string
+			var leftLineNum, rightLineNum string
+			var leftMarker, rightMarker string
 			
+			// Format left side
 			if line.OldLine != nil {
-				leftContent = *line.OldLine
-				if line.LineType == aligner.Deleted {
-					leftContent = "-" + leftContent
-				} else {
-					leftContent = " " + leftContent
-				}
+				leftContent = " " + *line.OldLine
+				leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
+				leftMarker = " "
+			} else {
+				leftLineNum = "     "
+				leftMarker = " "
 			}
 			
+			// Format right side
 			if line.NewLine != nil {
-				rightContent = *line.NewLine
-				if line.LineType == aligner.Added {
-					rightContent = "+" + rightContent
-				} else {
-					rightContent = " " + rightContent
-				}
+				rightContent = " " + *line.NewLine
+				rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
+				rightMarker = " "
+			} else {
+				rightLineNum = "     "
+				rightMarker = " "
 			}
 			
-			fmt.Printf("%-*s | %s\n", fallbackWidth, leftContent, rightContent)
+			fmt.Printf("%s%s | %-*s | %s%s | %s\n", 
+				leftLineNum, leftMarker, contentWidth, leftContent,
+				rightLineNum, rightMarker, rightContent)
 		}
 	}
 }

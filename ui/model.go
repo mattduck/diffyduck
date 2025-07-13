@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -73,22 +74,43 @@ func (m Model) View() string {
 func (m Model) renderContent() string {
 	var content strings.Builder
 	
-	// Calculate column widths: leave 3 chars for " | " separator
-	columnWidth := (m.width - 3) / 2
-	if columnWidth < 20 {
-		columnWidth = 20 // minimum width
+	// Line number column widths
+	const lineNumWidth = 5
+	const changeMarkerWidth = 1
+	
+	// Calculate column widths: account for line numbers and separators
+	// Layout: [lineNum+marker] | [content] | [lineNum+marker] | [content]
+	// Total separators: 3 * " | " = 9 chars, plus 2 * (lineNumWidth + changeMarkerWidth)
+	totalSeparators := 9 + 2*(lineNumWidth + changeMarkerWidth)
+	contentWidth := (m.width - totalSeparators) / 2
+	if contentWidth < 20 {
+		contentWidth = 20 // minimum width
 	}
 	
 	leftColumnStyle := lipgloss.NewStyle().
-		Width(columnWidth).
+		Width(contentWidth).
 		Align(lipgloss.Left)
 		
 	rightColumnStyle := lipgloss.NewStyle().
-		Width(columnWidth).
+		Width(contentWidth).
 		Align(lipgloss.Left)
+		
+	lineNumStyle := lipgloss.NewStyle().
+		Width(lineNumWidth).
+		Align(lipgloss.Right).
+		Foreground(lipgloss.Color("240")) // dim gray
 	
-	addedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	deletedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	addedLineNumStyle := lipgloss.NewStyle().
+		Width(lineNumWidth + changeMarkerWidth).
+		Align(lipgloss.Right).
+		Background(lipgloss.Color("2")). // standard ANSI green
+		Foreground(lipgloss.Color("0"))  // black text
+		
+	deletedLineNumStyle := lipgloss.NewStyle().
+		Width(lineNumWidth + changeMarkerWidth).
+		Align(lipgloss.Right).
+		Background(lipgloss.Color("1")). // standard ANSI red
+		Foreground(lipgloss.Color("0"))  // black text
 	
 	for _, fileDiff := range m.fileDiffs {
 		content.WriteString(lipgloss.NewStyle().Bold(true).Render("=== " + fileDiff.NewPath + " ==="))
@@ -96,7 +118,11 @@ func (m Model) renderContent() string {
 		
 		content.WriteString(lipgloss.JoinHorizontal(
 			lipgloss.Top,
+			strings.Repeat(" ", lineNumWidth + changeMarkerWidth),
+			" │ ",
 			leftColumnStyle.Render("OLD"),
+			" │ ",
+			strings.Repeat(" ", lineNumWidth + changeMarkerWidth),
 			" │ ",
 			rightColumnStyle.Render("NEW"),
 		))
@@ -104,9 +130,13 @@ func (m Model) renderContent() string {
 		
 		content.WriteString(lipgloss.JoinHorizontal(
 			lipgloss.Top,
-			strings.Repeat("─", columnWidth),
+			strings.Repeat("─", lineNumWidth + changeMarkerWidth),
 			"─┼─",
-			strings.Repeat("─", columnWidth),
+			strings.Repeat("─", contentWidth),
+			"─┼─",
+			strings.Repeat("─", lineNumWidth + changeMarkerWidth),
+			"─┼─",
+			strings.Repeat("─", contentWidth),
 		))
 		content.WriteString("\n")
 		break
@@ -114,28 +144,38 @@ func (m Model) renderContent() string {
 	
 	for _, line := range m.alignedLines {
 		var leftContent, rightContent string
+		var leftLineNumBlock, rightLineNumBlock string
 		
 		if line.OldLine != nil {
-			leftContent = *line.OldLine
+			leftContent = " " + *line.OldLine
 			if line.LineType == aligner.Deleted {
-				leftContent = deletedStyle.Render("-" + leftContent)
+				leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
 			} else {
-				leftContent = " " + leftContent
+				leftLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.OldLineNum)) + " "
 			}
+		} else {
+			leftLineNumBlock = strings.Repeat(" ", lineNumWidth + changeMarkerWidth)
 		}
 		
+		// Format right side
 		if line.NewLine != nil {
-			rightContent = *line.NewLine
+			rightContent = " " + *line.NewLine
 			if line.LineType == aligner.Added {
-				rightContent = addedStyle.Render("+" + rightContent)
+				rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d ", line.NewLineNum))
 			} else {
-				rightContent = " " + rightContent
+				rightLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.NewLineNum)) + " "
 			}
+		} else {
+			rightLineNumBlock = strings.Repeat(" ", lineNumWidth + changeMarkerWidth)
 		}
 		
 		content.WriteString(lipgloss.JoinHorizontal(
 			lipgloss.Top,
+			leftLineNumBlock,
+			" │ ",
 			leftColumnStyle.Render(leftContent),
+			" │ ",
+			rightLineNumBlock,
 			" │ ",
 			rightColumnStyle.Render(rightContent),
 		))
