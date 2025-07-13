@@ -23,12 +23,16 @@ type Hunk struct {
 type DiffParser struct {
 	fileHeaderRe *regexp.Regexp
 	hunkHeaderRe *regexp.Regexp
+	oldFileRe    *regexp.Regexp
+	newFileRe    *regexp.Regexp
 }
 
 func NewDiffParser() *DiffParser {
 	return &DiffParser{
 		fileHeaderRe: regexp.MustCompile(`^diff --git a/(.*) b/(.*)$`),
 		hunkHeaderRe: regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`),
+		oldFileRe:    regexp.MustCompile(`^--- (.*)$`),
+		newFileRe:    regexp.MustCompile(`^\+\+\+ (.*)$`),
 	}
 }
 
@@ -53,6 +57,16 @@ func (p *DiffParser) Parse(diffContent string) ([]FileDiff, error) {
 				Hunks:   []Hunk{},
 			}
 			currentHunk = nil
+		} else if matches := p.oldFileRe.FindStringSubmatch(line); matches != nil && currentFile != nil {
+			// Update old path from --- line (handles /dev/null for new files)
+			currentFile.OldPath = matches[1]
+		} else if matches := p.newFileRe.FindStringSubmatch(line); matches != nil && currentFile != nil {
+			// Update new path from +++ line (handles /dev/null for deleted files) 
+			newPath := matches[1]
+			if strings.HasPrefix(newPath, "b/") {
+				newPath = newPath[2:] // Remove "b/" prefix
+			}
+			currentFile.NewPath = newPath
 		} else if matches := p.hunkHeaderRe.FindStringSubmatch(line); matches != nil {
 			if currentHunk != nil && currentFile != nil {
 				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)

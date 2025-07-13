@@ -12,18 +12,21 @@ import (
 	"duckdiff/parser"
 )
 
+type FileWithLines struct {
+	FileDiff parser.FileDiff
+	AlignedLines []aligner.AlignedLine
+}
+
 type Model struct {
-	fileDiffs []parser.FileDiff
-	alignedLines []aligner.AlignedLine
+	filesWithLines []FileWithLines
 	viewport viewport.Model
 	ready bool
 	width int
 }
 
-func NewModel(fileDiffs []parser.FileDiff, alignedLines []aligner.AlignedLine) Model {
+func NewModel(filesWithLines []FileWithLines) Model {
 	return Model{
-		fileDiffs: fileDiffs,
-		alignedLines: alignedLines,
+		filesWithLines: filesWithLines,
 	}
 }
 
@@ -103,23 +106,56 @@ func (m Model) renderContent() string {
 	addedLineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth + changeMarkerWidth).
 		Align(lipgloss.Right).
-		Background(lipgloss.Color("2")). // standard ANSI green
-		Foreground(lipgloss.Color("0"))  // black text
+		Foreground(lipgloss.Color("2")) // standard ANSI green
 		
 	deletedLineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth + changeMarkerWidth).
 		Align(lipgloss.Right).
-		Background(lipgloss.Color("1")). // standard ANSI red
-		Foreground(lipgloss.Color("0"))  // black text
+		Foreground(lipgloss.Color("1")) // standard ANSI red
 		
 	modifiedLineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth + changeMarkerWidth).
 		Align(lipgloss.Right).
-		Background(lipgloss.Color("4")). // standard ANSI blue
-		Foreground(lipgloss.Color("0"))  // black text
+		Foreground(lipgloss.Color("4")) // standard ANSI blue
 	
-	for _, fileDiff := range m.fileDiffs {
-		content.WriteString(lipgloss.NewStyle().Bold(true).Render("=== " + fileDiff.NewPath + " ==="))
+	for fileIndex, fileWithLines := range m.filesWithLines {
+		if fileIndex > 0 {
+			content.WriteString("\n")
+		}
+		
+		// Determine file status marker and color
+		var fileMarker string
+		var color string
+		if fileWithLines.FileDiff.OldPath == "/dev/null" {
+			// New file
+			fileMarker = "+"
+			color = "2" // green
+		} else if fileWithLines.FileDiff.NewPath == "/dev/null" {
+			// Deleted file  
+			fileMarker = "-"
+			color = "1" // red
+		} else {
+			// Modified file
+			fileMarker = "~"
+			color = "4" // blue
+		}
+		
+		// File header styling
+		fileHeaderStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(color))
+			
+		totalWidth := 2*(lineNumWidth + changeMarkerWidth + contentWidth) + 9 // account for separators
+		
+		headerText := fmt.Sprintf("%s %s", fileMarker, fileWithLines.FileDiff.NewPath)
+		if fileWithLines.FileDiff.NewPath == "/dev/null" {
+			headerText = fmt.Sprintf("%s %s", fileMarker, fileWithLines.FileDiff.OldPath)
+		}
+		
+		fileHeader := fileHeaderStyle.Width(totalWidth).
+			Align(lipgloss.Left).
+			Render(headerText)
+		content.WriteString(fileHeader)
 		content.WriteString("\n")
 		
 		content.WriteString(lipgloss.JoinHorizontal(
@@ -145,51 +181,51 @@ func (m Model) renderContent() string {
 			strings.Repeat("─", contentWidth),
 		))
 		content.WriteString("\n")
-		break
-	}
-	
-	for _, line := range m.alignedLines {
-		var leftContent, rightContent string
-		var leftLineNumBlock, rightLineNumBlock string
 		
-		if line.OldLine != nil {
-			leftContent = " " + *line.OldLine
-			if line.LineType == aligner.Deleted {
-				leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
-			} else if line.LineType == aligner.Modified {
-				leftLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
+		// Render aligned lines for this file
+		for _, line := range fileWithLines.AlignedLines {
+			var leftContent, rightContent string
+			var leftLineNumBlock, rightLineNumBlock string
+			
+			if line.OldLine != nil {
+				leftContent = " " + *line.OldLine
+				if line.LineType == aligner.Deleted {
+					leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
+				} else if line.LineType == aligner.Modified {
+					leftLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
+				} else {
+					leftLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.OldLineNum)) + " "
+				}
 			} else {
-				leftLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.OldLineNum)) + " "
+				leftLineNumBlock = strings.Repeat(" ", lineNumWidth + changeMarkerWidth)
 			}
-		} else {
-			leftLineNumBlock = strings.Repeat(" ", lineNumWidth + changeMarkerWidth)
-		}
-		
-		// Format right side
-		if line.NewLine != nil {
-			rightContent = " " + *line.NewLine
-			if line.LineType == aligner.Added {
-				rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d ", line.NewLineNum))
-			} else if line.LineType == aligner.Modified {
-				rightLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d ", line.NewLineNum))
+			
+			// Format right side
+			if line.NewLine != nil {
+				rightContent = " " + *line.NewLine
+				if line.LineType == aligner.Added {
+					rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d ", line.NewLineNum))
+				} else if line.LineType == aligner.Modified {
+					rightLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d ", line.NewLineNum))
+				} else {
+					rightLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.NewLineNum)) + " "
+				}
 			} else {
-				rightLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.NewLineNum)) + " "
+				rightLineNumBlock = strings.Repeat(" ", lineNumWidth + changeMarkerWidth)
 			}
-		} else {
-			rightLineNumBlock = strings.Repeat(" ", lineNumWidth + changeMarkerWidth)
+			
+			content.WriteString(lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				leftLineNumBlock,
+				" │ ",
+				leftColumnStyle.Render(leftContent),
+				" │ ",
+				rightLineNumBlock,
+				" │ ",
+				rightColumnStyle.Render(rightContent),
+			))
+			content.WriteString("\n")
 		}
-		
-		content.WriteString(lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			leftLineNumBlock,
-			" │ ",
-			leftColumnStyle.Render(leftContent),
-			" │ ",
-			rightLineNumBlock,
-			" │ ",
-			rightColumnStyle.Render(rightContent),
-		))
-		content.WriteString("\n")
 	}
 	
 	return content.String()

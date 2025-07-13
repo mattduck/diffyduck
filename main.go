@@ -29,7 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var allAlignedLines []aligner.AlignedLine
+	var filesWithLines []ui.FileWithLines
 	retriever := git.NewFileRetriever()
 	diffAligner := aligner.NewDiffAligner()
 
@@ -47,11 +47,14 @@ func main() {
 		}
 
 		alignedLines := diffAligner.AlignFile(oldLines, newLines, fileDiff.Hunks)
-		allAlignedLines = append(allAlignedLines, alignedLines...)
+		filesWithLines = append(filesWithLines, ui.FileWithLines{
+			FileDiff: fileDiff,
+			AlignedLines: alignedLines,
+		})
 	}
 
 	if isatty.IsTerminal(os.Stdout.Fd()) {
-		model := ui.NewModel(fileDiffs, allAlignedLines)
+		model := ui.NewModel(filesWithLines)
 		p := tea.NewProgram(model)
 
 		if _, err := p.Run(); err != nil {
@@ -63,45 +66,68 @@ func main() {
 		const lineNumWidth = 5
 		const contentWidth = 80
 		
-		for _, line := range allAlignedLines {
-			var leftContent, rightContent string
-			var leftLineNum, rightLineNum string
-			var leftMarker, rightMarker string
-			
-			// Handle different line types
-			switch line.LineType {
-			case aligner.Modified:
-				// For modified lines, show both sides with ~ marker
-				leftContent = " " + *line.OldLine
-				rightContent = " " + *line.NewLine
-				leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
-				rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
-				leftMarker = "~"
-				rightMarker = "~"
-			case aligner.Deleted:
-				leftContent = " " + *line.OldLine
-				leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
-				leftMarker = "-"
-				rightLineNum = "     "
-				rightMarker = " "
-			case aligner.Added:
-				rightContent = " " + *line.NewLine
-				rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
-				rightMarker = "+"
-				leftLineNum = "     "
-				leftMarker = " "
-			default: // Unchanged
-				leftContent = " " + *line.OldLine
-				rightContent = " " + *line.NewLine
-				leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
-				rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
-				leftMarker = " "
-				rightMarker = " "
+		for fileIndex, fileWithLines := range filesWithLines {
+			if fileIndex > 0 {
+				fmt.Println()
 			}
 			
-			fmt.Printf("%s%s | %-*s | %s%s | %s\n", 
-				leftLineNum, leftMarker, contentWidth, leftContent,
-				rightLineNum, rightMarker, rightContent)
+			// Determine file status
+			var fileStatus string
+			if fileWithLines.FileDiff.OldPath == "/dev/null" {
+				fileStatus = "NEW FILE"
+			} else if fileWithLines.FileDiff.NewPath == "/dev/null" {
+				fileStatus = "DELETED"
+			} else {
+				fileStatus = "MODIFIED"
+			}
+			
+			fileName := fileWithLines.FileDiff.NewPath
+			if fileWithLines.FileDiff.NewPath == "/dev/null" {
+				fileName = fileWithLines.FileDiff.OldPath
+			}
+			
+			fmt.Printf("=== %s: %s ===\n", fileStatus, fileName)
+			
+			for _, line := range fileWithLines.AlignedLines {
+				var leftContent, rightContent string
+				var leftLineNum, rightLineNum string
+				var leftMarker, rightMarker string
+				
+				// Handle different line types
+				switch line.LineType {
+				case aligner.Modified:
+					// For modified lines, show both sides with ~ marker
+					leftContent = " " + *line.OldLine
+					rightContent = " " + *line.NewLine
+					leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
+					rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
+					leftMarker = "~"
+					rightMarker = "~"
+				case aligner.Deleted:
+					leftContent = " " + *line.OldLine
+					leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
+					leftMarker = "-"
+					rightLineNum = "     "
+					rightMarker = " "
+				case aligner.Added:
+					rightContent = " " + *line.NewLine
+					rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
+					rightMarker = "+"
+					leftLineNum = "     "
+					leftMarker = " "
+				default: // Unchanged
+					leftContent = " " + *line.OldLine
+					rightContent = " " + *line.NewLine
+					leftLineNum = fmt.Sprintf("%5d", line.OldLineNum)
+					rightLineNum = fmt.Sprintf("%5d", line.NewLineNum)
+					leftMarker = " "
+					rightMarker = " "
+				}
+				
+				fmt.Printf("%s%s | %-*s | %s%s | %s\n", 
+					leftLineNum, leftMarker, contentWidth, leftContent,
+					rightLineNum, rightMarker, rightContent)
+			}
 		}
 	}
 }
