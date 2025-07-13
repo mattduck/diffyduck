@@ -48,6 +48,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.HalfViewDown()
 		case "u":
 			m.viewport.HalfViewUp()
+		case "g":
+			m.viewport.GotoTop()
+		case "G":
+			m.viewport.GotoBottom()
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

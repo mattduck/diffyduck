@@ -154,6 +154,16 @@ func TestModel_Update_KeyMessages(t *testing.T) {
 			key:        "u",
 			expectQuit: false,
 		},
+		{
+			name:       "g go to top",
+			key:        "g",
+			expectQuit: false,
+		},
+		{
+			name:       "G go to bottom",
+			key:        "G",
+			expectQuit: false,
+		},
 	}
 
 	for _, tt := range tests {
