@@ -119,6 +119,44 @@ func (r *FileRetriever) GetFileInfo(filePath string, isOld bool) (*FileInfo, err
 	return &FileInfo{Type: TextFile, Lines: lines}, nil
 }
 
+// GetFileInfoFromCommit retrieves file information from a specific git commit.
+// It uses 'git show <commit>:<file>' to get the file content at that point in history.
+// Returns FileInfo with type (text/binary/deleted) and content lines.
+// If the file doesn't exist in the specified commit, returns DeletedFile type.
+func (r *FileRetriever) GetFileInfoFromCommit(filePath, commit string) (*FileInfo, error) {
+	// Check if file is deleted
+	if filePath == "/dev/null" {
+		return &FileInfo{Type: DeletedFile, Lines: []string{}}, nil
+	}
+
+	// Get file content from specific commit
+	cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", commit, filePath))
+	content, err := cmd.Output()
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			if exitError.ExitCode() == 128 {
+				// File doesn't exist in this commit
+				return &FileInfo{Type: DeletedFile, Lines: []string{}}, nil
+			}
+		}
+		return nil, fmt.Errorf("failed to get file content for %s at %s: %v", filePath, commit, err)
+	}
+
+	// Check if binary
+	if isBinary(content) {
+		return &FileInfo{Type: BinaryFile, Lines: []string{}}, nil
+	}
+
+	// Convert to lines
+	contentStr := string(content)
+	if contentStr == "" {
+		return &FileInfo{Type: TextFile, Lines: []string{}}, nil
+	}
+
+	lines := strings.Split(strings.TrimSuffix(contentStr, "\n"), "\n")
+	return &FileInfo{Type: TextFile, Lines: lines}, nil
+}
+
 func isBinary(content []byte) bool {
 	// Check for null bytes (common indicator of binary content)
 	for _, b := range content {
