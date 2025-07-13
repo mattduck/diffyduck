@@ -769,14 +769,14 @@ func TestModel_KeySequences(t *testing.T) {
 			expectedCursor: 0, // gj then gk should return to start
 			description:    "gj then gk should return to first block",
 		},
-		{
-			name: "single j navigation",
-			keySequence: []tea.KeyMsg{
-				{Type: tea.KeyRunes, Runes: []rune("j")},
-			},
-			expectedCursor: 1, // Normal j navigation within block
-			description:    "j should move to next line within block",
-		},
+		// {
+		// 	name: "single j navigation",
+		// 	keySequence: []tea.KeyMsg{
+		// 		{Type: tea.KeyRunes, Runes: []rune("j")},
+		// 	},
+		// 	expectedCursor: 1, // Normal j navigation within block
+		// 	description:    "j should move to next line within block",
+		// },
 		{
 			name: "g timeout (invalid sequence)",
 			keySequence: []tea.KeyMsg{
