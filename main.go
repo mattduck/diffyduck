@@ -97,9 +97,10 @@ func getGitDiff() (string, error) {
 // handleShowCommand processes the 'show' subcommand, which displays the diff of a specific commit
 // against its parent. It accepts the same arguments as 'git show' and passes them through.
 // Examples:
-//   duckdiff show         -> shows HEAD commit
-//   duckdiff show HEAD~1  -> shows HEAD~1 commit
-//   duckdiff show --help  -> shows git show help
+//
+//	duckdiff show         -> shows HEAD commit
+//	duckdiff show HEAD~1  -> shows HEAD~1 commit
+//	duckdiff show --help  -> shows git show help
 func handleShowCommand() {
 	// Pass all arguments after "show" to git show
 	var commitArgs []string

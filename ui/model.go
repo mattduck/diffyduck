@@ -436,7 +436,7 @@ func (m Model) renderContent() string {
 	lineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth).
 		Align(lipgloss.Right).
-		Foreground(lipgloss.Color("240")) // dim gray
+		Foreground(lipgloss.Color("0")) // dim gray
 
 	addedLineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth + changeMarkerWidth).
@@ -496,6 +496,48 @@ func (m Model) renderContent() string {
 		content.WriteString(fileHeader)
 		content.WriteString("\n")
 
+		// Add stat line showing additions/deletions
+		totalChanges := fileWithLines.FileDiff.Additions + fileWithLines.FileDiff.Deletions
+		if totalChanges > 0 {
+			// Create visual representation with + and - characters
+			maxStatChars := 20
+			additionChars := 0
+			deletionChars := 0
+
+			if totalChanges <= maxStatChars {
+				additionChars = fileWithLines.FileDiff.Additions
+				deletionChars = fileWithLines.FileDiff.Deletions
+			} else {
+				// Scale down proportionally
+				ratio := float64(maxStatChars) / float64(totalChanges)
+				additionChars = int(float64(fileWithLines.FileDiff.Additions) * ratio)
+				deletionChars = int(float64(fileWithLines.FileDiff.Deletions) * ratio)
+				// Ensure at least 1 char if there are changes
+				if fileWithLines.FileDiff.Additions > 0 && additionChars == 0 {
+					additionChars = 1
+				}
+				if fileWithLines.FileDiff.Deletions > 0 && deletionChars == 0 {
+					deletionChars = 1
+				}
+			}
+
+			statText := fmt.Sprintf(" %d ", totalChanges)
+			if additionChars > 0 {
+				statText += lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(strings.Repeat("+", additionChars))
+			}
+			if deletionChars > 0 {
+				statText += lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(strings.Repeat("-", deletionChars))
+			}
+
+			statStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("15")).
+				Width(totalWidth).
+				Align(lipgloss.Left)
+
+			content.WriteString(statStyle.Render(statText))
+			content.WriteString("\n")
+		}
+
 		content.WriteString(lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			strings.Repeat(" ", lineNumWidth+changeMarkerWidth),
@@ -524,7 +566,7 @@ func (m Model) renderContent() string {
 		if m.shouldShowSpecialNotice(fileWithLines) {
 			notice := m.getFileTypeNotice(fileWithLines)
 			noticeStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("240")).
+				Foreground(lipgloss.Color("15")).
 				Italic(true).
 				Align(lipgloss.Center)
 
@@ -601,6 +643,51 @@ func (m Model) renderContent() string {
 			))
 			content.WriteString("\n")
 		}
+	}
+
+	// Add summary line at the bottom
+	totalFiles := len(m.filesWithLines)
+	totalAdditions := 0
+	totalDeletions := 0
+
+	for _, fileWithLines := range m.filesWithLines {
+		totalAdditions += fileWithLines.FileDiff.Additions
+		totalDeletions += fileWithLines.FileDiff.Deletions
+	}
+
+	if totalFiles > 0 {
+		content.WriteString("\n")
+
+		// Format summary text
+		filesText := "file"
+		if totalFiles > 1 {
+			filesText = "files"
+		}
+
+		summaryText := fmt.Sprintf(" %d %s changed", totalFiles, filesText)
+
+		if totalAdditions > 0 {
+			additionsText := "insertion"
+			if totalAdditions > 1 {
+				additionsText = "insertions"
+			}
+			summaryText += fmt.Sprintf(", %d %s(+)", totalAdditions, additionsText)
+		}
+
+		if totalDeletions > 0 {
+			deletionsText := "deletion"
+			if totalDeletions > 1 {
+				deletionsText = "deletions"
+			}
+			summaryText += fmt.Sprintf(", %d %s(-)", totalDeletions, deletionsText)
+		}
+
+		// Style the summary line
+		summaryStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("15"))
+
+		content.WriteString(summaryStyle.Render(summaryText))
+		content.WriteString("\n")
 	}
 
 	return content.String()

@@ -7,9 +7,11 @@ import (
 )
 
 type FileDiff struct {
-	OldPath string
-	NewPath string
-	Hunks   []Hunk
+	OldPath   string
+	NewPath   string
+	Hunks     []Hunk
+	Additions int
+	Deletions int
 }
 
 type Hunk struct {
@@ -36,6 +38,24 @@ func NewDiffParser() *DiffParser {
 	}
 }
 
+func (p *DiffParser) calculateStats(fileDiff *FileDiff) {
+	additions := 0
+	deletions := 0
+
+	for _, hunk := range fileDiff.Hunks {
+		for _, line := range hunk.Lines {
+			if strings.HasPrefix(line, "+") {
+				additions++
+			} else if strings.HasPrefix(line, "-") {
+				deletions++
+			}
+		}
+	}
+
+	fileDiff.Additions = additions
+	fileDiff.Deletions = deletions
+}
+
 func (p *DiffParser) Parse(diffContent string) ([]FileDiff, error) {
 	lines := strings.Split(diffContent, "\n")
 	var fileDiffs []FileDiff
@@ -48,6 +68,7 @@ func (p *DiffParser) Parse(diffContent string) ([]FileDiff, error) {
 				if currentHunk != nil {
 					currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
 				}
+				p.calculateStats(currentFile)
 				fileDiffs = append(fileDiffs, *currentFile)
 			}
 
@@ -102,6 +123,7 @@ func (p *DiffParser) Parse(diffContent string) ([]FileDiff, error) {
 		if currentHunk != nil {
 			currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
 		}
+		p.calculateStats(currentFile)
 		fileDiffs = append(fileDiffs, *currentFile)
 	}
 

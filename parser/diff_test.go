@@ -43,6 +43,8 @@ index 1234567..abcdefg 100644
 							},
 						},
 					},
+					Additions: 1,
+					Deletions: 1,
 				},
 			},
 			expectedError: false,
@@ -73,6 +75,8 @@ index 0000000..ce01362
 							},
 						},
 					},
+					Additions: 2,
+					Deletions: 0,
 				},
 			},
 			expectedError: false,
@@ -103,6 +107,8 @@ index ce01362..0000000
 							},
 						},
 					},
+					Additions: 0,
+					Deletions: 2,
 				},
 			},
 			expectedError: false,
@@ -140,6 +146,8 @@ index 9876543..fedcba9 100644
 							},
 						},
 					},
+					Additions: 1,
+					Deletions: 1,
 				},
 				{
 					OldPath: "a/file2.txt",
@@ -157,6 +165,8 @@ index 9876543..fedcba9 100644
 							},
 						},
 					},
+					Additions: 1,
+					Deletions: 1,
 				},
 			},
 			expectedError: false,
@@ -207,6 +217,8 @@ index 1234567..abcdefg 100644
 							},
 						},
 					},
+					Additions: 2,
+					Deletions: 2,
 				},
 			},
 			expectedError: false,
@@ -236,6 +248,8 @@ index 1234567..abcdefg 100644
 							},
 						},
 					},
+					Additions: 1,
+					Deletions: 1,
 				},
 			},
 			expectedError: false,
@@ -271,6 +285,8 @@ index 1234567..abcdefg 100644
 							},
 						},
 					},
+					Additions: 1,
+					Deletions: 1,
 				},
 			},
 			expectedError: false,
@@ -387,6 +403,107 @@ index 1234567..abcdefg 100644
 		if err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func TestDiffParser_CalculateStats(t *testing.T) {
+	tests := []struct {
+		name              string
+		diffContent       string
+		expectedAdditions int
+		expectedDeletions int
+	}{
+		{
+			name: "only additions",
+			diffContent: `diff --git a/newfile.txt b/newfile.txt
+new file mode 100644
+index 0000000..ce01362
+--- /dev/null
++++ b/newfile.txt
+@@ -0,0 +1,3 @@
++line1
++line2
++line3`,
+			expectedAdditions: 3,
+			expectedDeletions: 0,
+		},
+		{
+			name: "only deletions",
+			diffContent: `diff --git a/oldfile.txt b/oldfile.txt
+deleted file mode 100644
+index ce01362..0000000
+--- a/oldfile.txt
++++ /dev/null
+@@ -1,2 +0,0 @@
+-line1
+-line2`,
+			expectedAdditions: 0,
+			expectedDeletions: 2,
+		},
+		{
+			name: "mixed changes",
+			diffContent: `diff --git a/test.txt b/test.txt
+index b517717..0087300 100644
+--- a/test.txt
++++ b/test.txt
+@@ -1,2 +1,3 @@
+-original line
+-old content
++new line
++new content
++more content`,
+			expectedAdditions: 3,
+			expectedDeletions: 2,
+		},
+		{
+			name: "no changes",
+			diffContent: `diff --git a/test.txt b/test.txt
+index b517717..0087300 100644
+--- a/test.txt
++++ b/test.txt
+@@ -1,2 +1,2 @@
+ unchanged line
+ another unchanged line`,
+			expectedAdditions: 0,
+			expectedDeletions: 0,
+		},
+		{
+			name: "multiple hunks",
+			diffContent: `diff --git a/test.go b/test.go
+index 1234567..abcdefg 100644
+--- a/test.go
++++ b/test.go
+@@ -1,3 +1,4 @@
+ func main() {
+-	fmt.Println("hello")
++	fmt.Println("world")
++	fmt.Println("extra")
+ }
+@@ -10,2 +11,1 @@
+ func other() {
+-	return "old"
+-	return "another old"
++	return "new"
+ }`,
+			expectedAdditions: 3,
+			expectedDeletions: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			parser := NewDiffParser()
+			fileDiffs, err := parser.Parse(tt.diffContent)
+
+			require.NoError(t, err)
+			require.Len(t, fileDiffs, 1)
+
+			fileDiff := fileDiffs[0]
+			assert.Equal(t, tt.expectedAdditions, fileDiff.Additions, "additions count mismatch")
+			assert.Equal(t, tt.expectedDeletions, fileDiff.Deletions, "deletions count mismatch")
+		})
 	}
 }
 
