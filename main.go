@@ -70,7 +70,13 @@ func readStdin() (string, error) {
 }
 
 func handleDiffCommand() {
-	input, err := getGitDiff()
+	// Pass all arguments after "diff" to git diff
+	var diffArgs []string
+	if len(os.Args) > 2 {
+		diffArgs = os.Args[2:]
+	}
+
+	input, err := getGitDiff(diffArgs...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting git diff: %v\n", err)
 		os.Exit(1)
@@ -84,8 +90,10 @@ func handleDiffCommand() {
 	runDiffViewer(input)
 }
 
-func getGitDiff() (string, error) {
-	cmd := exec.Command("git", "diff", "-U999999")
+func getGitDiff(args ...string) (string, error) {
+	cmdArgs := []string{"diff", "-U999999"}
+	cmdArgs = append(cmdArgs, args...)
+	cmd := exec.Command("git", cmdArgs...)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to run git diff: %v", err)
