@@ -498,9 +498,7 @@ func (m Model) renderContent() string {
 			
 			if line.OldLine != nil {
 				content := *line.OldLine
-				if m.highlighter.IsGoFile(fileWithLines.FileDiff.OldPath) {
-					content = m.highlighter.HighlightLine(content, "go")
-				}
+				content = m.highlighter.HighlightLine(content, fileWithLines.FileDiff.OldPath)
 				leftContent = " " + content
 				if line.LineType == aligner.Deleted {
 					leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
@@ -516,9 +514,7 @@ func (m Model) renderContent() string {
 			// Format right side
 			if line.NewLine != nil {
 				content := *line.NewLine
-				if m.highlighter.IsGoFile(fileWithLines.FileDiff.NewPath) {
-					content = m.highlighter.HighlightLine(content, "go")
-				}
+				content = m.highlighter.HighlightLine(content, fileWithLines.FileDiff.NewPath)
 				rightContent = " " + content
 				// Check if cursor is on this line
 				cursorMarker := " "

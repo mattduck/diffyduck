@@ -1,54 +1,26 @@
 package syntax
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
-	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
+	"duckdiff/syntax/languages"
 )
 
 type Highlighter struct {
-	parser        *tree_sitter.Parser
+	parsers       map[string]*tree_sitter.Parser
+	languages     map[string]LanguageDefinition
+	extensionMap  map[string]string // file extension -> language name
 	keywordStyle  lipgloss.Style
 	stringStyle   lipgloss.Style
 	commentStyle  lipgloss.Style
 	constantStyle lipgloss.Style
 }
 
-// Go keywords to highlight
-var goKeywords = map[string]bool{
-	"break":       true,
-	"case":        true,
-	"chan":        true,
-	"const":       true,
-	"continue":    true,
-	"default":     true,
-	"defer":       true,
-	"else":        true,
-	"fallthrough": true,
-	"for":         true,
-	"func":        true,
-	"go":          true,
-	"goto":        true,
-	"if":          true,
-	"import":      true,
-	"interface":   true,
-	"map":         true,
-	"package":     true,
-	"range":       true,
-	"return":      true,
-	"select":      true,
-	"struct":      true,
-	"switch":      true,
-	"type":        true,
-	"var":         true,
-}
 
 func NewHighlighter() *Highlighter {
-	parser := tree_sitter.NewParser()
-	parser.SetLanguage(tree_sitter.NewLanguage(tree_sitter_go.Language()))
-	
 	keywordStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("4")) // blue
 	
@@ -62,48 +34,101 @@ func NewHighlighter() *Highlighter {
 		Foreground(lipgloss.Color("3")).
 		Bold(true) // bold yellow
 	
-	return &Highlighter{
-		parser:        parser,
+	h := &Highlighter{
+		parsers:       make(map[string]*tree_sitter.Parser),
+		languages:     make(map[string]LanguageDefinition),
+		extensionMap:  make(map[string]string),
 		keywordStyle:  keywordStyle,
 		stringStyle:   stringStyle,
 		commentStyle:  commentStyle,
 		constantStyle: constantStyle,
 	}
+	
+	// Register Go language by default
+	h.RegisterLanguage(languages.NewGoLanguage())
+	
+	return h
 }
 
 func (h *Highlighter) Close() {
-	if h.parser != nil {
-		h.parser.Close()
-		h.parser = nil
+	for _, parser := range h.parsers {
+		if parser != nil {
+			parser.Close()
+		}
+	}
+	h.parsers = make(map[string]*tree_sitter.Parser)
+}
+
+// RegisterLanguage adds a new language to the highlighter
+func (h *Highlighter) RegisterLanguage(lang LanguageDefinition) {
+	langName := lang.GetLanguageName()
+	h.languages[langName] = lang
+	
+	// Map file extensions to language name
+	for _, ext := range lang.GetFileExtensions() {
+		h.extensionMap[strings.ToLower(ext)] = langName
 	}
 }
 
-func (h *Highlighter) IsGoFile(filepath string) bool {
-	return strings.HasSuffix(strings.ToLower(filepath), ".go")
+// detectLanguage determines the language from a file path
+func (h *Highlighter) detectLanguage(filePath string) (LanguageDefinition, bool) {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	langName, exists := h.extensionMap[ext]
+	if !exists {
+		return nil, false
+	}
+	
+	lang, exists := h.languages[langName]
+	return lang, exists
 }
 
-func (h *Highlighter) HighlightLine(content, language string) string {
-	if language != "go" || content == "" {
+// getOrCreateParser gets an existing parser or creates a new one for the language
+func (h *Highlighter) getOrCreateParser(lang LanguageDefinition) *tree_sitter.Parser {
+	langName := lang.GetLanguageName()
+	
+	if parser, exists := h.parsers[langName]; exists {
+		return parser
+	}
+	
+	// Create new parser for this language
+	parser := tree_sitter.NewParser()
+	parser.SetLanguage(tree_sitter.NewLanguage(lang.GetLanguage()))
+	h.parsers[langName] = parser
+	
+	return parser
+}
+
+func (h *Highlighter) HighlightLine(content, filePath string) string {
+	if content == "" {
 		return content
 	}
 	
+	// Detect language from file path
+	lang, supported := h.detectLanguage(filePath)
+	if !supported {
+		return content // no highlighting for unsupported languages
+	}
+	
+	// Get or create parser for this language
+	parser := h.getOrCreateParser(lang)
+	
 	// Parse the line content
-	tree := h.parser.Parse([]byte(content), nil)
+	tree := parser.Parse([]byte(content), nil)
 	if tree == nil {
 		return content // fallback on parse error
 	}
 	defer tree.Close()
 	
 	root := tree.RootNode()
-	return h.highlightNode(content, root)
+	return h.highlightNode(content, root, lang)
 }
 
-func (h *Highlighter) highlightNode(content string, node *tree_sitter.Node) string {
+func (h *Highlighter) highlightNode(content string, node *tree_sitter.Node, lang LanguageDefinition) string {
 	contentBytes := []byte(content)
 	result := make([]byte, 0, len(contentBytes)*2) // pre-allocate with extra space for ANSI codes
 	lastEnd := uint32(0)
 	
-	h.walkNodes(node, contentBytes, &result, &lastEnd)
+	h.walkNodes(node, contentBytes, &result, &lastEnd, lang)
 	
 	// Append any remaining content
 	if lastEnd < uint32(len(contentBytes)) {
@@ -113,7 +138,7 @@ func (h *Highlighter) highlightNode(content string, node *tree_sitter.Node) stri
 	return string(result)
 }
 
-func (h *Highlighter) walkNodes(node *tree_sitter.Node, content []byte, result *[]byte, lastEnd *uint32) {
+func (h *Highlighter) walkNodes(node *tree_sitter.Node, content []byte, result *[]byte, lastEnd *uint32, lang LanguageDefinition) {
 	if node == nil {
 		return
 	}
@@ -125,18 +150,42 @@ func (h *Highlighter) walkNodes(node *tree_sitter.Node, content []byte, result *
 	// Check what type of node this is and apply appropriate styling
 	var style *lipgloss.Style
 	
-	if goKeywords[nodeKind] {
-		// Go keyword
-		style = &h.keywordStyle
-	} else if nodeKind == "comment" {
-		// Comment (both // and /* */)
-		style = &h.commentStyle
-	} else if nodeKind == "interpreted_string_literal" || nodeKind == "raw_string_literal" || nodeKind == "rune_literal" {
-		// String literals
-		style = &h.stringStyle
-	} else if nodeKind == "nil" || nodeKind == "true" || nodeKind == "false" || nodeKind == "int_literal" || nodeKind == "float_literal" {
-		// Literal constants and numeric literals
-		style = &h.constantStyle
+	// Check if it's a keyword
+	for _, keyword := range lang.GetKeywordNodeTypes() {
+		if nodeKind == keyword {
+			style = &h.keywordStyle
+			break
+		}
+	}
+	
+	// Check if it's a comment
+	if style == nil {
+		for _, comment := range lang.GetCommentNodeTypes() {
+			if nodeKind == comment {
+				style = &h.commentStyle
+				break
+			}
+		}
+	}
+	
+	// Check if it's a string
+	if style == nil {
+		for _, str := range lang.GetStringNodeTypes() {
+			if nodeKind == str {
+				style = &h.stringStyle
+				break
+			}
+		}
+	}
+	
+	// Check if it's a literal
+	if style == nil {
+		for _, literal := range lang.GetLiteralNodeTypes() {
+			if nodeKind == literal {
+				style = &h.constantStyle
+				break
+			}
+		}
 	}
 	
 	// Apply styling if we found a match
@@ -160,6 +209,6 @@ func (h *Highlighter) walkNodes(node *tree_sitter.Node, content []byte, result *
 	// Recursively process child nodes
 	for i := uint(0); i < node.ChildCount(); i++ {
 		child := node.Child(i)
-		h.walkNodes(child, content, result, lastEnd)
+		h.walkNodes(child, content, result, lastEnd, lang)
 	}
 }
