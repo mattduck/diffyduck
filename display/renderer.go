@@ -4,17 +4,20 @@ import (
 	"fmt"
 	"strings"
 
+	"duckdiff/aligner"
 	"duckdiff/git"
 	"duckdiff/parser"
 )
 
 type Renderer struct {
 	retriever *git.FileRetriever
+	aligner   *aligner.DiffAligner
 }
 
 func NewRenderer() *Renderer {
 	return &Renderer{
 		retriever: git.NewFileRetriever(),
+		aligner:   aligner.NewDiffAligner(),
 	}
 }
 
@@ -45,43 +48,50 @@ func (r *Renderer) renderSingleFile(fileDiff parser.FileDiff) error {
 		return err
 	}
 	
-	r.renderSideBySide(oldLines, newLines)
+	alignedLines := r.aligner.AlignFile(oldLines, newLines, fileDiff.Hunks)
+	r.renderAlignedLines(alignedLines)
 	return nil
 }
 
-func (r *Renderer) renderSideBySide(oldLines, newLines []string) {
-	maxLines := len(oldLines)
-	if len(newLines) > maxLines {
-		maxLines = len(newLines)
-	}
-	
+func (r *Renderer) renderAlignedLines(alignedLines []aligner.AlignedLine) {
 	const leftWidth = 60
 	
 	fmt.Printf("%-*s | %s\n", leftWidth, "OLD", "NEW")
 	fmt.Printf("%s-+-%s\n", strings.Repeat("-", leftWidth), strings.Repeat("-", leftWidth))
 	
-	for i := 0; i < maxLines; i++ {
-		var oldLine, newLine string
+	for _, line := range alignedLines {
+		var oldDisplay, newDisplay string
 		
-		if i < len(oldLines) {
-			oldLine = oldLines[i]
+		if line.OldLine != nil {
+			oldContent := *line.OldLine
+			if len(oldContent) > leftWidth-2 {
+				oldContent = oldContent[:leftWidth-5] + "..."
+			}
+			switch line.LineType {
+			case aligner.Deleted:
+				oldDisplay = fmt.Sprintf("-%s", oldContent)
+			default:
+				oldDisplay = fmt.Sprintf(" %s", oldContent)
+			}
 		} else {
-			oldLine = ""
+			oldDisplay = ""
 		}
 		
-		if i < len(newLines) {
-			newLine = newLines[i]
+		if line.NewLine != nil {
+			newContent := *line.NewLine
+			if len(newContent) > leftWidth-2 {
+				newContent = newContent[:leftWidth-5] + "..."
+			}
+			switch line.LineType {
+			case aligner.Added:
+				newDisplay = fmt.Sprintf("+%s", newContent)
+			default:
+				newDisplay = fmt.Sprintf(" %s", newContent)
+			}
 		} else {
-			newLine = ""
+			newDisplay = ""
 		}
 		
-		if len(oldLine) > leftWidth-1 {
-			oldLine = oldLine[:leftWidth-4] + "..."
-		}
-		if len(newLine) > leftWidth-1 {
-			newLine = newLine[:leftWidth-4] + "..."
-		}
-		
-		fmt.Printf("%-*s | %s\n", leftWidth, oldLine, newLine)
+		fmt.Printf("%-*s | %s\n", leftWidth, oldDisplay, newDisplay)
 	}
 }
