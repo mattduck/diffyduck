@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -29,6 +30,7 @@ type Model struct {
 	width int
 	cursorLine int
 	navigableLines []NavigableLineRef
+	gPressed bool
 }
 
 func NewModel(filesWithLines []FileWithLines) Model {
@@ -61,8 +63,11 @@ func (m Model) buildNavigableLines() []NavigableLineRef {
 					LineIndex: lineIndex,
 				})
 				inDeletionBlock = true
+			} else if line.LineType == aligner.Unchanged {
+				// Unchanged lines reset deletion block state
+				inDeletionBlock = false
 			}
-			// Skip unchanged lines and subsequent lines in deletion block
+			// Skip subsequent lines in deletion block
 		}
 	}
 	
@@ -109,6 +114,23 @@ func (m *Model) scrollToCursor() {
 	}
 }
 
+func (m *Model) scrollToCursorCenter() {
+	if m.cursorLine >= len(m.navigableLines) || m.viewport.Height <= 0 {
+		return
+	}
+	
+	// Calculate the rendered line number for the cursor position
+	cursorRef := m.navigableLines[m.cursorLine]
+	renderedLineNum := m.calculateRenderedLineNumber(cursorRef.FileIndex, cursorRef.LineIndex)
+	
+	// Center cursor in viewport
+	newOffset := renderedLineNum - m.viewport.Height/2
+	if newOffset < 0 {
+		newOffset = 0
+	}
+	m.viewport.SetYOffset(newOffset)
+}
+
 func (m Model) calculateRenderedLineNumber(targetFileIndex, targetLineIndex int) int {
 	lineCount := 0
 	
@@ -136,14 +158,162 @@ func (m Model) calculateRenderedLineNumber(targetFileIndex, targetLineIndex int)
 	return lineCount
 }
 
+func (m *Model) gotoNextBlock() {
+	if len(m.navigableLines) == 0 || m.cursorLine >= len(m.navigableLines)-1 {
+		return
+	}
+	
+	// Get current line's type and file
+	currentType := m.getLineTypeAtCursor(m.cursorLine)
+	currentFileIndex := m.navigableLines[m.cursorLine].FileIndex
+	currentLineIndex := m.navigableLines[m.cursorLine].LineIndex
+	
+	// Skip forward while in same block (same type + same file + consecutive lines)
+	nextPos := m.cursorLine + 1
+	for nextPos < len(m.navigableLines) {
+		nextType := m.getLineTypeAtCursor(nextPos)
+		nextFileIndex := m.navigableLines[nextPos].FileIndex
+		nextLineIndex := m.navigableLines[nextPos].LineIndex
+		
+		// Found start of next block?
+		// New block if: different type OR different file OR non-consecutive lines (context in between)
+		if nextType != currentType || 
+		   nextFileIndex != currentFileIndex ||
+		   nextLineIndex != currentLineIndex + 1 {
+			// Use exact same pattern as j/k but center for big jumps
+			m.cursorLine = nextPos
+			m.viewport.SetContent(m.renderContent())
+			m.scrollToCursorCenter()
+			return
+		}
+		
+		// Update for next iteration
+		currentLineIndex = nextLineIndex
+		nextPos++
+	}
+	// No next block found - do nothing (like j/k at end)
+}
+
+func (m *Model) gotoPrevBlock() {
+	if len(m.navigableLines) == 0 || m.cursorLine <= 0 {
+		return
+	}
+	
+	// Get current line's type and file
+	currentType := m.getLineTypeAtCursor(m.cursorLine)
+	currentFileIndex := m.navigableLines[m.cursorLine].FileIndex
+	currentLineIndex := m.navigableLines[m.cursorLine].LineIndex
+	
+	// Skip backward while in same block (same type + same file + consecutive lines)
+	prevPos := m.cursorLine - 1
+	for prevPos >= 0 {
+		prevType := m.getLineTypeAtCursor(prevPos)
+		prevFileIndex := m.navigableLines[prevPos].FileIndex
+		prevLineIndex := m.navigableLines[prevPos].LineIndex
+		
+		// Found start of previous block?
+		// New block if: different type OR different file OR non-consecutive lines (context in between)
+		if prevType != currentType ||
+		   prevFileIndex != currentFileIndex ||
+		   prevLineIndex != currentLineIndex - 1 {
+			
+			// Phase 2: Found a line in previous block, now find the START of that block
+			blockType := prevType
+			blockFileIndex := prevFileIndex
+			blockStartPos := prevPos
+			
+			// Scan backward to find start of this block
+			for blockStartPos > 0 {
+				checkPos := blockStartPos - 1
+				checkType := m.getLineTypeAtCursor(checkPos)
+				checkFileIndex := m.navigableLines[checkPos].FileIndex
+				checkLineIndex := m.navigableLines[checkPos].LineIndex
+				
+				// Stop if we hit a different block
+				if checkType != blockType ||
+				   checkFileIndex != blockFileIndex ||
+				   checkLineIndex != m.navigableLines[blockStartPos].LineIndex - 1 {
+					break
+				}
+				blockStartPos = checkPos
+			}
+			
+			// Go to start of the previous block
+			m.cursorLine = blockStartPos
+			m.viewport.SetContent(m.renderContent())
+			m.scrollToCursorCenter()
+			return
+		}
+		
+		// Update for next iteration
+		currentLineIndex = prevLineIndex
+		prevPos--
+	}
+	// No previous block found - do nothing (like k at beginning)
+}
+
+
+func (m Model) getLineTypeAtCursor(cursorIndex int) aligner.LineType {
+	if cursorIndex >= len(m.navigableLines) {
+		return aligner.Unchanged
+	}
+	
+	ref := m.navigableLines[cursorIndex]
+	line := m.filesWithLines[ref.FileIndex].AlignedLines[ref.LineIndex]
+	return line.LineType
+}
+
+func (m *Model) gotoTop() {
+	// Go to first navigable line and scroll to top
+	if len(m.navigableLines) > 0 {
+		m.cursorLine = 0
+		m.viewport.SetContent(m.renderContent())
+		m.viewport.GotoTop()
+	}
+}
+
+type gTimeoutMsg struct{}
+
+func gTimeout() tea.Cmd {
+	return tea.Tick(time.Millisecond*500, func(t time.Time) tea.Msg {
+		return gTimeoutMsg{}
+	})
+}
+
 func (m Model) Init() tea.Cmd {
 	return nil
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case gTimeoutMsg:
+		// Timeout for g key - just reset the state
+		m.gPressed = false
+		return m, nil
+		
 	case tea.KeyMsg:
-		switch msg.String() {
+		key := msg.String()
+		
+		// Handle g + j/k/g sequences
+		if m.gPressed {
+			m.gPressed = false
+			switch key {
+			case "j":
+				m.gotoNextBlock()
+				return m, nil
+			case "k":
+				m.gotoPrevBlock()
+				return m, nil
+			case "g":
+				m.gotoTop()
+				return m, nil
+			default:
+				// Invalid sequence, reset state
+				return m, nil
+			}
+		}
+		
+		switch key {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "j", "down":
@@ -163,7 +333,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "u":
 			m.viewport.HalfViewUp()
 		case "g":
-			m.viewport.GotoTop()
+			m.gPressed = true
+			return m, gTimeout()
 		case "G":
 			m.viewport.GotoBottom()
 		}
