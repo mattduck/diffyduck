@@ -2,7 +2,6 @@ package aligner
 
 import (
 	"regexp"
-	"strings"
 
 	"duckdiff/parser"
 	"duckdiff/types"
@@ -199,14 +198,12 @@ func (a *DiffAligner) detectModifications(lines []AlignedLine) []AlignedLine {
 }
 
 func (a *DiffAligner) computeWordDiff(oldLine, newLine string) *WordDiff {
-	dmp := diffmatchpatch.New()
-
 	// Tokenize by words/whitespace for better diffs
 	oldTokens := a.tokenize(oldLine)
 	newTokens := a.tokenize(newLine)
 
-	// Compute diff on tokenized text
-	diffs := dmp.DiffMain(strings.Join(oldTokens, ""), strings.Join(newTokens, ""), false)
+	// Compute diff on word token arrays directly
+	diffs := a.computeTokenDiff(oldTokens, newTokens)
 
 	// Build segment lists for old and new versions
 	oldSegments := a.buildSegments(diffs, true)
@@ -219,8 +216,8 @@ func (a *DiffAligner) computeWordDiff(oldLine, newLine string) *WordDiff {
 }
 
 func (a *DiffAligner) tokenize(text string) []string {
-	// Split on word boundaries while preserving whitespace
-	re := regexp.MustCompile(`(\s+|\S+)`)
+	// Split on word boundaries: capture words and whitespace separately
+	re := regexp.MustCompile(`(\w+|\s+|[^\w\s]+)`)
 	return re.FindAllString(text, -1)
 }
 
@@ -256,4 +253,67 @@ func (a *DiffAligner) buildSegments(diffs []diffmatchpatch.Diff, isOld bool) []t
 	}
 
 	return segments
+}
+
+func (a *DiffAligner) computeTokenDiff(oldTokens, newTokens []string) []diffmatchpatch.Diff {
+	// Implement a simple word-level LCS algorithm
+	return a.wordLevelDiff(oldTokens, newTokens)
+}
+
+func (a *DiffAligner) wordLevelDiff(oldTokens, newTokens []string) []diffmatchpatch.Diff {
+	// Simple word-level diff using dynamic programming
+	m, n := len(oldTokens), len(newTokens)
+
+	// Create LCS table
+	lcs := make([][]int, m+1)
+	for i := range lcs {
+		lcs[i] = make([]int, n+1)
+	}
+
+	// Fill LCS table
+	for i := 1; i <= m; i++ {
+		for j := 1; j <= n; j++ {
+			if oldTokens[i-1] == newTokens[j-1] {
+				lcs[i][j] = lcs[i-1][j-1] + 1
+			} else {
+				if lcs[i-1][j] > lcs[i][j-1] {
+					lcs[i][j] = lcs[i-1][j]
+				} else {
+					lcs[i][j] = lcs[i][j-1]
+				}
+			}
+		}
+	}
+
+	// Trace back to build diff sequence
+	var diffs []diffmatchpatch.Diff
+	i, j := m, n
+
+	for i > 0 || j > 0 {
+		if i > 0 && j > 0 && oldTokens[i-1] == newTokens[j-1] {
+			// Equal tokens
+			diffs = append([]diffmatchpatch.Diff{{
+				Type: diffmatchpatch.DiffEqual,
+				Text: oldTokens[i-1],
+			}}, diffs...)
+			i--
+			j--
+		} else if i > 0 && (j == 0 || lcs[i-1][j] >= lcs[i][j-1]) {
+			// Deletion
+			diffs = append([]diffmatchpatch.Diff{{
+				Type: diffmatchpatch.DiffDelete,
+				Text: oldTokens[i-1],
+			}}, diffs...)
+			i--
+		} else {
+			// Insertion
+			diffs = append([]diffmatchpatch.Diff{{
+				Type: diffmatchpatch.DiffInsert,
+				Text: newTokens[j-1],
+			}}, diffs...)
+			j--
+		}
+	}
+
+	return diffs
 }
