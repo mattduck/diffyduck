@@ -716,6 +716,11 @@ func (m Model) renderContent() string {
 		Foreground(lipgloss.Color("4")). // standard ANSI blue
 		Background(lipgloss.Color("16")) // dark background for non-context lines
 
+	emptyLineNumStyle := lipgloss.NewStyle().
+		Width(lineNumWidth + changeMarkerWidth).
+		Align(lipgloss.Right).
+		Background(lipgloss.Color("16")) // dark background to match changed lines
+
 	for fileIndex, fileWithLines := range m.filesWithLines {
 		if fileIndex > 0 {
 			content.WriteString("\n")
@@ -872,7 +877,8 @@ func (m Model) renderContent() string {
 					leftLineNumBlock = lineNumStyle.Render(fmt.Sprintf("%d", line.OldLineNum)) + " "
 				}
 			} else {
-				leftLineNumBlock = strings.Repeat(" ", lineNumWidth+changeMarkerWidth)
+				// Empty left side - apply background to match changed lines
+				leftLineNumBlock = emptyLineNumStyle.Render(strings.Repeat(" ", lineNumWidth+changeMarkerWidth))
 			}
 
 			// Format right side
@@ -923,7 +929,10 @@ func (m Model) renderContent() string {
 						break
 					}
 				}
-				rightLineNumBlock = strings.Repeat(" ", lineNumWidth) + cursorMarker
+				// Empty right side - apply background to match changed lines
+				// Note: emptyLineNumStyle already has the full width, so we adjust for cursor
+				emptyContent := strings.Repeat(" ", lineNumWidth) + cursorMarker
+				rightLineNumBlock = emptyLineNumStyle.Render(emptyContent)
 			}
 
 			content.WriteString(lipgloss.JoinHorizontal(
