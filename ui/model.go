@@ -55,7 +55,7 @@ func NewModel(filesWithLines []FileWithLines) Model {
 		filesWithLines: filesWithLines,
 		cursorLine:     0,
 		highlighter:    syntax.NewHighlighter(),
-		expandLevel:    FullDiff,
+		expandLevel:    ContextDiff,
 		contextLines:   DefaultContextLines,
 	}
 	model.navigableLines = model.buildNavigableLines()
