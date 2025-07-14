@@ -745,18 +745,23 @@ func (m Model) renderContent() string {
 
 		totalWidth := 2*(lineNumWidth+changeMarkerWidth+contentWidth) + 9 // account for separators
 
-		headerText := fmt.Sprintf("%s %s", fileMarker, fileWithLines.FileDiff.NewPath)
-		if fileWithLines.FileDiff.NewPath == "/dev/null" {
-			headerText = fmt.Sprintf("%s %s", fileMarker, fileWithLines.FileDiff.OldPath)
+		// Add top horizontal separator before file header
+		if fileIndex > 0 || true { // Always show top separator
+			content.WriteString(lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				strings.Repeat("─", totalWidth),
+			))
+			content.WriteString("\n")
 		}
 
-		fileHeader := fileHeaderStyle.Width(totalWidth).
-			Align(lipgloss.Left).
-			Render(headerText)
-		content.WriteString(fileHeader)
-		content.WriteString("\n")
+		// Generate base filename text
+		baseFilename := fileWithLines.FileDiff.NewPath
+		if fileWithLines.FileDiff.NewPath == "/dev/null" {
+			baseFilename = fileWithLines.FileDiff.OldPath
+		}
 
-		// Add stat line showing additions/deletions
+		// Create stat info to append to filename
+		statInfo := ""
 		totalChanges := fileWithLines.FileDiff.Additions + fileWithLines.FileDiff.Deletions
 		if totalChanges > 0 {
 			// Create visual representation with + and - characters
@@ -781,6 +786,7 @@ func (m Model) renderContent() string {
 				}
 			}
 
+			// Build stat text with proper colors
 			statText := fmt.Sprintf(" %d ", totalChanges)
 			if additionChars > 0 {
 				statText += lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(strings.Repeat("+", additionChars))
@@ -788,38 +794,27 @@ func (m Model) renderContent() string {
 			if deletionChars > 0 {
 				statText += lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(strings.Repeat("-", deletionChars))
 			}
-
-			statStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("15")).
-				Width(totalWidth).
-				Align(lipgloss.Left)
-
-			content.WriteString(statStyle.Render(statText))
-			content.WriteString("\n")
+			statInfo = statText
 		}
 
-		content.WriteString(lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			strings.Repeat(" ", lineNumWidth+changeMarkerWidth),
-			" │ ",
-			leftColumnStyle.Render(""),
-			" │ ",
-			strings.Repeat(" ", lineNumWidth+changeMarkerWidth),
-			" │ ",
-			rightColumnStyle.Render(""),
-		))
+		// Create filename part with file marker (colored)
+		filenameText := fmt.Sprintf("%s %s", fileMarker, baseFilename)
+		filenameStyled := fileHeaderStyle.Render(filenameText)
+
+		// Combine filename with separator and stat info
+		headerContent := filenameStyled
+		if statInfo != "" {
+			headerContent += " | " + statInfo
+		}
+
+		// Render the complete header line
+		finalHeader := lipgloss.NewStyle().Width(totalWidth).Align(lipgloss.Left).Render(headerContent)
+		content.WriteString(finalHeader)
 		content.WriteString("\n")
 
-		content.WriteString(lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			strings.Repeat("─", lineNumWidth+changeMarkerWidth),
-			"─┼─",
-			strings.Repeat("─", contentWidth),
-			"─┼─",
-			strings.Repeat("─", lineNumWidth+changeMarkerWidth),
-			"─┼─",
-			strings.Repeat("─", contentWidth),
-		))
+		// Removed vertical separator lines - they don't add value
+
+		content.WriteString(strings.Repeat("─", totalWidth))
 		content.WriteString("\n")
 
 		// Handle special file types (binary, deleted, new)
