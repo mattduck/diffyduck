@@ -48,6 +48,9 @@ func NewHighlighter() *Highlighter {
 	// Register Go language by default
 	h.RegisterLanguage(languages.NewGoLanguage())
 
+	// Register Python language
+	h.RegisterLanguage(languages.NewPythonLanguage())
+
 	return h
 }
 
