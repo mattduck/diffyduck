@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"duckdiff/aligner"
-	"duckdiff/git"
-	"duckdiff/parser"
-	"duckdiff/ui"
+	"diffyduck/aligner"
+	"diffyduck/git"
+	"diffyduck/parser"
+	"diffyduck/ui"
 )
 
 func TestReadStdin(t *testing.T) {

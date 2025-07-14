@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"duckdiff/aligner"
-	"duckdiff/parser"
+	"diffyduck/aligner"
+	"diffyduck/parser"
 )
 
 func TestNewModel(t *testing.T) {

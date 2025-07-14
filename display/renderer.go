@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"duckdiff/aligner"
-	"duckdiff/git"
-	"duckdiff/parser"
+	"diffyduck/aligner"
+	"diffyduck/git"
+	"diffyduck/parser"
 )
 
 type Renderer struct {

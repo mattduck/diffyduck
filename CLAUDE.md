@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DuckDiff is a Go-based terminal diff viewer with syntax highlighting and side-by-side display. It provides an interactive TUI for viewing git diffs with enhanced visualization.
+DiffyDuck is a Go-based terminal diff viewer with syntax highlighting and side-by-side display. It provides an interactive TUI for viewing git diffs with enhanced visualization.
 
 ## Common Commands
 
@@ -15,11 +15,11 @@ DuckDiff is a Go-based terminal diff viewer with syntax highlighting and side-by
 - `./make.sh fix` - Auto-format code with gofmt
 
 ### Running the Application
-- `./duckdiff` - View current git diff interactively
-- `./duckdiff diff` - Explicit git diff mode
-- `./duckdiff show [commit]` - View specific commit diff (defaults to HEAD)
-- `git diff | ./duckdiff` - Pipe any diff output
-- Don't call the main duckdiff diff/show commands: you can't run them as they require an interactive tty
+- `./diffyduck` - View current git diff interactively
+- `./diffyduck diff` - Explicit git diff mode
+- `./diffyduck show [commit]` - View specific commit diff (defaults to HEAD)
+- `git diff | ./diffyduck` - Pipe any diff output
+- Don't call the main diffyduck diff/show commands: you can't run them as they require an interactive tty
 
 ## Architecture
 

@@ -9,10 +9,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"duckdiff/aligner"
-	"duckdiff/git"
-	"duckdiff/parser"
-	"duckdiff/ui"
+	"diffyduck/aligner"
+	"diffyduck/git"
+	"diffyduck/parser"
+	"diffyduck/ui"
 )
 
 func main() {
@@ -106,9 +106,9 @@ func getGitDiff(args ...string) (string, error) {
 // against its parent. It accepts the same arguments as 'git show' and passes them through.
 // Examples:
 //
-//	duckdiff show         -> shows HEAD commit
-//	duckdiff show HEAD~1  -> shows HEAD~1 commit
-//	duckdiff show --help  -> shows git show help
+//	diffyduck show         -> shows HEAD commit
+//	diffyduck show HEAD~1  -> shows HEAD~1 commit
+//	diffyduck show --help  -> shows git show help
 func handleShowCommand() {
 	// Pass all arguments after "show" to git show
 	var commitArgs []string

@@ -3,8 +3,8 @@ package aligner
 import (
 	"regexp"
 
-	"duckdiff/parser"
-	"duckdiff/types"
+	"diffyduck/parser"
+	"diffyduck/types"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 

@@ -1,4 +1,4 @@
-module duckdiff
+module diffyduck
 
 go 1.24.1
 

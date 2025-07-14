@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"duckdiff/syntax/languages"
-	"duckdiff/types"
+	"diffyduck/syntax/languages"
+	"diffyduck/types"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
