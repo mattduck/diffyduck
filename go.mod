@@ -1,4 +1,4 @@
-module diffyduck
+module github.com/mattduck/diffyduck
 
 go 1.24.1
 
