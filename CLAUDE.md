@@ -76,3 +76,7 @@ Tests are co-located with source files using `_test.go` suffix. Key test areas:
 - Line alignment in `aligner/`
 - Git operations in `git/`
 - UI model behavior in `ui/`
+
+## Development Tasks
+
+- Add docs to all golang functions
