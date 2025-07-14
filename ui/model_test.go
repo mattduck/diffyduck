@@ -77,7 +77,7 @@ func TestModel_Update_WindowSize(t *testing.T) {
 	assert.True(t, modelCast.ready)
 	assert.Equal(t, 100, modelCast.width)
 	assert.Equal(t, 100, modelCast.viewport.Width)
-	assert.Equal(t, 29, modelCast.viewport.Height) // height - 1
+	assert.Equal(t, 28, modelCast.viewport.Height) // height - 2 (reserve space for status line)
 }
 
 func TestModel_Update_KeyMessages(t *testing.T) {

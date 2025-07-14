@@ -15,6 +15,16 @@ import (
 	"duckdiff/syntax"
 )
 
+type ExpandLevel int
+
+const (
+	HeadersOnly ExpandLevel = iota
+	ContextDiff
+	FullDiff
+)
+
+const DefaultContextLines = 3
+
 type FileWithLines struct {
 	FileDiff     parser.FileDiff
 	AlignedLines []aligner.AlignedLine
@@ -36,6 +46,8 @@ type Model struct {
 	navigableLines []NavigableLineRef
 	gPressed       bool
 	highlighter    *syntax.Highlighter
+	expandLevel    ExpandLevel
+	contextLines   int
 }
 
 func NewModel(filesWithLines []FileWithLines) Model {
@@ -43,9 +55,192 @@ func NewModel(filesWithLines []FileWithLines) Model {
 		filesWithLines: filesWithLines,
 		cursorLine:     0,
 		highlighter:    syntax.NewHighlighter(),
+		expandLevel:    FullDiff,
+		contextLines:   DefaultContextLines,
 	}
 	model.navigableLines = model.buildNavigableLines()
 	return model
+}
+
+func (m Model) getEffectiveExpandLevel(fileIndex int) ExpandLevel {
+	return m.expandLevel
+}
+
+func (m Model) filterAlignedLinesForLevel(lines []aligner.AlignedLine, level ExpandLevel) []aligner.AlignedLine {
+	if level == FullDiff {
+		return lines
+	}
+	if level == HeadersOnly {
+		return []aligner.AlignedLine{}
+	}
+
+	// ContextDiff: show changed lines + N context lines around them
+	if len(lines) == 0 {
+		return lines
+	}
+
+	var result []aligner.AlignedLine
+	contextLines := m.contextLines
+
+	// First pass: identify all change blocks (consecutive changed lines)
+	changeBlocks := m.identifyChangeBlocks(lines)
+
+	if len(changeBlocks) == 0 {
+		// No changes, show limited context from beginning
+		endIdx := contextLines
+		if endIdx > len(lines) {
+			endIdx = len(lines)
+		}
+		return lines[:endIdx]
+	}
+
+	// Second pass: collect lines with context around change blocks
+	included := make(map[int]bool)
+
+	for _, block := range changeBlocks {
+		// Include the change block itself
+		for i := block.start; i <= block.end; i++ {
+			included[i] = true
+		}
+
+		// Include context before
+		contextStart := block.start - contextLines
+		if contextStart < 0 {
+			contextStart = 0
+		}
+		for i := contextStart; i < block.start; i++ {
+			included[i] = true
+		}
+
+		// Include context after
+		contextEnd := block.end + contextLines
+		if contextEnd >= len(lines) {
+			contextEnd = len(lines) - 1
+		}
+		for i := block.end + 1; i <= contextEnd; i++ {
+			included[i] = true
+		}
+	}
+
+	// Third pass: build result with separators for gaps
+	lastIncluded := -1
+	for i := 0; i < len(lines); i++ {
+		if included[i] {
+			// Add separator if there's a gap
+			if lastIncluded != -1 && i > lastIncluded+1 {
+				result = append(result, m.createContextSeparator())
+			}
+			result = append(result, lines[i])
+			lastIncluded = i
+		}
+	}
+
+	return result
+}
+
+type changeBlock struct {
+	start int
+	end   int
+}
+
+func (m Model) identifyChangeBlocks(lines []aligner.AlignedLine) []changeBlock {
+	var blocks []changeBlock
+	var currentBlock *changeBlock
+
+	for i, line := range lines {
+		isChanged := line.LineType != aligner.Unchanged
+
+		if isChanged {
+			if currentBlock == nil {
+				currentBlock = &changeBlock{start: i, end: i}
+			} else {
+				currentBlock.end = i
+			}
+		} else {
+			if currentBlock != nil {
+				blocks = append(blocks, *currentBlock)
+				currentBlock = nil
+			}
+		}
+	}
+
+	// Don't forget the last block
+	if currentBlock != nil {
+		blocks = append(blocks, *currentBlock)
+	}
+
+	return blocks
+}
+
+func (m Model) createContextSeparator() aligner.AlignedLine {
+	separatorText := "..."
+	return aligner.AlignedLine{
+		OldLine:    &separatorText,
+		NewLine:    &separatorText,
+		LineType:   aligner.Unchanged,
+		OldLineNum: 0, // Special marker for separator
+		NewLineNum: 0, // Special marker for separator
+	}
+}
+
+func (m *Model) cycleExpandLevel(direction int) {
+	levels := []ExpandLevel{HeadersOnly, ContextDiff, FullDiff}
+	currentIndex := 0
+
+	// Find current level index
+	for i, level := range levels {
+		if level == m.expandLevel {
+			currentIndex = i
+			break
+		}
+	}
+
+	// Calculate next index with wraparound
+	nextIndex := (currentIndex + direction + len(levels)) % len(levels)
+	m.expandLevel = levels[nextIndex]
+}
+
+func (m *Model) rebuildAndRefresh() {
+	m.navigableLines = m.buildNavigableLines()
+	m.viewport.SetContent(m.renderContent())
+
+	// Ensure cursor is still within bounds
+	if m.cursorLine >= len(m.navigableLines) && len(m.navigableLines) > 0 {
+		m.cursorLine = len(m.navigableLines) - 1
+	}
+
+	// Refresh cursor position
+	if len(m.navigableLines) > 0 {
+		m.scrollToCursor()
+	}
+}
+
+func (m Model) createOriginalToFilteredMapping(originalLines, filteredLines []aligner.AlignedLine) map[int]int {
+	mapping := make(map[int]int)
+
+	// Create mapping by comparing line content and numbers
+	for filteredIdx, filteredLine := range filteredLines {
+		// Skip context separators
+		if filteredLine.OldLineNum == 0 && filteredLine.NewLineNum == 0 {
+			continue
+		}
+
+		// Find matching original line
+		for originalIdx, originalLine := range originalLines {
+			if m.linesMatch(originalLine, filteredLine) {
+				mapping[originalIdx] = filteredIdx
+				break
+			}
+		}
+	}
+
+	return mapping
+}
+
+func (m Model) linesMatch(line1, line2 aligner.AlignedLine) bool {
+	return line1.OldLineNum == line2.OldLineNum &&
+		line1.NewLineNum == line2.NewLineNum &&
+		line1.LineType == line2.LineType
 }
 
 func (m Model) buildNavigableLines() []NavigableLineRef {
@@ -59,6 +254,8 @@ func (m Model) buildNavigableLines() []NavigableLineRef {
 
 		inDeletionBlock := false
 
+		// Always use the original AlignedLines for navigation indexing
+		// The filtering is only for display purposes
 		for lineIndex, line := range fileWithLines.AlignedLines {
 			if line.NewLine != nil && line.LineType != aligner.Unchanged {
 				// Line exists in new version and is part of the diff (added or modified)
@@ -157,10 +354,18 @@ func (m Model) calculateRenderedLineNumber(targetFileIndex, targetLineIndex int)
 		// Separator line
 		lineCount++
 
-		// Check each line in this file
-		for lineIndex := range fileWithLines.AlignedLines {
-			if fileIndex == targetFileIndex && lineIndex == targetLineIndex {
-				return lineCount
+		// Use filtered lines for counting, just like rendering does
+		effectiveLevel := m.getEffectiveExpandLevel(fileIndex)
+		linesToRender := m.filterAlignedLinesForLevel(fileWithLines.AlignedLines, effectiveLevel)
+		originalToFiltered := m.createOriginalToFilteredMapping(fileWithLines.AlignedLines, linesToRender)
+
+		// Check each filtered line in this file
+		for filteredIndex := range linesToRender {
+			// Find if this filtered line corresponds to our target original line
+			for originalIdx, filteredIdx := range originalToFiltered {
+				if filteredIdx == filteredIndex && fileIndex == targetFileIndex && originalIdx == targetLineIndex {
+					return lineCount
+				}
 			}
 			lineCount++
 		}
@@ -326,6 +531,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "tab":
+			// Cycle through expand levels: HeadersOnly -> ContextDiff -> FullDiff -> HeadersOnly
+			m.cycleExpandLevel(1)
+			m.rebuildAndRefresh()
+			return m, nil
+		case "shift+tab":
+			// Reverse cycle through expand levels
+			m.cycleExpandLevel(-1)
+			m.rebuildAndRefresh()
+			return m, nil
 		// TODO: Re-enable cursor navigation - j/k for line-by-line movement through navigable lines
 		// This feature allows precise navigation through diff changes only (skipping unchanged lines)
 		// To restore: uncomment the cases below and remove "j", "k" from viewport key blocking (line ~361)
@@ -369,12 +584,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height-1)
+			m.viewport = viewport.New(msg.Width, msg.Height-2) // Reserve space for status line
 			m.viewport.SetContent(m.renderContent())
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height - 1
+			m.viewport.Height = msg.Height - 2 // Reserve space for status line
 			m.viewport.SetContent(m.renderContent())
 		}
 	}
@@ -399,7 +614,52 @@ func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
 	}
-	return m.viewport.View()
+
+	// Create status line
+	statusLine := m.createStatusLine()
+
+	// Combine viewport content with status line
+	content := m.viewport.View()
+	if statusLine != "" {
+		content += "\n" + statusLine
+	}
+
+	return content
+}
+
+func (m Model) createStatusLine() string {
+	if m.width == 0 {
+		return ""
+	}
+
+	// Get expand level name
+	var levelName string
+	switch m.expandLevel {
+	case HeadersOnly:
+		levelName = "Headers"
+	case ContextDiff:
+		levelName = fmt.Sprintf("Context(%d)", m.contextLines)
+	case FullDiff:
+		levelName = "Full"
+	}
+
+	// Create status parts
+	leftStatus := fmt.Sprintf("[%s]", levelName)
+	rightStatus := "Tab:cycle Shift+Tab:reverse"
+
+	// Calculate padding
+	totalUsed := len(leftStatus) + len(rightStatus)
+	padding := ""
+	if totalUsed < m.width {
+		padding = strings.Repeat(" ", m.width-totalUsed)
+	}
+
+	// Style the status line
+	statusStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("0")).
+		Background(lipgloss.Color("7"))
+
+	return statusStyle.Width(m.width).Render(leftStatus + padding + rightStatus)
 }
 
 func (m *Model) Close() {
@@ -576,8 +836,15 @@ func (m Model) renderContent() string {
 			continue
 		}
 
+		// Get effective expand level for this file and filter lines accordingly
+		effectiveLevel := m.getEffectiveExpandLevel(fileIndex)
+		linesToRender := m.filterAlignedLinesForLevel(fileWithLines.AlignedLines, effectiveLevel)
+
+		// Create mapping from original indices to filtered indices for cursor display
+		originalToFiltered := m.createOriginalToFilteredMapping(fileWithLines.AlignedLines, linesToRender)
+
 		// Render aligned lines for this file
-		for lineIndex, line := range fileWithLines.AlignedLines {
+		for filteredIndex, line := range linesToRender {
 			var leftContent, rightContent string
 			var leftLineNumBlock, rightLineNumBlock string
 
@@ -589,7 +856,11 @@ func (m Model) renderContent() string {
 					content = m.highlighter.HighlightLine(*line.OldLine, fileWithLines.FileDiff.OldPath)
 				}
 				leftContent = " " + content
-				if line.LineType == aligner.Deleted {
+
+				// Handle context separator (line numbers are 0)
+				if line.OldLineNum == 0 {
+					leftLineNumBlock = strings.Repeat(" ", lineNumWidth+changeMarkerWidth)
+				} else if line.LineType == aligner.Deleted {
 					leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
 				} else if line.LineType == aligner.Modified {
 					leftLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
@@ -609,13 +880,20 @@ func (m Model) renderContent() string {
 					content = m.highlighter.HighlightLine(*line.NewLine, fileWithLines.FileDiff.NewPath)
 				}
 				rightContent = " " + content
-				// Check if cursor is on this line
+				// Check if cursor is on this line (need to map from original to filtered index)
 				cursorMarker := " "
-				if m.isCursorAt(fileIndex, lineIndex) {
-					cursorMarker = "*"
+				// Find if any original line that maps to this filtered line has cursor
+				for originalIdx, filteredIdx := range originalToFiltered {
+					if filteredIdx == filteredIndex && m.isCursorAt(fileIndex, originalIdx) {
+						cursorMarker = "*"
+						break
+					}
 				}
 
-				if line.LineType == aligner.Added {
+				// Handle context separator (line numbers are 0)
+				if line.NewLineNum == 0 {
+					rightLineNumBlock = strings.Repeat(" ", lineNumWidth) + cursorMarker
+				} else if line.LineType == aligner.Added {
 					rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d%s", line.NewLineNum, cursorMarker))
 				} else if line.LineType == aligner.Modified {
 					rightLineNumBlock = modifiedLineNumStyle.Render(fmt.Sprintf("%d%s", line.NewLineNum, cursorMarker))
@@ -625,8 +903,12 @@ func (m Model) renderContent() string {
 			} else {
 				// For deletion blocks, check if cursor is on this line (first line of deletion block)
 				cursorMarker := " "
-				if m.isCursorAt(fileIndex, lineIndex) {
-					cursorMarker = "*"
+				// Find if any original line that maps to this filtered line has cursor
+				for originalIdx, filteredIdx := range originalToFiltered {
+					if filteredIdx == filteredIndex && m.isCursorAt(fileIndex, originalIdx) {
+						cursorMarker = "*"
+						break
+					}
 				}
 				rightLineNumBlock = strings.Repeat(" ", lineNumWidth) + cursorMarker
 			}
