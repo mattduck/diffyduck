@@ -173,10 +173,10 @@ func (m Model) identifyChangeBlocks(lines []aligner.AlignedLine) []changeBlock {
 }
 
 func (m Model) createContextSeparator() aligner.AlignedLine {
-	separatorText := "..."
+	emptyText := ""
 	return aligner.AlignedLine{
-		OldLine:    &separatorText,
-		NewLine:    &separatorText,
+		OldLine:    &emptyText,
+		NewLine:    &emptyText,
 		LineType:   aligner.Unchanged,
 		OldLineNum: 0, // Special marker for separator
 		NewLineNum: 0, // Special marker for separator
@@ -845,7 +845,10 @@ func (m Model) renderContent() string {
 
 			if line.OldLine != nil {
 				var content string
-				if line.LineType == aligner.Modified && line.WordDiff != nil {
+				// Handle context separator with full-width dash line
+				if line.OldLineNum == 0 {
+					content = strings.Repeat("-", contentWidth-1) // -1 for the leading space
+				} else if line.LineType == aligner.Modified && line.WordDiff != nil {
 					content = m.highlighter.HighlightLineWithWordDiff(*line.OldLine, fileWithLines.FileDiff.OldPath, line.WordDiff.OldSegments)
 				} else {
 					content = m.highlighter.HighlightLine(*line.OldLine, fileWithLines.FileDiff.OldPath)
@@ -854,7 +857,13 @@ func (m Model) renderContent() string {
 
 				// Handle context separator (line numbers are 0)
 				if line.OldLineNum == 0 {
-					leftLineNumBlock = strings.Repeat(" ", lineNumWidth+changeMarkerWidth)
+					dots := "  ..."
+					padding := lineNumWidth + changeMarkerWidth - len(dots)
+					if padding > 0 {
+						leftLineNumBlock = dots + strings.Repeat(" ", padding)
+					} else {
+						leftLineNumBlock = dots
+					}
 				} else if line.LineType == aligner.Deleted {
 					leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
 				} else if line.LineType == aligner.Modified {
@@ -869,7 +878,10 @@ func (m Model) renderContent() string {
 			// Format right side
 			if line.NewLine != nil {
 				var content string
-				if line.LineType == aligner.Modified && line.WordDiff != nil {
+				// Handle context separator with full-width dash line
+				if line.NewLineNum == 0 {
+					content = strings.Repeat("-", contentWidth-1) // -1 for the leading space
+				} else if line.LineType == aligner.Modified && line.WordDiff != nil {
 					content = m.highlighter.HighlightLineWithWordDiff(*line.NewLine, fileWithLines.FileDiff.NewPath, line.WordDiff.NewSegments)
 				} else {
 					content = m.highlighter.HighlightLine(*line.NewLine, fileWithLines.FileDiff.NewPath)
@@ -887,7 +899,13 @@ func (m Model) renderContent() string {
 
 				// Handle context separator (line numbers are 0)
 				if line.NewLineNum == 0 {
-					rightLineNumBlock = strings.Repeat(" ", lineNumWidth) + cursorMarker
+					dots := "  ..."
+					padding := lineNumWidth - len(dots)
+					if padding > 0 {
+						rightLineNumBlock = dots + strings.Repeat(" ", padding) + cursorMarker
+					} else {
+						rightLineNumBlock = dots + cursorMarker
+					}
 				} else if line.LineType == aligner.Added {
 					rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d%s", line.NewLineNum, cursorMarker))
 				} else if line.LineType == aligner.Modified {
