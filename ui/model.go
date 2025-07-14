@@ -862,13 +862,7 @@ func (m Model) renderContent() string {
 
 				// Handle context separator (line numbers are 0)
 				if line.OldLineNum == 0 {
-					dots := "  ..."
-					padding := lineNumWidth + changeMarkerWidth - len(dots)
-					if padding > 0 {
-						leftLineNumBlock = dots + strings.Repeat(" ", padding)
-					} else {
-						leftLineNumBlock = dots
-					}
+					leftLineNumBlock = strings.Repeat("-", lineNumWidth+changeMarkerWidth)
 				} else if line.LineType == aligner.Deleted {
 					leftLineNumBlock = deletedLineNumStyle.Render(fmt.Sprintf("%d ", line.OldLineNum))
 				} else if line.LineType == aligner.Modified {
@@ -905,13 +899,7 @@ func (m Model) renderContent() string {
 
 				// Handle context separator (line numbers are 0)
 				if line.NewLineNum == 0 {
-					dots := "  ..."
-					padding := lineNumWidth - len(dots)
-					if padding > 0 {
-						rightLineNumBlock = dots + strings.Repeat(" ", padding) + cursorMarker
-					} else {
-						rightLineNumBlock = dots + cursorMarker
-					}
+					rightLineNumBlock = strings.Repeat("-", lineNumWidth) + cursorMarker
 				} else if line.LineType == aligner.Added {
 					rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d%s", line.NewLineNum, cursorMarker))
 				} else if line.LineType == aligner.Modified {
