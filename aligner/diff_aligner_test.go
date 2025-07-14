@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"diffyduck/parser"
+	"github.com/mattduck/diffyduck/parser"
 )
 
 func TestDiffAligner_AlignFile(t *testing.T) {

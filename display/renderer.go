@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"diffyduck/aligner"
-	"diffyduck/git"
-	"diffyduck/parser"
+	"github.com/mattduck/diffyduck/aligner"
+	"github.com/mattduck/diffyduck/git"
+	"github.com/mattduck/diffyduck/parser"
 )
 
 type Renderer struct {

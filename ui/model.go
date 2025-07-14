@@ -9,10 +9,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"diffyduck/aligner"
-	"diffyduck/git"
-	"diffyduck/parser"
-	"diffyduck/syntax"
+	"github.com/mattduck/diffyduck/aligner"
+	"github.com/mattduck/diffyduck/git"
+	"github.com/mattduck/diffyduck/parser"
+	"github.com/mattduck/diffyduck/syntax"
 )
 
 type ExpandLevel int

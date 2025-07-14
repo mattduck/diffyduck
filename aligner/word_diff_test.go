@@ -3,7 +3,7 @@ package aligner
 import (
 	"testing"
 
-	"diffyduck/types"
+	"github.com/mattduck/diffyduck/types"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
