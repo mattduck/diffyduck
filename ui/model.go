@@ -852,13 +852,16 @@ func (m Model) renderContent() string {
 				var content string
 				// Handle context separator with full-width dash line
 				if line.OldLineNum == 0 {
-					content = strings.Repeat("-", contentWidth-1) // -1 for the leading space
+					// content = strings.Repeat("-", contentWidth-1) // -1 for the leading space
+					content = strings.Repeat("-", contentWidth)
+					leftContent = content
 				} else if line.LineType == aligner.Modified && line.WordDiff != nil {
 					content = m.highlighter.HighlightLineWithWordDiff(*line.OldLine, fileWithLines.FileDiff.OldPath, line.WordDiff.OldSegments)
+					leftContent = " " + content
 				} else {
 					content = m.highlighter.HighlightLine(*line.OldLine, fileWithLines.FileDiff.OldPath)
+					leftContent = " " + content
 				}
-				leftContent = " " + content
 
 				// Handle context separator (line numbers are 0)
 				if line.OldLineNum == 0 {
@@ -880,13 +883,16 @@ func (m Model) renderContent() string {
 				var content string
 				// Handle context separator with full-width dash line
 				if line.NewLineNum == 0 {
-					content = strings.Repeat("-", contentWidth-1) // -1 for the leading space
+					// content = strings.Repeat("-", contentWidth-1) // -1 for the leading space
+					content = strings.Repeat("-", contentWidth)
+					rightContent = content
 				} else if line.LineType == aligner.Modified && line.WordDiff != nil {
 					content = m.highlighter.HighlightLineWithWordDiff(*line.NewLine, fileWithLines.FileDiff.NewPath, line.WordDiff.NewSegments)
+					rightContent = " " + content
 				} else {
 					content = m.highlighter.HighlightLine(*line.NewLine, fileWithLines.FileDiff.NewPath)
+					rightContent = " " + content
 				}
-				rightContent = " " + content
 				// Check if cursor is on this line (need to map from original to filtered index)
 				cursorMarker := " "
 				// Find if any original line that maps to this filtered line has cursor
@@ -899,7 +905,8 @@ func (m Model) renderContent() string {
 
 				// Handle context separator (line numbers are 0)
 				if line.NewLineNum == 0 {
-					rightLineNumBlock = strings.Repeat("-", lineNumWidth) + cursorMarker
+					// rightLineNumBlock = strings.Repeat("-", lineNumWidth) + cursorMarker
+					rightLineNumBlock = strings.Repeat("-", lineNumWidth+1)
 				} else if line.LineType == aligner.Added {
 					rightLineNumBlock = addedLineNumStyle.Render(fmt.Sprintf("%d%s", line.NewLineNum, cursorMarker))
 				} else if line.LineType == aligner.Modified {
@@ -926,11 +933,12 @@ func (m Model) renderContent() string {
 			content.WriteString(lipgloss.JoinHorizontal(
 				lipgloss.Top,
 				leftLineNumBlock,
-				" │ ",
+				// TODO: let's make inclusion of these a config variable.
+				// "│ ",
 				leftColumnStyle.Render(leftContent),
-				" │ ",
+				"│",
 				rightLineNumBlock,
-				" │ ",
+				// "│ ",
 				rightColumnStyle.Render(rightContent),
 			))
 			content.WriteString("\n")
