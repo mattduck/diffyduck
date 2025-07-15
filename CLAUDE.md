@@ -15,10 +15,11 @@ DiffyDuck is a Go-based terminal diff viewer with syntax highlighting and side-b
 - `./make.sh fix` - Auto-format code with gofmt
 
 ### Running the Application
-- `./diffyduck` - View current git diff interactively
-- `./diffyduck diff` - Explicit git diff mode
+- `./diffyduck` - View current git diff interactively (default behavior)
+- `./diffyduck diff [args]` - Explicit git diff mode with optional git diff arguments
 - `./diffyduck show [commit]` - View specific commit diff (defaults to HEAD)
-- `git diff | ./diffyduck` - Pipe any diff output
+- `./diffyduck pager` - Read diff from stdin (pager mode)
+- `git diff | ./diffyduck pager` - Pipe any diff output to pager mode
 - Don't call the main diffyduck diff/show commands: you can't run them as they require an interactive tty
 
 ## Architecture

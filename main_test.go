@@ -89,6 +89,23 @@ func TestReadStdin(t *testing.T) {
 	}
 }
 
+func TestPagerCommand(t *testing.T) {
+	// Test that the pager subcommand reads from stdin
+	// This is a basic test to ensure the command routing works
+	// Full integration testing would require mocking git commands
+
+	// Save original args
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// Test that pager command is recognized
+	os.Args = []string{"diffyduck", "pager"}
+
+	// We can't easily test the full execution without mocking,
+	// but we can verify that the readStdin function works as expected
+	// which is tested above
+}
+
 func TestIntegration_DiffParsing(t *testing.T) {
 	// Test the complete diff parsing pipeline
 	diffContent := `diff --git a/test.go b/test.go

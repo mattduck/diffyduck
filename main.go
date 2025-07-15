@@ -17,17 +17,45 @@ import (
 
 func main() {
 	// Check if we have a subcommand
-	if len(os.Args) > 1 && os.Args[1] == "diff" {
-		handleDiffCommand()
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "diff":
+			handleDiffCommand()
+			return
+		case "show":
+			handleShowCommand()
+			return
+		case "pager":
+			handlePagerCommand()
+			return
+		}
 	}
 
-	if len(os.Args) > 1 && os.Args[1] == "show" {
-		handleShowCommand()
-		return
+	// Default behavior: run git diff
+	handleDiffCommand()
+}
+
+func readStdin() (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	var result string
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err == io.EOF {
+			result += line
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		result += line
 	}
 
-	// Default behavior: read from stdin
+	return result, nil
+}
+
+func handlePagerCommand() {
+	// Read from stdin
 	input, err := readStdin()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
@@ -50,30 +78,16 @@ func main() {
 	runDiffViewer(input)
 }
 
-func readStdin() (string, error) {
-	reader := bufio.NewReader(os.Stdin)
-	var result string
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err == io.EOF {
-			result += line
-			break
-		}
-		if err != nil {
-			return "", err
-		}
-		result += line
-	}
-
-	return result, nil
-}
-
 func handleDiffCommand() {
 	// Pass all arguments after "diff" to git diff
 	var diffArgs []string
-	if len(os.Args) > 2 {
+
+	// Check if we were called as a subcommand or as the default
+	if len(os.Args) > 1 && os.Args[1] == "diff" && len(os.Args) > 2 {
 		diffArgs = os.Args[2:]
+	} else if len(os.Args) > 1 && os.Args[1] != "diff" {
+		// Default behavior with args passed directly
+		diffArgs = os.Args[1:]
 	}
 
 	input, err := getGitDiff(diffArgs...)
