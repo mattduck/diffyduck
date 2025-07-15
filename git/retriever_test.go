@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -252,6 +253,20 @@ func isGitAvailable() bool {
 	return err == nil
 }
 
+// cleanGitEnv creates a clean environment without git variables that might interfere
+// when running tests inside git hooks (like pre-commit)
+func cleanGitEnv() []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "GIT_DIR=") &&
+			!strings.HasPrefix(e, "GIT_WORK_TREE=") &&
+			!strings.HasPrefix(e, "GIT_INDEX_FILE=") {
+			env = append(env, e)
+		}
+	}
+	return env
+}
+
 func setupTestGitRepo(t *testing.T) string {
 	tmpDir, err := ioutil.TempDir("", "git_test_*")
 	require.NoError(t, err)
@@ -259,17 +274,24 @@ func setupTestGitRepo(t *testing.T) string {
 	// Initialize git repo
 	cmd := exec.Command("git", "init")
 	cmd.Dir = tmpDir
-	err = cmd.Run()
+	// Clear git environment variables that might interfere when running in pre-commit hooks
+	cmd.Env = cleanGitEnv()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Logf("git init failed: %s\nOutput: %s", err, string(output))
+	}
 	require.NoError(t, err)
 
 	// Configure git user (required for commits)
 	cmd = exec.Command("git", "config", "user.email", "test@example.com")
 	cmd.Dir = tmpDir
+	cmd.Env = cleanGitEnv()
 	err = cmd.Run()
 	require.NoError(t, err)
 
 	cmd = exec.Command("git", "config", "user.name", "Test User")
 	cmd.Dir = tmpDir
+	cmd.Env = cleanGitEnv()
 	err = cmd.Run()
 	require.NoError(t, err)
 
@@ -287,11 +309,13 @@ func setupTestGitRepoWithFile(t *testing.T) string {
 	// Add and commit the file
 	cmd := exec.Command("git", "add", "test.txt")
 	cmd.Dir = tmpDir
+	cmd.Env = cleanGitEnv()
 	err = cmd.Run()
 	require.NoError(t, err)
 
 	cmd = exec.Command("git", "commit", "-m", "Add test file")
 	cmd.Dir = tmpDir
+	cmd.Env = cleanGitEnv()
 	err = cmd.Run()
 	require.NoError(t, err)
 
