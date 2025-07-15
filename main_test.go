@@ -225,8 +225,8 @@ func TestIntegration_UIRendering(t *testing.T) {
 
 	// Check that the view contains expected content
 	assert.Contains(t, view, "test.go")
-	// Check for content with or without ANSI color codes
-	assert.Regexp(t, `func.*main\(\)`, view)
+	// Check for content with or without ANSI color codes (allow for ANSI escape sequences)
+	assert.Regexp(t, `func.*main.*\(\)`, view)
 	assert.Contains(t, view, "hello")
 	assert.Contains(t, view, "world")
 }

@@ -21,6 +21,15 @@ type LanguageDefinition interface {
 	// GetLiteralNodeTypes returns node types that represent literal constants (nil, true, numbers, etc.)
 	GetLiteralNodeTypes() []string
 
+	// GetFunctionDefinitionNodeTypes returns node types that represent function definitions
+	GetFunctionDefinitionNodeTypes() []string
+
+	// GetFunctionCallNodeTypes returns node types that represent function calls
+	GetFunctionCallNodeTypes() []string
+
+	// GetTypeNodeTypes returns node types that represent type names
+	GetTypeNodeTypes() []string
+
 	// GetFileExtensions returns file extensions this language handles (e.g., [".go", ".mod"])
 	GetFileExtensions() []string
 

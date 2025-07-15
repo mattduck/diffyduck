@@ -48,6 +48,20 @@ func (g *GoLanguage) GetLiteralNodeTypes() []string {
 	}
 }
 
+func (g *GoLanguage) GetFunctionDefinitionNodeTypes() []string {
+	return []string{}
+}
+
+func (g *GoLanguage) GetFunctionCallNodeTypes() []string {
+	return []string{}
+}
+
+func (g *GoLanguage) GetTypeNodeTypes() []string {
+	return []string{
+		"type_identifier",
+	}
+}
+
 func (g *GoLanguage) GetFileExtensions() []string {
 	return []string{".go", ".mod"}
 }

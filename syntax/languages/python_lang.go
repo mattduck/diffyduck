@@ -52,6 +52,20 @@ func (p *PythonLanguage) GetLiteralNodeTypes() []string {
 	}
 }
 
+func (p *PythonLanguage) GetFunctionDefinitionNodeTypes() []string {
+	return []string{}
+}
+
+func (p *PythonLanguage) GetFunctionCallNodeTypes() []string {
+	return []string{}
+}
+
+func (p *PythonLanguage) GetTypeNodeTypes() []string {
+	return []string{
+		"type",
+	}
+}
+
 func (p *PythonLanguage) GetFileExtensions() []string {
 	return []string{".py", ".pyw", ".pyi"}
 }

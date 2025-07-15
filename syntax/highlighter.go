@@ -12,13 +12,16 @@ import (
 )
 
 type Highlighter struct {
-	parsers       map[string]*tree_sitter.Parser
-	languages     map[string]LanguageDefinition
-	extensionMap  map[string]string // file extension -> language name
-	keywordStyle  lipgloss.Style
-	stringStyle   lipgloss.Style
-	commentStyle  lipgloss.Style
-	constantStyle lipgloss.Style
+	parsers           map[string]*tree_sitter.Parser
+	languages         map[string]LanguageDefinition
+	extensionMap      map[string]string // file extension -> language name
+	keywordStyle      lipgloss.Style
+	stringStyle       lipgloss.Style
+	commentStyle      lipgloss.Style
+	constantStyle     lipgloss.Style
+	functionDefStyle  lipgloss.Style
+	functionCallStyle lipgloss.Style
+	typeStyle         lipgloss.Style
 }
 
 func NewHighlighter() *Highlighter {
@@ -35,14 +38,26 @@ func NewHighlighter() *Highlighter {
 		Foreground(lipgloss.Color("3")).
 		Bold(true) // bold yellow
 
+	functionDefStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("12")) // bright blue
+
+	functionCallStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("12")) // bright blue
+
+	typeStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("13")) // bright magenta
+
 	h := &Highlighter{
-		parsers:       make(map[string]*tree_sitter.Parser),
-		languages:     make(map[string]LanguageDefinition),
-		extensionMap:  make(map[string]string),
-		keywordStyle:  keywordStyle,
-		stringStyle:   stringStyle,
-		commentStyle:  commentStyle,
-		constantStyle: constantStyle,
+		parsers:           make(map[string]*tree_sitter.Parser),
+		languages:         make(map[string]LanguageDefinition),
+		extensionMap:      make(map[string]string),
+		keywordStyle:      keywordStyle,
+		stringStyle:       stringStyle,
+		commentStyle:      commentStyle,
+		constantStyle:     constantStyle,
+		functionDefStyle:  functionDefStyle,
+		functionCallStyle: functionCallStyle,
+		typeStyle:         typeStyle,
 	}
 
 	// Register Go language by default
@@ -142,6 +157,58 @@ func (h *Highlighter) highlightNode(content string, node *tree_sitter.Node, lang
 	return string(result)
 }
 
+// isFunctionName checks if an identifier node represents a function name
+func (h *Highlighter) isFunctionName(node *tree_sitter.Node, lang LanguageDefinition) bool {
+	nodeKind := node.Kind()
+	if nodeKind != "identifier" && nodeKind != "field_identifier" {
+		return false
+	}
+
+	parent := node.Parent()
+	if parent == nil {
+		return false
+	}
+
+	parentKind := parent.Kind()
+
+	// For Go
+	if lang.GetLanguageName() == "Go" {
+		// Function declarations: func name()
+		if parentKind == "function_declaration" {
+			return true
+		}
+		// Method declarations: func (receiver) name() - method name is a field_identifier
+		if parentKind == "method_declaration" && nodeKind == "field_identifier" {
+			// Method names in Go are field_identifier nodes directly under method_declaration
+			return true
+		}
+		// Function calls: name() or obj.name()
+		if parentKind == "call_expression" {
+			// Check if this identifier is the function being called (first child typically)
+			if parent.ChildCount() > 0 && parent.Child(0) == node {
+				return true
+			}
+		}
+	}
+
+	// For Python
+	if lang.GetLanguageName() == "Python" {
+		// Function definitions: def name():
+		if parentKind == "function_definition" {
+			return true
+		}
+		// Function calls: name()
+		if parentKind == "call" {
+			// Check if this identifier is the function being called
+			if parent.ChildCount() > 0 && parent.Child(0) == node {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func (h *Highlighter) walkNodes(node *tree_sitter.Node, content []byte, result *[]byte, lastEnd *uint32, lang LanguageDefinition) {
 	if node == nil {
 		return
@@ -153,6 +220,13 @@ func (h *Highlighter) walkNodes(node *tree_sitter.Node, content []byte, result *
 
 	// Check what type of node this is and apply appropriate styling
 	var style *lipgloss.Style
+
+	// Special handling for identifiers and field_identifiers that might be function names
+	if nodeKind == "identifier" || nodeKind == "field_identifier" {
+		if h.isFunctionName(node, lang) {
+			style = &h.functionDefStyle // Use same style for both definitions and calls for now
+		}
+	}
 
 	// Check if it's a keyword
 	for _, keyword := range lang.GetKeywordNodeTypes() {
@@ -187,6 +261,36 @@ func (h *Highlighter) walkNodes(node *tree_sitter.Node, content []byte, result *
 		for _, literal := range lang.GetLiteralNodeTypes() {
 			if nodeKind == literal {
 				style = &h.constantStyle
+				break
+			}
+		}
+	}
+
+	// Check if it's a function definition
+	if style == nil {
+		for _, funcDef := range lang.GetFunctionDefinitionNodeTypes() {
+			if nodeKind == funcDef {
+				style = &h.functionDefStyle
+				break
+			}
+		}
+	}
+
+	// Check if it's a function call
+	if style == nil {
+		for _, funcCall := range lang.GetFunctionCallNodeTypes() {
+			if nodeKind == funcCall {
+				style = &h.functionCallStyle
+				break
+			}
+		}
+	}
+
+	// Check if it's a type
+	if style == nil {
+		for _, typeNode := range lang.GetTypeNodeTypes() {
+			if nodeKind == typeNode {
+				style = &h.typeStyle
 				break
 			}
 		}
@@ -298,6 +402,13 @@ func (h *Highlighter) walkNodesWithWordDiff(node *tree_sitter.Node, content []by
 	// Check what type of node this is and apply appropriate styling
 	var style *lipgloss.Style
 
+	// Special handling for identifiers and field_identifiers that might be function names
+	if nodeKind == "identifier" || nodeKind == "field_identifier" {
+		if h.isFunctionName(node, lang) {
+			style = &h.functionDefStyle // Use same style for both definitions and calls for now
+		}
+	}
+
 	// Check if it's a keyword
 	for _, keyword := range lang.GetKeywordNodeTypes() {
 		if nodeKind == keyword {
@@ -331,6 +442,36 @@ func (h *Highlighter) walkNodesWithWordDiff(node *tree_sitter.Node, content []by
 		for _, literal := range lang.GetLiteralNodeTypes() {
 			if nodeKind == literal {
 				style = &h.constantStyle
+				break
+			}
+		}
+	}
+
+	// Check if it's a function definition
+	if style == nil {
+		for _, funcDef := range lang.GetFunctionDefinitionNodeTypes() {
+			if nodeKind == funcDef {
+				style = &h.functionDefStyle
+				break
+			}
+		}
+	}
+
+	// Check if it's a function call
+	if style == nil {
+		for _, funcCall := range lang.GetFunctionCallNodeTypes() {
+			if nodeKind == funcCall {
+				style = &h.functionCallStyle
+				break
+			}
+		}
+	}
+
+	// Check if it's a type
+	if style == nil {
+		for _, typeNode := range lang.GetTypeNodeTypes() {
+			if nodeKind == typeNode {
+				style = &h.typeStyle
 				break
 			}
 		}
