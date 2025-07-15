@@ -12,53 +12,24 @@ import (
 )
 
 type Highlighter struct {
-	parsers           map[string]*tree_sitter.Parser
-	languages         map[string]LanguageDefinition
-	extensionMap      map[string]string // file extension -> language name
-	keywordStyle      lipgloss.Style
-	stringStyle       lipgloss.Style
-	commentStyle      lipgloss.Style
-	constantStyle     lipgloss.Style
-	functionDefStyle  lipgloss.Style
-	functionCallStyle lipgloss.Style
-	typeStyle         lipgloss.Style
+	parsers       map[string]*tree_sitter.Parser
+	languages     map[string]LanguageDefinition
+	queries       map[string]*tree_sitter.Query
+	extensionMap  map[string]string         // file extension -> language name
+	captureStyles map[string]lipgloss.Style // capture name -> style
 }
 
 func NewHighlighter() *Highlighter {
-	keywordStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("4")) // blue
-
-	stringStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8")) // gray
-
-	commentStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8")) // gray
-
-	constantStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("3")).
-		Bold(true) // bold yellow
-
-	functionDefStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("12")) // bright blue
-
-	functionCallStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("12")) // bright blue
-
-	typeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("13")) // bright magenta
-
 	h := &Highlighter{
-		parsers:           make(map[string]*tree_sitter.Parser),
-		languages:         make(map[string]LanguageDefinition),
-		extensionMap:      make(map[string]string),
-		keywordStyle:      keywordStyle,
-		stringStyle:       stringStyle,
-		commentStyle:      commentStyle,
-		constantStyle:     constantStyle,
-		functionDefStyle:  functionDefStyle,
-		functionCallStyle: functionCallStyle,
-		typeStyle:         typeStyle,
+		parsers:       make(map[string]*tree_sitter.Parser),
+		languages:     make(map[string]LanguageDefinition),
+		queries:       make(map[string]*tree_sitter.Query),
+		extensionMap:  make(map[string]string),
+		captureStyles: make(map[string]lipgloss.Style),
 	}
+
+	// Initialize capture styles
+	h.initializeCaptureStyles()
 
 	// Register Go language by default
 	h.RegisterLanguage(languages.NewGoLanguage())
@@ -76,6 +47,32 @@ func (h *Highlighter) Close() {
 		}
 	}
 	h.parsers = make(map[string]*tree_sitter.Parser)
+
+	for _, query := range h.queries {
+		if query != nil {
+			query.Close()
+		}
+	}
+	h.queries = make(map[string]*tree_sitter.Query)
+}
+
+// initializeCaptureStyles sets up the mapping from capture names to styles
+func (h *Highlighter) initializeCaptureStyles() {
+	h.captureStyles["keyword"] = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))                     // blue
+	h.captureStyles["string"] = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))                      // gray
+	h.captureStyles["comment"] = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))                     // gray
+	h.captureStyles["constant.builtin"] = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true) // bold yellow
+	h.captureStyles["number"] = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)           // bold yellow
+	h.captureStyles["function"] = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))                   // bright blue
+	h.captureStyles["function.method"] = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))            // bright blue
+	h.captureStyles["function.builtin"] = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))           // bright blue
+	h.captureStyles["type"] = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))                       // bright magenta
+	h.captureStyles["type.builtin"] = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))               // bright magenta
+	h.captureStyles["property"] = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))                   // bright cyan
+	h.captureStyles["variable"] = lipgloss.NewStyle()                                                    // default color
+	h.captureStyles["constant"] = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)         // bold yellow
+	h.captureStyles["operator"] = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))                    // white
+	h.captureStyles["punctuation.delimiter"] = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))       // white
 }
 
 // RegisterLanguage adds a new language to the highlighter
@@ -117,6 +114,26 @@ func (h *Highlighter) getOrCreateParser(lang LanguageDefinition) *tree_sitter.Pa
 	return parser
 }
 
+// getOrCreateQuery gets an existing query or creates a new one for the language
+func (h *Highlighter) getOrCreateQuery(lang LanguageDefinition) *tree_sitter.Query {
+	langName := lang.GetLanguageName()
+
+	if query, exists := h.queries[langName]; exists {
+		return query
+	}
+
+	// Create new query for this language
+	queryString := lang.GetHighlightQuery()
+	query, err := tree_sitter.NewQuery(tree_sitter.NewLanguage(lang.GetLanguage()), queryString)
+	if err != nil {
+		// If query creation fails, return nil - highlighting will fall back to plain text
+		return nil
+	}
+
+	h.queries[langName] = query
+	return query
+}
+
 func (h *Highlighter) HighlightLine(content, filePath string) string {
 	if content == "" {
 		return content
@@ -139,15 +156,61 @@ func (h *Highlighter) HighlightLine(content, filePath string) string {
 	defer tree.Close()
 
 	root := tree.RootNode()
-	return h.highlightNode(content, root, lang)
+	return h.highlightWithQuery(content, root, lang)
 }
 
-func (h *Highlighter) highlightNode(content string, node *tree_sitter.Node, lang LanguageDefinition) string {
+func (h *Highlighter) highlightWithQuery(content string, node *tree_sitter.Node, lang LanguageDefinition) string {
+	// Get or create query for this language
+	query := h.getOrCreateQuery(lang)
+	if query == nil {
+		return content // fallback if query creation failed
+	}
+
 	contentBytes := []byte(content)
 	result := make([]byte, 0, len(contentBytes)*2) // pre-allocate with extra space for ANSI codes
 	lastEnd := uint32(0)
 
-	h.walkNodes(node, contentBytes, &result, &lastEnd, lang)
+	// Execute query and collect captures
+	cursor := tree_sitter.NewQueryCursor()
+	defer cursor.Close()
+
+	// Get capture names for this query
+	captureNames := query.CaptureNames()
+
+	// Get all captures from the query
+	captures := cursor.Captures(query, node, contentBytes)
+
+	// Process captures in order
+	for match, captureIndex := captures.Next(); match != nil; match, captureIndex = captures.Next() {
+		capture := match.Captures[captureIndex]
+		captureName := captureNames[capture.Index]
+		captureNode := capture.Node
+
+		start := uint32(captureNode.StartByte())
+		end := uint32(captureNode.EndByte())
+
+		// Skip if this capture overlaps with already processed content
+		if start < lastEnd {
+			continue
+		}
+
+		// Add content before this capture
+		if start > lastEnd {
+			result = append(result, contentBytes[lastEnd:start]...)
+		}
+
+		// Apply styling for this capture
+		if style, exists := h.captureStyles[captureName]; exists {
+			nodeText := string(contentBytes[start:end])
+			styledText := style.Render(nodeText)
+			result = append(result, []byte(styledText)...)
+		} else {
+			// No style defined, add text as-is
+			result = append(result, contentBytes[start:end]...)
+		}
+
+		lastEnd = end
+	}
 
 	// Append any remaining content
 	if lastEnd < uint32(len(contentBytes)) {
@@ -155,170 +218,6 @@ func (h *Highlighter) highlightNode(content string, node *tree_sitter.Node, lang
 	}
 
 	return string(result)
-}
-
-// isFunctionName checks if an identifier node represents a function name
-func (h *Highlighter) isFunctionName(node *tree_sitter.Node, lang LanguageDefinition) bool {
-	nodeKind := node.Kind()
-	if nodeKind != "identifier" && nodeKind != "field_identifier" {
-		return false
-	}
-
-	parent := node.Parent()
-	if parent == nil {
-		return false
-	}
-
-	parentKind := parent.Kind()
-
-	// For Go
-	if lang.GetLanguageName() == "Go" {
-		// Function declarations: func name()
-		if parentKind == "function_declaration" {
-			return true
-		}
-		// Method declarations: func (receiver) name() - method name is a field_identifier
-		if parentKind == "method_declaration" && nodeKind == "field_identifier" {
-			// Method names in Go are field_identifier nodes directly under method_declaration
-			return true
-		}
-		// Function calls: name() or obj.name()
-		if parentKind == "call_expression" {
-			// Check if this identifier is the function being called (first child typically)
-			if parent.ChildCount() > 0 && parent.Child(0) == node {
-				return true
-			}
-		}
-	}
-
-	// For Python
-	if lang.GetLanguageName() == "Python" {
-		// Function definitions: def name():
-		if parentKind == "function_definition" {
-			return true
-		}
-		// Function calls: name()
-		if parentKind == "call" {
-			// Check if this identifier is the function being called
-			if parent.ChildCount() > 0 && parent.Child(0) == node {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func (h *Highlighter) walkNodes(node *tree_sitter.Node, content []byte, result *[]byte, lastEnd *uint32, lang LanguageDefinition) {
-	if node == nil {
-		return
-	}
-
-	nodeKind := node.Kind()
-	start := uint32(node.StartByte())
-	end := uint32(node.EndByte())
-
-	// Check what type of node this is and apply appropriate styling
-	var style *lipgloss.Style
-
-	// Special handling for identifiers and field_identifiers that might be function names
-	if nodeKind == "identifier" || nodeKind == "field_identifier" {
-		if h.isFunctionName(node, lang) {
-			style = &h.functionDefStyle // Use same style for both definitions and calls for now
-		}
-	}
-
-	// Check if it's a keyword
-	for _, keyword := range lang.GetKeywordNodeTypes() {
-		if nodeKind == keyword {
-			style = &h.keywordStyle
-			break
-		}
-	}
-
-	// Check if it's a comment
-	if style == nil {
-		for _, comment := range lang.GetCommentNodeTypes() {
-			if nodeKind == comment {
-				style = &h.commentStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a string
-	if style == nil {
-		for _, str := range lang.GetStringNodeTypes() {
-			if nodeKind == str {
-				style = &h.stringStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a literal
-	if style == nil {
-		for _, literal := range lang.GetLiteralNodeTypes() {
-			if nodeKind == literal {
-				style = &h.constantStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a function definition
-	if style == nil {
-		for _, funcDef := range lang.GetFunctionDefinitionNodeTypes() {
-			if nodeKind == funcDef {
-				style = &h.functionDefStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a function call
-	if style == nil {
-		for _, funcCall := range lang.GetFunctionCallNodeTypes() {
-			if nodeKind == funcCall {
-				style = &h.functionCallStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a type
-	if style == nil {
-		for _, typeNode := range lang.GetTypeNodeTypes() {
-			if nodeKind == typeNode {
-				style = &h.typeStyle
-				break
-			}
-		}
-	}
-
-	// Apply styling if we found a match
-	if style != nil && start >= *lastEnd && end <= uint32(len(content)) {
-		// Add content before this node
-		*result = append(*result, content[*lastEnd:start]...)
-
-		// Get the text of this node
-		nodeText := string(content[start:end])
-
-		// Apply styling
-		styledText := style.Render(nodeText)
-		*result = append(*result, []byte(styledText)...)
-
-		*lastEnd = end
-
-		// For styled nodes, don't process children since we've handled the entire node
-		return
-	}
-
-	// Recursively process child nodes
-	for i := uint(0); i < node.ChildCount(); i++ {
-		child := node.Child(i)
-		h.walkNodes(child, content, result, lastEnd, lang)
-	}
 }
 
 func (h *Highlighter) HighlightLineWithWordDiff(content, filePath string, segments []types.DiffSegment) string {
@@ -345,7 +244,7 @@ func (h *Highlighter) HighlightLineWithWordDiff(content, filePath string, segmen
 	defer tree.Close()
 
 	root := tree.RootNode()
-	return h.highlightNodeWithWordDiff(content, root, lang, segments)
+	return h.highlightWithQueryAndWordDiff(content, root, lang, segments)
 }
 
 func (h *Highlighter) applyWordDiffStyling(segments []types.DiffSegment) string {
@@ -363,7 +262,7 @@ func (h *Highlighter) applyWordDiffStyling(segments []types.DiffSegment) string 
 	return result.String()
 }
 
-func (h *Highlighter) highlightNodeWithWordDiff(content string, node *tree_sitter.Node, lang LanguageDefinition, segments []types.DiffSegment) string {
+func (h *Highlighter) highlightWithQueryAndWordDiff(content string, node *tree_sitter.Node, lang LanguageDefinition, segments []types.DiffSegment) string {
 	// Build a map of text positions to diff types for quick lookup
 	diffMap := make(map[int]diffmatchpatch.Operation)
 	pos := 0
@@ -375,11 +274,60 @@ func (h *Highlighter) highlightNodeWithWordDiff(content string, node *tree_sitte
 		pos = segmentEnd
 	}
 
+	// Get or create query for this language
+	query := h.getOrCreateQuery(lang)
+	if query == nil {
+		// fallback to word diff only if query creation failed
+		return h.applyWordDiffStyling(segments)
+	}
+
 	contentBytes := []byte(content)
 	result := make([]byte, 0, len(contentBytes)*3) // pre-allocate with extra space for ANSI codes
 	lastEnd := uint32(0)
 
-	h.walkNodesWithWordDiff(node, contentBytes, &result, &lastEnd, lang, diffMap)
+	// Execute query and collect captures
+	cursor := tree_sitter.NewQueryCursor()
+	defer cursor.Close()
+
+	// Get capture names for this query
+	captureNames := query.CaptureNames()
+
+	// Get all captures from the query
+	captures := cursor.Captures(query, node, contentBytes)
+
+	// Process captures in order
+	for match, captureIndex := captures.Next(); match != nil; match, captureIndex = captures.Next() {
+		capture := match.Captures[captureIndex]
+		captureName := captureNames[capture.Index]
+		captureNode := capture.Node
+
+		start := uint32(captureNode.StartByte())
+		end := uint32(captureNode.EndByte())
+
+		// Skip if this capture overlaps with already processed content
+		if start < lastEnd {
+			continue
+		}
+
+		// Add content before this capture
+		if start > lastEnd {
+			beforeContent := contentBytes[lastEnd:start]
+			result = append(result, h.applyDiffStylingToBytes(beforeContent, int(lastEnd), diffMap)...)
+		}
+
+		// Apply combined styling for this capture (syntax + word diff)
+		if style, exists := h.captureStyles[captureName]; exists {
+			nodeText := string(contentBytes[start:end])
+			styledText := h.applyCombinedStyling(nodeText, int(start), &style, diffMap)
+			result = append(result, []byte(styledText)...)
+		} else {
+			// No style defined, apply word diff styling only
+			nodeBytes := contentBytes[start:end]
+			result = append(result, h.applyDiffStylingToBytes(nodeBytes, int(start), diffMap)...)
+		}
+
+		lastEnd = end
+	}
 
 	// Append any remaining content
 	if lastEnd < uint32(len(contentBytes)) {
@@ -388,119 +336,6 @@ func (h *Highlighter) highlightNodeWithWordDiff(content string, node *tree_sitte
 	}
 
 	return string(result)
-}
-
-func (h *Highlighter) walkNodesWithWordDiff(node *tree_sitter.Node, content []byte, result *[]byte, lastEnd *uint32, lang LanguageDefinition, diffMap map[int]diffmatchpatch.Operation) {
-	if node == nil {
-		return
-	}
-
-	nodeKind := node.Kind()
-	start := uint32(node.StartByte())
-	end := uint32(node.EndByte())
-
-	// Check what type of node this is and apply appropriate styling
-	var style *lipgloss.Style
-
-	// Special handling for identifiers and field_identifiers that might be function names
-	if nodeKind == "identifier" || nodeKind == "field_identifier" {
-		if h.isFunctionName(node, lang) {
-			style = &h.functionDefStyle // Use same style for both definitions and calls for now
-		}
-	}
-
-	// Check if it's a keyword
-	for _, keyword := range lang.GetKeywordNodeTypes() {
-		if nodeKind == keyword {
-			style = &h.keywordStyle
-			break
-		}
-	}
-
-	// Check if it's a comment
-	if style == nil {
-		for _, comment := range lang.GetCommentNodeTypes() {
-			if nodeKind == comment {
-				style = &h.commentStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a string
-	if style == nil {
-		for _, str := range lang.GetStringNodeTypes() {
-			if nodeKind == str {
-				style = &h.stringStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a literal
-	if style == nil {
-		for _, literal := range lang.GetLiteralNodeTypes() {
-			if nodeKind == literal {
-				style = &h.constantStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a function definition
-	if style == nil {
-		for _, funcDef := range lang.GetFunctionDefinitionNodeTypes() {
-			if nodeKind == funcDef {
-				style = &h.functionDefStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a function call
-	if style == nil {
-		for _, funcCall := range lang.GetFunctionCallNodeTypes() {
-			if nodeKind == funcCall {
-				style = &h.functionCallStyle
-				break
-			}
-		}
-	}
-
-	// Check if it's a type
-	if style == nil {
-		for _, typeNode := range lang.GetTypeNodeTypes() {
-			if nodeKind == typeNode {
-				style = &h.typeStyle
-				break
-			}
-		}
-	}
-
-	// Apply styling if we found a match
-	if style != nil && start >= *lastEnd && end <= uint32(len(content)) {
-		// Add content before this node
-		beforeContent := content[*lastEnd:start]
-		*result = append(*result, h.applyDiffStylingToBytes(beforeContent, int(*lastEnd), diffMap)...)
-
-		// Get the text of this node
-		nodeText := string(content[start:end])
-
-		// Apply combined styling (syntax + word diff)
-		styledText := h.applyCombinedStyling(nodeText, int(start), style, diffMap)
-		*result = append(*result, []byte(styledText)...)
-
-		*lastEnd = end
-
-		// For styled nodes, don't process children since we've handled the entire node
-		return
-	}
-
-	// Recursively process child nodes
-	for i := uint(0); i < node.ChildCount(); i++ {
-		child := node.Child(i)
-		h.walkNodesWithWordDiff(child, content, result, lastEnd, lang, diffMap)
-	}
 }
 
 func (h *Highlighter) applyDiffStylingToBytes(content []byte, startPos int, diffMap map[int]diffmatchpatch.Operation) []byte {

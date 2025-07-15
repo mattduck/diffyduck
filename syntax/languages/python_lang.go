@@ -1,10 +1,14 @@
 package languages
 
 import (
+	_ "embed"
 	"unsafe"
 
 	tree_sitter_python "github.com/tree-sitter/tree-sitter-python/bindings/go"
 )
+
+//go:embed python_highlights.scm
+var pythonHighlightQuery string
 
 // PythonLanguage implements syntax highlighting for the Python programming language
 type PythonLanguage struct{}
@@ -18,52 +22,8 @@ func (p *PythonLanguage) GetLanguage() unsafe.Pointer {
 	return tree_sitter_python.Language()
 }
 
-func (p *PythonLanguage) GetKeywordNodeTypes() []string {
-	return []string{
-		"False", "None", "True", "and", "as", "assert", "async", "await",
-		"break", "class", "continue", "def", "del", "elif", "else", "except",
-		"finally", "for", "from", "global", "if", "import", "in", "is",
-		"lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try",
-		"while", "with", "yield",
-	}
-}
-
-func (p *PythonLanguage) GetStringNodeTypes() []string {
-	return []string{
-		"string",
-		"string_literal",
-		"concatenated_string",
-		"format_string",
-		"f_string",
-	}
-}
-
-func (p *PythonLanguage) GetCommentNodeTypes() []string {
-	return []string{
-		"comment",
-	}
-}
-
-func (p *PythonLanguage) GetLiteralNodeTypes() []string {
-	return []string{
-		"integer", "float", "complex",
-		"true", "false", "none",
-		"ellipsis",
-	}
-}
-
-func (p *PythonLanguage) GetFunctionDefinitionNodeTypes() []string {
-	return []string{}
-}
-
-func (p *PythonLanguage) GetFunctionCallNodeTypes() []string {
-	return []string{}
-}
-
-func (p *PythonLanguage) GetTypeNodeTypes() []string {
-	return []string{
-		"type",
-	}
+func (p *PythonLanguage) GetHighlightQuery() string {
+	return pythonHighlightQuery
 }
 
 func (p *PythonLanguage) GetFileExtensions() []string {

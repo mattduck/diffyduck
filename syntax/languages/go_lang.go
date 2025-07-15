@@ -1,10 +1,14 @@
 package languages
 
 import (
+	_ "embed"
 	"unsafe"
 
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
 )
+
+//go:embed go_highlights.scm
+var goHighlightQuery string
 
 // GoLanguage implements syntax highlighting for the Go programming language
 type GoLanguage struct{}
@@ -18,48 +22,8 @@ func (g *GoLanguage) GetLanguage() unsafe.Pointer {
 	return tree_sitter_go.Language()
 }
 
-func (g *GoLanguage) GetKeywordNodeTypes() []string {
-	return []string{
-		"break", "case", "chan", "const", "continue", "default", "defer",
-		"else", "fallthrough", "for", "func", "go", "goto", "if", "import",
-		"interface", "map", "package", "range", "return", "select", "struct",
-		"switch", "type", "var",
-	}
-}
-
-func (g *GoLanguage) GetStringNodeTypes() []string {
-	return []string{
-		"interpreted_string_literal",
-		"raw_string_literal",
-		"rune_literal",
-	}
-}
-
-func (g *GoLanguage) GetCommentNodeTypes() []string {
-	return []string{
-		"comment",
-	}
-}
-
-func (g *GoLanguage) GetLiteralNodeTypes() []string {
-	return []string{
-		"nil", "true", "false",
-		"int_literal", "float_literal",
-	}
-}
-
-func (g *GoLanguage) GetFunctionDefinitionNodeTypes() []string {
-	return []string{}
-}
-
-func (g *GoLanguage) GetFunctionCallNodeTypes() []string {
-	return []string{}
-}
-
-func (g *GoLanguage) GetTypeNodeTypes() []string {
-	return []string{
-		"type_identifier",
-	}
+func (g *GoLanguage) GetHighlightQuery() string {
+	return goHighlightQuery
 }
 
 func (g *GoLanguage) GetFileExtensions() []string {

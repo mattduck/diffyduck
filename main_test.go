@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"os"
+	"regexp"
 	"testing"
 	"time"
 
@@ -18,6 +19,12 @@ import (
 	"github.com/mattduck/diffyduck/parser"
 	"github.com/mattduck/diffyduck/ui"
 )
+
+// stripAnsiCodes removes ANSI color codes from text for testing
+func stripAnsiCodes(text string) string {
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return ansiRegex.ReplaceAllString(text, "")
+}
 
 func TestReadStdin(t *testing.T) {
 	tests := []struct {
@@ -226,7 +233,7 @@ func TestIntegration_UIRendering(t *testing.T) {
 	// Check that the view contains expected content
 	assert.Contains(t, view, "test.go")
 	// Check for content with or without ANSI color codes (allow for ANSI escape sequences)
-	assert.Regexp(t, `func.*main.*\(\)`, view)
+	assert.Regexp(t, `func.*main.*\(\)`, stripAnsiCodes(view))
 	assert.Contains(t, view, "hello")
 	assert.Contains(t, view, "world")
 }

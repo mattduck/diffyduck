@@ -9,26 +9,8 @@ type LanguageDefinition interface {
 	// GetLanguage returns the Tree-sitter language pointer for this language
 	GetLanguage() unsafe.Pointer
 
-	// GetKeywordNodeTypes returns node types that should be highlighted as keywords
-	GetKeywordNodeTypes() []string
-
-	// GetStringNodeTypes returns node types that represent string literals
-	GetStringNodeTypes() []string
-
-	// GetCommentNodeTypes returns node types that represent comments
-	GetCommentNodeTypes() []string
-
-	// GetLiteralNodeTypes returns node types that represent literal constants (nil, true, numbers, etc.)
-	GetLiteralNodeTypes() []string
-
-	// GetFunctionDefinitionNodeTypes returns node types that represent function definitions
-	GetFunctionDefinitionNodeTypes() []string
-
-	// GetFunctionCallNodeTypes returns node types that represent function calls
-	GetFunctionCallNodeTypes() []string
-
-	// GetTypeNodeTypes returns node types that represent type names
-	GetTypeNodeTypes() []string
+	// GetHighlightQuery returns the tree-sitter query string for syntax highlighting
+	GetHighlightQuery() string
 
 	// GetFileExtensions returns file extensions this language handles (e.g., [".go", ".mod"])
 	GetFileExtensions() []string
