@@ -51,6 +51,13 @@ DiffyDuck is a Go-based terminal diff viewer with syntax highlighting and side-b
    - Bubble Tea TUI with viewport for scrolling
    - Keyboard navigation (j/k, g/G, q to quit)
    - Side-by-side rendering with syntax highlighting
+   - Less-style search functionality:
+     - `/` forward search, `?` backward search
+     - `n`/`N` for next/previous match navigation
+     - Smart case sensitivity (case-insensitive unless capitals used)
+     - Yellow highlighting for matches, red for current match
+     - Search scoped to visible content based on expand level
+     - Automatic re-search when toggling expand levels
 
 7. **display/** - Rendering and styling
    - Lipgloss-based styling for colors and layout

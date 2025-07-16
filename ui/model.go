@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -37,6 +38,14 @@ type NavigableLineRef struct {
 	LineIndex int
 }
 
+type SearchMatch struct {
+	FileIndex    int
+	LineIndex    int
+	IsOldContent bool // true if match is in old content, false if in new content
+	StartCol     int
+	EndCol       int
+}
+
 type Model struct {
 	filesWithLines []FileWithLines
 	viewport       viewport.Model
@@ -48,15 +57,32 @@ type Model struct {
 	highlighter    *syntax.Highlighter
 	expandLevel    ExpandLevel
 	contextLines   int
+	// Search-related fields
+	searchMode        bool
+	searchInput       textinput.Model
+	searchQuery       string
+	searchMatches     []SearchMatch
+	currentMatchIndex int
+	searchDirection   bool // true for forward, false for backward
 }
 
 func NewModel(filesWithLines []FileWithLines) Model {
+	ti := textinput.New()
+	ti.Placeholder = ""
+	ti.Focus()
+	ti.CharLimit = 256
+	ti.Width = 40
+	ti.Prompt = ""
+
 	model := Model{
-		filesWithLines: filesWithLines,
-		cursorLine:     0,
-		highlighter:    syntax.NewHighlighter(),
-		expandLevel:    ContextDiff,
-		contextLines:   DefaultContextLines,
+		filesWithLines:    filesWithLines,
+		cursorLine:        0,
+		highlighter:       syntax.NewHighlighter(),
+		expandLevel:       ContextDiff,
+		contextLines:      DefaultContextLines,
+		searchInput:       ti,
+		currentMatchIndex: -1,
+		searchDirection:   true,
 	}
 	model.navigableLines = model.buildNavigableLines()
 	return model
@@ -202,6 +228,12 @@ func (m *Model) cycleExpandLevel(direction int) {
 
 func (m *Model) rebuildAndRefresh() {
 	m.navigableLines = m.buildNavigableLines()
+
+	// Re-run search if there's an active search query
+	if m.searchQuery != "" {
+		m.performSearch(m.searchQuery)
+	}
+
 	m.viewport.SetContent(m.renderContent())
 
 	// Ensure cursor is still within bounds
@@ -509,6 +541,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		key := msg.String()
 
+		// Handle search mode
+		if m.searchMode {
+			switch key {
+			case "esc", "escape":
+				m.searchMode = false
+				m.searchInput.Blur()
+				return m, nil
+			case "enter":
+				// Submit search
+				query := m.searchInput.Value()
+				m.performSearch(query)
+				m.searchMode = false
+				m.searchInput.Blur()
+				return m, nil
+			default:
+				// Pass to text input
+				var cmd tea.Cmd
+				m.searchInput, cmd = m.searchInput.Update(msg)
+				return m, cmd
+			}
+		}
+
 		// Handle g + j/k/g sequences
 		if m.gPressed {
 			m.gPressed = false
@@ -531,6 +585,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "/":
+			// Enter forward search mode
+			m.searchMode = true
+			m.searchDirection = true
+			m.searchInput.SetValue("")
+			m.searchInput.Focus()
+			return m, nil
+		case "?":
+			// Enter backward search mode
+			m.searchMode = true
+			m.searchDirection = false
+			m.searchInput.SetValue("")
+			m.searchInput.Focus()
+			return m, nil
+		case "n":
+			// Next match
+			if m.searchDirection {
+				m.nextMatch()
+			} else {
+				m.prevMatch()
+			}
+			return m, nil
+		case "N":
+			// Previous match (reverse of current direction)
+			if m.searchDirection {
+				m.prevMatch()
+			} else {
+				m.nextMatch()
+			}
+			return m, nil
 		case "tab":
 			// Cycle through expand levels: HeadersOnly -> ContextDiff -> FullDiff -> HeadersOnly
 			m.cycleExpandLevel(1)
@@ -583,13 +667,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
+
+		// Calculate height: reserve space for status line and search input (if active)
+		reservedHeight := 2 // status line
+		if m.searchMode {
+			reservedHeight += 1 // search input line
+		}
+
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height-2) // Reserve space for status line
+			m.viewport = viewport.New(msg.Width, msg.Height-reservedHeight)
 			m.viewport.SetContent(m.renderContent())
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height - 2 // Reserve space for status line
+			m.viewport.Height = msg.Height - reservedHeight
 			m.viewport.SetContent(m.renderContent())
 		}
 	}
@@ -624,6 +715,16 @@ func (m Model) View() string {
 		content += "\n" + statusLine
 	}
 
+	// Add search input if in search mode
+	if m.searchMode {
+		searchPrompt := "/"
+		if !m.searchDirection {
+			searchPrompt = "?"
+		}
+		searchLine := searchPrompt + m.searchInput.View()
+		content += "\n" + searchLine
+	}
+
 	return content
 }
 
@@ -645,7 +746,13 @@ func (m Model) createStatusLine() string {
 
 	// Create status parts
 	leftStatus := fmt.Sprintf("[%s]", levelName)
-	rightStatus := "Tab:cycle Shift+Tab:reverse"
+
+	// Add search info if there are matches
+	if len(m.searchMatches) > 0 && m.searchQuery != "" {
+		leftStatus += fmt.Sprintf(" Search: %d/%d", m.currentMatchIndex+1, len(m.searchMatches))
+	}
+
+	rightStatus := "/:search ?:reverse n/N:next/prev Tab:cycle"
 
 	// Calculate padding
 	totalUsed := len(leftStatus) + len(rightStatus)
@@ -667,6 +774,234 @@ func (m *Model) Close() {
 		m.highlighter.Close()
 		m.highlighter = nil
 	}
+}
+
+func (m *Model) performSearch(query string) {
+	if query == "" {
+		m.searchMatches = nil
+		m.currentMatchIndex = -1
+		return
+	}
+
+	// Determine if search should be case-sensitive
+	caseSensitive := false
+	for _, r := range query {
+		if r >= 'A' && r <= 'Z' {
+			caseSensitive = true
+			break
+		}
+	}
+
+	searchQuery := query
+	if !caseSensitive {
+		searchQuery = strings.ToLower(query)
+	}
+
+	var matches []SearchMatch
+
+	// Search through all files and lines
+	for fileIndex, fileWithLines := range m.filesWithLines {
+		// Skip special files (binary, etc.)
+		if m.shouldShowSpecialNotice(fileWithLines) {
+			continue
+		}
+
+		// Get effective expand level and filter lines accordingly
+		effectiveLevel := m.getEffectiveExpandLevel(fileIndex)
+		visibleLines := m.filterAlignedLinesForLevel(fileWithLines.AlignedLines, effectiveLevel)
+
+		// Create mapping from original to filtered indices
+		originalToFiltered := m.createOriginalToFilteredMapping(fileWithLines.AlignedLines, visibleLines)
+
+		// Only search through visible lines
+		for originalLineIndex, line := range fileWithLines.AlignedLines {
+			// Skip if this line is not visible in current expand level
+			if _, isVisible := originalToFiltered[originalLineIndex]; !isVisible {
+				continue
+			}
+			// Search in old content
+			if line.OldLine != nil {
+				content := *line.OldLine
+				searchContent := content
+				if !caseSensitive {
+					searchContent = strings.ToLower(content)
+				}
+
+				// Find all occurrences in the line
+				startPos := 0
+				for {
+					idx := strings.Index(searchContent[startPos:], searchQuery)
+					if idx == -1 {
+						break
+					}
+					matches = append(matches, SearchMatch{
+						FileIndex:    fileIndex,
+						LineIndex:    originalLineIndex,
+						IsOldContent: true,
+						StartCol:     startPos + idx,
+						EndCol:       startPos + idx + len(searchQuery),
+					})
+					startPos += idx + 1
+				}
+			}
+
+			// Search in new content
+			if line.NewLine != nil {
+				content := *line.NewLine
+				searchContent := content
+				if !caseSensitive {
+					searchContent = strings.ToLower(content)
+				}
+
+				// Find all occurrences in the line
+				startPos := 0
+				for {
+					idx := strings.Index(searchContent[startPos:], searchQuery)
+					if idx == -1 {
+						break
+					}
+					matches = append(matches, SearchMatch{
+						FileIndex:    fileIndex,
+						LineIndex:    originalLineIndex,
+						IsOldContent: false,
+						StartCol:     startPos + idx,
+						EndCol:       startPos + idx + len(searchQuery),
+					})
+					startPos += idx + 1
+				}
+			}
+		}
+	}
+
+	m.searchMatches = matches
+	m.searchQuery = query
+
+	// Reset current match index
+	if len(matches) > 0 {
+		if m.searchDirection {
+			m.currentMatchIndex = 0
+		} else {
+			m.currentMatchIndex = len(matches) - 1
+		}
+		// Scroll to first match
+		m.scrollToMatch(m.currentMatchIndex)
+	} else {
+		m.currentMatchIndex = -1
+	}
+}
+
+func (m *Model) scrollToMatch(matchIndex int) {
+	if matchIndex < 0 || matchIndex >= len(m.searchMatches) {
+		return
+	}
+
+	match := m.searchMatches[matchIndex]
+
+	// Calculate the rendered line number for this match
+	renderedLineNum := m.calculateRenderedLineNumber(match.FileIndex, match.LineIndex)
+
+	// Put the match at the top of the viewport
+	m.viewport.SetYOffset(renderedLineNum)
+	m.viewport.SetContent(m.renderContent())
+}
+
+func (m *Model) nextMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+
+	m.currentMatchIndex = (m.currentMatchIndex + 1) % len(m.searchMatches)
+	m.scrollToMatch(m.currentMatchIndex)
+}
+
+func (m *Model) prevMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+
+	m.currentMatchIndex = (m.currentMatchIndex - 1 + len(m.searchMatches)) % len(m.searchMatches)
+	m.scrollToMatch(m.currentMatchIndex)
+}
+
+func (m *Model) lineHasSearchMatches(fileIndex int, lineIndex int, isOldContent bool) bool {
+	if m.searchQuery == "" || len(m.searchMatches) == 0 {
+		return false
+	}
+
+	for _, match := range m.searchMatches {
+		if match.FileIndex == fileIndex && match.LineIndex == lineIndex && match.IsOldContent == isOldContent {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) highlightSearchMatches(content string, fileIndex int, lineIndex int, isOldContent bool) string {
+	if m.searchQuery == "" || len(m.searchMatches) == 0 {
+		return content
+	}
+
+	// Find matches for this line
+	var matches []SearchMatch
+	for _, match := range m.searchMatches {
+		if match.FileIndex == fileIndex && match.LineIndex == lineIndex && match.IsOldContent == isOldContent {
+			matches = append(matches, match)
+		}
+	}
+
+	if len(matches) == 0 {
+		return content
+	}
+
+	// Sort matches by start position (descending) to process from right to left
+	for i := 0; i < len(matches); i++ {
+		for j := i + 1; j < len(matches); j++ {
+			if matches[i].StartCol < matches[j].StartCol {
+				matches[i], matches[j] = matches[j], matches[i]
+			}
+		}
+	}
+
+	// Apply highlighting from right to left to avoid position shifts
+	result := content
+	for _, match := range matches {
+		matchIndex := -1
+		for j, globalMatch := range m.searchMatches {
+			if globalMatch.FileIndex == match.FileIndex &&
+				globalMatch.LineIndex == match.LineIndex &&
+				globalMatch.IsOldContent == match.IsOldContent &&
+				globalMatch.StartCol == match.StartCol {
+				matchIndex = j
+				break
+			}
+		}
+
+		// Choose highlight style based on whether this is the current match
+		var highlightStyle lipgloss.Style
+		if matchIndex == m.currentMatchIndex {
+			// Current match - red background
+			highlightStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("1")). // red
+				Foreground(lipgloss.Color("15")) // white text
+		} else {
+			// Other matches - yellow background
+			highlightStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("11")). // bright yellow
+				Foreground(lipgloss.Color("0"))   // black text
+		}
+
+		// Extract the match text and apply highlighting
+		if match.StartCol >= 0 && match.EndCol <= len(result) {
+			before := result[:match.StartCol]
+			matchText := result[match.StartCol:match.EndCol]
+			after := result[match.EndCol:]
+
+			highlightedMatch := highlightStyle.Render(matchText)
+			result = before + highlightedMatch + after
+		}
+	}
+
+	return result
 }
 
 func (m Model) renderContent() string {
@@ -856,10 +1191,46 @@ func (m Model) renderContent() string {
 					content = strings.Repeat("-", contentWidth)
 					leftContent = content
 				} else if line.LineType == aligner.Modified && line.WordDiff != nil {
-					content = m.highlighter.HighlightLineWithWordDiff(*line.OldLine, fileWithLines.FileDiff.OldPath, line.WordDiff.OldSegments)
+					// Find original line index for this filtered line
+					originalLineIndex := filteredIndex
+					for origIdx, filtIdx := range originalToFiltered {
+						if filtIdx == filteredIndex {
+							originalLineIndex = origIdx
+							break
+						}
+					}
+
+					originalText := *line.OldLine
+
+					// Check if this line has search matches
+					if m.lineHasSearchMatches(fileIndex, originalLineIndex, true) {
+						// Skip syntax highlighting and just apply search highlighting
+						content = m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, true)
+					} else {
+						// Apply normal syntax highlighting with word diff
+						content = m.highlighter.HighlightLineWithWordDiff(originalText, fileWithLines.FileDiff.OldPath, line.WordDiff.OldSegments)
+					}
 					leftContent = " " + content
 				} else {
-					content = m.highlighter.HighlightLine(*line.OldLine, fileWithLines.FileDiff.OldPath)
+					// Find original line index for this filtered line
+					originalLineIndex := filteredIndex
+					for origIdx, filtIdx := range originalToFiltered {
+						if filtIdx == filteredIndex {
+							originalLineIndex = origIdx
+							break
+						}
+					}
+
+					originalText := *line.OldLine
+
+					// Check if this line has search matches
+					if m.lineHasSearchMatches(fileIndex, originalLineIndex, true) {
+						// Skip syntax highlighting and just apply search highlighting
+						content = m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, true)
+					} else {
+						// Apply normal syntax highlighting
+						content = m.highlighter.HighlightLine(originalText, fileWithLines.FileDiff.OldPath)
+					}
 					leftContent = " " + content
 				}
 
@@ -887,10 +1258,46 @@ func (m Model) renderContent() string {
 					content = strings.Repeat("-", contentWidth)
 					rightContent = content
 				} else if line.LineType == aligner.Modified && line.WordDiff != nil {
-					content = m.highlighter.HighlightLineWithWordDiff(*line.NewLine, fileWithLines.FileDiff.NewPath, line.WordDiff.NewSegments)
+					// Find original line index for this filtered line
+					originalLineIndex := filteredIndex
+					for origIdx, filtIdx := range originalToFiltered {
+						if filtIdx == filteredIndex {
+							originalLineIndex = origIdx
+							break
+						}
+					}
+
+					originalText := *line.NewLine
+
+					// Check if this line has search matches
+					if m.lineHasSearchMatches(fileIndex, originalLineIndex, false) {
+						// Skip syntax highlighting and just apply search highlighting
+						content = m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, false)
+					} else {
+						// Apply normal syntax highlighting with word diff
+						content = m.highlighter.HighlightLineWithWordDiff(originalText, fileWithLines.FileDiff.NewPath, line.WordDiff.NewSegments)
+					}
 					rightContent = " " + content
 				} else {
-					content = m.highlighter.HighlightLine(*line.NewLine, fileWithLines.FileDiff.NewPath)
+					// Find original line index for this filtered line
+					originalLineIndex := filteredIndex
+					for origIdx, filtIdx := range originalToFiltered {
+						if filtIdx == filteredIndex {
+							originalLineIndex = origIdx
+							break
+						}
+					}
+
+					originalText := *line.NewLine
+
+					// Check if this line has search matches
+					if m.lineHasSearchMatches(fileIndex, originalLineIndex, false) {
+						// Skip syntax highlighting and just apply search highlighting
+						content = m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, false)
+					} else {
+						// Apply normal syntax highlighting
+						content = m.highlighter.HighlightLine(originalText, fileWithLines.FileDiff.NewPath)
+					}
 					rightContent = " " + content
 				}
 				// Check if cursor is on this line (need to map from original to filtered index)
