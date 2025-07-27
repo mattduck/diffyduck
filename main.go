@@ -13,6 +13,7 @@ import (
 	"github.com/mattduck/diffyduck/git"
 	"github.com/mattduck/diffyduck/parser"
 	"github.com/mattduck/diffyduck/ui"
+	"github.com/mattduck/diffyduck/v2/cmd"
 )
 
 func main() {
@@ -27,6 +28,12 @@ func main() {
 			return
 		case "pager":
 			handlePagerCommand()
+			return
+		case "v2":
+			handleV2Command()
+			return
+		case "poc":
+			handlePOCCommand()
 			return
 		}
 	}
@@ -276,6 +283,20 @@ func runShowViewer(input string, commitArgs ...string) {
 
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleV2Command() {
+	if err := cmd.RunV2(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error running v2: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handlePOCCommand() {
+	if err := cmd.RunPOC(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error running POC: %v\n", err)
 		os.Exit(1)
 	}
 }
