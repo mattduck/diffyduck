@@ -1324,7 +1324,7 @@ func (m Model) renderContent() string {
 	lineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth).
 		Align(lipgloss.Right).
-		Foreground(lipgloss.Color("15")) // white
+		Foreground(lipgloss.Color("8")) // white
 
 	addedLineNumStyle := lipgloss.NewStyle().
 		Width(lineNumWidth + changeMarkerWidth).
