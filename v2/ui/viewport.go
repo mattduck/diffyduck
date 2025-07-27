@@ -40,8 +40,8 @@ type DiffViewport struct {
 const (
 	defaultCacheSize  = 1000
 	lineNumWidth      = 5
-	changeMarkerWidth = 1
-	separatorWidth    = 9 // " | " + " | " + "|"
+	changeMarkerWidth = 3 // One space with background + two spaces without
+	separatorWidth    = 7 // " | " + " | " + "|"
 )
 
 // NewDiffViewport creates a new virtual diff viewport
@@ -163,10 +163,10 @@ func (dv *DiffViewport) renderFileHeader(screen tcell.Screen, row int, lineInfo 
 		style = tcell.StyleDefault.Foreground(tcell.ColorGreen)
 	} else if file.FileDiff.NewPath == "/dev/null" {
 		marker = "-"
-		style = tcell.StyleDefault.Foreground(tcell.ColorRed)
+		style = tcell.StyleDefault.Foreground(tcell.ColorMaroon)
 	} else {
 		marker = "~"
-		style = tcell.StyleDefault.Foreground(tcell.ColorBlue)
+		style = tcell.StyleDefault.Foreground(tcell.ColorNavy)
 	}
 
 	headerText := fmt.Sprintf("%s %s", marker, filename)
@@ -186,29 +186,48 @@ func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo
 
 	// Left side (old content)
 	leftContent := ""
-	leftStyle := tcell.StyleDefault
+	leftContentStyle := tcell.StyleDefault
+	leftLineNumStyle := tcell.StyleDefault
 	if line.OldLine != nil {
 		leftContent = dv.getHighlightedContent(*line.OldLine, lineInfo.FilePath, true, lineInfo)
 		leftContent = dv.applyHorizontalOffset(leftContent, contentWidth)
+		// Content has no background highlighting
+		leftContentStyle = tcell.StyleDefault
+		// Line number style based on change type
 		if line.LineType == aligner.Deleted {
-			leftStyle = tcell.StyleDefault.Background(tcell.ColorMaroon)
+			leftLineNumStyle = tcell.StyleDefault.Foreground(tcell.ColorMaroon).Background(tcell.Color16)
 		} else if line.LineType == aligner.Modified {
-			leftStyle = tcell.StyleDefault.Background(tcell.ColorNavy)
+			leftLineNumStyle = tcell.StyleDefault.Foreground(tcell.ColorNavy).Background(tcell.Color16)
+		} else {
+			leftLineNumStyle = tcell.StyleDefault.Foreground(tcell.ColorGray)
+		}
+	} else {
+		// Empty line number for missing content (only when there's a change on the other side)
+		if line.NewLine != nil && (line.LineType == aligner.Added || line.LineType == aligner.Modified) {
+			leftLineNumStyle = tcell.StyleDefault.Background(tcell.Color16)
+		} else {
+			leftLineNumStyle = tcell.StyleDefault.Foreground(tcell.ColorGray)
 		}
 	}
 
 	// Left line number
 	leftLineNum := ""
 	if line.OldLine != nil {
-		leftLineNum = fmt.Sprintf("%*d ", lineNumWidth, line.OldLineNum)
+		leftLineNum = fmt.Sprintf("%*d", lineNumWidth, line.OldLineNum)
 	} else {
-		leftLineNum = strings.Repeat(" ", lineNumWidth+1)
+		leftLineNum = strings.Repeat(" ", lineNumWidth)
 	}
-	dv.drawText(screen, col, row, leftLineNum, leftStyle)
-	col += lineNumWidth + changeMarkerWidth
+	dv.drawText(screen, col, row, leftLineNum, leftLineNumStyle)
+	col += lineNumWidth
+	// Add one space with same background as line number
+	dv.drawText(screen, col, row, " ", leftLineNumStyle)
+	col += 1
+	// Add separator spaces with no formatting
+	dv.drawText(screen, col, row, "  ", tcell.StyleDefault)
+	col += 2
 
 	// Left content
-	dv.drawText(screen, col, row, leftContent, leftStyle)
+	dv.drawText(screen, col, row, leftContent, leftContentStyle)
 	col += contentWidth
 
 	// Separator
@@ -217,29 +236,48 @@ func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo
 
 	// Right side (new content)
 	rightContent := ""
-	rightStyle := tcell.StyleDefault
+	rightContentStyle := tcell.StyleDefault
+	rightLineNumStyle := tcell.StyleDefault
 	if line.NewLine != nil {
 		rightContent = dv.getHighlightedContent(*line.NewLine, lineInfo.FilePath, false, lineInfo)
 		rightContent = dv.applyHorizontalOffset(rightContent, contentWidth)
+		// Content has no background highlighting
+		rightContentStyle = tcell.StyleDefault
+		// Line number style based on change type
 		if line.LineType == aligner.Added {
-			rightStyle = tcell.StyleDefault.Background(tcell.ColorDarkGreen)
+			rightLineNumStyle = tcell.StyleDefault.Foreground(tcell.ColorGreen).Background(tcell.Color16)
 		} else if line.LineType == aligner.Modified {
-			rightStyle = tcell.StyleDefault.Background(tcell.ColorNavy)
+			rightLineNumStyle = tcell.StyleDefault.Foreground(tcell.ColorNavy).Background(tcell.Color16)
+		} else {
+			rightLineNumStyle = tcell.StyleDefault.Foreground(tcell.ColorGray)
+		}
+	} else {
+		// Empty line number for missing content (only when there's a change on the other side)
+		if line.OldLine != nil && (line.LineType == aligner.Deleted || line.LineType == aligner.Modified) {
+			rightLineNumStyle = tcell.StyleDefault.Background(tcell.Color16)
+		} else {
+			rightLineNumStyle = tcell.StyleDefault.Foreground(tcell.ColorGray)
 		}
 	}
 
 	// Right line number
 	rightLineNum := ""
 	if line.NewLine != nil {
-		rightLineNum = fmt.Sprintf("%*d ", lineNumWidth, line.NewLineNum)
+		rightLineNum = fmt.Sprintf("%*d", lineNumWidth, line.NewLineNum)
 	} else {
-		rightLineNum = strings.Repeat(" ", lineNumWidth+1)
+		rightLineNum = strings.Repeat(" ", lineNumWidth)
 	}
-	dv.drawText(screen, col, row, rightLineNum, rightStyle)
-	col += lineNumWidth + changeMarkerWidth
+	dv.drawText(screen, col, row, rightLineNum, rightLineNumStyle)
+	col += lineNumWidth
+	// Add one space with same background as line number
+	dv.drawText(screen, col, row, " ", rightLineNumStyle)
+	col += 1
+	// Add separator spaces with no formatting
+	dv.drawText(screen, col, row, "  ", tcell.StyleDefault)
+	col += 2
 
 	// Right content
-	dv.drawText(screen, col, row, rightContent, rightStyle)
+	dv.drawText(screen, col, row, rightContent, rightContentStyle)
 }
 
 // getHighlightedContent returns highlighted content for a line, using cache when possible
