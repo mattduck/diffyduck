@@ -71,7 +71,9 @@ func TestViewportPerformanceWithLargeFile(t *testing.T) {
 		t.Errorf("Viewport creation too slow: %v (expected < 100ms)", creationTime)
 	}
 
-	// Test line highlighting performance
+	// Test line highlighting performance (after first render)
+	viewport.firstRenderDone = true // Simulate first render complete
+
 	lineInfo := models.LineInfo{
 		FileIndex: 0,
 		LineIndex: 10,
@@ -227,5 +229,64 @@ func BenchmarkViewportCreation(b *testing.B) {
 		content := models.NewDiffContent(files)
 		viewport := NewDiffViewport(content)
 		viewport.Close()
+	}
+}
+
+func TestFirstRenderPerformance(t *testing.T) {
+	// Create test content
+	alignedLines := make([]aligner.AlignedLine, 0, 100)
+
+	for i := 0; i < 100; i++ {
+		lineNum := i + 1
+		funcLine := fmt.Sprintf("func test%d() { fmt.Println(\"hello %d\") }", i, i)
+		alignedLines = append(alignedLines, aligner.AlignedLine{
+			OldLine:    stringPtr(funcLine),
+			NewLine:    stringPtr(funcLine),
+			LineType:   aligner.Unchanged,
+			OldLineNum: lineNum,
+			NewLineNum: lineNum,
+		})
+	}
+
+	files := []models.FileWithLines{
+		{
+			FileDiff: parser.FileDiff{
+				OldPath: "first_render_test.go",
+				NewPath: "first_render_test.go",
+			},
+			AlignedLines: alignedLines,
+			OldFileType:  git.TextFile,
+			NewFileType:  git.TextFile,
+		},
+	}
+
+	content := models.NewDiffContent(files)
+	viewport := NewDiffViewport(content)
+	defer viewport.Close()
+
+	// Test first render performance (without syntax highlighting)
+	lineInfo := models.LineInfo{
+		FileIndex: 0,
+		LineIndex: 0,
+		Line:      alignedLines[0],
+		FilePath:  "first_render_test.go",
+	}
+
+	start := time.Now()
+	for i := 0; i < 25; i++ { // Simulate viewport height
+		lineInfo.LineIndex = i
+		lineInfo.Line = alignedLines[i]
+		spans := viewport.getHighlightedStyleSpans(*alignedLines[i].OldLine, "first_render_test.go", true, lineInfo)
+
+		// Should return nil during progressive mode before first render
+		if spans != nil {
+			t.Error("Expected no highlighting during first render in progressive mode")
+		}
+	}
+	firstRenderTime := time.Since(start)
+
+	t.Logf("First render (25 lines, no highlighting) took: %v", firstRenderTime)
+	if firstRenderTime > 5*time.Millisecond {
+		t.Errorf("First render too slow: %v (expected < 5ms)", firstRenderTime)
 	}
 }

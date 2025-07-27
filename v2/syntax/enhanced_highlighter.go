@@ -160,6 +160,74 @@ func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) 
 	return nil
 }
 
+// ParseFilePartial parses only a portion of a file for fast startup
+func (eh *EnhancedHighlighter) ParseFilePartial(filePath string, partialContent []string, startLine int) error {
+	// Clean expired cache entries first
+	eh.cleanExpiredCache()
+
+	// Check if already cached and recent
+	if cache, exists := eh.fileCache[filePath]; exists {
+		if time.Since(cache.Timestamp) < eh.defaultTTL {
+			return nil // Already cached and fresh
+		}
+		// Clean up old cache
+		if cache.Tree != nil {
+			cache.Tree.Close()
+		}
+	}
+
+	// Join partial content for parsing
+	fullContent := strings.Join(partialContent, "\n")
+
+	// Use base highlighter to detect language and get parser
+	lang, supported := eh.detectLanguage(filePath)
+	if !supported {
+		// Store empty cache for unsupported files to avoid repeated attempts
+		eh.fileCache[filePath] = &FileHighlightCache{
+			Language:    "",
+			FileContent: partialContent,
+			LineStyles:  make(map[int][]StyleSpan),
+			Timestamp:   time.Now(),
+			FilePath:    filePath,
+		}
+		return nil
+	}
+
+	parser := eh.getOrCreateParser(lang)
+	if parser == nil {
+		return fmt.Errorf("failed to create parser for language %s", lang.GetLanguageName())
+	}
+
+	// Parse the partial file content
+	tree := parser.Parse([]byte(fullContent), nil)
+	if tree == nil {
+		return fmt.Errorf("failed to parse partial file %s", filePath)
+	}
+
+	// Create cache entry for partial content
+	cache := &FileHighlightCache{
+		Tree:        tree,
+		Language:    lang.GetLanguageName(),
+		FileContent: partialContent,
+		LineStyles:  make(map[int][]StyleSpan),
+		Timestamp:   time.Now(),
+		FilePath:    filePath,
+	}
+
+	eh.fileCache[filePath] = cache
+	return nil
+}
+
+// IsFileParsed checks if a file has been parsed and cached
+func (eh *EnhancedHighlighter) IsFileParsed(filePath string) bool {
+	cache, exists := eh.fileCache[filePath]
+	if !exists {
+		return false
+	}
+	// Check if cache is still valid
+	return time.Since(cache.Timestamp) < eh.defaultTTL
+}
+
 // GetLineHighlighting returns the highlighted content for a specific line
 func (eh *EnhancedHighlighter) GetLineHighlighting(filePath string, lineNumber int, lineContent string) string {
 	// Get or create file cache

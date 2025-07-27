@@ -20,6 +20,12 @@ type POCApp struct {
 	frameCount    int
 	lastStatsTime time.Time
 	fps           float64
+
+	// Progressive rendering communication
+	rerenderChan chan bool
+
+	// Background parsing state
+	backgroundParsingComplete bool
 }
 
 // NewPOCApp creates a new POC application
@@ -41,6 +47,7 @@ func NewPOCApp(files []models.FileWithLines) (*POCApp, error) {
 		viewport:      viewport,
 		content:       content,
 		lastStatsTime: time.Now(),
+		rerenderChan:  make(chan bool, 1), // Buffered channel to avoid blocking
 	}
 
 	return app, nil
@@ -58,6 +65,10 @@ func (app *POCApp) Run() error {
 	statsTicker := time.NewTicker(time.Second) // Update stats every second
 	defer statsTicker.Stop()
 
+	// Enable progressive rendering with background file parsing
+	progressiveTicker := time.NewTicker(50 * time.Millisecond) // Check for progressive rendering updates
+	defer progressiveTicker.Stop()
+
 	app.render()
 
 	for !app.quit {
@@ -66,6 +77,26 @@ func (app *POCApp) Run() error {
 			// Update stats periodically
 			app.updateStats()
 			app.render() // Re-render to show updated stats
+
+		case <-progressiveTicker.C:
+			// Do incremental background file parsing
+			if !app.backgroundParsingComplete {
+				allDone := app.viewport.ParseNextFileInBackground()
+				if allDone {
+					app.backgroundParsingComplete = true
+				}
+			}
+
+			// Check if we need to re-render due to progressive highlighting
+			if app.viewport.IsProgressiveRenderingComplete() && app.backgroundParsingComplete {
+				progressiveTicker.Stop() // Stop checking once complete
+			}
+			// Re-render to show any new highlighting that's become available
+			app.render()
+
+		case <-app.rerenderChan:
+			// Re-render requested from background goroutine
+			app.render()
 
 		default:
 			// Check for events immediately
@@ -227,5 +258,8 @@ func (app *POCApp) cleanup() {
 	}
 	if app.screen != nil {
 		app.screen.Fini()
+	}
+	if app.rerenderChan != nil {
+		close(app.rerenderChan) // Close channel to prevent goroutine leaks
 	}
 }
