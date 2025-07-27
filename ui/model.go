@@ -25,6 +25,8 @@ const (
 )
 
 const DefaultContextLines = 3
+const scrollIncrement = 1
+const tabWidth = 4
 
 type FileWithLines struct {
 	FileDiff     parser.FileDiff
@@ -64,6 +66,47 @@ type Model struct {
 	searchMatches     []SearchMatch
 	currentMatchIndex int
 	searchDirection   bool // true for forward, false for backward
+	// Horizontal scrolling
+	horizontalOffset int
+	maxLineLength    int
+}
+
+func expandTabs(s string) string {
+	var result strings.Builder
+	col := 0
+	for _, r := range s {
+		if r == '\t' {
+			spaces := tabWidth - (col % tabWidth)
+			result.WriteString(strings.Repeat(" ", spaces))
+			col += spaces
+		} else {
+			result.WriteRune(r)
+			col++
+		}
+	}
+	return result.String()
+}
+
+func applyHorizontalOffset(content string, offset int, width int) string {
+	// First expand tabs to ensure consistent column counting
+	expanded := expandTabs(content)
+
+	// If content is shorter than offset, return spaces to maintain column width
+	if len(expanded) <= offset {
+		return strings.Repeat(" ", width)
+	}
+
+	// Extract substring starting at offset
+	result := expanded[offset:]
+
+	// Pad or truncate to exact width
+	if len(result) > width {
+		result = result[:width]
+	} else if len(result) < width {
+		result = result + strings.Repeat(" ", width-len(result))
+	}
+
+	return result
 }
 
 func NewModel(filesWithLines []FileWithLines) Model {
@@ -83,9 +126,37 @@ func NewModel(filesWithLines []FileWithLines) Model {
 		searchInput:       ti,
 		currentMatchIndex: -1,
 		searchDirection:   true,
+		horizontalOffset:  0,
 	}
 	model.navigableLines = model.buildNavigableLines()
+	model.calculateMaxLineLength()
 	return model
+}
+
+func (m *Model) calculateMaxLineLength() {
+	maxLen := 0
+
+	for fileIndex, fileWithLines := range m.filesWithLines {
+		effectiveLevel := m.getEffectiveExpandLevel(fileIndex)
+		linesToCheck := m.filterAlignedLinesForLevel(fileWithLines.AlignedLines, effectiveLevel)
+
+		for _, line := range linesToCheck {
+			if line.OldLine != nil {
+				expandedLine := expandTabs(*line.OldLine)
+				if len(expandedLine) > maxLen {
+					maxLen = len(expandedLine)
+				}
+			}
+			if line.NewLine != nil {
+				expandedLine := expandTabs(*line.NewLine)
+				if len(expandedLine) > maxLen {
+					maxLen = len(expandedLine)
+				}
+			}
+		}
+	}
+
+	m.maxLineLength = maxLen
 }
 
 func (m Model) getEffectiveExpandLevel(fileIndex int) ExpandLevel {
@@ -228,6 +299,12 @@ func (m *Model) cycleExpandLevel(direction int) {
 
 func (m *Model) rebuildAndRefresh() {
 	m.navigableLines = m.buildNavigableLines()
+
+	// Recalculate max line length for new expand level
+	m.calculateMaxLineLength()
+
+	// Reset horizontal offset when changing expand levels
+	m.horizontalOffset = 0
 
 	// Re-run search if there's an active search query
 	if m.searchQuery != "" {
@@ -664,6 +741,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, gTimeout()
 		case "G":
 			m.viewport.GotoBottom()
+		case "h":
+			// Scroll left
+			if m.horizontalOffset > 0 {
+				m.horizontalOffset -= scrollIncrement
+				if m.horizontalOffset < 0 {
+					m.horizontalOffset = 0
+				}
+				m.viewport.SetContent(m.renderContent())
+			}
+		case "l":
+			// Scroll right
+			// Calculate content width available for text
+			const lineNumWidth = 5
+			const changeMarkerWidth = 1
+			totalSeparators := 9 + 2*(lineNumWidth+changeMarkerWidth)
+			contentWidth := (m.width - totalSeparators) / 2
+			if contentWidth < 20 {
+				contentWidth = 20
+			}
+
+			maxScroll := m.maxLineLength - contentWidth
+			if maxScroll > 0 && m.horizontalOffset < maxScroll {
+				m.horizontalOffset += scrollIncrement
+				if m.horizontalOffset > maxScroll {
+					m.horizontalOffset = maxScroll
+				}
+				m.viewport.SetContent(m.renderContent())
+			}
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -902,6 +1007,39 @@ func (m *Model) scrollToMatch(matchIndex int) {
 
 	// Put the match at the top of the viewport
 	m.viewport.SetYOffset(renderedLineNum)
+
+	// Auto-scroll horizontally if match is off-screen
+	const lineNumWidth = 5
+	const changeMarkerWidth = 1
+	totalSeparators := 9 + 2*(lineNumWidth+changeMarkerWidth)
+	contentWidth := (m.width - totalSeparators) / 2
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+
+	// Check if the match is visible horizontally
+	matchStart := match.StartCol
+
+	// If match starts after current view, scroll right
+	if matchStart >= m.horizontalOffset+contentWidth {
+		m.horizontalOffset = matchStart - contentWidth/2
+		if m.horizontalOffset < 0 {
+			m.horizontalOffset = 0
+		}
+	} else if matchStart < m.horizontalOffset {
+		// If match starts before current view, scroll left
+		m.horizontalOffset = matchStart - 10 // Leave some context
+		if m.horizontalOffset < 0 {
+			m.horizontalOffset = 0
+		}
+	}
+
+	// Ensure we don't scroll past the max line length
+	maxScroll := m.maxLineLength - contentWidth
+	if maxScroll > 0 && m.horizontalOffset > maxScroll {
+		m.horizontalOffset = maxScroll
+	}
+
 	m.viewport.SetContent(m.renderContent())
 }
 
@@ -945,7 +1083,22 @@ func (m *Model) highlightSearchMatches(content string, fileIndex int, lineIndex 
 	var matches []SearchMatch
 	for _, match := range m.searchMatches {
 		if match.FileIndex == fileIndex && match.LineIndex == lineIndex && match.IsOldContent == isOldContent {
-			matches = append(matches, match)
+			// Adjust match positions for horizontal offset
+			adjustedMatch := match
+			adjustedMatch.StartCol -= m.horizontalOffset
+			adjustedMatch.EndCol -= m.horizontalOffset
+
+			// Only include matches that are at least partially visible
+			if adjustedMatch.EndCol > 0 && adjustedMatch.StartCol < len(content) {
+				// Clamp to content bounds
+				if adjustedMatch.StartCol < 0 {
+					adjustedMatch.StartCol = 0
+				}
+				if adjustedMatch.EndCol > len(content) {
+					adjustedMatch.EndCol = len(content)
+				}
+				matches = append(matches, adjustedMatch)
+			}
 		}
 	}
 
@@ -965,12 +1118,13 @@ func (m *Model) highlightSearchMatches(content string, fileIndex int, lineIndex 
 	// Apply highlighting from right to left to avoid position shifts
 	result := content
 	for _, match := range matches {
+		// Find the original match to check if it's the current one
 		matchIndex := -1
 		for j, globalMatch := range m.searchMatches {
-			if globalMatch.FileIndex == match.FileIndex &&
-				globalMatch.LineIndex == match.LineIndex &&
-				globalMatch.IsOldContent == match.IsOldContent &&
-				globalMatch.StartCol == match.StartCol {
+			if globalMatch.FileIndex == fileIndex &&
+				globalMatch.LineIndex == lineIndex &&
+				globalMatch.IsOldContent == isOldContent &&
+				globalMatch.StartCol == match.StartCol+m.horizontalOffset {
 				matchIndex = j
 				break
 			}
@@ -1201,14 +1355,18 @@ func (m Model) renderContent() string {
 					}
 
 					originalText := *line.OldLine
+					// Apply horizontal offset before syntax highlighting
+					// Account for the leading space that will be added
+					offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, true) {
 						// Skip syntax highlighting and just apply search highlighting
-						content = m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, true)
+						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, true)
 					} else {
 						// Apply normal syntax highlighting with word diff
-						content = m.highlighter.HighlightLineWithWordDiff(originalText, fileWithLines.FileDiff.OldPath, line.WordDiff.OldSegments)
+						// TODO: This needs adjustment for word diff segments after offset
+						content = m.highlighter.HighlightLine(offsetText, fileWithLines.FileDiff.OldPath)
 					}
 					leftContent = " " + content
 				} else {
@@ -1222,14 +1380,17 @@ func (m Model) renderContent() string {
 					}
 
 					originalText := *line.OldLine
+					// Apply horizontal offset before syntax highlighting
+					// Account for the leading space that will be added
+					offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, true) {
 						// Skip syntax highlighting and just apply search highlighting
-						content = m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, true)
+						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, true)
 					} else {
 						// Apply normal syntax highlighting
-						content = m.highlighter.HighlightLine(originalText, fileWithLines.FileDiff.OldPath)
+						content = m.highlighter.HighlightLine(offsetText, fileWithLines.FileDiff.OldPath)
 					}
 					leftContent = " " + content
 				}
@@ -1247,6 +1408,7 @@ func (m Model) renderContent() string {
 			} else {
 				// Empty left side - apply background to match changed lines
 				leftLineNumBlock = emptyLineNumStyle.Render(strings.Repeat(" ", lineNumWidth+changeMarkerWidth))
+				leftContent = strings.Repeat(" ", contentWidth)
 			}
 
 			// Format right side
@@ -1268,14 +1430,18 @@ func (m Model) renderContent() string {
 					}
 
 					originalText := *line.NewLine
+					// Apply horizontal offset before syntax highlighting
+					// Account for the leading space that will be added
+					offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, false) {
 						// Skip syntax highlighting and just apply search highlighting
-						content = m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, false)
+						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, false)
 					} else {
 						// Apply normal syntax highlighting with word diff
-						content = m.highlighter.HighlightLineWithWordDiff(originalText, fileWithLines.FileDiff.NewPath, line.WordDiff.NewSegments)
+						// TODO: This needs adjustment for word diff segments after offset
+						content = m.highlighter.HighlightLine(offsetText, fileWithLines.FileDiff.NewPath)
 					}
 					rightContent = " " + content
 				} else {
@@ -1289,14 +1455,17 @@ func (m Model) renderContent() string {
 					}
 
 					originalText := *line.NewLine
+					// Apply horizontal offset before syntax highlighting
+					// Account for the leading space that will be added
+					offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, false) {
 						// Skip syntax highlighting and just apply search highlighting
-						content = m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, false)
+						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, false)
 					} else {
 						// Apply normal syntax highlighting
-						content = m.highlighter.HighlightLine(originalText, fileWithLines.FileDiff.NewPath)
+						content = m.highlighter.HighlightLine(offsetText, fileWithLines.FileDiff.NewPath)
 					}
 					rightContent = " " + content
 				}
@@ -1335,6 +1504,7 @@ func (m Model) renderContent() string {
 				// Note: emptyLineNumStyle already has the full width, so we adjust for cursor
 				emptyContent := strings.Repeat(" ", lineNumWidth) + cursorMarker
 				rightLineNumBlock = emptyLineNumStyle.Render(emptyContent)
+				rightContent = strings.Repeat(" ", contentWidth)
 			}
 
 			content.WriteString(lipgloss.JoinHorizontal(
