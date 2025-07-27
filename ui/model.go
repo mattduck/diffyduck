@@ -1233,26 +1233,11 @@ func (m *Model) highlightSearchMatches(content string, fileIndex int, lineIndex 
 		return content
 	}
 
-	// Find matches for this line
+	// Find matches for this line (using original coordinates)
 	var matches []SearchMatch
 	for _, match := range m.searchMatches {
 		if match.FileIndex == fileIndex && match.LineIndex == lineIndex && match.IsOldContent == isOldContent {
-			// Adjust match positions for horizontal offset
-			adjustedMatch := match
-			adjustedMatch.StartCol -= m.horizontalOffset
-			adjustedMatch.EndCol -= m.horizontalOffset
-
-			// Only include matches that are at least partially visible
-			if adjustedMatch.EndCol > 0 && adjustedMatch.StartCol < len(content) {
-				// Clamp to content bounds
-				if adjustedMatch.StartCol < 0 {
-					adjustedMatch.StartCol = 0
-				}
-				if adjustedMatch.EndCol > len(content) {
-					adjustedMatch.EndCol = len(content)
-				}
-				matches = append(matches, adjustedMatch)
-			}
+			matches = append(matches, match)
 		}
 	}
 
@@ -1275,10 +1260,10 @@ func (m *Model) highlightSearchMatches(content string, fileIndex int, lineIndex 
 		// Find the original match to check if it's the current one
 		matchIndex := -1
 		for j, globalMatch := range m.searchMatches {
-			if globalMatch.FileIndex == fileIndex &&
-				globalMatch.LineIndex == lineIndex &&
-				globalMatch.IsOldContent == isOldContent &&
-				globalMatch.StartCol == match.StartCol+m.horizontalOffset {
+			if globalMatch.FileIndex == match.FileIndex &&
+				globalMatch.LineIndex == match.LineIndex &&
+				globalMatch.IsOldContent == match.IsOldContent &&
+				globalMatch.StartCol == match.StartCol {
 				matchIndex = j
 				break
 			}
@@ -1512,9 +1497,9 @@ func (m Model) renderContent() string {
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, true) {
-						// Apply horizontal offset before search highlighting
-						offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
-						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, true)
+						// Apply search highlighting first, then horizontal offset
+						highlighted := m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, true)
+						content = applyHorizontalOffsetWithANSI(highlighted, m.horizontalOffset, contentWidth-1)
 					} else {
 						// Apply syntax highlighting with word diff first, then horizontal offset
 						highlighted := m.highlighter.HighlightLineWithWordDiff(originalText, fileWithLines.FileDiff.OldPath, line.WordDiff.OldSegments)
@@ -1535,9 +1520,9 @@ func (m Model) renderContent() string {
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, true) {
-						// Apply horizontal offset before search highlighting
-						offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
-						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, true)
+						// Apply search highlighting first, then horizontal offset
+						highlighted := m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, true)
+						content = applyHorizontalOffsetWithANSI(highlighted, m.horizontalOffset, contentWidth-1)
 					} else {
 						// Apply syntax highlighting first, then horizontal offset
 						highlighted := m.highlighter.HighlightLine(originalText, fileWithLines.FileDiff.OldPath)
@@ -1584,9 +1569,9 @@ func (m Model) renderContent() string {
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, false) {
-						// Apply horizontal offset before search highlighting
-						offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
-						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, false)
+						// Apply search highlighting first, then horizontal offset
+						highlighted := m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, false)
+						content = applyHorizontalOffsetWithANSI(highlighted, m.horizontalOffset, contentWidth-1)
 					} else {
 						// Apply syntax highlighting with word diff first, then horizontal offset
 						highlighted := m.highlighter.HighlightLineWithWordDiff(originalText, fileWithLines.FileDiff.NewPath, line.WordDiff.NewSegments)
@@ -1607,9 +1592,9 @@ func (m Model) renderContent() string {
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, false) {
-						// Apply horizontal offset before search highlighting
-						offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
-						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, false)
+						// Apply search highlighting first, then horizontal offset
+						highlighted := m.highlightSearchMatches(originalText, fileIndex, originalLineIndex, false)
+						content = applyHorizontalOffsetWithANSI(highlighted, m.horizontalOffset, contentWidth-1)
 					} else {
 						// Apply syntax highlighting first, then horizontal offset
 						highlighted := m.highlighter.HighlightLine(originalText, fileWithLines.FileDiff.NewPath)
