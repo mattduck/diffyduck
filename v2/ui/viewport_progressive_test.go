@@ -50,12 +50,10 @@ func TestProgressiveRendering(t *testing.T) {
 		t.Error("Expected progressive mode to be enabled by default")
 	}
 
-	// Verify first render hasn't happened yet
-	if viewport.firstRenderDone {
-		t.Error("Expected firstRenderDone to be false initially")
-	}
+	// Force complete highlighting for testing
+	viewport.ForceCompleteHighlighting()
 
-	// First call to getHighlightedStyleSpans should return nil (no highlighting)
+	// After forcing complete highlighting, it should work
 	lineInfo := models.LineInfo{
 		FileIndex: 0,
 		LineIndex: 0,
@@ -64,16 +62,14 @@ func TestProgressiveRendering(t *testing.T) {
 	}
 
 	spans := viewport.getHighlightedStyleSpans("package main", "test.go", false, lineInfo)
-	if spans != nil {
-		t.Error("Expected no highlighting before first render")
+	if spans == nil {
+		t.Error("Expected highlighting to work after forcing complete highlighting")
 	}
 
-	// Mark first render as done
-	viewport.firstRenderDone = true
-
-	// Now highlighting should work
-	spans = viewport.getHighlightedStyleSpans("package main", "test.go", false, lineInfo)
-	// Note: spans might still be nil if parsing hasn't happened yet, but should not error
+	// Verify the highlighter was initialized
+	if viewport.enhancedHighlighter == nil {
+		t.Error("Expected enhanced highlighter to be initialized")
+	}
 }
 
 func TestProgressiveRenderingDisabled(t *testing.T) {

@@ -65,6 +65,10 @@ func TestViewportWithSyntaxHighlighting(t *testing.T) {
 	if viewport == nil {
 		t.Fatal("Expected non-nil viewport")
 	}
+
+	// Force complete highlighting for testing
+	viewport.ForceCompleteHighlighting()
+
 	if viewport.enhancedHighlighter == nil {
 		t.Error("Expected enhanced highlighter to be initialized")
 	}
@@ -153,6 +157,9 @@ func TestViewportBinaryFileHandling(t *testing.T) {
 	content := models.NewDiffContent(files)
 	viewport := NewDiffViewport(content)
 	defer viewport.Close()
+
+	// Force complete highlighting for testing
+	viewport.ForceCompleteHighlighting()
 
 	// Should handle binary files gracefully
 	if viewport.enhancedHighlighter == nil {

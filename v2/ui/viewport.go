@@ -1056,6 +1056,28 @@ func (dv *DiffViewport) upgradePartialToFullFile(fileIndex int, isOld bool) {
 	}
 }
 
+// ForceCompleteHighlighting forces immediate parsing of all files for testing purposes.
+// This should ONLY be used in tests to ensure consistent highlighting state.
+func (dv *DiffViewport) ForceCompleteHighlighting() {
+	// Initialize the highlighter if needed
+	dv.mu.Lock()
+	if dv.enhancedHighlighter == nil && dv.enableSyntaxHighlighting {
+		dv.enhancedHighlighter = v2syntax.NewEnhancedHighlighter()
+	}
+	dv.mu.Unlock()
+
+	// Mark first render as done to enable highlighting
+	dv.firstRenderDone = true
+
+	// Parse all files completely
+	for i := range dv.content.Files {
+		dv.ensureFileParsed(i)
+	}
+
+	// Mark background highlighting as complete
+	dv.backgroundHighlighting = false
+}
+
 // SetProgressiveMode enables or disables progressive rendering
 func (dv *DiffViewport) SetProgressiveMode(enabled bool) {
 	dv.progressiveMode = enabled

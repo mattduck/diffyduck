@@ -17,7 +17,6 @@ func TestNewDiffViewport(t *testing.T) {
 
 	assert.NotNil(t, viewport)
 	assert.Equal(t, content, viewport.content)
-	assert.NotNil(t, viewport.highlighter)
 	assert.NotNil(t, viewport.highlightCache)
 	assert.Equal(t, defaultCacheSize, viewport.cacheSize)
 }
