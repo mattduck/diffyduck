@@ -25,7 +25,7 @@ const (
 )
 
 const DefaultContextLines = 3
-const scrollIncrement = 1
+const scrollIncrement = 8
 const tabWidth = 4
 
 type FileWithLines struct {
@@ -107,6 +107,160 @@ func applyHorizontalOffset(content string, offset int, width int) string {
 	}
 
 	return result
+}
+
+// applyHorizontalOffsetWithANSI applies horizontal offset to text that may contain ANSI escape codes
+func applyHorizontalOffsetWithANSI(content string, offset int, width int) string {
+	// Parse content into segments of text and ANSI codes
+	type segment struct {
+		text string
+		ansi string // ANSI code that applies after this text
+	}
+
+	var segments []segment
+	var currentText strings.Builder
+	var currentANSI strings.Builder
+	inANSI := false
+
+	for i := 0; i < len(content); i++ {
+		if content[i] == '\x1b' && i+1 < len(content) && content[i+1] == '[' {
+			// Start of ANSI escape sequence
+			if currentText.Len() > 0 {
+				segments = append(segments, segment{text: currentText.String()})
+				currentText.Reset()
+			}
+			inANSI = true
+			currentANSI.WriteByte(content[i])
+		} else if inANSI {
+			currentANSI.WriteByte(content[i])
+			if content[i] == 'm' {
+				// End of ANSI sequence
+				inANSI = false
+				if len(segments) > 0 {
+					segments[len(segments)-1].ansi = currentANSI.String()
+				} else {
+					segments = append(segments, segment{ansi: currentANSI.String()})
+				}
+				currentANSI.Reset()
+			}
+		} else {
+			currentText.WriteByte(content[i])
+		}
+	}
+
+	// Add any remaining text
+	if currentText.Len() > 0 {
+		segments = append(segments, segment{text: currentText.String()})
+	}
+
+	// Apply offset and rebuild with ANSI codes
+	var result strings.Builder
+	visualPos := 0
+	var activeANSI string
+	firstVisibleSegment := true
+	visibleContentLen := 0 // Track actual visible content length
+
+	for _, seg := range segments {
+		// Expand tabs in this segment
+		expandedText := expandTabs(seg.text)
+		segLen := len(expandedText)
+
+		// Handle segments with no text (ANSI-only segments)
+		if segLen == 0 {
+			if visualPos >= offset && visualPos < offset+width {
+				// This ANSI code is within the visible window
+				if seg.ansi != "" {
+					result.WriteString(seg.ansi)
+					activeANSI = seg.ansi
+				}
+			} else if visualPos <= offset {
+				// This ANSI code is before the visible window, remember it
+				if seg.ansi != "" {
+					activeANSI = seg.ansi
+				}
+			}
+			continue
+		}
+
+		if visualPos+segLen <= offset {
+			// This segment is completely before the offset
+			visualPos += segLen
+			if seg.ansi != "" {
+				activeANSI = seg.ansi // Remember the last ANSI code
+			}
+		} else if visualPos < offset {
+			// This segment spans the offset
+			startIdx := offset - visualPos
+			remainingText := expandedText[startIdx:]
+
+			// Apply any active ANSI code from previous segments
+			if activeANSI != "" {
+				result.WriteString(activeANSI)
+			}
+
+			textToAdd := remainingText
+			if len(textToAdd) > width-visibleContentLen {
+				textToAdd = textToAdd[:width-visibleContentLen]
+			}
+
+			result.WriteString(textToAdd)
+			visibleContentLen += len(textToAdd)
+
+			if seg.ansi != "" {
+				result.WriteString(seg.ansi)
+				activeANSI = seg.ansi
+			}
+			visualPos = offset + len(remainingText)
+			firstVisibleSegment = false
+
+			if visibleContentLen >= width {
+				break
+			}
+		} else if visualPos < offset+width {
+			// This segment is within the visible window
+			visibleLen := offset + width - visualPos
+			if visibleLen > segLen {
+				visibleLen = segLen
+			}
+
+			// Apply any active ANSI code from previous segments on first visible segment
+			if firstVisibleSegment && activeANSI != "" {
+				result.WriteString(activeANSI)
+			}
+
+			textToAdd := expandedText[:visibleLen]
+			if len(textToAdd) > width-visibleContentLen {
+				textToAdd = textToAdd[:width-visibleContentLen]
+			}
+
+			result.WriteString(textToAdd)
+			visibleContentLen += len(textToAdd)
+
+			if seg.ansi != "" {
+				result.WriteString(seg.ansi)
+				activeANSI = seg.ansi
+			}
+			visualPos += visibleLen
+			firstVisibleSegment = false
+
+			if visibleContentLen >= width {
+				break
+			}
+		}
+	}
+
+	// Reset ANSI at the end and pad if necessary
+	resultStr := result.String()
+	if activeANSI != "" {
+		resultStr += "\x1b[0m"
+	}
+
+	// Pad to exact width based on actual visible content
+	if visibleContentLen < width {
+		resultStr += strings.Repeat(" ", width-visibleContentLen)
+	}
+
+	return resultStr
 }
 
 func NewModel(filesWithLines []FileWithLines) Model {
@@ -1355,18 +1509,16 @@ func (m Model) renderContent() string {
 					}
 
 					originalText := *line.OldLine
-					// Apply horizontal offset before syntax highlighting
-					// Account for the leading space that will be added
-					offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, true) {
-						// Skip syntax highlighting and just apply search highlighting
+						// Apply horizontal offset before search highlighting
+						offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, true)
 					} else {
-						// Apply normal syntax highlighting with word diff
-						// TODO: This needs adjustment for word diff segments after offset
-						content = m.highlighter.HighlightLine(offsetText, fileWithLines.FileDiff.OldPath)
+						// Apply syntax highlighting with word diff first, then horizontal offset
+						highlighted := m.highlighter.HighlightLineWithWordDiff(originalText, fileWithLines.FileDiff.OldPath, line.WordDiff.OldSegments)
+						content = applyHorizontalOffsetWithANSI(highlighted, m.horizontalOffset, contentWidth-1)
 					}
 					leftContent = " " + content
 				} else {
@@ -1380,17 +1532,16 @@ func (m Model) renderContent() string {
 					}
 
 					originalText := *line.OldLine
-					// Apply horizontal offset before syntax highlighting
-					// Account for the leading space that will be added
-					offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, true) {
-						// Skip syntax highlighting and just apply search highlighting
+						// Apply horizontal offset before search highlighting
+						offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, true)
 					} else {
-						// Apply normal syntax highlighting
-						content = m.highlighter.HighlightLine(offsetText, fileWithLines.FileDiff.OldPath)
+						// Apply syntax highlighting first, then horizontal offset
+						highlighted := m.highlighter.HighlightLine(originalText, fileWithLines.FileDiff.OldPath)
+						content = applyHorizontalOffsetWithANSI(highlighted, m.horizontalOffset, contentWidth-1)
 					}
 					leftContent = " " + content
 				}
@@ -1430,18 +1581,16 @@ func (m Model) renderContent() string {
 					}
 
 					originalText := *line.NewLine
-					// Apply horizontal offset before syntax highlighting
-					// Account for the leading space that will be added
-					offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, false) {
-						// Skip syntax highlighting and just apply search highlighting
+						// Apply horizontal offset before search highlighting
+						offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, false)
 					} else {
-						// Apply normal syntax highlighting with word diff
-						// TODO: This needs adjustment for word diff segments after offset
-						content = m.highlighter.HighlightLine(offsetText, fileWithLines.FileDiff.NewPath)
+						// Apply syntax highlighting with word diff first, then horizontal offset
+						highlighted := m.highlighter.HighlightLineWithWordDiff(originalText, fileWithLines.FileDiff.NewPath, line.WordDiff.NewSegments)
+						content = applyHorizontalOffsetWithANSI(highlighted, m.horizontalOffset, contentWidth-1)
 					}
 					rightContent = " " + content
 				} else {
@@ -1455,17 +1604,16 @@ func (m Model) renderContent() string {
 					}
 
 					originalText := *line.NewLine
-					// Apply horizontal offset before syntax highlighting
-					// Account for the leading space that will be added
-					offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 
 					// Check if this line has search matches
 					if m.lineHasSearchMatches(fileIndex, originalLineIndex, false) {
-						// Skip syntax highlighting and just apply search highlighting
+						// Apply horizontal offset before search highlighting
+						offsetText := applyHorizontalOffset(originalText, m.horizontalOffset, contentWidth-1)
 						content = m.highlightSearchMatches(offsetText, fileIndex, originalLineIndex, false)
 					} else {
-						// Apply normal syntax highlighting
-						content = m.highlighter.HighlightLine(offsetText, fileWithLines.FileDiff.NewPath)
+						// Apply syntax highlighting first, then horizontal offset
+						highlighted := m.highlighter.HighlightLine(originalText, fileWithLines.FileDiff.NewPath)
+						content = applyHorizontalOffsetWithANSI(highlighted, m.horizontalOffset, contentWidth-1)
 					}
 					rightContent = " " + content
 				}
