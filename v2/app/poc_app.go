@@ -115,6 +115,12 @@ func (app *POCApp) handleEvent(event tcell.Event) bool {
 				app.viewport.ScrollVertical(-app.content.TotalLines)
 			case 'G':
 				app.viewport.ScrollVertical(app.content.TotalLines)
+			case 'f', ' ':
+				height := app.viewport.GetHeight()
+				app.viewport.ScrollVertical(height)
+			case 'b':
+				height := app.viewport.GetHeight()
+				app.viewport.ScrollVertical(-height)
 			}
 		case tcell.KeyDown:
 			app.viewport.ScrollVertical(1)
