@@ -51,7 +51,6 @@ type DiffViewport struct {
 
 	// Progressive rendering
 	enableSyntaxHighlighting bool // Whether to apply syntax highlighting
-	progressiveMode          bool // Whether to use progressive rendering
 	firstRenderDone          bool // Whether the first render without highlighting is complete
 	backgroundHighlighting   bool // Whether background highlighting is in progress
 
@@ -86,7 +85,6 @@ func NewDiffViewport(content *models.DiffContent) *DiffViewport {
 
 		// Progressive rendering settings
 		enableSyntaxHighlighting: true,  // Enable syntax highlighting with progressive parsing
-		progressiveMode:          true,  // Enable progressive parsing mode
 		firstRenderDone:          false, // Start with progressive mode
 		backgroundHighlighting:   false, // No background highlighting yet
 
@@ -216,7 +214,7 @@ func (dv *DiffViewport) Render(screen tcell.Screen) {
 		internal.Logf("[VIEWPORT] Viewport render complete in %v", time.Since(start))
 
 		// Mark first render as done - DON'T start background goroutine
-		if dv.progressiveMode && !dv.firstRenderDone {
+		if !dv.firstRenderDone {
 			dv.firstRenderDone = true
 			internal.Log("[VIEWPORT] Marked first render as done")
 			// Background parsing is now handled by main thread timer, not goroutines
@@ -459,7 +457,7 @@ func (dv *DiffViewport) getHighlightedStyleSpans(content, filePath string, isOld
 
 	// For progressive mode, parse visible content synchronously on first render
 	// Only parse the first file to keep startup fast, and only do it once per file
-	if dv.progressiveMode && !dv.firstRenderDone && lineInfo.FileIndex == 0 {
+	if !dv.firstRenderDone && lineInfo.FileIndex == 0 {
 		// Check if we've already parsed this file during first render
 		if !dv.parsedDuringFirstRender[lineInfo.FileIndex] {
 			internal.Logf("[HIGHLIGHTING] About to parse visible content for file %d (first time)", lineInfo.FileIndex)
@@ -1076,14 +1074,6 @@ func (dv *DiffViewport) ForceCompleteHighlighting() {
 
 	// Mark background highlighting as complete
 	dv.backgroundHighlighting = false
-}
-
-// SetProgressiveMode enables or disables progressive rendering
-func (dv *DiffViewport) SetProgressiveMode(enabled bool) {
-	dv.progressiveMode = enabled
-	if !enabled {
-		dv.firstRenderDone = true // Skip progressive mode
-	}
 }
 
 // IsProgressiveRenderingComplete returns true if background highlighting is done

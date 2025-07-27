@@ -21,10 +21,7 @@ func TestProgressiveParsing(t *testing.T) {
 
 	viewport.SetSize(80, 25)
 
-	// Start in progressive mode
-	if !viewport.progressiveMode {
-		t.Error("Expected progressive mode to be enabled by default")
-	}
+	// Progressive mode is now always enabled (no flag needed)
 
 	// Verify syntax highlighting is enabled
 	if !viewport.enableSyntaxHighlighting {

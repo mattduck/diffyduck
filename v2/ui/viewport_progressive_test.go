@@ -45,11 +45,6 @@ func TestProgressiveRendering(t *testing.T) {
 	viewport := NewDiffViewport(content)
 	defer viewport.Close()
 
-	// Verify progressive mode is enabled by default
-	if !viewport.progressiveMode {
-		t.Error("Expected progressive mode to be enabled by default")
-	}
-
 	// Force complete highlighting for testing
 	viewport.ForceCompleteHighlighting()
 
@@ -70,59 +65,6 @@ func TestProgressiveRendering(t *testing.T) {
 	if viewport.enhancedHighlighter == nil {
 		t.Error("Expected enhanced highlighter to be initialized")
 	}
-}
-
-func TestProgressiveRenderingDisabled(t *testing.T) {
-	// Create test content
-	alignedLines := []aligner.AlignedLine{
-		{
-			OldLine:    stringPtr("package main"),
-			NewLine:    stringPtr("package main"),
-			LineType:   aligner.Unchanged,
-			OldLineNum: 1,
-			NewLineNum: 1,
-		},
-	}
-
-	files := []models.FileWithLines{
-		{
-			FileDiff: parser.FileDiff{
-				OldPath: "test.go",
-				NewPath: "test.go",
-			},
-			AlignedLines: alignedLines,
-			OldFileType:  git.TextFile,
-			NewFileType:  git.TextFile,
-		},
-	}
-
-	content := models.NewDiffContent(files)
-	viewport := NewDiffViewport(content)
-	defer viewport.Close()
-
-	// Disable progressive mode
-	viewport.SetProgressiveMode(false)
-
-	// Verify progressive mode is disabled
-	if viewport.progressiveMode {
-		t.Error("Expected progressive mode to be disabled")
-	}
-
-	// Verify first render is marked as done
-	if !viewport.firstRenderDone {
-		t.Error("Expected firstRenderDone to be true when progressive mode is disabled")
-	}
-
-	// Highlighting should work immediately
-	lineInfo := models.LineInfo{
-		FileIndex: 0,
-		LineIndex: 0,
-		Line:      alignedLines[0],
-		FilePath:  "test.go",
-	}
-
-	_ = viewport.getHighlightedStyleSpans("package main", "test.go", false, lineInfo)
-	// Should not error even if no highlighting available
 }
 
 func TestProgressiveRenderingCompletion(t *testing.T) {
