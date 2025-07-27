@@ -7,8 +7,10 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattduck/diffyduck/aligner"
+	"github.com/mattduck/diffyduck/git"
 	"github.com/mattduck/diffyduck/syntax"
 	"github.com/mattduck/diffyduck/v2/models"
+	v2syntax "github.com/mattduck/diffyduck/v2/syntax"
 )
 
 // LineCache represents cached rendered content for a line
@@ -19,8 +21,9 @@ type LineCache struct {
 
 // DiffViewport implements a virtual viewport for efficient diff rendering
 type DiffViewport struct {
-	content     *models.DiffContent
-	highlighter *syntax.Highlighter
+	content             *models.DiffContent
+	highlighter         *syntax.Highlighter           // Legacy highlighter for fallback
+	enhancedHighlighter *v2syntax.EnhancedHighlighter // New file-level highlighter
 
 	// Viewport state
 	offsetY int // First visible line
@@ -46,12 +49,87 @@ const (
 
 // NewDiffViewport creates a new virtual diff viewport
 func NewDiffViewport(content *models.DiffContent) *DiffViewport {
-	return &DiffViewport{
-		content:        content,
-		highlighter:    syntax.NewHighlighter(),
-		highlightCache: make(map[string]LineCache),
-		cacheSize:      defaultCacheSize,
+	viewport := &DiffViewport{
+		content:             content,
+		highlighter:         syntax.NewHighlighter(),
+		enhancedHighlighter: v2syntax.NewEnhancedHighlighter(),
+		highlightCache:      make(map[string]LineCache),
+		cacheSize:           defaultCacheSize,
 	}
+
+	// Don't pre-parse files - do it lazily when first requested
+	// This improves initial load time significantly
+
+	return viewport
+}
+
+// preParseFiles parses all files in the diff content for efficient syntax highlighting
+func (dv *DiffViewport) preParseFiles() {
+	for _, file := range dv.content.Files {
+		if file.OldFileType == git.BinaryFile && file.NewFileType == git.BinaryFile {
+			continue // Skip binary files
+		}
+
+		// Reconstruct old file content with proper line numbers
+		if file.OldFileType != git.BinaryFile {
+			oldContent := dv.reconstructFileContent(file.AlignedLines, true)
+			if len(oldContent) > 0 {
+				dv.enhancedHighlighter.ParseFile(file.FileDiff.OldPath, oldContent)
+			}
+		}
+
+		// Reconstruct new file content with proper line numbers
+		if file.NewFileType != git.BinaryFile {
+			newContent := dv.reconstructFileContent(file.AlignedLines, false)
+			if len(newContent) > 0 {
+				dv.enhancedHighlighter.ParseFile(file.FileDiff.NewPath, newContent)
+			}
+		}
+	}
+}
+
+// reconstructFileContent rebuilds the full file content from aligned lines
+func (dv *DiffViewport) reconstructFileContent(alignedLines []aligner.AlignedLine, isOld bool) []string {
+	if len(alignedLines) == 0 {
+		return nil
+	}
+
+	// Find the maximum line number to determine file size
+	maxLineNum := 0
+	for _, line := range alignedLines {
+		if isOld && line.OldLineNum > maxLineNum {
+			maxLineNum = line.OldLineNum
+		} else if !isOld && line.NewLineNum > maxLineNum {
+			maxLineNum = line.NewLineNum
+		}
+	}
+
+	if maxLineNum == 0 {
+		return nil
+	}
+
+	// Create content array with proper size
+	content := make([]string, maxLineNum)
+
+	// Fill in the lines at their correct positions
+	for _, line := range alignedLines {
+		var lineNum int
+		var lineContent *string
+
+		if isOld {
+			lineNum = line.OldLineNum
+			lineContent = line.OldLine
+		} else {
+			lineNum = line.NewLineNum
+			lineContent = line.NewLine
+		}
+
+		if lineNum > 0 && lineContent != nil {
+			content[lineNum-1] = *lineContent // Convert to 0-based index
+		}
+	}
+
+	return content
 }
 
 // SetSize updates the viewport dimensions
@@ -188,8 +266,11 @@ func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo
 	leftContent := ""
 	leftContentStyle := tcell.StyleDefault
 	leftLineNumStyle := tcell.StyleDefault
+	var leftStyleSpans []v2syntax.StyleSpan
 	if line.OldLine != nil {
-		leftContent = dv.getHighlightedContent(*line.OldLine, lineInfo.FilePath, true, lineInfo)
+		leftContent = *line.OldLine
+		leftStyleSpans = dv.getHighlightedStyleSpans(leftContent, lineInfo.FilePath, true, lineInfo)
+		leftStyleSpans = dv.adjustStyleSpansForHorizontalOffset(leftStyleSpans, contentWidth)
 		leftContent = dv.applyHorizontalOffset(leftContent, contentWidth)
 		// Content has no background highlighting
 		leftContentStyle = tcell.StyleDefault
@@ -226,8 +307,8 @@ func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo
 	dv.drawText(screen, col, row, "  ", tcell.StyleDefault)
 	col += 2
 
-	// Left content
-	dv.drawText(screen, col, row, leftContent, leftContentStyle)
+	// Left content with syntax highlighting
+	dv.drawTextWithStyleSpans(screen, col, row, leftContent, leftContentStyle, leftStyleSpans)
 	col += contentWidth
 
 	// Separator
@@ -238,8 +319,11 @@ func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo
 	rightContent := ""
 	rightContentStyle := tcell.StyleDefault
 	rightLineNumStyle := tcell.StyleDefault
+	var rightStyleSpans []v2syntax.StyleSpan
 	if line.NewLine != nil {
-		rightContent = dv.getHighlightedContent(*line.NewLine, lineInfo.FilePath, false, lineInfo)
+		rightContent = *line.NewLine
+		rightStyleSpans = dv.getHighlightedStyleSpans(rightContent, lineInfo.FilePath, false, lineInfo)
+		rightStyleSpans = dv.adjustStyleSpansForHorizontalOffset(rightStyleSpans, contentWidth)
 		rightContent = dv.applyHorizontalOffset(rightContent, contentWidth)
 		// Content has no background highlighting
 		rightContentStyle = tcell.StyleDefault
@@ -276,11 +360,61 @@ func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo
 	dv.drawText(screen, col, row, "  ", tcell.StyleDefault)
 	col += 2
 
-	// Right content
-	dv.drawText(screen, col, row, rightContent, rightContentStyle)
+	// Right content with syntax highlighting
+	dv.drawTextWithStyleSpans(screen, col, row, rightContent, rightContentStyle, rightStyleSpans)
 }
 
-// getHighlightedContent returns highlighted content for a line, using cache when possible
+// getHighlightedStyleSpans returns style spans for a line, using cache when possible
+func (dv *DiffViewport) getHighlightedStyleSpans(content, filePath string, isOld bool, lineInfo models.LineInfo) []v2syntax.StyleSpan {
+	// Use enhanced highlighter to get style spans
+	if dv.enhancedHighlighter != nil {
+		// Ensure file is parsed (lazy parsing)
+		dv.ensureFileParsed(lineInfo.FileIndex)
+
+		// Calculate line number within the file (1-based)
+		lineNumber := lineInfo.LineIndex + 1
+		if isOld && lineInfo.Line.OldLineNum > 0 {
+			lineNumber = lineInfo.Line.OldLineNum
+		} else if !isOld && lineInfo.Line.NewLineNum > 0 {
+			lineNumber = lineInfo.Line.NewLineNum
+		}
+
+		return dv.enhancedHighlighter.GetLineStyles(filePath, lineNumber, content)
+	}
+
+	// No enhanced highlighter available
+	return nil
+}
+
+// ensureFileParsed lazily parses a file if it hasn't been parsed yet
+func (dv *DiffViewport) ensureFileParsed(fileIndex int) {
+	if fileIndex >= len(dv.content.Files) {
+		return
+	}
+
+	file := dv.content.Files[fileIndex]
+	if file.OldFileType == git.BinaryFile && file.NewFileType == git.BinaryFile {
+		return // Skip binary files
+	}
+
+	// Check if old file is already parsed
+	if file.OldFileType != git.BinaryFile {
+		oldContent := dv.reconstructFileContent(file.AlignedLines, true)
+		if len(oldContent) > 0 {
+			dv.enhancedHighlighter.ParseFile(file.FileDiff.OldPath, oldContent)
+		}
+	}
+
+	// Check if new file is already parsed
+	if file.NewFileType != git.BinaryFile {
+		newContent := dv.reconstructFileContent(file.AlignedLines, false)
+		if len(newContent) > 0 {
+			dv.enhancedHighlighter.ParseFile(file.FileDiff.NewPath, newContent)
+		}
+	}
+}
+
+// getHighlightedContent returns highlighted content for a line (legacy method for caching)
 func (dv *DiffViewport) getHighlightedContent(content, filePath string, isOld bool, lineInfo models.LineInfo) string {
 	// Create cache key
 	cacheKey := fmt.Sprintf("%d:%d:%t", lineInfo.FileIndex, lineInfo.LineIndex, isOld)
@@ -293,9 +427,8 @@ func (dv *DiffViewport) getHighlightedContent(content, filePath string, isOld bo
 		}
 	}
 
-	// For POC performance, skip syntax highlighting to isolate viewport performance
-	// TODO: Re-enable highlighting once viewport is optimized
-	// highlighted := dv.highlighter.HighlightLine(content, filePath)
+	// For now, we'll use the style spans approach instead of returning styled text
+	// This method is kept for backward compatibility
 	highlighted := content
 
 	// Cache the result
@@ -366,6 +499,50 @@ func (dv *DiffViewport) applyHorizontalOffset(content string, width int) string 
 	return result
 }
 
+// adjustStyleSpansForHorizontalOffset adjusts style spans to account for horizontal scrolling
+func (dv *DiffViewport) adjustStyleSpansForHorizontalOffset(spans []v2syntax.StyleSpan, width int) []v2syntax.StyleSpan {
+	if len(spans) == 0 || dv.offsetX == 0 {
+		return spans
+	}
+
+	var adjustedSpans []v2syntax.StyleSpan
+
+	for _, span := range spans {
+		// Adjust span positions for horizontal offset
+		newStart := span.Start - dv.offsetX
+		newEnd := span.End - dv.offsetX
+
+		// Skip spans that are completely off-screen to the left
+		if newEnd <= 0 {
+			continue
+		}
+
+		// Skip spans that are completely off-screen to the right
+		if newStart >= width {
+			continue
+		}
+
+		// Clamp spans to visible area
+		if newStart < 0 {
+			newStart = 0
+		}
+		if newEnd > width {
+			newEnd = width
+		}
+
+		// Only add spans that have positive width
+		if newStart < newEnd {
+			adjustedSpans = append(adjustedSpans, v2syntax.StyleSpan{
+				Start: newStart,
+				End:   newEnd,
+				Style: span.Style,
+			})
+		}
+	}
+
+	return adjustedSpans
+}
+
 // drawText draws text to the screen at the specified position
 func (dv *DiffViewport) drawText(screen tcell.Screen, x, y int, text string, style tcell.Style) {
 	for i, r := range text {
@@ -373,6 +550,44 @@ func (dv *DiffViewport) drawText(screen tcell.Screen, x, y int, text string, sty
 			break
 		}
 		screen.SetContent(x+i, y, r, nil, style)
+	}
+}
+
+// drawTextWithStyleSpans draws text with syntax highlighting style spans
+func (dv *DiffViewport) drawTextWithStyleSpans(screen tcell.Screen, x, y int, text string, baseStyle tcell.Style, styleSpans []v2syntax.StyleSpan) {
+	if len(styleSpans) == 0 {
+		// No highlighting, use base style
+		dv.drawText(screen, x, y, text, baseStyle)
+		return
+	}
+
+	// Convert text to runes for proper indexing
+	runes := []rune(text)
+
+	// Draw each character with appropriate style
+	for i, r := range runes {
+		if x+i >= dv.width {
+			break
+		}
+
+		// Find the appropriate style for this character position
+		charStyle := baseStyle
+		for _, span := range styleSpans {
+			if i >= span.Start && i < span.End {
+				// Merge syntax highlighting with base style
+				fg, bg, attrs := span.Style.Decompose()
+				if fg == tcell.ColorDefault {
+					fg, _, _ = baseStyle.Decompose()
+				}
+				if bg == tcell.ColorDefault {
+					_, bg, _ = baseStyle.Decompose()
+				}
+				charStyle = tcell.StyleDefault.Foreground(fg).Background(bg).Attributes(attrs)
+				break
+			}
+		}
+
+		screen.SetContent(x+i, y, r, nil, charStyle)
 	}
 }
 
@@ -385,5 +600,8 @@ func (dv *DiffViewport) GetRenderStats() (time.Duration, int) {
 func (dv *DiffViewport) Close() {
 	if dv.highlighter != nil {
 		dv.highlighter.Close()
+	}
+	if dv.enhancedHighlighter != nil {
+		dv.enhancedHighlighter.Close()
 	}
 }

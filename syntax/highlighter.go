@@ -86,8 +86,8 @@ func (h *Highlighter) RegisterLanguage(lang LanguageDefinition) {
 	}
 }
 
-// detectLanguage determines the language from a file path
-func (h *Highlighter) detectLanguage(filePath string) (LanguageDefinition, bool) {
+// DetectLanguage determines the language from a file path
+func (h *Highlighter) DetectLanguage(filePath string) (LanguageDefinition, bool) {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	langName, exists := h.extensionMap[ext]
 	if !exists {
@@ -98,8 +98,8 @@ func (h *Highlighter) detectLanguage(filePath string) (LanguageDefinition, bool)
 	return lang, exists
 }
 
-// getOrCreateParser gets an existing parser or creates a new one for the language
-func (h *Highlighter) getOrCreateParser(lang LanguageDefinition) *tree_sitter.Parser {
+// GetOrCreateParser gets an existing parser or creates a new one for the language
+func (h *Highlighter) GetOrCreateParser(lang LanguageDefinition) *tree_sitter.Parser {
 	langName := lang.GetLanguageName()
 
 	if parser, exists := h.parsers[langName]; exists {
@@ -114,8 +114,8 @@ func (h *Highlighter) getOrCreateParser(lang LanguageDefinition) *tree_sitter.Pa
 	return parser
 }
 
-// getOrCreateQuery gets an existing query or creates a new one for the language
-func (h *Highlighter) getOrCreateQuery(lang LanguageDefinition) *tree_sitter.Query {
+// GetOrCreateQuery gets an existing query or creates a new one for the language
+func (h *Highlighter) GetOrCreateQuery(lang LanguageDefinition) *tree_sitter.Query {
 	langName := lang.GetLanguageName()
 
 	if query, exists := h.queries[langName]; exists {
@@ -140,13 +140,13 @@ func (h *Highlighter) HighlightLine(content, filePath string) string {
 	}
 
 	// Detect language from file path
-	lang, supported := h.detectLanguage(filePath)
+	lang, supported := h.DetectLanguage(filePath)
 	if !supported {
 		return content // no highlighting for unsupported languages
 	}
 
 	// Get or create parser for this language
-	parser := h.getOrCreateParser(lang)
+	parser := h.GetOrCreateParser(lang)
 
 	// Parse the line content
 	tree := parser.Parse([]byte(content), nil)
@@ -161,7 +161,7 @@ func (h *Highlighter) HighlightLine(content, filePath string) string {
 
 func (h *Highlighter) highlightWithQuery(content string, node *tree_sitter.Node, lang LanguageDefinition) string {
 	// Get or create query for this language
-	query := h.getOrCreateQuery(lang)
+	query := h.GetOrCreateQuery(lang)
 	if query == nil {
 		return content // fallback if query creation failed
 	}
@@ -226,14 +226,14 @@ func (h *Highlighter) HighlightLineWithWordDiff(content, filePath string, segmen
 	}
 
 	// Detect language from file path
-	lang, supported := h.detectLanguage(filePath)
+	lang, supported := h.DetectLanguage(filePath)
 	if !supported {
 		// No syntax highlighting, just apply word diff styling
 		return h.applyWordDiffStyling(segments)
 	}
 
 	// Get or create parser for this language
-	parser := h.getOrCreateParser(lang)
+	parser := h.GetOrCreateParser(lang)
 
 	// Parse the line content
 	tree := parser.Parse([]byte(content), nil)
@@ -275,7 +275,7 @@ func (h *Highlighter) highlightWithQueryAndWordDiff(content string, node *tree_s
 	}
 
 	// Get or create query for this language
-	query := h.getOrCreateQuery(lang)
+	query := h.GetOrCreateQuery(lang)
 	if query == nil {
 		// fallback to word diff only if query creation failed
 		return h.applyWordDiffStyling(segments)
