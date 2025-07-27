@@ -273,20 +273,25 @@ func TestFirstRenderPerformance(t *testing.T) {
 	}
 
 	start := time.Now()
+	highlightingFound := false
 	for i := 0; i < 25; i++ { // Simulate viewport height
 		lineInfo.LineIndex = i
 		lineInfo.Line = alignedLines[i]
 		spans := viewport.getHighlightedStyleSpans(*alignedLines[i].OldLine, "first_render_test.go", true, lineInfo)
 
-		// Should return nil during progressive mode before first render
-		if spans != nil {
-			t.Error("Expected no highlighting during first render in progressive mode")
+		// Should now have highlighting on first render for first file
+		if len(spans) > 0 {
+			highlightingFound = true
 		}
 	}
 	firstRenderTime := time.Since(start)
 
-	t.Logf("First render (25 lines, no highlighting) took: %v", firstRenderTime)
-	if firstRenderTime > 5*time.Millisecond {
-		t.Errorf("First render too slow: %v (expected < 5ms)", firstRenderTime)
+	if !highlightingFound {
+		t.Error("Expected syntax highlighting on first render for first file")
+	}
+
+	t.Logf("First render (25 lines, with highlighting) took: %v", firstRenderTime)
+	if firstRenderTime > 50*time.Millisecond {
+		t.Errorf("First render too slow: %v (expected < 50ms)", firstRenderTime)
 	}
 }

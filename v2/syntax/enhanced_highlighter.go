@@ -7,6 +7,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattduck/diffyduck/syntax"
+	"github.com/mattduck/diffyduck/v2/internal"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -25,6 +26,8 @@ type FileHighlightCache struct {
 	LineStyles  map[int][]StyleSpan // Pre-computed line styles (line number -> spans)
 	Timestamp   time.Time           // For cache invalidation
 	FilePath    string              // File path for language detection
+	IsPartial   bool                // Whether this is a partial file parse (vs complete file)
+	StartLine   int                 // Starting line number for partial parses
 }
 
 // EnhancedHighlighter provides file-level parsing with lazy line rendering
@@ -109,10 +112,11 @@ func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) 
 
 	// Check if already cached and recent
 	if cache, exists := eh.fileCache[filePath]; exists {
-		if time.Since(cache.Timestamp) < eh.defaultTTL {
-			return nil // Already cached and fresh
+		// Only skip if it's a complete parse and still fresh
+		if time.Since(cache.Timestamp) < eh.defaultTTL && !cache.IsPartial {
+			return nil // Already cached and fresh (complete parse)
 		}
-		// Clean up old cache
+		// Clean up old cache (either expired or partial - needs complete re-parse)
 		if cache.Tree != nil {
 			cache.Tree.Close()
 		}
@@ -131,6 +135,8 @@ func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) 
 			LineStyles:  make(map[int][]StyleSpan),
 			Timestamp:   time.Now(),
 			FilePath:    filePath,
+			IsPartial:   false, // Unsupported files are considered "complete"
+			StartLine:   1,
 		}
 		return nil
 	}
@@ -154,6 +160,8 @@ func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) 
 		LineStyles:  make(map[int][]StyleSpan),
 		Timestamp:   time.Now(),
 		FilePath:    filePath,
+		IsPartial:   false, // Mark as complete parse
+		StartLine:   1,     // Full file starts at line 1
 	}
 
 	eh.fileCache[filePath] = cache
@@ -189,6 +197,8 @@ func (eh *EnhancedHighlighter) ParseFilePartial(filePath string, partialContent 
 			LineStyles:  make(map[int][]StyleSpan),
 			Timestamp:   time.Now(),
 			FilePath:    filePath,
+			IsPartial:   true, // Mark partial even for unsupported files
+			StartLine:   startLine,
 		}
 		return nil
 	}
@@ -212,20 +222,32 @@ func (eh *EnhancedHighlighter) ParseFilePartial(filePath string, partialContent 
 		LineStyles:  make(map[int][]StyleSpan),
 		Timestamp:   time.Now(),
 		FilePath:    filePath,
+		IsPartial:   true,      // Mark as partial parse
+		StartLine:   startLine, // Track starting line
 	}
 
 	eh.fileCache[filePath] = cache
 	return nil
 }
 
-// IsFileParsed checks if a file has been parsed and cached
+// IsFileParsed checks if a file has been completely parsed and cached
 func (eh *EnhancedHighlighter) IsFileParsed(filePath string) bool {
 	cache, exists := eh.fileCache[filePath]
 	if !exists {
 		return false
 	}
-	// Check if cache is still valid
-	return time.Since(cache.Timestamp) < eh.defaultTTL
+	// Check if cache is still valid AND it's a complete parse (not partial)
+	return time.Since(cache.Timestamp) < eh.defaultTTL && !cache.IsPartial
+}
+
+// HasCachedContent checks if we have any cached content (partial or complete) for a file
+func (eh *EnhancedHighlighter) HasCachedContent(filePath string) (bool, int, bool) {
+	cache, exists := eh.fileCache[filePath]
+	if !exists {
+		return false, 0, false
+	}
+	// Return: exists, lineCount, isPartial
+	return true, len(cache.FileContent), cache.IsPartial
 }
 
 // GetLineHighlighting returns the highlighted content for a specific line
@@ -256,6 +278,14 @@ func (eh *EnhancedHighlighter) GetLineHighlighting(filePath string, lineNumber i
 
 // GetLineStyles returns just the style spans for a line without applying them
 func (eh *EnhancedHighlighter) GetLineStyles(filePath string, lineNumber int, lineContent string) []StyleSpan {
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		if elapsed > 10*time.Millisecond {
+			internal.Logf("[HIGHLIGHTING] GetLineStyles took %v for line %d", elapsed, lineNumber)
+		}
+	}()
+
 	cache, exists := eh.fileCache[filePath]
 	if !exists || cache.Tree == nil {
 		return nil // No highlighting available
@@ -266,7 +296,13 @@ func (eh *EnhancedHighlighter) GetLineStyles(filePath string, lineNumber int, li
 	}
 
 	// Compute and cache styles
+	computeStart := time.Now()
 	styles := eh.computeLineStylesOptimized(cache, lineNumber, lineContent)
+	computeElapsed := time.Since(computeStart)
+	if computeElapsed > 10*time.Millisecond {
+		internal.Logf("[HIGHLIGHTING] computeLineStylesOptimized took %v for line %d", computeElapsed, lineNumber)
+	}
+
 	cache.LineStyles[lineNumber] = styles
 	return styles
 }
@@ -367,7 +403,10 @@ func (eh *EnhancedHighlighter) computeLineStyles(cache *FileHighlightCache, line
 func (eh *EnhancedHighlighter) computeLineStylesOptimized(cache *FileHighlightCache, lineNumber int, lineContent string) []StyleSpan {
 	// Check if we need to compute all styles at once
 	if len(cache.LineStyles) == 0 {
+		start := time.Now()
 		eh.computeAllLineStyles(cache)
+		elapsed := time.Since(start)
+		internal.Logf("[HIGHLIGHTING] computeAllLineStyles took %v for %s", elapsed, cache.FilePath)
 	}
 
 	// Return cached result (may be empty if line has no highlighting)
@@ -381,29 +420,42 @@ func (eh *EnhancedHighlighter) computeLineStylesOptimized(cache *FileHighlightCa
 
 // computeAllLineStyles runs one tree-sitter query and computes styles for all lines
 func (eh *EnhancedHighlighter) computeAllLineStyles(cache *FileHighlightCache) {
+	internal.Logf("[HIGHLIGHTING] computeAllLineStyles starting for %s (%d lines)", cache.FilePath, len(cache.FileContent))
+	totalStart := time.Now()
+
 	// Get language for query
+	langStart := time.Now()
 	lang, supported := eh.detectLanguage(cache.FilePath)
 	if !supported {
 		return
 	}
+	internal.Logf("[HIGHLIGHTING] detectLanguage took %v", time.Since(langStart))
 
+	queryStart := time.Now()
 	query := eh.getOrCreateQuery(lang)
 	if query == nil {
 		return
 	}
+	internal.Logf("[HIGHLIGHTING] getOrCreateQuery took %v", time.Since(queryStart))
 
 	// Execute query once on the entire tree
+	cursorStart := time.Now()
 	cursor := tree_sitter.NewQueryCursor()
 	defer cursor.Close()
 
 	captureNames := query.CaptureNames()
 	fullContent := strings.Join(cache.FileContent, "\n")
+	internal.Logf("[HIGHLIGHTING] cursor setup took %v, content length: %d bytes", time.Since(cursorStart), len(fullContent))
+
+	capturesStart := time.Now()
 	captures := cursor.Captures(query, cache.Tree.RootNode(), []byte(fullContent))
+	internal.Logf("[HIGHLIGHTING] cursor.Captures took %v", time.Since(capturesStart))
 
 	// Initialize line styles map
 	lineStyles := make(map[int][]StyleSpan)
 
 	// Pre-compute byte offsets for each line
+	offsetStart := time.Now()
 	lineOffsets := make([]uint32, len(cache.FileContent)+1)
 	byteOffset := uint32(0)
 	for i, line := range cache.FileContent {
@@ -411,9 +463,13 @@ func (eh *EnhancedHighlighter) computeAllLineStyles(cache *FileHighlightCache) {
 		byteOffset += uint32(len(line) + 1) // +1 for newline
 	}
 	lineOffsets[len(cache.FileContent)] = byteOffset // End of file
+	internal.Logf("[HIGHLIGHTING] byte offset computation took %v", time.Since(offsetStart))
 
 	// Process all captures and distribute to appropriate lines
+	processStart := time.Now()
+	captureCount := 0
 	for match, captureIndex := captures.Next(); match != nil; match, captureIndex = captures.Next() {
+		captureCount++
 		capture := match.Captures[captureIndex]
 		captureName := captureNames[capture.Index]
 		captureNode := capture.Node
@@ -466,14 +522,18 @@ func (eh *EnhancedHighlighter) computeAllLineStyles(cache *FileHighlightCache) {
 			}
 		}
 	}
+	internal.Logf("[HIGHLIGHTING] processed %d captures in %v", captureCount, time.Since(processStart))
 
 	// Optimize style spans by merging overlapping ones with same style
+	optimizeStart := time.Now()
 	for lineNum := range lineStyles {
 		lineStyles[lineNum] = eh.optimizeStyleSpans(lineStyles[lineNum])
 	}
+	internal.Logf("[HIGHLIGHTING] optimize spans took %v", time.Since(optimizeStart))
 
 	// Store all computed styles
 	cache.LineStyles = lineStyles
+	internal.Logf("[HIGHLIGHTING] computeAllLineStyles TOTAL took %v", time.Since(totalStart))
 }
 
 // optimizeStyleSpans merges overlapping spans with the same style

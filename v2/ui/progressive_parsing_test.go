@@ -39,10 +39,17 @@ func TestProgressiveParsing(t *testing.T) {
 		FileIndex: 0,
 		LineIndex: 0,
 		Line:      files[0].AlignedLines[0],
-		FilePath:  "test1.go",
+		FilePath:  "test0.go",
 	}
 
-	_ = viewport.getHighlightedStyleSpans("package main", "test1.go", false, lineInfo)
+	spans := viewport.getHighlightedStyleSpans("package main", "test0.go", false, lineInfo)
+
+	// Should now have syntax highlighting on first render for first file
+	if len(spans) == 0 {
+		t.Error("Expected syntax highlighting on first render for visible file")
+	} else {
+		t.Logf("Got %d style spans on first render", len(spans))
+	}
 
 	firstRenderTime := time.Since(start)
 	t.Logf("First render with visible lines took: %v", firstRenderTime)
@@ -61,7 +68,7 @@ func TestProgressiveParsing(t *testing.T) {
 		if allDone {
 			break
 		}
-		if parseCount > 20 { // Safety limit
+		if parseCount > 50 { // Safety limit - more iterations needed for complete parsing
 			t.Error("Background parsing didn't complete within expected iterations")
 			break
 		}

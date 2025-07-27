@@ -7,11 +7,14 @@ import (
 	"github.com/mattduck/diffyduck/git"
 	"github.com/mattduck/diffyduck/parser"
 	"github.com/mattduck/diffyduck/v2/app"
+	"github.com/mattduck/diffyduck/v2/internal"
 	"github.com/mattduck/diffyduck/v2/models"
 )
 
 // RunPOC runs the proof of concept virtual viewport demo
 func RunPOC() error {
+	internal.Log("[STARTUP] RunPOC started")
+
 	// Get git diff output
 	input, err := getGitDiffForPOC()
 	if err != nil {
@@ -62,12 +65,15 @@ func RunPOC() error {
 
 	// For POC, always use large synthetic data to demonstrate performance
 	filesWithLines = createSyntheticFileData()
+	internal.Logf("[STARTUP] Created synthetic file data (%d files)", len(filesWithLines))
 
 	// Create and run the POC app
+	internal.Log("[STARTUP] About to create POC app...")
 	pocApp, err := app.NewPOCApp(filesWithLines)
 	if err != nil {
 		return fmt.Errorf("failed to create POC app: %v", err)
 	}
+	internal.Log("[STARTUP] POC app created, about to run...")
 
 	return pocApp.Run()
 }

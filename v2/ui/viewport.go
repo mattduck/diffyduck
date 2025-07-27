@@ -10,9 +10,22 @@ import (
 	"github.com/mattduck/diffyduck/aligner"
 	"github.com/mattduck/diffyduck/git"
 	"github.com/mattduck/diffyduck/syntax"
+	"github.com/mattduck/diffyduck/v2/internal"
 	"github.com/mattduck/diffyduck/v2/models"
 	v2syntax "github.com/mattduck/diffyduck/v2/syntax"
 )
+
+// getLinePreview safely gets a preview of a line for logging
+func getLinePreview(lines []string, index int) string {
+	if index >= len(lines) {
+		return "<empty>"
+	}
+	line := lines[index]
+	if len(line) > 50 {
+		return line[:50] + "..."
+	}
+	return line
+}
 
 // LineCache represents cached rendered content for a line
 type LineCache struct {
@@ -41,6 +54,9 @@ type DiffViewport struct {
 	progressiveMode          bool // Whether to use progressive rendering
 	firstRenderDone          bool // Whether the first render without highlighting is complete
 	backgroundHighlighting   bool // Whether background highlighting is in progress
+
+	// Track which files have been parsed during first render to avoid redundant parsing
+	parsedDuringFirstRender map[int]bool // fileIndex -> true if already parsed
 
 	// Synchronization for goroutine safety
 	mu     sync.RWMutex // Protects highlighter access
@@ -73,6 +89,9 @@ func NewDiffViewport(content *models.DiffContent) *DiffViewport {
 		progressiveMode:          true,  // Enable progressive parsing mode
 		firstRenderDone:          false, // Start with progressive mode
 		backgroundHighlighting:   false, // No background highlighting yet
+
+		// Initialize tracking for first render parsing
+		parsedDuringFirstRender: make(map[int]bool),
 	}
 
 	// Don't pre-parse files - do it lazily when first requested
@@ -189,27 +208,34 @@ func (dv *DiffViewport) ScrollHorizontal(delta int) {
 
 // Render draws the visible portion of the diff to the screen
 func (dv *DiffViewport) Render(screen tcell.Screen) {
+	internal.Log("[VIEWPORT] Starting viewport render")
 	start := time.Now()
 	defer func() {
 		dv.lastRenderTime = time.Since(start)
 		dv.renderCount++
+		internal.Logf("[VIEWPORT] Viewport render complete in %v", time.Since(start))
 
 		// Mark first render as done - DON'T start background goroutine
 		if dv.progressiveMode && !dv.firstRenderDone {
 			dv.firstRenderDone = true
+			internal.Log("[VIEWPORT] Marked first render as done")
 			// Background parsing is now handled by main thread timer, not goroutines
 		}
 	}()
 
 	if dv.height <= 0 || dv.width <= 0 {
+		internal.Logf("[VIEWPORT] Skipping render - invalid dimensions: %dx%d", dv.width, dv.height)
 		return
 	}
 
 	// Clear the screen area
+	internal.Log("[VIEWPORT] Clearing screen")
 	dv.clearScreen(screen)
 
 	// Get visible lines
+	internal.Logf("[VIEWPORT] Getting visible lines (offset: %d, height: %d)", dv.offsetY, dv.height)
 	visibleLines := dv.content.GetVisibleLines(dv.offsetY, dv.height)
+	internal.Logf("[VIEWPORT] Got %d visible lines", len(visibleLines))
 
 	// Calculate content width per column
 	totalSeparators := separatorWidth + 2*(lineNumWidth+changeMarkerWidth)
@@ -219,9 +245,11 @@ func (dv *DiffViewport) Render(screen tcell.Screen) {
 	}
 
 	// Render each visible line
+	internal.Logf("[VIEWPORT] About to render %d lines", len(visibleLines))
 	for row, lineInfo := range visibleLines {
 		dv.renderLine(screen, row, lineInfo, contentWidth)
 	}
+	internal.Log("[VIEWPORT] Finished rendering all lines")
 }
 
 // clearScreen clears the viewport area
@@ -235,6 +263,14 @@ func (dv *DiffViewport) clearScreen(screen tcell.Screen) {
 
 // renderLine renders a single line to the screen
 func (dv *DiffViewport) renderLine(screen tcell.Screen, row int, lineInfo models.LineInfo, contentWidth int) {
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		if elapsed > 10*time.Millisecond { // Only log slow lines
+			internal.Logf("[RENDER] renderLine row %d took %v", row, elapsed)
+		}
+	}()
+
 	if lineInfo.IsFileHeader() {
 		dv.renderFileHeader(screen, row, lineInfo)
 		return
@@ -283,6 +319,14 @@ func (dv *DiffViewport) renderFileSeparator(screen tcell.Screen, row int) {
 
 // renderContentLine renders a diff content line
 func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo models.LineInfo, contentWidth int) {
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		if elapsed > 5*time.Millisecond {
+			internal.Logf("[RENDER] renderContentLine row %d took %v", row, elapsed)
+		}
+	}()
+
 	line := lineInfo.Line
 	col := 0
 
@@ -293,7 +337,12 @@ func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo
 	var leftStyleSpans []v2syntax.StyleSpan
 	if line.OldLine != nil {
 		leftContent = *line.OldLine
+		spanStart := time.Now()
 		leftStyleSpans = dv.getHighlightedStyleSpans(leftContent, lineInfo.FilePath, true, lineInfo)
+		spanElapsed := time.Since(spanStart)
+		if spanElapsed > 10*time.Millisecond {
+			internal.Logf("[RENDER] LEFT getHighlightedStyleSpans row %d took %v", row, spanElapsed)
+		}
 		leftStyleSpans = dv.adjustStyleSpansForHorizontalOffset(leftStyleSpans, contentWidth)
 		leftContent = dv.applyHorizontalOffset(leftContent, contentWidth)
 		// Content has no background highlighting
@@ -346,7 +395,12 @@ func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo
 	var rightStyleSpans []v2syntax.StyleSpan
 	if line.NewLine != nil {
 		rightContent = *line.NewLine
+		spanStart := time.Now()
 		rightStyleSpans = dv.getHighlightedStyleSpans(rightContent, lineInfo.FilePath, false, lineInfo)
+		spanElapsed := time.Since(spanStart)
+		if spanElapsed > 10*time.Millisecond {
+			internal.Logf("[RENDER] RIGHT getHighlightedStyleSpans row %d took %v", row, spanElapsed)
+		}
 		rightStyleSpans = dv.adjustStyleSpansForHorizontalOffset(rightStyleSpans, contentWidth)
 		rightContent = dv.applyHorizontalOffset(rightContent, contentWidth)
 		// Content has no background highlighting
@@ -390,9 +444,29 @@ func (dv *DiffViewport) renderContentLine(screen tcell.Screen, row int, lineInfo
 
 // getHighlightedStyleSpans returns style spans for a line, using cache when possible
 func (dv *DiffViewport) getHighlightedStyleSpans(content, filePath string, isOld bool, lineInfo models.LineInfo) []v2syntax.StyleSpan {
-	// Skip syntax highlighting if disabled or in progressive mode before first render
-	if !dv.enableSyntaxHighlighting || (dv.progressiveMode && !dv.firstRenderDone) {
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		if elapsed > 5*time.Millisecond { // Log if style lookup takes >5ms
+			internal.Logf("[HIGHLIGHTING] getHighlightedStyleSpans for line %d took %v", lineInfo.LineIndex, elapsed)
+		}
+	}()
+
+	// Skip syntax highlighting if disabled
+	if !dv.enableSyntaxHighlighting {
 		return nil
+	}
+
+	// For progressive mode, parse visible content synchronously on first render
+	// Only parse the first file to keep startup fast, and only do it once per file
+	if dv.progressiveMode && !dv.firstRenderDone && lineInfo.FileIndex == 0 {
+		// Check if we've already parsed this file during first render
+		if !dv.parsedDuringFirstRender[lineInfo.FileIndex] {
+			internal.Logf("[HIGHLIGHTING] About to parse visible content for file %d (first time)", lineInfo.FileIndex)
+			dv.parsedDuringFirstRender[lineInfo.FileIndex] = true
+			dv.ensureVisibleContentParsed(lineInfo.FileIndex)
+			internal.Logf("[HIGHLIGHTING] Finished parsing visible content for file %d", lineInfo.FileIndex)
+		}
 	}
 
 	dv.mu.Lock()
@@ -410,7 +484,12 @@ func (dv *DiffViewport) getHighlightedStyleSpans(content, filePath string, isOld
 	dv.mu.Unlock()
 
 	// Ensure file is parsed (lazy parsing)
+	ensureStart := time.Now()
 	dv.ensureFileParsed(lineInfo.FileIndex)
+	ensureElapsed := time.Since(ensureStart)
+	if ensureElapsed > 10*time.Millisecond {
+		internal.Logf("[HIGHLIGHTING] ensureFileParsed took %v for file %d", ensureElapsed, lineInfo.FileIndex)
+	}
 
 	// Calculate line number within the file (1-based)
 	lineNumber := lineInfo.LineIndex + 1
@@ -432,6 +511,15 @@ func (dv *DiffViewport) getHighlightedStyleSpans(content, filePath string, isOld
 
 // ensureFileParsed lazily parses a file if it hasn't been parsed yet
 func (dv *DiffViewport) ensureFileParsed(fileIndex int) {
+	internal.Logf("[HIGHLIGHTING] ensureFileParsed starting for file %d", fileIndex)
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		if elapsed > 10*time.Millisecond {
+			internal.Logf("[HIGHLIGHTING] ensureFileParsed TOTAL took %v for file %d", elapsed, fileIndex)
+		}
+	}()
+
 	if fileIndex >= len(dv.content.Files) {
 		return
 	}
@@ -450,19 +538,41 @@ func (dv *DiffViewport) ensureFileParsed(fileIndex int) {
 	highlighter := dv.enhancedHighlighter
 	dv.mu.RUnlock()
 
-	// Check if old file is already parsed
+	// Check if we already have partial content cached and avoid full file reconstruction
 	if file.OldFileType != git.BinaryFile && highlighter != nil {
-		oldContent := dv.reconstructFileContent(file.AlignedLines, true)
-		if len(oldContent) > 0 {
-			highlighter.ParseFile(file.FileDiff.OldPath, oldContent)
+		// Check if we have any cached content (partial or complete)
+		if exists, lineCount, isPartial := highlighter.HasCachedContent(file.FileDiff.OldPath); exists {
+			internal.Logf("[HIGHLIGHTING] Old file already has cached content (%d lines, partial=%v): %s",
+				lineCount, isPartial, file.FileDiff.OldPath)
+		} else {
+			internal.Logf("[HIGHLIGHTING] About to reconstruct and parse OLD file: %s", file.FileDiff.OldPath)
+			reconstructStart := time.Now()
+			oldContent := dv.reconstructFileContent(file.AlignedLines, true)
+			internal.Logf("[HIGHLIGHTING] Reconstruct old file took %v, got %d lines", time.Since(reconstructStart), len(oldContent))
+			if len(oldContent) > 0 {
+				parseStart := time.Now()
+				highlighter.ParseFile(file.FileDiff.OldPath, oldContent)
+				internal.Logf("[HIGHLIGHTING] ParseFile old took %v", time.Since(parseStart))
+			}
 		}
 	}
 
-	// Check if new file is already parsed
+	// Check if we already have partial content cached and avoid full file reconstruction
 	if file.NewFileType != git.BinaryFile && highlighter != nil {
-		newContent := dv.reconstructFileContent(file.AlignedLines, false)
-		if len(newContent) > 0 {
-			highlighter.ParseFile(file.FileDiff.NewPath, newContent)
+		// Check if we have any cached content (partial or complete)
+		if exists, lineCount, isPartial := highlighter.HasCachedContent(file.FileDiff.NewPath); exists {
+			internal.Logf("[HIGHLIGHTING] New file already has cached content (%d lines, partial=%v): %s",
+				lineCount, isPartial, file.FileDiff.NewPath)
+		} else {
+			internal.Logf("[HIGHLIGHTING] About to reconstruct and parse NEW file: %s", file.FileDiff.NewPath)
+			reconstructStart := time.Now()
+			newContent := dv.reconstructFileContent(file.AlignedLines, false)
+			internal.Logf("[HIGHLIGHTING] Reconstruct new file took %v, got %d lines", time.Since(reconstructStart), len(newContent))
+			if len(newContent) > 0 {
+				parseStart := time.Now()
+				highlighter.ParseFile(file.FileDiff.NewPath, newContent)
+				internal.Logf("[HIGHLIGHTING] ParseFile new took %v", time.Since(parseStart))
+			}
 		}
 	}
 }
@@ -664,6 +774,74 @@ func (dv *DiffViewport) startProgressiveHighlighting() {
 	// called from the main thread timer
 }
 
+// ensureVisibleContentParsed synchronously parses visible content during first render
+func (dv *DiffViewport) ensureVisibleContentParsed(fileIndex int) {
+	internal.Logf("[PARSING] ensureVisibleContentParsed start for file %d", fileIndex)
+	dv.mu.Lock()
+	// Initialize enhanced highlighter if needed (main thread, synchronous)
+	if dv.enhancedHighlighter == nil && dv.enableSyntaxHighlighting {
+		internal.Log("[PARSING] Creating new enhanced highlighter")
+		dv.enhancedHighlighter = v2syntax.NewEnhancedHighlighter()
+		internal.Log("[PARSING] Enhanced highlighter created")
+	}
+
+	highlighter := dv.enhancedHighlighter
+	dv.mu.Unlock()
+
+	if highlighter == nil || fileIndex >= len(dv.content.Files) {
+		return
+	}
+
+	file := dv.content.Files[fileIndex]
+	if file.OldFileType == git.BinaryFile && file.NewFileType == git.BinaryFile {
+		return // Skip binary files
+	}
+
+	// Only parse visible portion for immediate highlighting - keep it small for speed
+	visibleRange := dv.height + 10 // Just a bit more than visible
+	if visibleRange > 50 {
+		visibleRange = 50 // Cap at 50 lines max for fast startup
+	}
+	internal.Logf("[PARSING] Visible range calculated as %d lines (height=%d)", visibleRange, dv.height)
+
+	// Parse visible portion of old file
+	if file.OldFileType != git.BinaryFile {
+		internal.Logf("[PARSING] Checking if old file needs parsing: %s", file.FileDiff.OldPath)
+		if !highlighter.IsFileParsed(file.FileDiff.OldPath) {
+			internal.Log("[PARSING] Extracting partial content for old file")
+			partialContent := dv.extractPartialFileContent(file.AlignedLines, true, 1, visibleRange)
+			if len(partialContent) > 0 {
+				internal.Logf("[PARSING] Parsing %d lines of old file (first 3 lines: %q, %q, %q)",
+					len(partialContent),
+					getLinePreview(partialContent, 0),
+					getLinePreview(partialContent, 1),
+					getLinePreview(partialContent, 2))
+				highlighter.ParseFilePartial(file.FileDiff.OldPath, partialContent, 1)
+				internal.Log("[PARSING] Finished parsing old file")
+			}
+		} else {
+			internal.Log("[PARSING] Old file already parsed")
+		}
+	}
+
+	// Parse visible portion of new file
+	if file.NewFileType != git.BinaryFile {
+		internal.Logf("[PARSING] Checking if new file needs parsing: %s", file.FileDiff.NewPath)
+		if !highlighter.IsFileParsed(file.FileDiff.NewPath) {
+			internal.Log("[PARSING] Extracting partial content for new file")
+			partialContent := dv.extractPartialFileContent(file.AlignedLines, false, 1, visibleRange)
+			if len(partialContent) > 0 {
+				internal.Logf("[PARSING] Parsing %d lines of new file", len(partialContent))
+				highlighter.ParseFilePartial(file.FileDiff.NewPath, partialContent, 1)
+				internal.Log("[PARSING] Finished parsing new file")
+			}
+		} else {
+			internal.Log("[PARSING] New file already parsed")
+		}
+	}
+	internal.Logf("[PARSING] ensureVisibleContentParsed complete for file %d", fileIndex)
+}
+
 // preParseVisibleFiles parses only files that contain visible lines (deprecated)
 func (dv *DiffViewport) preParseVisibleFiles() {
 	// This method is deprecated - parsing now happens incrementally
@@ -767,7 +945,43 @@ func (dv *DiffViewport) ParseNextFileInBackground() bool {
 		return true // No highlighting enabled
 	}
 
-	// Find next unparsed file
+	// First priority: parse visible content of first file after first render
+	if dv.firstRenderDone && len(dv.content.Files) > 0 {
+		// Check if we need to parse visible content for fast highlighting
+		if !dv.parsedDuringFirstRender[0] {
+			internal.Log("[PARSING] Parsing visible content of first file for immediate highlighting")
+			dv.parsedDuringFirstRender[0] = true
+			dv.ensureVisibleContentParsed(0)
+			return false // Continue parsing
+		}
+	}
+
+	// Second priority: upgrade partial content to complete content
+	for i, file := range dv.content.Files {
+		if file.OldFileType == git.BinaryFile && file.NewFileType == git.BinaryFile {
+			continue // Skip binary files
+		}
+
+		// Check old file for partial content that needs upgrading
+		if file.OldFileType != git.BinaryFile {
+			if exists, lineCount, isPartial := highlighter.HasCachedContent(file.FileDiff.OldPath); exists && isPartial {
+				internal.Logf("[PARSING] Upgrading partial content to full file for %s (%d -> full)", file.FileDiff.OldPath, lineCount)
+				dv.upgradePartialToFullFile(i, true) // true = old file
+				return false                         // Continue parsing more files
+			}
+		}
+
+		// Check new file for partial content that needs upgrading
+		if file.NewFileType != git.BinaryFile {
+			if exists, lineCount, isPartial := highlighter.HasCachedContent(file.FileDiff.NewPath); exists && isPartial {
+				internal.Logf("[PARSING] Upgrading partial content to full file for %s (%d -> full)", file.FileDiff.NewPath, lineCount)
+				dv.upgradePartialToFullFile(i, false) // false = new file
+				return false                          // Continue parsing more files
+			}
+		}
+	}
+
+	// Third priority: find next unparsed file
 	for i, file := range dv.content.Files {
 		if file.OldFileType == git.BinaryFile && file.NewFileType == git.BinaryFile {
 			continue // Skip binary files
@@ -794,6 +1008,52 @@ func (dv *DiffViewport) ParseNextFileInBackground() bool {
 	}
 
 	return true // All files parsed
+}
+
+// upgradePartialToFullFile replaces partial content with complete file content
+func (dv *DiffViewport) upgradePartialToFullFile(fileIndex int, isOld bool) {
+	if fileIndex >= len(dv.content.Files) {
+		return
+	}
+
+	file := dv.content.Files[fileIndex]
+
+	// Get highlighter safely
+	dv.mu.RLock()
+	if dv.closed || dv.enhancedHighlighter == nil {
+		dv.mu.RUnlock()
+		return
+	}
+	highlighter := dv.enhancedHighlighter
+	dv.mu.RUnlock()
+
+	if isOld && file.OldFileType != git.BinaryFile {
+		// Reconstruct complete old file content
+		internal.Logf("[PARSING] Reconstructing complete old file content for %s", file.FileDiff.OldPath)
+		start := time.Now()
+		oldContent := dv.reconstructFileContent(file.AlignedLines, true)
+		internal.Logf("[PARSING] Reconstruction took %v, got %d lines", time.Since(start), len(oldContent))
+
+		if len(oldContent) > 0 {
+			// Replace partial content with complete content
+			parseStart := time.Now()
+			highlighter.ParseFile(file.FileDiff.OldPath, oldContent)
+			internal.Logf("[PARSING] Full ParseFile took %v", time.Since(parseStart))
+		}
+	} else if !isOld && file.NewFileType != git.BinaryFile {
+		// Reconstruct complete new file content
+		internal.Logf("[PARSING] Reconstructing complete new file content for %s", file.FileDiff.NewPath)
+		start := time.Now()
+		newContent := dv.reconstructFileContent(file.AlignedLines, false)
+		internal.Logf("[PARSING] Reconstruction took %v, got %d lines", time.Since(start), len(newContent))
+
+		if len(newContent) > 0 {
+			// Replace partial content with complete content
+			parseStart := time.Now()
+			highlighter.ParseFile(file.FileDiff.NewPath, newContent)
+			internal.Logf("[PARSING] Full ParseFile took %v", time.Since(parseStart))
+		}
+	}
 }
 
 // SetProgressiveMode enables or disables progressive rendering

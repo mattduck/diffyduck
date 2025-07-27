@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/mattduck/diffyduck/v2/internal"
 	"github.com/mattduck/diffyduck/v2/models"
 	"github.com/mattduck/diffyduck/v2/ui"
 )
@@ -30,17 +31,24 @@ type POCApp struct {
 
 // NewPOCApp creates a new POC application
 func NewPOCApp(files []models.FileWithLines) (*POCApp, error) {
+	internal.Log("[STARTUP] Creating POC app...")
+
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return nil, err
 	}
+	internal.Log("[STARTUP] Created tcell screen")
 
 	if err := screen.Init(); err != nil {
 		return nil, err
 	}
+	internal.Log("[STARTUP] Initialized tcell screen")
 
 	content := models.NewDiffContent(files)
+	internal.Log("[STARTUP] Created diff content model")
+
 	viewport := ui.NewDiffViewport(content)
+	internal.Log("[STARTUP] Created diff viewport")
 
 	app := &POCApp{
 		screen:        screen,
@@ -50,16 +58,19 @@ func NewPOCApp(files []models.FileWithLines) (*POCApp, error) {
 		rerenderChan:  make(chan bool, 1), // Buffered channel to avoid blocking
 	}
 
+	internal.Log("[STARTUP] POC app creation complete")
 	return app, nil
 }
 
 // Run starts the POC application
 func (app *POCApp) Run() error {
+	internal.Log("[STARTUP] Starting POC app run...")
 	defer app.cleanup()
 
 	// Set initial viewport size
 	width, height := app.screen.Size()
 	app.viewport.SetSize(width, height-2) // Reserve space for status line
+	internal.Logf("[STARTUP] Set viewport size: %dx%d", width, height-2)
 
 	// Main event loop - process events immediately for responsiveness
 	statsTicker := time.NewTicker(time.Second) // Update stats every second
@@ -69,7 +80,9 @@ func (app *POCApp) Run() error {
 	progressiveTicker := time.NewTicker(50 * time.Millisecond) // Check for progressive rendering updates
 	defer progressiveTicker.Stop()
 
+	internal.Log("[STARTUP] About to call first render...")
 	app.render()
+	internal.Log("[STARTUP] First render complete, entering event loop")
 
 	for !app.quit {
 		select {
@@ -188,7 +201,9 @@ func (app *POCApp) render() {
 	// Render status line
 	app.renderStatusLine()
 
+	internal.Log("[RENDER] About to call screen.Show() - TUI will be visible after this")
 	app.screen.Show()
+	internal.Log("[RENDER] screen.Show() complete - TUI is now visible")
 	app.frameCount++
 }
 
