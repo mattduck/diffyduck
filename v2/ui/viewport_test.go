@@ -17,8 +17,7 @@ func TestNewDiffViewport(t *testing.T) {
 
 	assert.NotNil(t, viewport)
 	assert.Equal(t, content, viewport.content)
-	assert.NotNil(t, viewport.highlightCache)
-	assert.Equal(t, defaultCacheSize, viewport.cacheSize)
+	assert.Nil(t, viewport.enhancedHighlighter) // Lazy initialization
 }
 
 func TestViewportSizing(t *testing.T) {
@@ -123,9 +122,10 @@ func TestHorizontalOffsetApplication(t *testing.T) {
 	}
 }
 
-func TestHighlightCaching(t *testing.T) {
+func TestSyntaxHighlighting(t *testing.T) {
 	content := createTestContent()
 	viewport := NewDiffViewport(content)
+	defer viewport.Close()
 
 	lineInfo := models.LineInfo{
 		FileIndex: 0,
@@ -133,34 +133,39 @@ func TestHighlightCaching(t *testing.T) {
 		FilePath:  "test.go",
 	}
 
-	// First call should cache the result
-	result1 := viewport.getHighlightedContent("func test() {}", "test.go", false, lineInfo)
-	assert.NotEmpty(t, result1)
-	assert.Len(t, viewport.highlightCache, 1)
+	// First call should initialize highlighting
+	spans1 := viewport.getHighlightedStyleSpans("func test() {}", "test.go", false, lineInfo)
+	assert.NotNil(t, spans1)
+	assert.NotNil(t, viewport.enhancedHighlighter)
 
-	// Second call should use cache
-	result2 := viewport.getHighlightedContent("func test() {}", "test.go", false, lineInfo)
-	assert.Equal(t, result1, result2)
-	assert.Len(t, viewport.highlightCache, 1) // Should still be 1
+	// Second call should use parsed cache
+	spans2 := viewport.getHighlightedStyleSpans("func test() {}", "test.go", false, lineInfo)
+	assert.Equal(t, len(spans1), len(spans2))
 }
 
-func TestCacheCleanup(t *testing.T) {
+func TestMultipleHighlightingCalls(t *testing.T) {
 	content := createTestContent()
 	viewport := NewDiffViewport(content)
-	viewport.cacheSize = 3 // Small cache for testing
+	defer viewport.Close()
 
-	// Fill cache beyond capacity
+	// Force initialization for testing
+	viewport.ForceCompleteHighlighting()
+
+	// Multiple calls to highlighting should work consistently
 	for i := 0; i < 5; i++ {
 		lineInfo := models.LineInfo{
 			FileIndex: 0,
 			LineIndex: i,
 			FilePath:  "test.go",
 		}
-		viewport.getHighlightedContent("test content", "test.go", false, lineInfo)
+		// Note: spans might be nil for some content, but should not crash
+		assert.NotPanics(t, func() {
+			viewport.getHighlightedStyleSpans("test content", "test.go", false, lineInfo)
+		})
 	}
 
-	// Cache should be cleaned up
-	assert.LessOrEqual(t, len(viewport.highlightCache), viewport.cacheSize)
+	// Highlighting should be initialized after ForceCompleteHighlighting
+	assert.NotNil(t, viewport.enhancedHighlighter)
 }
 
 func TestRenderStatsTracking(t *testing.T) {

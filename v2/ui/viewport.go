@@ -9,7 +9,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattduck/diffyduck/aligner"
 	"github.com/mattduck/diffyduck/git"
-	"github.com/mattduck/diffyduck/syntax"
 	"github.com/mattduck/diffyduck/v2/internal"
 	"github.com/mattduck/diffyduck/v2/models"
 	v2syntax "github.com/mattduck/diffyduck/v2/syntax"
@@ -36,18 +35,13 @@ type LineCache struct {
 // DiffViewport implements a virtual viewport for efficient diff rendering
 type DiffViewport struct {
 	content             *models.DiffContent
-	highlighter         *syntax.Highlighter           // Legacy highlighter for fallback
-	enhancedHighlighter *v2syntax.EnhancedHighlighter // New file-level highlighter
+	enhancedHighlighter *v2syntax.EnhancedHighlighter // File-level highlighter
 
 	// Viewport state
 	offsetY int // First visible line
 	offsetX int // Horizontal scroll offset
 	width   int // Viewport width
 	height  int // Viewport height
-
-	// Caching
-	highlightCache map[string]LineCache // Key: fileIndex:lineIndex:isOld
-	cacheSize      int                  // Maximum cache entries
 
 	// Progressive rendering
 	enableSyntaxHighlighting bool // Whether to apply syntax highlighting
@@ -74,11 +68,8 @@ const (
 func NewDiffViewport(content *models.DiffContent) *DiffViewport {
 	viewport := &DiffViewport{
 		content: content,
-		// Don't create highlighters until needed - lazy initialization
-		highlighter:         nil,
+		// Don't create highlighter until needed - lazy initialization
 		enhancedHighlighter: nil,
-		highlightCache:      make(map[string]LineCache),
-		cacheSize:           defaultCacheSize,
 
 		// Progressive rendering settings
 		enableSyntaxHighlighting: true,  // Enable syntax highlighting with progressive parsing
@@ -504,73 +495,6 @@ func (dv *DiffViewport) parseFileContent(filePath string, alignedLines []aligner
 	}
 }
 
-// getHighlightedContent returns highlighted content for a line (legacy method for caching)
-func (dv *DiffViewport) getHighlightedContent(content, filePath string, isOld bool, lineInfo models.LineInfo) string {
-	// Create cache key
-	cacheKey := fmt.Sprintf("%d:%d:%t", lineInfo.FileIndex, lineInfo.LineIndex, isOld)
-
-	// Check cache first
-	if cached, exists := dv.highlightCache[cacheKey]; exists {
-		// Use cached version if it's recent (within 1 minute)
-		if time.Since(cached.Timestamp) < time.Minute {
-			return cached.Content
-		}
-	}
-
-	// For now, we'll use the style spans approach instead of returning styled text
-	// This method is kept for backward compatibility
-	highlighted := content
-
-	// Cache the result
-	dv.cacheHighlightedContent(cacheKey, highlighted)
-
-	return highlighted
-}
-
-// ensureLegacyHighlighter lazily initializes the legacy highlighter
-func (dv *DiffViewport) ensureLegacyHighlighter() {
-	if dv.highlighter == nil {
-		dv.highlighter = syntax.NewHighlighter()
-	}
-}
-
-// cacheHighlightedContent stores highlighted content in cache
-func (dv *DiffViewport) cacheHighlightedContent(key, content string) {
-	// Clean cache if it's getting too large
-	if len(dv.highlightCache) >= dv.cacheSize {
-		dv.cleanCache()
-	}
-
-	dv.highlightCache[key] = LineCache{
-		Content:   content,
-		Timestamp: time.Now(),
-	}
-}
-
-// cleanCache removes old entries from the highlight cache
-func (dv *DiffViewport) cleanCache() {
-	// Remove entries older than 2 minutes
-	cutoff := time.Now().Add(-2 * time.Minute)
-	for key, cached := range dv.highlightCache {
-		if cached.Timestamp.Before(cutoff) {
-			delete(dv.highlightCache, key)
-		}
-	}
-
-	// If still too large, remove half randomly
-	if len(dv.highlightCache) >= dv.cacheSize {
-		count := 0
-		target := dv.cacheSize / 2
-		for key := range dv.highlightCache {
-			if count >= target {
-				break
-			}
-			delete(dv.highlightCache, key)
-			count++
-		}
-	}
-}
-
 // applyHorizontalOffset applies horizontal scrolling to content
 func (dv *DiffViewport) applyHorizontalOffset(content string, width int) string {
 	if dv.offsetX == 0 {
@@ -885,10 +809,6 @@ func (dv *DiffViewport) Close() {
 	}
 	dv.closed = true
 
-	if dv.highlighter != nil {
-		dv.highlighter.Close()
-		dv.highlighter = nil
-	}
 	if dv.enhancedHighlighter != nil {
 		dv.enhancedHighlighter.Close()
 		dv.enhancedHighlighter = nil

@@ -81,15 +81,15 @@ func TestViewportWithSyntaxHighlighting(t *testing.T) {
 		FilePath:  "test.go",
 	}
 
-	highlighted := viewport.getHighlightedContent("package main", "test.go", false, lineInfo)
-	if highlighted == "" {
-		t.Error("Expected non-empty highlighted content")
+	spans := viewport.getHighlightedStyleSpans("package main", "test.go", false, lineInfo)
+	if spans == nil {
+		t.Error("Expected highlighting style spans")
 	}
 
-	// Verify caching works
-	highlighted2 := viewport.getHighlightedContent("package main", "test.go", false, lineInfo)
-	if highlighted != highlighted2 {
-		t.Error("Cached content should be identical")
+	// Verify highlighting works consistently
+	spans2 := viewport.getHighlightedStyleSpans("package main", "test.go", false, lineInfo)
+	if len(spans) != len(spans2) {
+		t.Error("Style spans should be consistent")
 	}
 }
 
@@ -131,11 +131,11 @@ func TestViewportPreParsing(t *testing.T) {
 		FilePath:  "test.go",
 	}
 
-	// Multiple calls should be fast due to caching
+	// Multiple calls should be fast due to parsing cache
 	for i := 0; i < 10; i++ {
-		highlighted := viewport.getHighlightedContent("package main", "test.go", false, lineInfo)
-		if highlighted == "" {
-			t.Errorf("Call %d returned empty content", i)
+		spans := viewport.getHighlightedStyleSpans("package main", "test.go", false, lineInfo)
+		if spans == nil {
+			t.Errorf("Call %d returned no style spans", i)
 		}
 	}
 }
@@ -226,13 +226,13 @@ func TestViewportPerformanceMetrics(t *testing.T) {
 		FilePath:  "file2.go",
 	}
 
-	highlighted1 := viewport.getHighlightedContent("package file1", "file1.go", false, lineInfo1)
-	highlighted2 := viewport.getHighlightedContent("package file2", "file2.go", false, lineInfo2)
+	spans1 := viewport.getHighlightedStyleSpans("package file1", "file1.go", false, lineInfo1)
+	spans2 := viewport.getHighlightedStyleSpans("package file2", "file2.go", false, lineInfo2)
 
-	if highlighted1 == "" {
-		t.Error("Expected highlighting for file1")
+	if spans1 == nil {
+		t.Error("Expected highlighting spans for file1")
 	}
-	if highlighted2 == "" {
-		t.Error("Expected highlighting for file2")
+	if spans2 == nil {
+		t.Error("Expected highlighting spans for file2")
 	}
 }
