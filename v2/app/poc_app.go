@@ -17,14 +17,6 @@ type POCApp struct {
 	content  *models.DiffContent
 	quit     bool
 
-	// Stats
-	frameCount    int
-	lastStatsTime time.Time
-	fps           float64
-
-	// Progressive rendering communication
-	rerenderChan chan bool
-
 	// Background parsing state
 	backgroundParsingComplete bool
 }
@@ -51,11 +43,9 @@ func NewPOCApp(files []models.FileWithLines) (*POCApp, error) {
 	internal.Log("[STARTUP] Created diff viewport")
 
 	app := &POCApp{
-		screen:        screen,
-		viewport:      viewport,
-		content:       content,
-		lastStatsTime: time.Now(),
-		rerenderChan:  make(chan bool, 1), // Buffered channel to avoid blocking
+		screen:   screen,
+		viewport: viewport,
+		content:  content,
 	}
 
 	internal.Log("[STARTUP] POC app creation complete")
@@ -72,57 +62,29 @@ func (app *POCApp) Run() error {
 	app.viewport.SetSize(width, height-2) // Reserve space for status line
 	internal.Logf("[STARTUP] Set viewport size: %dx%d", width, height-2)
 
-	// Main event loop - process events immediately for responsiveness
-	statsTicker := time.NewTicker(time.Second) // Update stats every second
-	defer statsTicker.Stop()
-
-	// Enable progressive rendering with background file parsing
-	progressiveTicker := time.NewTicker(50 * time.Millisecond) // Check for progressive rendering updates
-	defer progressiveTicker.Stop()
-
 	internal.Log("[STARTUP] About to call first render...")
 	app.render()
 	internal.Log("[STARTUP] First render complete, entering event loop")
 
 	for !app.quit {
-		select {
-		case <-statsTicker.C:
-			// Update stats periodically
-			app.updateStats()
-			app.render() // Re-render to show updated stats
-
-		case <-progressiveTicker.C:
-			// Do incremental background file parsing
+		// Handle events immediately (highest priority)
+		if app.screen.HasPendingEvent() {
+			event := app.screen.PollEvent()
+			if !app.handleEvent(event) {
+				app.quit = true
+			}
+			app.render()
+		} else {
+			// Do incremental parsing when no user input
 			if !app.backgroundParsingComplete {
 				allDone := app.viewport.ParseNextFileInBackground()
 				if allDone {
 					app.backgroundParsingComplete = true
 				}
-			}
-
-			// Check if we need to re-render due to progressive highlighting
-			if app.viewport.IsProgressiveRenderingComplete() && app.backgroundParsingComplete {
-				progressiveTicker.Stop() // Stop checking once complete
-			}
-			// Re-render to show any new highlighting that's become available
-			app.render()
-
-		case <-app.rerenderChan:
-			// Re-render requested from background goroutine
-			app.render()
-
-		default:
-			// Check for events immediately
-			if app.screen.HasPendingEvent() {
-				event := app.screen.PollEvent()
-				if !app.handleEvent(event) {
-					app.quit = true
-				}
-				// Render immediately after handling event
-				app.render()
+				app.render() // Only render during parsing
 			} else {
-				// Small sleep to prevent busy waiting
-				time.Sleep(1 * time.Millisecond)
+				// Sleep when idle and parsing complete
+				time.Sleep(10 * time.Millisecond)
 			}
 		}
 	}
@@ -204,7 +166,6 @@ func (app *POCApp) render() {
 	internal.Log("[RENDER] About to call screen.Show() - TUI will be visible after this")
 	app.screen.Show()
 	internal.Log("[RENDER] screen.Show() complete - TUI is now visible")
-	app.frameCount++
 }
 
 // renderStatusLine draws the status and performance info
@@ -222,14 +183,13 @@ func (app *POCApp) renderStatusLine() {
 	viewportHeight := screenHeight - 2 // Account for status line
 	offsetY, offsetX := app.viewport.GetOffsets()
 
-	// Create status text with more detailed info
+	// Create status text with essential info
 	statusText := fmt.Sprintf(
-		"Total: %d | Visible: %d | Offset: Y:%d X:%d | FPS: %.1f | Render: %v (%d) | h/l:scroll j/k:line q:quit",
+		"Total: %d | Visible: %d | Offset: Y:%d X:%d | Render: %v (%d) | h/l:scroll j/k:line q:quit",
 		app.content.TotalLines,
 		viewportHeight,
 		offsetY,
 		offsetX,
-		app.fps,
 		renderTime,
 		renderCount,
 	)
@@ -249,17 +209,6 @@ func (app *POCApp) renderStatusLine() {
 	}
 }
 
-// updateStats calculates FPS and other performance metrics
-func (app *POCApp) updateStats() {
-	now := time.Now()
-	if time.Since(app.lastStatsTime) >= time.Second {
-		duration := now.Sub(app.lastStatsTime)
-		app.fps = float64(app.frameCount) / duration.Seconds()
-		app.frameCount = 0
-		app.lastStatsTime = now
-	}
-}
-
 // GetHeight returns the viewport height (for key handling)
 func (app *POCApp) GetHeight() int {
 	_, height := app.screen.Size()
@@ -273,8 +222,5 @@ func (app *POCApp) cleanup() {
 	}
 	if app.screen != nil {
 		app.screen.Fini()
-	}
-	if app.rerenderChan != nil {
-		close(app.rerenderChan) // Close channel to prevent goroutine leaks
 	}
 }
