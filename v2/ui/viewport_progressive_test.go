@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/mattduck/diffyduck/aligner"
 	"github.com/mattduck/diffyduck/git"
@@ -148,18 +147,6 @@ func TestBackgroundHighlightingPerformance(t *testing.T) {
 
 	viewport.SetSize(80, 25) // Set reasonable viewport size
 
-	// Test that background highlighting doesn't block
-	start := time.Now()
-	viewport.startProgressiveHighlighting()
-	elapsed := time.Since(start)
-
-	// Background highlighting should complete quickly (mostly async)
-	if elapsed > 200*time.Millisecond {
-		t.Errorf("Background highlighting took too long: %v", elapsed)
-	}
-
-	// Verify it completed
-	if viewport.backgroundHighlighting {
-		t.Error("Expected background highlighting to be complete")
-	}
+	// Background highlighting is now handled by ParseNextFileInBackground()
+	// called from main thread timer, not via startProgressiveHighlighting()
 }

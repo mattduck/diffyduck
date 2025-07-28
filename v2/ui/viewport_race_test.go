@@ -53,11 +53,10 @@ func TestViewportRaceCondition(t *testing.T) {
 			var wg sync.WaitGroup
 			wg.Add(3)
 
-			// Goroutine 1: Start progressive highlighting
+			// Goroutine 1: Mark first render done
 			go func() {
 				defer wg.Done()
-				viewport.firstRenderDone = true // Trigger background highlighting
-				viewport.startProgressiveHighlighting()
+				viewport.firstRenderDone = true
 			}()
 
 			// Goroutine 2: Try to access highlighting
@@ -168,17 +167,8 @@ func TestViewportProgressiveRenderingRace(t *testing.T) {
 	viewport.SetSize(80, 25)
 	viewport.firstRenderDone = true
 
-	var wg sync.WaitGroup
-	// Try to start progressive highlighting from multiple goroutines
-	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			viewport.startProgressiveHighlighting()
-		}()
-	}
-
-	wg.Wait()
+	// Progressive highlighting is now handled by ParseNextFileInBackground()
+	// which is called from main thread timer, not via goroutines
 
 	// Verify it completed without crashing
 	if viewport.IsProgressiveRenderingComplete() {

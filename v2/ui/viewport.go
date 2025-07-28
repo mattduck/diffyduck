@@ -693,57 +693,6 @@ func (dv *DiffViewport) GetRenderStats() (time.Duration, int) {
 	return dv.lastRenderTime, dv.renderCount
 }
 
-// startProgressiveHighlighting begins background highlighting after first render
-// NOTE: This method is deprecated - we now use main thread timer-based parsing
-func (dv *DiffViewport) startProgressiveHighlighting() {
-	// This method is intentionally empty to avoid goroutine issues
-	// All background parsing is now handled by ParseNextFileInBackground()
-	// called from the main thread timer
-}
-
-// preParseVisibleFiles parses only files that contain visible lines (deprecated)
-func (dv *DiffViewport) preParseVisibleFiles() {
-	// This method is deprecated - parsing now happens incrementally
-	// via ParseNextFileInBackground() called from main thread timer
-}
-
-// parseFilePartial parses only a portion of a file (for fast startup)
-func (dv *DiffViewport) parseFilePartial(fileIndex, startLine, numLines int) {
-	if fileIndex >= len(dv.content.Files) {
-		return
-	}
-
-	file := dv.content.Files[fileIndex]
-	if file.OldFileType == git.BinaryFile && file.NewFileType == git.BinaryFile {
-		return // Skip binary files
-	}
-
-	// Get highlighter safely
-	dv.mu.RLock()
-	if dv.closed || dv.enhancedHighlighter == nil {
-		dv.mu.RUnlock()
-		return
-	}
-	highlighter := dv.enhancedHighlighter
-	dv.mu.RUnlock()
-
-	// Parse only the visible portion of old file
-	if file.OldFileType != git.BinaryFile {
-		partialContent := dv.extractPartialFileContent(file.AlignedLines, true, startLine, numLines)
-		if len(partialContent) > 0 {
-			highlighter.ParseFilePartial(file.FileDiff.OldPath, partialContent, startLine)
-		}
-	}
-
-	// Parse only the visible portion of new file
-	if file.NewFileType != git.BinaryFile {
-		partialContent := dv.extractPartialFileContent(file.AlignedLines, false, startLine, numLines)
-		if len(partialContent) > 0 {
-			highlighter.ParseFilePartial(file.FileDiff.NewPath, partialContent, startLine)
-		}
-	}
-}
-
 // extractPartialFileContent gets only the lines we need for a specific range
 func (dv *DiffViewport) extractPartialFileContent(alignedLines []aligner.AlignedLine, isOld bool, startLine, numLines int) []string {
 	if len(alignedLines) == 0 {
@@ -776,12 +725,6 @@ func (dv *DiffViewport) extractPartialFileContent(alignedLines []aligner.Aligned
 	}
 
 	return content
-}
-
-// preParseAllFiles parses all remaining files (deprecated - use ParseNextFileInBackground)
-func (dv *DiffViewport) preParseAllFiles() {
-	// This method is deprecated in favor of incremental ParseNextFileInBackground
-	// which avoids blocking and provides better responsiveness
 }
 
 // ParseNextFileInBackground parses one file incrementally (called from main thread timer)
