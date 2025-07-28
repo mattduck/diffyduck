@@ -3,7 +3,6 @@ package syntax
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -23,9 +22,6 @@ func TestNewEnhancedHighlighter(t *testing.T) {
 	}
 	if eh.maxCacheSize <= 0 {
 		t.Error("maxCacheSize should be positive")
-	}
-	if eh.defaultTTL <= 0 {
-		t.Error("defaultTTL should be positive")
 	}
 }
 
@@ -91,38 +87,34 @@ func TestParseFileGoLanguage(t *testing.T) {
 	}
 }
 
-func TestCacheExpiration(t *testing.T) {
+func TestCacheSizeEviction(t *testing.T) {
 	eh := NewEnhancedHighlighter()
-	eh.defaultTTL = 100 * time.Millisecond // Very short TTL for testing
+	eh.maxCacheSize = 1 // Very small cache for testing eviction
 	defer eh.Close()
 
 	fileContent := []string{"package main"}
 
-	// Parse file
-	err := eh.ParseFile("test.go", fileContent)
+	// Parse first file
+	err := eh.ParseFile("test1.go", fileContent)
 	if err != nil {
 		t.Fatalf("ParseFile failed: %v", err)
 	}
 
 	// Verify cache exists
-	_, exists := eh.fileCache["test.go"]
+	_, exists := eh.fileCache["test1.go"]
 	if !exists {
-		t.Error("Expected cache entry")
+		t.Error("Expected cache entry for test1.go")
 	}
 
-	// Wait for expiration
-	time.Sleep(150 * time.Millisecond)
-
-	// Parse again - should trigger cache cleanup
+	// Parse second file - should evict first due to size limit
 	err = eh.ParseFile("test2.go", fileContent)
 	if err != nil {
 		t.Fatalf("ParseFile failed: %v", err)
 	}
 
-	// Original cache should be cleaned up
-	_, exists = eh.fileCache["test.go"]
-	if exists {
-		t.Error("Expected expired cache entry to be cleaned up")
+	// Cache should be at size limit
+	if len(eh.fileCache) > eh.maxCacheSize {
+		t.Errorf("Cache size %d exceeds limit %d", len(eh.fileCache), eh.maxCacheSize)
 	}
 }
 

@@ -24,7 +24,6 @@ type FileHighlightCache struct {
 	Language    string              // Language name
 	FileContent []string            // Original file lines for reference
 	LineStyles  map[int][]StyleSpan // Pre-computed line styles (line number -> spans)
-	Timestamp   time.Time           // For cache invalidation
 	FilePath    string              // File path for language detection
 	IsPartial   bool                // Whether this is a partial file parse (vs complete file)
 	StartLine   int                 // Starting line number for partial parses
@@ -35,7 +34,6 @@ type EnhancedHighlighter struct {
 	baseHighlighter *syntax.Highlighter
 	fileCache       map[string]*FileHighlightCache // filePath -> cache
 	maxCacheSize    int
-	defaultTTL      time.Duration
 }
 
 // NewEnhancedHighlighter creates a new enhanced highlighter
@@ -44,7 +42,6 @@ func NewEnhancedHighlighter() *EnhancedHighlighter {
 		baseHighlighter: syntax.NewHighlighter(),
 		fileCache:       make(map[string]*FileHighlightCache),
 		maxCacheSize:    10, // Limit to 10 files in cache
-		defaultTTL:      5 * time.Minute,
 	}
 }
 
@@ -66,57 +63,33 @@ func (eh *EnhancedHighlighter) clearCache() {
 	eh.fileCache = make(map[string]*FileHighlightCache)
 }
 
-// cleanExpiredCache removes expired entries
-func (eh *EnhancedHighlighter) cleanExpiredCache() {
-	now := time.Now()
-	for filePath, cache := range eh.fileCache {
-		if now.Sub(cache.Timestamp) > eh.defaultTTL {
+// cleanOversizedCache removes entries when cache exceeds size limit
+func (eh *EnhancedHighlighter) cleanOversizedCache() {
+	// If over limit, remove entries to make room for new entry
+	for len(eh.fileCache) >= eh.maxCacheSize {
+		// Remove any entry (since we don't track timestamps anymore)
+		for filePath, cache := range eh.fileCache {
 			if cache.Tree != nil {
 				cache.Tree.Close()
 			}
 			delete(eh.fileCache, filePath)
-		}
-	}
-
-	// If still over limit, remove oldest entries to make room for new entry
-	for len(eh.fileCache) >= eh.maxCacheSize {
-		// Find oldest entry
-		var oldestPath string
-		oldestTime := now
-
-		for filePath, cache := range eh.fileCache {
-			if cache.Timestamp.Before(oldestTime) {
-				oldestTime = cache.Timestamp
-				oldestPath = filePath
-			}
-		}
-
-		// Remove oldest entry
-		if oldestPath != "" {
-			if cache, exists := eh.fileCache[oldestPath]; exists {
-				if cache.Tree != nil {
-					cache.Tree.Close()
-				}
-				delete(eh.fileCache, oldestPath)
-			}
-		} else {
-			break // Safety break
+			break // Only remove one entry at a time
 		}
 	}
 }
 
 // ParseFile parses an entire file and caches the syntax tree
 func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) error {
-	// Clean expired cache entries first
-	eh.cleanExpiredCache()
+	// Clean oversized cache entries first
+	eh.cleanOversizedCache()
 
-	// Check if already cached and recent
+	// Check if already cached and complete
 	if cache, exists := eh.fileCache[filePath]; exists {
-		// Only skip if it's a complete parse and still fresh
-		if time.Since(cache.Timestamp) < eh.defaultTTL && !cache.IsPartial {
-			return nil // Already cached and fresh (complete parse)
+		// Only skip if it's a complete parse
+		if !cache.IsPartial {
+			return nil // Already cached (complete parse)
 		}
-		// Clean up old cache (either expired or partial - needs complete re-parse)
+		// Clean up old cache (partial - needs complete re-parse)
 		if cache.Tree != nil {
 			cache.Tree.Close()
 		}
@@ -133,7 +106,6 @@ func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) 
 			Language:    "",
 			FileContent: fileContent,
 			LineStyles:  make(map[int][]StyleSpan),
-			Timestamp:   time.Now(),
 			FilePath:    filePath,
 			IsPartial:   false, // Unsupported files are considered "complete"
 			StartLine:   1,
@@ -158,7 +130,6 @@ func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) 
 		Language:    lang.GetLanguageName(),
 		FileContent: fileContent,
 		LineStyles:  make(map[int][]StyleSpan),
-		Timestamp:   time.Now(),
 		FilePath:    filePath,
 		IsPartial:   false, // Mark as complete parse
 		StartLine:   1,     // Full file starts at line 1
@@ -170,18 +141,12 @@ func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) 
 
 // ParseFilePartial parses only a portion of a file for fast startup
 func (eh *EnhancedHighlighter) ParseFilePartial(filePath string, partialContent []string, startLine int) error {
-	// Clean expired cache entries first
-	eh.cleanExpiredCache()
+	// Clean oversized cache entries first
+	eh.cleanOversizedCache()
 
-	// Check if already cached and recent
-	if cache, exists := eh.fileCache[filePath]; exists {
-		if time.Since(cache.Timestamp) < eh.defaultTTL {
-			return nil // Already cached and fresh
-		}
-		// Clean up old cache
-		if cache.Tree != nil {
-			cache.Tree.Close()
-		}
+	// Check if already cached
+	if _, exists := eh.fileCache[filePath]; exists {
+		return nil // Already cached
 	}
 
 	// Join partial content for parsing
@@ -195,7 +160,6 @@ func (eh *EnhancedHighlighter) ParseFilePartial(filePath string, partialContent 
 			Language:    "",
 			FileContent: partialContent,
 			LineStyles:  make(map[int][]StyleSpan),
-			Timestamp:   time.Now(),
 			FilePath:    filePath,
 			IsPartial:   true, // Mark partial even for unsupported files
 			StartLine:   startLine,
@@ -220,7 +184,6 @@ func (eh *EnhancedHighlighter) ParseFilePartial(filePath string, partialContent 
 		Language:    lang.GetLanguageName(),
 		FileContent: partialContent,
 		LineStyles:  make(map[int][]StyleSpan),
-		Timestamp:   time.Now(),
 		FilePath:    filePath,
 		IsPartial:   true,      // Mark as partial parse
 		StartLine:   startLine, // Track starting line
@@ -236,8 +199,8 @@ func (eh *EnhancedHighlighter) IsFileParsed(filePath string) bool {
 	if !exists {
 		return false
 	}
-	// Check if cache is still valid AND it's a complete parse (not partial)
-	return time.Since(cache.Timestamp) < eh.defaultTTL && !cache.IsPartial
+	// Check if it's a complete parse (not partial)
+	return !cache.IsPartial
 }
 
 // HasCachedContent checks if we have any cached content (partial or complete) for a file
