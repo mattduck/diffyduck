@@ -458,7 +458,18 @@ func (dv *DiffViewport) getHighlightedStyleSpans(content, filePath string, isOld
 		return nil
 	}
 
-	return dv.enhancedHighlighter.GetLineStyles(filePath, lineNumber, content)
+	// Get syntax highlighting spans
+	syntaxSpans := dv.enhancedHighlighter.GetLineStyles(filePath, lineNumber, content)
+
+	// For Modified lines, also get word diff spans and merge them
+	if lineInfo.IsContentLine() && lineInfo.Line.LineType == aligner.Modified {
+		wordDiffSpans := dv.enhancedHighlighter.GetWordDiffSpans(filePath, lineNumber)
+		if len(wordDiffSpans) > 0 {
+			return dv.mergeStyleSpans(syntaxSpans, wordDiffSpans)
+		}
+	}
+
+	return syntaxSpans
 }
 
 // ensureFileParsed lazily parses a file if it hasn't been parsed yet
@@ -538,6 +549,22 @@ func (dv *DiffViewport) ensureFileParsed(fileIndex int, partial bool) {
 		}
 		dv.mu.Unlock()
 	}
+
+	// Set word diff information for both old and new files (only for complete parsing)
+	if !partial && highlighter != nil {
+		dv.mu.Lock()
+		if !dv.closed && dv.enhancedHighlighter != nil {
+			// Set word diff for old file
+			if dv.shouldParseFile(file, true) {
+				dv.enhancedHighlighter.SetWordDiffInfo(file.FileDiff.OldPath, file.AlignedLines)
+			}
+			// Set word diff for new file
+			if dv.shouldParseFile(file, false) {
+				dv.enhancedHighlighter.SetWordDiffInfo(file.FileDiff.NewPath, file.AlignedLines)
+			}
+		}
+		dv.mu.Unlock()
+	}
 }
 
 // applyHorizontalOffset applies horizontal scrolling to content
@@ -607,6 +634,86 @@ func (dv *DiffViewport) adjustStyleSpansForHorizontalOffset(spans []v2syntax.Sty
 	}
 
 	return adjustedSpans
+}
+
+// mergeStyleSpans merges syntax highlighting spans with word diff spans
+// Word diff spans only set background color, preserving syntax foreground colors
+func (dv *DiffViewport) mergeStyleSpans(syntaxSpans, wordDiffSpans []v2syntax.StyleSpan) []v2syntax.StyleSpan {
+	if len(wordDiffSpans) == 0 {
+		return syntaxSpans
+	}
+	if len(syntaxSpans) == 0 {
+		return wordDiffSpans
+	}
+
+	// Create a merged list of spans
+	var mergedSpans []v2syntax.StyleSpan
+
+	// Process each position in the line
+	for i := 0; i < 1000; i++ { // Assume max line length of 1000
+		var syntaxStyle tcell.Style
+		var wordDiffStyle tcell.Style
+		foundSyntax := false
+		foundWordDiff := false
+
+		// Find syntax style at this position
+		for _, span := range syntaxSpans {
+			if i >= span.Start && i < span.End {
+				syntaxStyle = span.Style
+				foundSyntax = true
+				break
+			}
+		}
+
+		// Find word diff style at this position
+		for _, span := range wordDiffSpans {
+			if i >= span.Start && i < span.End {
+				wordDiffStyle = span.Style
+				foundWordDiff = true
+				break
+			}
+		}
+
+		// If we found styles at this position, merge them
+		if foundSyntax || foundWordDiff {
+			var mergedStyle tcell.Style
+			if foundSyntax && foundWordDiff {
+				// Merge: take foreground from syntax, background from word diff
+				fg, _, attrs := syntaxStyle.Decompose()
+				_, bg, _ := wordDiffStyle.Decompose()
+				mergedStyle = tcell.StyleDefault.Foreground(fg).Background(bg).Attributes(attrs)
+			} else if foundSyntax {
+				mergedStyle = syntaxStyle
+			} else {
+				mergedStyle = wordDiffStyle
+			}
+
+			// Check if we can extend the last span or need a new one
+			if len(mergedSpans) > 0 && mergedSpans[len(mergedSpans)-1].End == i {
+				lastSpan := &mergedSpans[len(mergedSpans)-1]
+				if dv.stylesEqual(lastSpan.Style, mergedStyle) {
+					lastSpan.End = i + 1
+					continue
+				}
+			}
+
+			// Add new span
+			mergedSpans = append(mergedSpans, v2syntax.StyleSpan{
+				Start: i,
+				End:   i + 1,
+				Style: mergedStyle,
+			})
+		}
+	}
+
+	return mergedSpans
+}
+
+// stylesEqual checks if two tcell styles are equivalent
+func (dv *DiffViewport) stylesEqual(a, b tcell.Style) bool {
+	aFg, aBg, aAttrs := a.Decompose()
+	bFg, bBg, bAttrs := b.Decompose()
+	return aFg == bFg && aBg == bBg && aAttrs == bAttrs
 }
 
 // drawText draws text to the screen at the specified position
@@ -773,8 +880,12 @@ func (dv *DiffViewport) upgradePartialToFullFile(fileIndex int, isOld bool) {
 		// Replace partial content with complete content
 		if isOld {
 			highlighter.ParseFile(file.FileDiff.OldPath, fullContent)
+			// Set word diff info after complete parsing
+			highlighter.SetWordDiffInfo(file.FileDiff.OldPath, file.AlignedLines)
 		} else {
 			highlighter.ParseFile(file.FileDiff.NewPath, fullContent)
+			// Set word diff info after complete parsing
+			highlighter.SetWordDiffInfo(file.FileDiff.NewPath, file.AlignedLines)
 		}
 	}
 }

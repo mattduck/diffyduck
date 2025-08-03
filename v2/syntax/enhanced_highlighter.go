@@ -6,8 +6,11 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/mattduck/diffyduck/aligner"
 	"github.com/mattduck/diffyduck/syntax"
+	"github.com/mattduck/diffyduck/types"
 	"github.com/mattduck/diffyduck/v2/internal"
+	"github.com/sergi/go-diff/diffmatchpatch"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -20,13 +23,14 @@ type StyleSpan struct {
 
 // FileHighlightCache holds parsed syntax tree and computed styles for a file
 type FileHighlightCache struct {
-	Tree        *tree_sitter.Tree   // Parsed syntax tree
-	Language    string              // Language name
-	FileContent []string            // Original file lines for reference
-	LineStyles  map[int][]StyleSpan // Pre-computed line styles (line number -> spans)
-	FilePath    string              // File path for language detection
-	IsPartial   bool                // Whether this is a partial file parse (vs complete file)
-	StartLine   int                 // Starting line number for partial parses
+	Tree          *tree_sitter.Tree   // Parsed syntax tree
+	Language      string              // Language name
+	FileContent   []string            // Original file lines for reference
+	LineStyles    map[int][]StyleSpan // Pre-computed line styles (line number -> spans)
+	WordDiffSpans map[int][]StyleSpan // Pre-computed word diff spans (line number -> spans)
+	FilePath      string              // File path for language detection
+	IsPartial     bool                // Whether this is a partial file parse (vs complete file)
+	StartLine     int                 // Starting line number for partial parses
 }
 
 // EnhancedHighlighter provides file-level parsing with lazy line rendering
@@ -103,12 +107,13 @@ func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) 
 	if !supported {
 		// Store empty cache for unsupported files to avoid repeated attempts
 		eh.fileCache[filePath] = &FileHighlightCache{
-			Language:    "",
-			FileContent: fileContent,
-			LineStyles:  make(map[int][]StyleSpan),
-			FilePath:    filePath,
-			IsPartial:   false, // Unsupported files are considered "complete"
-			StartLine:   1,
+			Language:      "",
+			FileContent:   fileContent,
+			LineStyles:    make(map[int][]StyleSpan),
+			WordDiffSpans: make(map[int][]StyleSpan),
+			FilePath:      filePath,
+			IsPartial:     false, // Unsupported files are considered "complete"
+			StartLine:     1,
 		}
 		return nil
 	}
@@ -126,13 +131,14 @@ func (eh *EnhancedHighlighter) ParseFile(filePath string, fileContent []string) 
 
 	// Create cache entry
 	cache := &FileHighlightCache{
-		Tree:        tree,
-		Language:    lang.GetLanguageName(),
-		FileContent: fileContent,
-		LineStyles:  make(map[int][]StyleSpan),
-		FilePath:    filePath,
-		IsPartial:   false, // Mark as complete parse
-		StartLine:   1,     // Full file starts at line 1
+		Tree:          tree,
+		Language:      lang.GetLanguageName(),
+		FileContent:   fileContent,
+		LineStyles:    make(map[int][]StyleSpan),
+		WordDiffSpans: make(map[int][]StyleSpan),
+		FilePath:      filePath,
+		IsPartial:     false, // Mark as complete parse
+		StartLine:     1,     // Full file starts at line 1
 	}
 
 	eh.fileCache[filePath] = cache
@@ -157,12 +163,13 @@ func (eh *EnhancedHighlighter) ParseFilePartial(filePath string, partialContent 
 	if !supported {
 		// Store empty cache for unsupported files to avoid repeated attempts
 		eh.fileCache[filePath] = &FileHighlightCache{
-			Language:    "",
-			FileContent: partialContent,
-			LineStyles:  make(map[int][]StyleSpan),
-			FilePath:    filePath,
-			IsPartial:   true, // Mark partial even for unsupported files
-			StartLine:   startLine,
+			Language:      "",
+			FileContent:   partialContent,
+			LineStyles:    make(map[int][]StyleSpan),
+			WordDiffSpans: make(map[int][]StyleSpan),
+			FilePath:      filePath,
+			IsPartial:     true, // Mark partial even for unsupported files
+			StartLine:     startLine,
 		}
 		return nil
 	}
@@ -180,13 +187,14 @@ func (eh *EnhancedHighlighter) ParseFilePartial(filePath string, partialContent 
 
 	// Create cache entry for partial content
 	cache := &FileHighlightCache{
-		Tree:        tree,
-		Language:    lang.GetLanguageName(),
-		FileContent: partialContent,
-		LineStyles:  make(map[int][]StyleSpan),
-		FilePath:    filePath,
-		IsPartial:   true,      // Mark as partial parse
-		StartLine:   startLine, // Track starting line
+		Tree:          tree,
+		Language:      lang.GetLanguageName(),
+		FileContent:   partialContent,
+		LineStyles:    make(map[int][]StyleSpan),
+		WordDiffSpans: make(map[int][]StyleSpan),
+		FilePath:      filePath,
+		IsPartial:     true,      // Mark as partial parse
+		StartLine:     startLine, // Track starting line
 	}
 
 	eh.fileCache[filePath] = cache
@@ -583,6 +591,64 @@ func (eh *EnhancedHighlighter) getCaptureStyle(captureName string) tcell.Style {
 	default:
 		return tcell.StyleDefault
 	}
+}
+
+// SetWordDiffInfo stores word diff information for a specific file
+func (eh *EnhancedHighlighter) SetWordDiffInfo(filePath string, alignedLines []aligner.AlignedLine) {
+	cache, exists := eh.fileCache[filePath]
+	if !exists {
+		return
+	}
+
+	// Process each line looking for Modified lines with WordDiff
+	for _, line := range alignedLines {
+		if line.LineType == aligner.Modified && line.WordDiff != nil {
+			// Compute word diff spans for both old and new lines
+			if line.OldLine != nil && line.OldLineNum > 0 {
+				oldSpans := eh.computeWordDiffSpans(line.WordDiff.OldSegments)
+				cache.WordDiffSpans[line.OldLineNum] = oldSpans
+			}
+			if line.NewLine != nil && line.NewLineNum > 0 {
+				newSpans := eh.computeWordDiffSpans(line.WordDiff.NewSegments)
+				cache.WordDiffSpans[line.NewLineNum] = newSpans
+			}
+		}
+	}
+}
+
+// computeWordDiffSpans converts WordDiff segments to StyleSpans
+func (eh *EnhancedHighlighter) computeWordDiffSpans(segments []types.DiffSegment) []StyleSpan {
+	var spans []StyleSpan
+	position := 0
+
+	for _, segment := range segments {
+		segmentLen := len(segment.Text)
+		if segment.Type == diffmatchpatch.DiffDelete || segment.Type == diffmatchpatch.DiffInsert {
+			// Apply background color for changed segments
+			spans = append(spans, StyleSpan{
+				Start: position,
+				End:   position + segmentLen,
+				Style: tcell.StyleDefault.Background(tcell.Color16),
+			})
+		}
+		position += segmentLen
+	}
+
+	return spans
+}
+
+// GetWordDiffSpans returns word diff spans for a specific line
+func (eh *EnhancedHighlighter) GetWordDiffSpans(filePath string, lineNumber int) []StyleSpan {
+	cache, exists := eh.fileCache[filePath]
+	if !exists {
+		return nil
+	}
+
+	if spans, exists := cache.WordDiffSpans[lineNumber]; exists {
+		return spans
+	}
+
+	return nil
 }
 
 // Helper methods that delegate to base highlighter
