@@ -85,3 +85,37 @@ func TestDisplayWidth(t *testing.T) {
 		})
 	}
 }
+
+func TestExpandTabs(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"no tabs", "hello", "hello"},
+		{"single tab at start", "\tfoo", "    foo"},
+		{"tab after 1 char", "x\tfoo", "x   foo"},
+		{"tab after 2 chars", "xx\tfoo", "xx  foo"},
+		{"tab after 3 chars", "xxx\tfoo", "xxx foo"},
+		{"tab after 4 chars", "xxxx\tfoo", "xxxx    foo"},
+		{"multiple tabs", "\t\t", "        "},
+		{"mixed", "a\tb\tc", "a   b   c"},
+		{"empty string", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := expandTabs(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestTruncateOrPad_WithTabs(t *testing.T) {
+	// After tab expansion, width calculations should be correct
+	input := "\tfoo" // expands to "    foo" = 7 chars
+	result := truncateOrPad(expandTabs(input), 10)
+
+	assert.Equal(t, "    foo   ", result) // 7 chars + 3 spaces = 10
+	assert.Equal(t, 10, displayWidth(result))
+}

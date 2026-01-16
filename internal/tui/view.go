@@ -123,8 +123,8 @@ func renderLine(line sidebyside.Line, contentWidth, lineNumWidth int) string {
 		numStr = lineNumStyle.Render(fmt.Sprintf("%*d", lineNumWidth, line.Num))
 	}
 
-	// Content
-	content := truncateOrPad(line.Content, contentWidth)
+	// Content - expand tabs first for consistent width calculation
+	content := truncateOrPad(expandTabs(line.Content), contentWidth)
 
 	// Apply style based on type
 	var styledContent string
@@ -140,6 +140,32 @@ func renderLine(line sidebyside.Line, contentWidth, lineNumWidth int) string {
 	}
 
 	return numStr + " " + styledContent
+}
+
+// TabWidth is the number of spaces a tab character expands to.
+const TabWidth = 4
+
+// expandTabs replaces tab characters with spaces.
+// This is necessary because runewidth treats tabs as width 0,
+// but terminals render them with variable width.
+func expandTabs(s string) string {
+	if !strings.Contains(s, "\t") {
+		return s
+	}
+	var result strings.Builder
+	col := 0
+	for _, r := range s {
+		if r == '\t' {
+			// Expand to next tab stop
+			spaces := TabWidth - (col % TabWidth)
+			result.WriteString(strings.Repeat(" ", spaces))
+			col += spaces
+		} else {
+			result.WriteRune(r)
+			col += runewidth.RuneWidth(r)
+		}
+	}
+	return result.String()
 }
 
 // displayWidth returns the display width of a string, accounting for

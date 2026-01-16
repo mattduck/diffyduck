@@ -1,0 +1,6 @@
+internal/tui/view.go
+   5     "strings"                               │    5     "strings"                              
+   6     "github.com/charmbracelet/lipgloss"     │    6     "github.com/charmbracelet/lipgloss"    
+                                                 │    7     "github.com/mattn/go-runewidth"        
+   7     "github.com/user/diffyduck/pkg/sideb... │    8     "github.com/user/diffyduck/pkg/sideb...
+   8 )                                           │    9 )                                          
