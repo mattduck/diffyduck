@@ -4,9 +4,16 @@ package git
 type MockGit struct {
 	ShowOutput string
 	ShowError  error
+	DiffOutput string
+	DiffError  error
 }
 
 // Show returns the preconfigured output or error.
-func (m *MockGit) Show(ref string) (string, error) {
+func (m *MockGit) Show(args ...string) (string, error) {
 	return m.ShowOutput, m.ShowError
+}
+
+// Diff returns the preconfigured output or error.
+func (m *MockGit) Diff(args ...string) (string, error) {
+	return m.DiffOutput, m.DiffError
 }

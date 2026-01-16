@@ -18,18 +18,44 @@ func main() {
 	}
 }
 
-func run() error {
-	// Determine what to show
-	ref := "HEAD"
-	if len(os.Args) > 1 {
-		ref = os.Args[1]
+// parseArgs extracts the subcommand and remaining args from command line args.
+// Returns (command, gitArgs) where command is "diff" or "show".
+func parseArgs(args []string) (cmd string, gitArgs []string) {
+	cmd = "diff" // default
+	gitArgs = args
+
+	if len(args) > 0 {
+		switch args[0] {
+		case "diff":
+			cmd = "diff"
+			gitArgs = args[1:]
+		case "show":
+			cmd = "show"
+			gitArgs = args[1:]
+		}
 	}
 
-	// Get diff from git
+	return cmd, gitArgs
+}
+
+func run() error {
 	g := git.New()
-	output, err := g.Show(ref)
-	if err != nil {
-		return fmt.Errorf("git show: %w", err)
+	cmd, gitArgs := parseArgs(os.Args[1:])
+
+	// Get diff from git
+	var output string
+	var err error
+	switch cmd {
+	case "diff":
+		output, err = g.Diff(gitArgs...)
+		if err != nil {
+			return fmt.Errorf("git diff: %w", err)
+		}
+	case "show":
+		output, err = g.Show(gitArgs...)
+		if err != nil {
+			return fmt.Errorf("git show: %w", err)
+		}
 	}
 
 	// Parse the diff
@@ -39,7 +65,7 @@ func run() error {
 	}
 
 	if len(d.Files) == 0 {
-		fmt.Println("No changes in", ref)
+		fmt.Println("No changes")
 		return nil
 	}
 

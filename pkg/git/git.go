@@ -23,9 +23,10 @@ func NewWithDir(dir string) *RealGit {
 }
 
 // Show returns the diff output for a given commit reference.
-func (g *RealGit) Show(ref string) (string, error) {
-	args := []string{"show", "--format=", ref}
-	cmd := exec.Command("git", args...)
+// Args are passed through to git show (e.g., ref, paths).
+func (g *RealGit) Show(args ...string) (string, error) {
+	gitArgs := append([]string{"show", "--format="}, args...)
+	cmd := exec.Command("git", gitArgs...)
 	if g.Dir != "" {
 		cmd.Dir = g.Dir
 	}
@@ -35,6 +36,29 @@ func (g *RealGit) Show(ref string) (string, error) {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return "", &GitError{
 				Command: "git show",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return "", err
+	}
+
+	return string(out), nil
+}
+
+// Diff returns the diff output.
+// Args are passed through to git diff (e.g., --cached, refs, paths).
+func (g *RealGit) Diff(args ...string) (string, error) {
+	gitArgs := append([]string{"diff"}, args...)
+	cmd := exec.Command("git", gitArgs...)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", &GitError{
+				Command: "git diff",
 				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
 			}
 		}
