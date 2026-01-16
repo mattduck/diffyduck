@@ -45,14 +45,45 @@ Currently only =git show <ref>= works. Add:
 Complexity: Low
 Files: pkg/git/git.go, cmd/diffyduck/main.go (CLI args)
 
-*** Status Bar
-Add a bottom status bar showing:
-- Current file name
-- Position (file X of Y, line N of M)
-- Key hints
+*** Status Bar [FOUNDATIONAL]
+
+Add a bottom status bar like =less= pager. This is a *critical dependency*
+for search (and useful on its own).
+
+**** Display Elements
+
+- Current file name (or "File X of Y")
+- Position: line N of M, percentage through file
+- At end: show "END" or "(END)" like less
+- During search: show search prompt and input
+- After search: show "Match N/M" or "Pattern not found"
+- Optional: key hints (toggle-able)
+
+**** Layout
+
+#+begin_example
+┌─────────────────────────────────────────────────────────────┐
+│                         [diff view content]                 │
+│                              ...                            │
+├─────────────────────────────────────────────────────────────┤
+│ internal/tui/view.go │ Line 45/120 (37%) │ File 2/5        │
+└─────────────────────────────────────────────────────────────┘
+
+During search:
+├─────────────────────────────────────────────────────────────┤
+│ /search_term█                                   Match 3/17  │
+└─────────────────────────────────────────────────────────────┘
+#+end_example
+
+**** Why Foundational
+
+- Search needs it for input prompt and match display
+- Provides essential orientation in large diffs
+- Low complexity but high value
+- Establishes the "chrome" pattern for future UI elements
 
 Complexity: Low
-Files: internal/tui/view.go
+Files: internal/tui/view.go, internal/tui/model.go (status state)
 
 ** Phase 1.5: Horizontal Scrolling
 
@@ -83,7 +114,81 @@ Why early: This is fundamental to the view architecture. Adding later means
 rewriting how every line is rendered. Better to establish the gutter/content
 split now before adding more view features.
 
-** Phase 2: Syntax Highlighting
+** Phase 2: Inline/Word Diff
+
+Highlight the specific changed characters within modified lines, making it
+easy to spot exactly what changed.
+
+*** Visual Example
+
+#+begin_example
+Before (current):
+─  15 fmt.Println("hello world")     │
+                                      │+  15 fmt.Println("hello there")
+
+After (with inline diff):
+─  15 fmt.Println("hello [world]")   │
+                                      │+  15 fmt.Println("hello [there]")
+                                              highlighted ─────┘
+#+end_example
+
+The brackets represent highlighting (actual rendering uses color/style).
+- Removed text: red background or strikethrough
+- Added text: green background or bold
+
+*** Algorithm Options
+
+1. *Character-level Myers diff*
+   - Most accurate, shows exact character changes
+   - Can be noisy for heavily modified lines
+   - Standard algorithm, well-understood
+
+2. *Word-level diff*
+   - Split on whitespace/punctuation, diff words
+   - Cleaner output for prose/code
+   - May miss character-level changes within words
+
+3. *Hybrid approach*
+   - Word-level first, then character-level within changed words
+   - Best of both worlds
+   - More complex implementation
+
+*** Implementation
+
+#+begin_src go
+// pkg/inlinediff/diff.go
+
+type Span struct {
+    Start, End int
+    Type       SpanType  // Unchanged, Added, Removed
+}
+
+// Diff compares two strings and returns spans for highlighting
+func Diff(old, new string) (oldSpans, newSpans []Span)
+#+end_src
+
+*** Integration Points
+
+- Modify =pkg/sidebyside= to pair up old/new lines for diffing
+- Extend view rendering to apply inline highlights on top of line highlights
+- Consider interaction with syntax highlighting (inline diff + syntax colors)
+
+*** Performance Considerations
+
+- *Compute once*: Calculate inline diffs when building DisplayLines, cache result
+- *Skip long lines*: For very long lines (>500 chars?), skip or truncate
+- *Skip dissimilar lines*: If lines are <30% similar, don't bother (whole line changed)
+
+*** Dependencies
+
+- None! Can work with current diff lines, no full file content needed
+- Independent of syntax highlighting (but should compose with it later)
+
+Complexity: Medium
+New package: pkg/inlinediff
+Files: pkg/sidebyside/transform.go, internal/tui/view.go
+
+** Phase 2.5: Syntax Highlighting
 
 *** Treesitter Integration
 Use go-tree-sitter to parse and highlight code.
@@ -100,38 +205,98 @@ Considerations:
 - May need to reconstruct old/new file content from diff + context
 - Performance: parse on load, cache results
 - Color scheme: use standard terminal colors or configurable themes
+- Must compose with inline diff highlighting (both apply to same lines)
 
 Complexity: High
 New package: pkg/highlight
-
-*** Inline Diff Highlighting
-Within modified lines, highlight the specific changed characters.
-E.g., =fmt.Println("old")= vs =fmt.Println("new")= would highlight just "old"/"new"
-
-Requires: character-level diff algorithm (Myers, patience, etc.)
-Complexity: Medium
-New package: pkg/inline or extend pkg/diff
+Depends on: File content fetching layer (from folding work)
 
 ** Phase 3: Folding
 
-*** Fold/Unfold Hunks
-- =zc= - fold current hunk (collapse to single line)
-- =zo= - unfold current hunk
-- =zM= - fold all hunks
-- =zR= - unfold all hunks
+A major feature with three distinct view modes for each file:
 
-State to track: which hunks are folded
-Display: show "[+] 15 lines" or similar when folded
+*** Three Fold Levels
 
-Complexity: Medium
-Files: internal/tui/model.go, pkg/sidebyside/types.go
+1. *Collapsed (stats only)*: Just the file header with +/- line counts
+   #+begin_example
+   ▸ internal/tui/view.go  +45 -12
+   #+end_example
 
-*** Fold/Unfold Files
-Same as hunks but at file level.
-- Fold entire file to just header
-- Useful for large diffs with many files
+2. *Normal (default)*: Standard diff view with hunk edits (what we have now)
+   #+begin_example
+   ▾ internal/tui/view.go  +45 -12
+      10 context line                    │   10 context line
+   ─  11 removed line                    │
+                                         │+  11 added line
+      12 context line                    │   12 context line
+   #+end_example
 
-Complexity: Low (once hunk folding works)
+3. *Expanded (full file)*: Complete file contents with changes highlighted inline
+   - Shows all lines from the file, not just diff context
+   - Changed sections are still highlighted
+   - Useful for understanding surrounding context
+
+*** Keybindings
+
+- =TAB= - cycle fold level for current file (collapsed → normal → expanded → collapsed)
+- =Shift+TAB= - cycle fold level for ALL files simultaneously
+- Or consider: =TAB= folds, =Shift+TAB= unfolds (simpler mental model)
+
+Alternative vim-style bindings (can coexist):
+- =zc= - collapse current file to stats only
+- =zo= - expand to normal diff view
+- =zO= - expand to full file view
+- =zM= - collapse all files
+- =zR= - expand all files to normal
+
+*** Dependencies
+
+This feature requires fetching full file contents (old and new versions):
+
+1. *Git layer for file retrieval*:
+   - Get old version: =git show <parent>:<path>= or =git show <ref>^:<path>=
+   - Get new version: =git show <ref>:<path>= or working tree for unstaged
+   - For =git diff= (unstaged): old is index, new is working tree
+   - For =git diff --cached=: old is HEAD, new is index
+
+2. *Content storage*:
+   - Store full file contents lazily (only when expanded)
+   - Cache to avoid re-fetching on fold/unfold cycles
+   - Memory consideration: large files in large diffs
+
+3. *Line mapping*:
+   - Map diff line numbers to full file line numbers
+   - Track which lines are adds/removes/context/unchanged
+
+*** State Tracking
+
+#+begin_src go
+type FoldLevel int
+
+const (
+    FoldCollapsed FoldLevel = iota  // stats only
+    FoldNormal                      // diff hunks (default)
+    FoldExpanded                    // full file
+)
+
+// Per-file state
+type FileFoldState struct {
+    Level       FoldLevel
+    OldContent  []string  // lazily loaded
+    NewContent  []string  // lazily loaded
+}
+#+end_src
+
+*** Performance Considerations
+
+- *Lazy loading*: Don't fetch full files until user expands
+- *Incremental rendering*: Only render visible viewport
+- *Cache aggressively*: Once fetched, keep file contents for session
+- *Avoid re-parsing*: When toggling fold levels, reuse parsed content
+
+Complexity: High (architectural, git integration, state management)
+Files: internal/tui/model.go, pkg/sidebyside/types.go, pkg/git/git.go (new methods)
+New consideration: May want pkg/content or similar for file content management
 
 ** Phase 4: Semantic Awareness
 
@@ -158,22 +323,62 @@ Some users prefer unified diff view. Could toggle with a key.
 *** Word Wrap
 Long lines are currently truncated. Could add word wrap mode.
 
-*** Search (less-style)
-Less-style incremental search with match navigation:
+*** Search (less-style) [MAJOR FEATURE]
+
+A major feature: less-pager-style incremental search.
+
+**** Core Behavior
+
 - =/= - open search prompt, search forward as you type
 - =?= - open search prompt, search backward
 - =n= - jump to next match
 - =N= - jump to previous match
 - =Enter= or =Esc= - close search prompt, stay at current match
 
-Implementation notes:
-- Highlight all matches in visible area
-- Current match gets distinct highlight (e.g., reverse video vs just color)
-- Search should work across both sides in side-by-side view
-- Consider regex support (like less) vs literal-only (simpler)
-- Store search history for up-arrow recall
+**** Key Design Decision: Search Visible Content Only
 
-Complexity: Medium
+Search operates on *visible content only*, respecting fold state:
+- Collapsed files: not searched (only header visible)
+- Normal diff view: search the diff lines shown
+- Expanded view: search the full file contents
+
+This is like =less= - you search what you can see. If something is folded
+away, it's hidden from search. User can unfold-all then search if needed.
+
+Benefits:
+- Simpler implementation (search the rendered/renderable content)
+- Predictable behavior (matches = what you can see)
+- Faster (no searching hidden content)
+
+**** Visual Feedback
+
+- Highlight all matches in visible area (dim highlight)
+- Current match gets distinct highlight (reverse video or bright)
+- Search should work across both sides in side-by-side view
+- Show match count in status bar: "Match 3/17" or "No matches"
+
+**** Dependencies
+
+- *Status bar*: Required for showing search prompt and match count
+  - Need input area at bottom for typing search term
+  - Need status display for "Match N/M" or "Pattern not found"
+  - Need to show current search term while active
+
+**** Implementation Notes
+
+- Consider regex support (like less) vs literal-only (simpler to start)
+- Case sensitivity: =i= flag or smart-case (literal if lowercase, sensitive if mixed)
+- Store search history for up-arrow recall
+- Wrap around at end of file (with indicator)
+
+**** Performance Considerations
+
+- *Incremental search*: Update matches as user types, but debounce
+- *Don't recompute on scroll*: Cache match positions, just update "current"
+- *Visible-only matching*: Compute matches for viewport + buffer, not entire content
+- *Avoid blocking*: Large files shouldn't freeze UI during search
+
+Complexity: Medium-High (needs status bar first, search state, highlighting integration)
 Files: internal/tui/model.go (search state), internal/tui/update.go (input handling),
        internal/tui/view.go (match highlighting), internal/tui/keys.go
 
@@ -191,21 +396,121 @@ Bubble Tea supports mouse. Could add:
 Ordered by "fundamentality" - things that affect architecture first, additive
 features later. Doing fundamental work late causes painful rewrites.
 
-*** Fundamental (do early)
-1. *Horizontal scrolling* - Architectural: establishes gutter/content split
-2. *Plan data flow for highlighting* - Need full file content, not just diff lines
-3. *Inline character diff* - Affects how we pair modified lines
+*** Dependency Graph
 
-*** Important but additive
-4. *Status bar* - Quick win, improves usability
-5. *Git diff support* - Essential for daily use
-6. *File navigation* - Essential for multi-file diffs
-7. *Hunk separators* - Visual clarity
+#+begin_example
+                    ┌─────────────────┐
+                    │ Horizontal Scroll│ (DONE - Phase 1.5)
+                    └─────────────────┘
+                             │
+    ┌────────────────────────┼────────────────────────┐
+    ▼                        ▼                        ▼
+┌──────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Status Bar  │    │   Git Layer     │    │  Inline/Word    │
+│ (low effort) │    │ (diff support)  │    │     Diff        │
+└──────────────┘    └─────────────────┘    └─────────────────┘
+    │                        │                        │
+    ▼                        ▼                        │
+┌──────────────┐    ┌─────────────────┐               │
+│    Search    │    │  File Content   │               │
+│ (less-style) │    │   Fetching      │               │
+└──────────────┘    └─────────────────┘               │
+                             │                        │
+                             ▼                        │
+                    ┌─────────────────┐               │
+                    │    Folding      │               │
+                    │   (3 levels)    │               │
+                    └─────────────────┘               │
+                             │                        │
+                             ▼                        ▼
+                    ┌─────────────────────────────────┐
+                    │       Treesitter Highlighting   │
+                    │  (needs full content + composes │
+                    │       with inline diff)         │
+                    └─────────────────────────────────┘
+                                      │
+                                      ▼
+                             ┌─────────────────┐
+                             │    Semantic     │
+                             │   Awareness     │
+                             └─────────────────┘
+#+end_example
 
-*** Big features (after foundation is solid)
-8. *Treesitter highlighting* - The big feature, depends on data flow
-9. *Folding* - State tracking, conditional rendering
-10. *Semantic awareness* - Depends on treesitter
+*** Recommended Order
+
+1. *Status bar* [FOUNDATIONAL] - Low effort, high value
+   - Dependency for search
+   - Provides orientation (line/file position, %)
+   - Establishes UI chrome pattern
+   - No other dependencies
+
+2. *Inline/Word diff* [PHASE 2] - Medium effort, high impact
+   - No dependencies (works with current diff lines)
+   - Big visual improvement for reviewing changes
+   - Can be built in parallel with git layer work
+
+3. *Git diff support* - Essential for daily use
+   - =git diff=, =git diff --cached=, =git diff <ref1> <ref2>=
+   - Lays groundwork for file content fetching
+
+4. *File content fetching layer* - Enables folding + highlighting
+   - =git show <ref>:<path>= for old/new versions
+   - Lazy loading with caching
+   - This is the "full file content" that folding needs
+
+5. *Folding (3 levels)* [MAJOR FEATURE] - Depends on #4
+   - Collapsed (stats) → Normal (diff) → Expanded (full file)
+   - TAB / Shift+TAB keybindings
+   - State tracking per file
+
+6. *Search (less-style)* [MAJOR FEATURE] - Depends on #1
+   - Search visible content only (respects fold state)
+   - =/= forward, =?= backward, =n=/=N= navigation
+   - Can be built in parallel with folding after status bar
+
+*** Later Phases
+7. *Treesitter highlighting* - Needs content layer, composes with inline diff
+8. *File navigation* - Useful but not blocking
+9. *Hunk separators* - Polish
+10. *Semantic awareness* - Future
+
+** Performance Philosophy
+
+A key concern for folding, search, and syntax highlighting. The goal is
+to keep the UI responsive on every keystroke, even with large diffs.
+
+*** Principles
+
+1. *Lazy loading*: Don't fetch/parse until needed
+   - Full file contents: only when user expands to full-file view
+   - Syntax highlighting: only for visible viewport + small buffer
+   - Search: compute incrementally, not all at once
+
+2. *Render only visible*: Never compute the entire buffer
+   - Viewport + small buffer for smooth scrolling
+   - Folded content = zero rendering cost
+   - Truncate/virtualize massive files if needed
+
+3. *Cache aggressively*: Don't recompute on navigation
+   - Parse results for syntax highlighting
+   - Search match positions
+   - Full file contents once fetched
+
+4. *No blocking on keystrokes*: UI should never freeze
+   - Debounce expensive operations (search as you type)
+   - Consider goroutines for heavy work (file fetches, parsing)
+   - Show loading state if operation takes time
+
+5. *Profile before optimizing*: Measure actual bottlenecks
+   - =go test -bench= for hot paths
+   - Real-world test: large diffs (1000+ files, huge files)
+
+*** Architecture Implications
+
+- View rendering must be viewport-aware (already is for vertical)
+- May need line virtualization for horizontal scrolling in huge files
+- Consider streaming/incremental parsing for treesitter on large files
+- Search should compute "next N matches" not "all matches everywhere"
 
 ** Testing Strategy Reminder
 

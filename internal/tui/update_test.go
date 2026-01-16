@@ -58,12 +58,12 @@ func TestUpdate_ScrollUp_AtTop(t *testing.T) {
 
 func TestUpdate_ScrollDown_AtBottom(t *testing.T) {
 	m := makeTestModel(30) // 30 pairs + 1 header = 31 lines
-	m.scroll = 11          // 31 - 20 = 11 is max
+	m.scroll = 30          // 31 - 1 = 30 is max (allows last line at top of viewport)
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	model := newM.(Model)
 
-	assert.Equal(t, 11, model.scroll) // can't exceed max
+	assert.Equal(t, 30, model.scroll) // can't exceed max
 }
 
 func TestUpdate_PageDown(t *testing.T) {
@@ -151,8 +151,8 @@ func TestUpdate_GoToBottom(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
-	// max scroll = 101 - 20 = 81
-	assert.Equal(t, 81, model.scroll)
+	// max scroll = 101 - 1 = 100 (allows last line at top of viewport)
+	assert.Equal(t, 100, model.scroll)
 }
 
 func TestUpdate_Quit(t *testing.T) {
@@ -166,15 +166,15 @@ func TestUpdate_Quit(t *testing.T) {
 
 func TestUpdate_WindowResize(t *testing.T) {
 	m := makeTestModel(50)
-	m.scroll = 40 // this will be too far after resize to larger height
+	m.scroll = 40 // still valid after resize (max is 50)
 
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model := newM.(Model)
 
 	assert.Equal(t, 120, model.width)
 	assert.Equal(t, 40, model.height)
-	// scroll should be clamped: 50 + 1 - 40 = 11 max
-	assert.Equal(t, 11, model.scroll)
+	// scroll stays at 40 since max = 51 - 1 = 50
+	assert.Equal(t, 40, model.scroll)
 }
 
 func TestUpdate_WindowResize_SmallContent(t *testing.T) {
@@ -184,8 +184,8 @@ func TestUpdate_WindowResize_SmallContent(t *testing.T) {
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	model := newM.(Model)
 
-	// Content fits in viewport, scroll should be 0
-	assert.Equal(t, 0, model.scroll)
+	// scroll stays at 5, max = 11 - 1 = 10 (allows scrolling past content)
+	assert.Equal(t, 5, model.scroll)
 }
 
 func TestUpdate_ScrollRight(t *testing.T) {
@@ -246,4 +246,47 @@ func TestUpdate_ScrollLeft_ArrowKey(t *testing.T) {
 	model := newM.(Model)
 
 	assert.Equal(t, 4, model.hscroll)
+}
+
+func TestUpdate_ScrollPastEnd_ToShowLastFile(t *testing.T) {
+	// Create two files with different amounts of content
+	pairs1 := make([]sidebyside.LinePair, 5)
+	pairs2 := make([]sidebyside.LinePair, 5)
+	for i := range pairs1 {
+		pairs1[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+		}
+	}
+	for i := range pairs2 {
+		pairs2[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+		}
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2},
+	})
+	m.width = 80
+	m.height = 10 // viewport height
+
+	// Total lines: 2 headers + 10 pairs = 12 lines
+	// We should be able to scroll until the LAST line is at the TOP
+	// That means max scroll should be totalLines - 1 = 11
+	// (so line 12 is at the top of a 10-line viewport, with 9 empty lines below)
+
+	// Go to bottom
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	model := newM.(Model)
+
+	// With scrolling past end, max scroll should be totalLines - 1
+	// This allows the last line to be at the top of the viewport
+	assert.Equal(t, 11, model.scroll, "should scroll until last line is at top of viewport")
+
+	// At this scroll position, the current file should be the second file
+	info := model.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile, "should show second file when scrolled to its header")
+	assert.Equal(t, "second.go", info.FileName)
 }

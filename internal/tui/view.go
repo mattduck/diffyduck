@@ -17,6 +17,7 @@ var (
 	contextStyle = lipgloss.NewStyle()
 	lineNumStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	emptyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	statusStyle  = lipgloss.NewStyle().Reverse(true)
 )
 
 // View implements tea.Model.
@@ -25,11 +26,22 @@ func (m Model) View() string {
 		return ""
 	}
 
+	contentH := m.contentHeight()
+
 	// Build list of all displayable rows
 	rows := m.buildRows()
 
 	// Apply scroll and viewport
-	visibleRows := m.getVisibleRows(rows)
+	visibleRows := m.getVisibleRows(rows, contentH)
+
+	// Pad with empty lines to fill viewport (so status bar is always at bottom)
+	for len(visibleRows) < contentH {
+		visibleRows = append(visibleRows, "")
+	}
+
+	// Add status bar
+	statusBar := m.renderStatusBar()
+	visibleRows = append(visibleRows, statusBar)
 
 	return strings.Join(visibleRows, "\n")
 }
@@ -60,7 +72,7 @@ func (m Model) buildRows() []displayRow {
 }
 
 // getVisibleRows returns the rendered rows visible in the current viewport.
-func (m Model) getVisibleRows(rows []displayRow) []string {
+func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	var visible []string
 
 	// Calculate column widths
@@ -68,7 +80,7 @@ func (m Model) getVisibleRows(rows []displayRow) []string {
 	lineNumWidth := 4
 
 	start := m.scroll
-	end := m.scroll + m.height
+	end := m.scroll + contentHeight
 	if end > len(rows) {
 		end = len(rows)
 	}
@@ -83,6 +95,41 @@ func (m Model) getVisibleRows(rows []displayRow) []string {
 	}
 
 	return visible
+}
+
+// renderStatusBar renders the status bar at the bottom of the screen.
+func (m Model) renderStatusBar() string {
+	info := m.StatusInfo()
+
+	// Build left side: file name and file count
+	var left string
+	if info.TotalFiles > 0 {
+		left = fmt.Sprintf(" %s", info.FileName)
+		if info.TotalFiles > 1 {
+			left += fmt.Sprintf(" [%d/%d]", info.CurrentFile, info.TotalFiles)
+		}
+	}
+
+	// Build right side: position info
+	var right string
+	if info.AtEnd {
+		right = "END "
+	} else if info.CurrentLine == 1 && info.Percentage == 0 {
+		right = "TOP "
+	} else {
+		right = fmt.Sprintf("%d%% ", info.Percentage)
+	}
+
+	// Calculate padding to fill the width
+	leftWidth := displayWidth(left)
+	rightWidth := displayWidth(right)
+	padding := m.width - leftWidth - rightWidth
+	if padding < 0 {
+		padding = 0
+	}
+
+	statusContent := left + strings.Repeat(" ", padding) + right
+	return statusStyle.Render(statusContent)
 }
 
 func formatFileHeader(oldPath, newPath string) string {

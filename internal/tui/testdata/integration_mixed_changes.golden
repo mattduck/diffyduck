@@ -7,3 +7,14 @@ example.go
    3 func main() {                     │    6 func main() {                    
    4     fmt.Println("hello")          │    7     fmt.Println(os.Args)         
    5 }                                 │    8 }                                
+
+
+
+
+
+
+
+
+
+
+ example.go                                                                 END 

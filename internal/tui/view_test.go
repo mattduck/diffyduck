@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -190,7 +191,8 @@ func TestView_EmptyModel(t *testing.T) {
 	}
 
 	output := m.View()
-	assert.Equal(t, "", output)
+	// Even with no files, we show a status bar
+	assert.Contains(t, output, "0%")
 }
 
 func TestView_ZeroSize(t *testing.T) {
@@ -250,4 +252,346 @@ func TestView_HorizontalScroll(t *testing.T) {
 	expected, err := os.ReadFile(goldenPath)
 	require.NoError(t, err, "Run with -update to create golden file")
 	assert.Equal(t, string(expected), output)
+}
+
+func TestStatusInfo_SingleFile(t *testing.T) {
+	pairs := make([]sidebyside.LinePair, 50)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
+			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+		}
+	}
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		},
+		width:  80,
+		height: 20,
+		scroll: 0,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	info := m.StatusInfo()
+
+	assert.Equal(t, 1, info.CurrentFile)
+	assert.Equal(t, 1, info.TotalFiles)
+	assert.Equal(t, "test.go", info.FileName)
+	assert.Equal(t, 1, info.CurrentLine)
+	assert.Equal(t, 51, info.TotalLines) // 50 pairs + 1 header
+	assert.Equal(t, 0, info.Percentage)
+	assert.False(t, info.AtEnd)
+}
+
+func TestStatusInfo_AtEnd(t *testing.T) {
+	pairs := make([]sidebyside.LinePair, 10)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
+			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+		}
+	}
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{OldPath: "a/small.go", NewPath: "b/small.go", Pairs: pairs},
+		},
+		width:  80,
+		height: 20, // bigger than content (11 lines)
+		scroll: 0,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	info := m.StatusInfo()
+
+	assert.Equal(t, 100, info.Percentage)
+	assert.True(t, info.AtEnd)
+}
+
+func TestStatusInfo_MultipleFiles(t *testing.T) {
+	pairs1 := make([]sidebyside.LinePair, 20)
+	pairs2 := make([]sidebyside.LinePair, 20)
+	for i := range pairs1 {
+		pairs1[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+		}
+	}
+	for i := range pairs2 {
+		pairs2[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+		}
+	}
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1},
+			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2},
+		},
+		width:  80,
+		height: 20,
+		scroll: 0,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// At start - should be in file 1
+	info := m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile)
+	assert.Equal(t, 2, info.TotalFiles)
+	assert.Equal(t, "first.go", info.FileName)
+
+	// Scroll into file 2 (file 1 has 21 lines: 1 header + 20 pairs)
+	m.scroll = 25
+	info = m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile)
+	assert.Equal(t, "second.go", info.FileName)
+}
+
+func TestView_StatusBarContent(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	lastLine := lines[len(lines)-1]
+
+	// Status bar should contain the file name and END (since content fits in viewport)
+	assert.Contains(t, lastLine, "foo.go")
+	assert.Contains(t, lastLine, "END")
+}
+
+func TestStatusInfo_DeletedFile(t *testing.T) {
+	// When a file is deleted, newPath is /dev/null, so we should show oldPath
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/deleted.go",
+				NewPath: "/dev/null",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "deleted"},
+						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	info := m.StatusInfo()
+	// Should show the old path (without a/ prefix) since file was deleted
+	assert.Equal(t, "deleted.go", info.FileName)
+}
+
+func TestStatusInfo_ScrollPastAllContent(t *testing.T) {
+	// When scrolled past all content, should still show the last file
+	pairs := make([]sidebyside.LinePair, 5)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "line"},
+			Right: sidebyside.Line{Num: i + 1, Content: "line"},
+		}
+	}
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		},
+		width:  80,
+		height: 10,
+		scroll: 100, // Way past the content (only 6 lines)
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+	m.clampScroll() // This should clamp to maxScroll
+
+	info := m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile)
+	assert.Equal(t, "test.go", info.FileName)
+	assert.True(t, info.AtEnd)
+}
+
+func TestStatusInfo_PercentageAccuracy(t *testing.T) {
+	// Create 101 lines (100 pairs + 1 header) for easy percentage math
+	pairs := make([]sidebyside.LinePair, 100)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "line"},
+			Right: sidebyside.Line{Num: i + 1, Content: "line"},
+		}
+	}
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		},
+		width:  80,
+		height: 11, // 10 content lines + 1 status bar
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines() // 101 lines total
+
+	// At scroll 0, percentage should be 0
+	m.scroll = 0
+	info := m.StatusInfo()
+	assert.Equal(t, 0, info.Percentage)
+	assert.False(t, info.AtEnd)
+
+	// At scroll 50 (half of maxScroll=100), percentage should be 50
+	m.scroll = 50
+	info = m.StatusInfo()
+	assert.Equal(t, 50, info.Percentage)
+	assert.False(t, info.AtEnd)
+
+	// At maxScroll (100), percentage should be 100
+	m.scroll = 100
+	info = m.StatusInfo()
+	assert.Equal(t, 100, info.Percentage)
+	assert.True(t, info.AtEnd)
+}
+
+func TestStatusInfo_FileBoundary(t *testing.T) {
+	// Test that current file updates correctly at exact boundaries
+	pairs := make([]sidebyside.LinePair, 10)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
+			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+		}
+	}
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-10 (header + 10 pairs)
+			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // lines 11-21
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Scroll 10 = last line of first file (pair 10)
+	m.scroll = 10
+	info := m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile)
+	assert.Equal(t, "first.go", info.FileName)
+
+	// Scroll 11 = header of second file
+	m.scroll = 11
+	info = m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile)
+	assert.Equal(t, "second.go", info.FileName)
+}
+
+func TestView_ScrolledToMax(t *testing.T) {
+	// When scrolled to max, only the last line should show at top, rest is padding
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 2, Content: "last", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 2, Content: "last", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 5, // Small viewport
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines() // 3 lines: header + 2 pairs
+	m.scroll = 2            // Max scroll = 3 - 1 = 2, so last line at top
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	assert.Equal(t, 5, len(lines), "should have exactly height lines")
+
+	// First line should be the last content line
+	assert.Contains(t, lines[0], "last")
+
+	// Lines 1-3 should be empty padding
+	for i := 1; i < 4; i++ {
+		assert.Equal(t, "", lines[i], "line %d should be empty padding", i)
+	}
+
+	// Last line should be status bar
+	assert.Contains(t, lines[4], "foo.go")
+	assert.Contains(t, lines[4], "END")
+}
+
+func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
+	// When content is shorter than viewport, status bar should still be at
+	// the bottom of the terminal (not immediately after content)
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "only line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "only line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10, // Much taller than content (2 lines: header + 1 pair)
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Output should have exactly `height` lines (content + padding + status bar)
+	assert.Equal(t, 10, len(lines), "view should fill entire viewport height")
+
+	// Status bar should be the last line
+	lastLine := lines[len(lines)-1]
+	assert.Contains(t, lastLine, "foo.go")
+	assert.Contains(t, lastLine, "END")
+
+	// First two lines should be content (header + pair)
+	assert.Contains(t, lines[0], "foo.go")
+	assert.Contains(t, lines[1], "only line")
+
+	// Lines between content and status bar should be empty/padding
+	for i := 2; i < 9; i++ {
+		assert.Equal(t, "", strings.TrimSpace(lines[i]),
+			"line %d should be empty padding", i)
+	}
 }
