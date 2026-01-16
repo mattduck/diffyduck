@@ -1,0 +1,158 @@
+* DiffyDuck Next Steps
+
+** Current State (as of initial implementation)
+
+What works:
+- Parse unified diff from =git show=
+- Side-by-side display with line numbers
+- Vim-style navigation (j/k, ctrl+d/u, g/G, etc.)
+- Unicode width handling (CJK, emoji)
+- Tab expansion for proper alignment
+- 54 tests covering parser, transform, TUI state, and integration
+
+** Immediate Polish Options
+
+*** Hunk Separators
+Currently hunks from the same file run together with no visual break.
+Add a separator line between non-contiguous hunks showing the gap.
+
+Example:
+#+begin_example
+   10 context line                    │   10 context line
+────────────── 15 lines hidden ───────────────────────────
+   25 context line                    │   25 context line
+#+end_example
+
+Complexity: Low
+Files: internal/tui/view.go, pkg/sidebyside/types.go
+
+*** File Navigation
+Add keybindings to jump between files:
+- =]f= / =[f= - next/previous file
+- =]h= / =[h= - next/previous hunk
+- Maybe a file list sidebar or overlay
+
+Complexity: Medium
+Files: internal/tui/model.go, internal/tui/update.go, internal/tui/keys.go
+
+*** Git Diff Support
+Currently only =git show <ref>= works. Add:
+- =git diff= (unstaged changes)
+- =git diff --cached= (staged changes)
+- =git diff <ref1> <ref2>= (compare refs)
+- =git diff <path>= (specific file)
+
+Complexity: Low
+Files: pkg/git/git.go, cmd/diffyduck/main.go (CLI args)
+
+*** Status Bar
+Add a bottom status bar showing:
+- Current file name
+- Position (file X of Y, line N of M)
+- Key hints
+
+Complexity: Low
+Files: internal/tui/view.go
+
+** Phase 2: Syntax Highlighting
+
+*** Treesitter Integration
+Use go-tree-sitter to parse and highlight code.
+
+Steps:
+1. Add dependency: github.com/smacker/go-tree-sitter
+2. Create pkg/highlight package
+3. Detect language from file extension
+4. Parse source and extract highlight spans
+5. Apply colors in view rendering
+
+Considerations:
+- Need full file content, not just diff lines (for accurate parsing)
+- May need to reconstruct old/new file content from diff + context
+- Performance: parse on load, cache results
+- Color scheme: use standard terminal colors or configurable themes
+
+Complexity: High
+New package: pkg/highlight
+
+*** Inline Diff Highlighting
+Within modified lines, highlight the specific changed characters.
+E.g., =fmt.Println("old")= vs =fmt.Println("new")= would highlight just "old"/"new"
+
+Requires: character-level diff algorithm (Myers, patience, etc.)
+Complexity: Medium
+New package: pkg/inline or extend pkg/diff
+
+** Phase 3: Folding
+
+*** Fold/Unfold Hunks
+- =zc= - fold current hunk (collapse to single line)
+- =zo= - unfold current hunk
+- =zM= - fold all hunks
+- =zR= - unfold all hunks
+
+State to track: which hunks are folded
+Display: show "[+] 15 lines" or similar when folded
+
+Complexity: Medium
+Files: internal/tui/model.go, pkg/sidebyside/types.go
+
+*** Fold/Unfold Files
+Same as hunks but at file level.
+- Fold entire file to just header
+- Useful for large diffs with many files
+
+Complexity: Low (once hunk folding works)
+
+** Phase 4: Semantic Awareness
+
+*** Affected Symbols
+Parse treesitter to identify which functions/classes/methods are modified.
+Show in file header: "affects: func Foo, func Bar, type Baz"
+
+Complexity: High (requires treesitter queries per language)
+Depends on: Phase 2 (treesitter integration)
+
+*** Symbol Navigation
+Jump directly to affected symbols:
+- =]s= / =[s= - next/previous affected symbol
+- Symbol picker overlay
+
+Complexity: Medium
+Depends on: Affected symbols detection
+
+** Other Ideas
+
+*** Side-by-Side vs Unified Toggle
+Some users prefer unified diff view. Could toggle with a key.
+
+*** Word Wrap
+Long lines are currently truncated. Could add word wrap mode.
+
+*** Search
+=/= to search within diff content, =n/N= to navigate matches.
+
+*** Copy to Clipboard
+Yank selected lines or regions.
+
+*** Mouse Support
+Bubble Tea supports mouse. Could add:
+- Click to scroll
+- Scroll wheel
+- Click on file header to fold/unfold
+
+** Recommended Next Steps (in order)
+
+1. *Status bar* - Quick win, improves usability
+2. *Git diff support* - Essential for daily use
+3. *Hunk separators* - Visual clarity
+4. *File navigation* - Essential for multi-file diffs
+5. *Treesitter highlighting* - The big feature
+
+** Testing Strategy Reminder
+
+For each feature:
+1. Write unit tests for pure logic (pkg/*)
+2. Write state-based tests for TUI behavior (internal/tui/update_test.go)
+3. Add golden tests for visual output (internal/tui/view_test.go)
+4. Add integration tests if it touches the pipeline (internal/tui/integration_test.go)
