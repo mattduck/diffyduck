@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -141,12 +142,28 @@ func renderLine(line sidebyside.Line, contentWidth, lineNumWidth int) string {
 	return numStr + " " + styledContent
 }
 
+// displayWidth returns the display width of a string, accounting for
+// wide characters (CJK, emoji) that take 2 cells.
+func displayWidth(s string) int {
+	return runewidth.StringWidth(s)
+}
+
+// truncateOrPad truncates or pads a string to exactly the given display width.
+// It properly handles multi-byte and wide characters.
 func truncateOrPad(s string, width int) string {
-	if len(s) > width {
-		if width > 3 {
-			return s[:width-3] + "..."
-		}
-		return s[:width]
+	sw := displayWidth(s)
+
+	if sw <= width {
+		// Pad with spaces
+		return s + strings.Repeat(" ", width-sw)
 	}
-	return s + strings.Repeat(" ", width-len(s))
+
+	// Need to truncate
+	if width <= 3 {
+		// Too narrow for ellipsis, just truncate
+		return runewidth.Truncate(s, width, "")
+	}
+
+	// Truncate with ellipsis
+	return runewidth.Truncate(s, width, "...")
 }
