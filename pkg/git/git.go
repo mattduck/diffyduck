@@ -68,6 +68,32 @@ func (g *RealGit) Diff(args ...string) (string, error) {
 	return string(out), nil
 }
 
+// GetFileContent returns the content of a file at a given ref.
+// Uses git show <ref>:<path> to retrieve the content.
+// If ref is empty, retrieves from the index (staged content).
+func (g *RealGit) GetFileContent(ref, path string) (string, error) {
+	// Build the ref:path specifier
+	specifier := ref + ":" + path
+
+	cmd := exec.Command("git", "show", specifier)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", &GitError{
+				Command: "git show " + specifier,
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return "", err
+	}
+
+	return string(out), nil
+}
+
 // GitError represents an error from a git command.
 type GitError struct {
 	Command string

@@ -1,14 +1,16 @@
 package tui
 
 import (
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // Model represents the application state.
 type Model struct {
 	// Data
-	files []sidebyside.FilePair
+	files   []sidebyside.FilePair
+	fetcher *content.Fetcher // for fetching full file contents (lazy)
 
 	// Viewport state
 	scroll  int // vertical scroll offset (line index at top of viewport)
@@ -36,12 +38,25 @@ type Model struct {
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
 const DefaultHScrollStep = 4
 
+// Option is a function that configures a Model.
+type Option func(*Model)
+
+// WithFetcher sets the content fetcher for lazy file content loading.
+func WithFetcher(f *content.Fetcher) Option {
+	return func(m *Model) {
+		m.fetcher = f
+	}
+}
+
 // New creates a new Model with the given file pairs.
-func New(files []sidebyside.FilePair) Model {
+func New(files []sidebyside.FilePair, opts ...Option) Model {
 	m := Model{
 		files:       files,
 		keys:        DefaultKeyMap(),
 		hscrollStep: DefaultHScrollStep,
+	}
+	for _, opt := range opts {
+		opt(&m)
 	}
 	m.calculateTotalLines()
 	return m

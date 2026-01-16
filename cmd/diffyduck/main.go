@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/internal/tui"
+	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/git"
 	"github.com/user/diffyduck/pkg/sidebyside"
@@ -18,41 +19,115 @@ func main() {
 	}
 }
 
+// parsedArgs contains parsed command line arguments.
+type parsedArgs struct {
+	cmd     string   // "diff" or "show"
+	gitArgs []string // args to pass to git
+	mode    content.Mode
+	ref1    string // commit for show, or first ref for diff
+	ref2    string // second ref for diff (if comparing refs)
+}
+
 // parseArgs extracts the subcommand and remaining args from command line args.
-// Returns (command, gitArgs) where command is "diff" or "show".
-func parseArgs(args []string) (cmd string, gitArgs []string) {
-	cmd = "diff" // default
-	gitArgs = args
+func parseArgs(args []string) parsedArgs {
+	result := parsedArgs{
+		cmd:     "diff",
+		gitArgs: args,
+		mode:    content.ModeDiffUnstaged,
+	}
 
 	if len(args) > 0 {
 		switch args[0] {
 		case "diff":
-			cmd = "diff"
-			gitArgs = args[1:]
+			result.cmd = "diff"
+			result.gitArgs = args[1:]
 		case "show":
-			cmd = "show"
-			gitArgs = args[1:]
+			result.cmd = "show"
+			result.gitArgs = args[1:]
 		}
 	}
 
-	return cmd, gitArgs
+	// Determine mode and refs based on command and args
+	if result.cmd == "show" {
+		result.mode = content.ModeShow
+		// First non-flag arg is the commit ref
+		for _, arg := range result.gitArgs {
+			if !isFlag(arg) {
+				result.ref1 = arg
+				break
+			}
+		}
+		if result.ref1 == "" {
+			result.ref1 = "HEAD"
+		}
+	} else {
+		// diff command - determine mode
+		result.mode = content.ModeDiffUnstaged
+		for _, arg := range result.gitArgs {
+			if arg == "--cached" || arg == "--staged" {
+				result.mode = content.ModeDiffCached
+				break
+			}
+		}
+		// Check for ref arguments (non-flag args that look like refs)
+		var refs []string
+		for _, arg := range result.gitArgs {
+			if !isFlag(arg) && !isPath(arg) {
+				refs = append(refs, arg)
+			}
+		}
+		if len(refs) >= 2 {
+			result.mode = content.ModeDiffRefs
+			result.ref1 = refs[0]
+			result.ref2 = refs[1]
+		} else if len(refs) == 1 {
+			// Single ref means diff against working tree
+			result.mode = content.ModeDiffRefs
+			result.ref1 = refs[0]
+			result.ref2 = "" // Will compare to working tree
+		}
+	}
+
+	return result
+}
+
+// isFlag returns true if the argument looks like a flag.
+func isFlag(arg string) bool {
+	return len(arg) > 0 && arg[0] == '-'
+}
+
+// isPath returns true if the argument looks like a file path.
+// This is a heuristic - contains / or . extension.
+func isPath(arg string) bool {
+	for _, c := range arg {
+		if c == '/' || c == '\\' {
+			return true
+		}
+	}
+	// Check for file extension
+	for i := len(arg) - 1; i >= 0; i-- {
+		if arg[i] == '.' {
+			return i > 0 && i < len(arg)-1
+		}
+	}
+	return false
 }
 
 func run() error {
 	g := git.New()
-	cmd, gitArgs := parseArgs(os.Args[1:])
+	args := parseArgs(os.Args[1:])
 
 	// Get diff from git
 	var output string
 	var err error
-	switch cmd {
+	switch args.cmd {
 	case "diff":
-		output, err = g.Diff(gitArgs...)
+		output, err = g.Diff(args.gitArgs...)
 		if err != nil {
 			return fmt.Errorf("git diff: %w", err)
 		}
 	case "show":
-		output, err = g.Show(gitArgs...)
+		output, err = g.Show(args.gitArgs...)
 		if err != nil {
 			return fmt.Errorf("git show: %w", err)
 		}
@@ -72,8 +147,11 @@ func run() error {
 	// Transform to side-by-side format
 	files := sidebyside.TransformDiff(d)
 
+	// Create content fetcher for lazy file loading
+	fetcher := content.NewFetcher(g, args.mode, args.ref1, args.ref2)
+
 	// Create and run the TUI
-	model := tui.New(files)
+	model := tui.New(files, tui.WithFetcher(fetcher))
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

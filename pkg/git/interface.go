@@ -10,4 +10,9 @@ type Git interface {
 	// Diff returns the diff output for git diff.
 	// Args are passed through to git diff.
 	Diff(args ...string) (string, error)
+
+	// GetFileContent returns the content of a file at a given ref.
+	// The ref can be a commit, branch, tag, or empty string for the index.
+	// Uses git show <ref>:<path> internally.
+	GetFileContent(ref, path string) (string, error)
 }

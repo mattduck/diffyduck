@@ -63,3 +63,51 @@ func TestGitInterface(t *testing.T) {
 	var _ Git = &RealGit{}
 	var _ Git = &MockGit{}
 }
+
+func TestMockGit_GetFileContent(t *testing.T) {
+	mock := &MockGit{
+		FileContents: map[string]string{
+			"HEAD:foo.go":   "package foo\n",
+			"HEAD^:foo.go":  "package old\n",
+			"abc123:bar.go": "package bar\n",
+		},
+	}
+
+	// Get file at HEAD
+	content, err := mock.GetFileContent("HEAD", "foo.go")
+	require.NoError(t, err)
+	assert.Equal(t, "package foo\n", content)
+
+	// Get file at parent
+	content, err = mock.GetFileContent("HEAD^", "foo.go")
+	require.NoError(t, err)
+	assert.Equal(t, "package old\n", content)
+
+	// Get file at specific commit
+	content, err = mock.GetFileContent("abc123", "bar.go")
+	require.NoError(t, err)
+	assert.Equal(t, "package bar\n", content)
+}
+
+func TestMockGit_GetFileContent_NotFound(t *testing.T) {
+	mock := &MockGit{
+		FileContents: map[string]string{},
+	}
+
+	_, err := mock.GetFileContent("HEAD", "nonexistent.go")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nonexistent.go")
+}
+
+func TestMockGit_GetFileContent_Index(t *testing.T) {
+	// Empty ref means index (staged content)
+	mock := &MockGit{
+		FileContents: map[string]string{
+			":foo.go": "staged content\n",
+		},
+	}
+
+	content, err := mock.GetFileContent("", "foo.go")
+	require.NoError(t, err)
+	assert.Equal(t, "staged content\n", content)
+}
