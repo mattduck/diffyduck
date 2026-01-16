@@ -93,6 +93,36 @@ func TestUpdate_PageUp(t *testing.T) {
 	assert.Equal(t, 20, model.scroll) // 40 - 20
 }
 
+func TestUpdate_PageDown_Space(t *testing.T) {
+	m := makeTestModel(100)
+	m.scroll = 0
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model := newM.(Model)
+
+	assert.Equal(t, 20, model.scroll) // 0 + height (20)
+}
+
+func TestUpdate_PageDown_F(t *testing.T) {
+	m := makeTestModel(100)
+	m.scroll = 0
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	model := newM.(Model)
+
+	assert.Equal(t, 20, model.scroll) // 0 + height (20)
+}
+
+func TestUpdate_PageUp_B(t *testing.T) {
+	m := makeTestModel(100)
+	m.scroll = 40
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	model := newM.(Model)
+
+	assert.Equal(t, 20, model.scroll) // 40 - height (20)
+}
+
 func TestUpdate_HalfPageDown(t *testing.T) {
 	m := makeTestModel(100)
 	m.scroll = 0

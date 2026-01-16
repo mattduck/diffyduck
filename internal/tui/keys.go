@@ -20,8 +20,8 @@ func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		Up:       []string{"up", "k"},
 		Down:     []string{"down", "j"},
-		PageUp:   []string{"pgup", "ctrl+b"},
-		PageDown: []string{"pgdown", "ctrl+f"},
+		PageUp:   []string{"pgup", "ctrl+b", "b"},
+		PageDown: []string{"pgdown", "ctrl+f", " ", "f"},
 		HalfUp:   []string{"ctrl+u"},
 		HalfDown: []string{"ctrl+d"},
 		Top:      []string{"home", "g"},
