@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/user/diffyduck/pkg/git"
 )
@@ -35,7 +36,8 @@ type Fetcher struct {
 
 	// cache stores fetched content to avoid repeated git calls.
 	// Key format: "old:<path>" or "new:<path>"
-	cache map[string]string
+	cache   map[string]string
+	cacheMu sync.RWMutex
 
 	// onFetch is called when content is fetched (for testing).
 	onFetch func()
@@ -58,15 +60,22 @@ func NewFetcher(g git.Git, mode Mode, ref1, ref2 string) *Fetcher {
 // GetOldContent returns the old version of a file.
 func (f *Fetcher) GetOldContent(path string) (string, error) {
 	cacheKey := "old:" + path
+
+	// Check cache with read lock
+	f.cacheMu.RLock()
 	if content, ok := f.cache[cacheKey]; ok {
+		f.cacheMu.RUnlock()
 		return content, nil
 	}
+	f.cacheMu.RUnlock()
 
 	content, err := f.fetchOld(path)
 	if err != nil {
 		// Check if this is a "file not found" error (new file case)
 		if isFileNotFoundError(err) {
+			f.cacheMu.Lock()
 			f.cache[cacheKey] = ""
+			f.cacheMu.Unlock()
 			return "", nil
 		}
 		return "", err
@@ -76,22 +85,31 @@ func (f *Fetcher) GetOldContent(path string) (string, error) {
 		f.onFetch()
 	}
 
+	f.cacheMu.Lock()
 	f.cache[cacheKey] = content
+	f.cacheMu.Unlock()
 	return content, nil
 }
 
 // GetNewContent returns the new version of a file.
 func (f *Fetcher) GetNewContent(path string) (string, error) {
 	cacheKey := "new:" + path
+
+	// Check cache with read lock
+	f.cacheMu.RLock()
 	if content, ok := f.cache[cacheKey]; ok {
+		f.cacheMu.RUnlock()
 		return content, nil
 	}
+	f.cacheMu.RUnlock()
 
 	content, err := f.fetchNew(path)
 	if err != nil {
 		// Check if this is a "file not found" error (deleted file case)
 		if isFileNotFoundError(err) {
+			f.cacheMu.Lock()
 			f.cache[cacheKey] = ""
+			f.cacheMu.Unlock()
 			return "", nil
 		}
 		return "", err
@@ -101,7 +119,9 @@ func (f *Fetcher) GetNewContent(path string) (string, error) {
 		f.onFetch()
 	}
 
+	f.cacheMu.Lock()
 	f.cache[cacheKey] = content
+	f.cacheMu.Unlock()
 	return content, nil
 }
 

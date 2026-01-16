@@ -19,6 +19,8 @@ type KeyMap struct {
 	SearchBack    []string
 	NextMatch     []string
 	PrevMatch     []string
+	FoldToggle    []string
+	FoldToggleAll []string
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -39,6 +41,8 @@ func DefaultKeyMap() KeyMap {
 		SearchBack:    []string{"?"},
 		NextMatch:     []string{"n"},
 		PrevMatch:     []string{"N"},
+		FoldToggle:    []string{"tab"},
+		FoldToggleAll: []string{"shift+tab"},
 	}
 }
 

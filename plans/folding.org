@@ -1,0 +1,564 @@
+* Folding Feature
+
+** Overview
+
+Three-level file folding with per-file and all-files toggle controls.
+
+** Fold Levels
+
+Three levels that cycle:
+
+1. *Normal* (default): Current hunk-based view with gaps between hunks
+2. *Expanded*: Full file contents side-by-side, with diff parts highlighted
+3. *Folded*: Only the header line visible (no trailing "=" characters, no leading newline)
+
+Cycle order: Normal → Expanded → Folded → Normal
+
+The starting level is configurable (default: Normal). Implementation should not hardcode
+the default - use a constant/config that can be changed later.
+
+** Keybindings
+
+*** Tab (per-file)
+
+- Affects the "current" file (determined by scroll position, shown in status bar)
+- Cycles to the next fold level
+
+*** Shift-Tab (all files)
+
+- If files are NOT all on the same level → fold all to level 1 (Folded)
+- If all files are on the same level → advance all to the next level (1→2→3→1)
+
+** Visual Specifications
+
+*** Folded Header
+
+Same format as normal header but:
+- No trailing "=" characters
+- No leading newline (no blank line before)
+
+Normal: ~═══ internal/tui/view.go ═══════════════════════~
+Folded: ~═══ internal/tui/view.go~
+
+*** Expanded View
+
+- Both old and new file contents side-by-side
+- All lines shown, including lines outside diff hunks
+- Diff parts (added/removed) retain their colors (green/red)
+- Context lines and non-diff lines use context styling
+- Line numbers accurate to actual file positions
+- No visual distinction needed between "gap" lines and context lines
+
+*** Added/Deleted Files
+
+In expanded mode:
+- New file (no old version): only right side shown
+- Deleted file (no new version): only left side shown
+
+*** No Fold Indicators
+
+No visual indicators (▸ ▾) for fold state - content difference speaks for itself.
+
+** Search Integration
+
+When fold state changes:
+- Re-run the current search query automatically
+- Update highlighted matches for the new visible content
+
+** Performance Requirements
+
+*** Async Loading
+
+- File content fetching MUST be asynchronous
+- User interaction must never be blocked
+- No loading indicator needed (since it's non-blocking)
+
+*** Concurrent Fetching
+
+- Shift-Tab on many files should fetch all file contents concurrently
+- Use goroutines with proper synchronization
+- Cache results to avoid re-fetching on fold/unfold cycles
+
+*** Existing Infrastructure
+
+The ~pkg/content/Fetcher~ already supports:
+- Lazy loading with caching
+- All diff modes (show, diff, diff --cached, diff refs)
+- Proper git commands for old/new versions
+
+** Implementation Plan
+
+*** Phase 1: Model Changes
+
+**** 1.1 Add FoldLevel type
+
+#+begin_src go
+// pkg/sidebyside/types.go or new pkg/fold/types.go
+
+type FoldLevel int
+
+const (
+    FoldNormal   FoldLevel = iota // default
+    FoldExpanded
+    FoldFolded
+)
+
+// NextLevel returns the next fold level in the cycle.
+func (f FoldLevel) NextLevel() FoldLevel {
+    return (f + 1) % 3
+}
+#+end_src
+
+**** 1.2 Add per-file fold state
+
+#+begin_src go
+// pkg/sidebyside/types.go - extend FilePair
+
+type FilePair struct {
+    OldPath   string
+    NewPath   string
+    Pairs     []LinePair
+    FoldLevel FoldLevel  // NEW
+
+    // Cached full file content (populated on expand)
+    OldContent []string  // NEW - nil until expanded
+    NewContent []string  // NEW - nil until expanded
+}
+#+end_src
+
+**** 1.3 Add model state for default level
+
+#+begin_src go
+// internal/tui/model.go
+
+type Model struct {
+    // ... existing fields ...
+    defaultFoldLevel FoldLevel  // configurable starting level
+}
+#+end_src
+
+*** Phase 2: Content Fetching
+
+**** 2.1 Add async content loading
+
+Create message types for async content loading:
+
+#+begin_src go
+// internal/tui/messages.go (new file)
+
+// FileContentLoadedMsg is sent when file content has been fetched.
+type FileContentLoadedMsg struct {
+    FileIndex  int
+    OldContent []string
+    NewContent []string
+    Err        error
+}
+
+// AllContentLoadedMsg is sent when all file contents have been fetched.
+type AllContentLoadedMsg struct {
+    Contents []FileContent
+}
+
+type FileContent struct {
+    FileIndex  int
+    OldContent []string
+    NewContent []string
+    Err        error
+}
+#+end_src
+
+**** 2.2 Add commands to fetch content
+
+#+begin_src go
+// internal/tui/commands.go (new file)
+
+// FetchFileContent returns a command that fetches content for one file.
+func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
+    return func() tea.Msg {
+        fp := m.files[fileIndex]
+        // Use m.fetcher to get content
+        oldContent, _ := m.fetcher.GetOldContent(stripPrefix(fp.OldPath))
+        newContent, _ := m.fetcher.GetNewContent(stripPrefix(fp.NewPath))
+        return FileContentLoadedMsg{
+            FileIndex:  fileIndex,
+            OldContent: strings.Split(oldContent, "\n"),
+            NewContent: strings.Split(newContent, "\n"),
+        }
+    }
+}
+
+// FetchAllFileContent returns a command that fetches content for all files concurrently.
+func (m Model) FetchAllFileContent() tea.Cmd {
+    return func() tea.Msg {
+        var wg sync.WaitGroup
+        results := make([]FileContent, len(m.files))
+
+        for i := range m.files {
+            wg.Add(1)
+            go func(idx int) {
+                defer wg.Done()
+                fp := m.files[idx]
+                old, _ := m.fetcher.GetOldContent(stripPrefix(fp.OldPath))
+                new, _ := m.fetcher.GetNewContent(stripPrefix(fp.NewPath))
+                results[idx] = FileContent{
+                    FileIndex:  idx,
+                    OldContent: strings.Split(old, "\n"),
+                    NewContent: strings.Split(new, "\n"),
+                }
+            }(i)
+        }
+
+        wg.Wait()
+        return AllContentLoadedMsg{Contents: results}
+    }
+}
+#+end_src
+
+*** Phase 3: View Changes
+
+**** 3.1 Modify buildRows for fold levels
+
+The ~buildRows~ function needs to handle three cases per file:
+
+#+begin_src go
+func (m Model) buildRows() []displayRow {
+    var rows []displayRow
+
+    for fileIdx, fp := range m.files {
+        switch fp.FoldLevel {
+        case FoldFolded:
+            // Only header, no blank line before
+            header := formatFileHeaderFolded(fp.OldPath, fp.NewPath)
+            rows = append(rows, displayRow{isHeader: true, header: header, isFoldedHeader: true})
+
+        case FoldExpanded:
+            // Blank line before (except first)
+            if fileIdx > 0 {
+                rows = append(rows, displayRow{isBlank: true})
+            }
+            // Header
+            header := formatFileHeader(fp.OldPath, fp.NewPath)
+            rows = append(rows, displayRow{isHeader: true, header: header})
+            // Full file content
+            rows = append(rows, m.buildExpandedRows(fp)...)
+
+        case FoldNormal:
+            // Existing behavior (blank + header + diff pairs)
+            if fileIdx > 0 {
+                rows = append(rows, displayRow{isBlank: true})
+            }
+            header := formatFileHeader(fp.OldPath, fp.NewPath)
+            rows = append(rows, displayRow{isHeader: true, header: header})
+            // ... existing pair logic with hunk separators ...
+        }
+    }
+
+    return rows
+}
+#+end_src
+
+**** 3.2 Build expanded view rows
+
+#+begin_src go
+func (m Model) buildExpandedRows(fp FilePair) []displayRow {
+    // If content not yet loaded, return loading indicator or empty
+    if fp.OldContent == nil && fp.NewContent == nil {
+        // Content not loaded yet - could show a placeholder
+        return nil
+    }
+
+    // Build line pairs for full file, marking diff lines
+    // Need to merge full content with diff information
+    return buildFullFilePairs(fp)
+}
+#+end_src
+
+**** 3.3 Format folded header (no trailing =)
+
+#+begin_src go
+func formatFileHeaderFolded(oldPath, newPath string) string {
+    header := formatFileHeader(oldPath, newPath)
+    return "═══ " + header
+}
+#+end_src
+
+*** Phase 4: Update Handling
+
+**** 4.1 Add keybindings
+
+#+begin_src go
+// internal/tui/keys.go
+
+type KeyMap struct {
+    // ... existing ...
+    FoldToggle    key.Binding  // Tab
+    FoldToggleAll key.Binding  // Shift+Tab
+}
+
+func DefaultKeyMap() KeyMap {
+    return KeyMap{
+        // ... existing ...
+        FoldToggle:    key.NewBinding(key.WithKeys("tab")),
+        FoldToggleAll: key.NewBinding(key.WithKeys("shift+tab")),
+    }
+}
+#+end_src
+
+**** 4.2 Handle fold toggle
+
+#+begin_src go
+case matchesKey(msg, keys.FoldToggle):
+    return m.handleFoldToggle()
+
+case matchesKey(msg, keys.FoldToggleAll):
+    return m.handleFoldToggleAll()
+#+end_src
+
+**** 4.3 Per-file toggle logic
+
+#+begin_src go
+func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
+    // Find current file based on scroll position
+    fileIdx := m.currentFileIndex()
+    if fileIdx < 0 || fileIdx >= len(m.files) {
+        return m, nil
+    }
+
+    fp := &m.files[fileIdx]
+    newLevel := fp.FoldLevel.NextLevel()
+
+    // If expanding and content not loaded, fetch it
+    if newLevel == FoldExpanded && fp.OldContent == nil {
+        fp.FoldLevel = newLevel
+        m.calculateTotalLines()
+        m.refreshSearch()
+        return m, m.FetchFileContent(fileIdx)
+    }
+
+    fp.FoldLevel = newLevel
+    m.calculateTotalLines()
+    m.refreshSearch()
+    return m, nil
+}
+#+end_src
+
+**** 4.4 All-files toggle logic
+
+#+begin_src go
+func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
+    // Check if all files are on the same level
+    if len(m.files) == 0 {
+        return m, nil
+    }
+
+    firstLevel := m.files[0].FoldLevel
+    allSame := true
+    for _, fp := range m.files[1:] {
+        if fp.FoldLevel != firstLevel {
+            allSame = false
+            break
+        }
+    }
+
+    var newLevel FoldLevel
+    if allSame {
+        // All same - advance to next level
+        newLevel = firstLevel.NextLevel()
+    } else {
+        // Not same - collapse all to Folded
+        newLevel = FoldFolded
+    }
+
+    // Apply to all files
+    for i := range m.files {
+        m.files[i].FoldLevel = newLevel
+    }
+
+    m.calculateTotalLines()
+    m.refreshSearch()
+
+    // If expanding to full view, fetch all content concurrently
+    if newLevel == FoldExpanded {
+        return m, m.FetchAllFileContent()
+    }
+
+    return m, nil
+}
+#+end_src
+
+**** 4.5 Handle content loaded messages
+
+#+begin_src go
+case FileContentLoadedMsg:
+    if msg.FileIndex < len(m.files) {
+        m.files[msg.FileIndex].OldContent = msg.OldContent
+        m.files[msg.FileIndex].NewContent = msg.NewContent
+        m.calculateTotalLines()
+        m.refreshSearch()
+    }
+    return m, nil
+
+case AllContentLoadedMsg:
+    for _, fc := range msg.Contents {
+        if fc.FileIndex < len(m.files) {
+            m.files[fc.FileIndex].OldContent = fc.OldContent
+            m.files[fc.FileIndex].NewContent = fc.NewContent
+        }
+    }
+    m.calculateTotalLines()
+    m.refreshSearch()
+    return m, nil
+#+end_src
+
+*** Phase 5: Search Refresh
+
+**** 5.1 Add refreshSearch method
+
+#+begin_src go
+func (m *Model) refreshSearch() {
+    if m.searchQuery == "" {
+        return
+    }
+    // Re-execute the search with the current query
+    m.executeSearch()
+}
+#+end_src
+
+*** Phase 6: Expanded View Line Mapping
+
+The most complex part: building side-by-side pairs for the full file content
+while preserving diff highlighting.
+
+**** 6.1 Algorithm overview
+
+1. Parse both old and new full content into line arrays
+2. Use the diff hunks to identify which lines are added/removed/context
+3. Build LinePairs for all lines, marking types appropriately
+4. Handle added files (empty old) and deleted files (empty new)
+
+**** 6.2 Data structure
+
+#+begin_src go
+// buildFullFilePairs creates LinePairs for the entire file content,
+// with diff lines marked appropriately.
+func buildFullFilePairs(fp FilePair) []displayRow {
+    old := fp.OldContent
+    new := fp.NewContent
+
+    // Handle deleted file (no new content)
+    if len(new) == 0 && len(old) > 0 {
+        var rows []displayRow
+        for i, line := range old {
+            rows = append(rows, displayRow{
+                pair: LinePair{
+                    Left:  Line{Num: i + 1, Content: line, Type: Context},
+                    Right: Line{Num: 0, Content: "", Type: Empty},
+                },
+            })
+        }
+        return rows
+    }
+
+    // Handle new file (no old content)
+    if len(old) == 0 && len(new) > 0 {
+        var rows []displayRow
+        for i, line := range new {
+            rows = append(rows, displayRow{
+                pair: LinePair{
+                    Left:  Line{Num: 0, Content: "", Type: Empty},
+                    Right: Line{Num: i + 1, Content: line, Type: Context},
+                },
+            })
+        }
+        return rows
+    }
+
+    // Both sides exist - merge with diff information
+    // ... complex merging logic using the existing Pairs to know
+    // which line numbers are added/removed ...
+}
+#+end_src
+
+** Testing Strategy
+
+*** Unit Tests
+
+1. FoldLevel.NextLevel() cycles correctly
+2. buildRows handles all three fold levels
+3. formatFileHeaderFolded produces correct output
+4. handleFoldToggle changes level correctly
+5. handleFoldToggleAll sync logic (same→next, different→folded)
+6. refreshSearch is called on fold change
+7. Async content loading messages update state correctly
+
+*** Integration Tests
+
+1. Tab cycles through levels
+2. Shift-Tab syncs all files
+3. Search results update when fold changes
+4. Content is fetched when expanding
+5. Cached content is reused on re-expand
+
+*** Golden Tests
+
+1. Folded view rendering
+2. Expanded view rendering
+3. Mixed fold states
+
+** File Changes Summary
+
+| File                       | Changes                                      |
+|----------------------------+----------------------------------------------|
+| pkg/sidebyside/types.go    | Add FoldLevel, extend FilePair               |
+| internal/tui/model.go      | Add defaultFoldLevel                         |
+| internal/tui/messages.go   | NEW - async content messages                 |
+| internal/tui/commands.go   | NEW - content fetching commands              |
+| internal/tui/keys.go       | Add FoldToggle, FoldToggleAll bindings       |
+| internal/tui/update.go     | Handle fold keys, content messages           |
+| internal/tui/view.go       | buildRows for 3 levels, formatFileHeaderFolded |
+| internal/tui/search.go     | Add refreshSearch method                     |
+
+** Implementation Order (COMPLETED)
+
+1. [X] Add FoldLevel type to pkg/sidebyside/types.go
+2. [X] Extend FilePair with FoldLevel and content fields
+3. [X] Add keybindings (Tab, Shift+Tab)
+4. [X] Implement FoldFolded view (simplest - just header)
+5. [X] Implement fold toggle logic for per-file
+6. [X] Implement fold toggle logic for all-files
+7. [X] Add async message types
+8. [X] Add content fetching commands
+9. [X] Handle content loaded messages in Update
+10. [X] Implement FoldExpanded view (full file pairs)
+11. [X] Add search refresh on fold change
+12. [X] Tests for each component
+
+** QA Status
+
+*IN PROGRESS* - Manual QA testing still needed for:
+- [ ] Tab cycling through levels on real diffs
+- [ ] Shift+Tab sync behavior with multiple files
+- [ ] Expanded view with actual git show output
+- [ ] Content fetching latency on large diffs
+- [ ] Search highlighting across fold state changes
+- [ ] Edge cases: deleted files, new files, renamed files
+- [ ] Status bar shows correct file after fold changes
+
+** Bugs Fixed
+
+*** Concurrent cache access race condition
+
+Fixed data race in ~pkg/content/Fetcher~ where concurrent goroutines in
+~FetchAllFileContent~ accessed the cache map without synchronization.
+Added ~sync.RWMutex~ to protect cache reads/writes. Test added:
+~TestFetcher_ConcurrentAccess~.
+
+** Future Improvements
+
+*** Visual distinction between fold levels
+
+Currently the three levels are distinguishable only by content differences.
+Consider adding visual indicators to make the current level more obvious:
+- Status bar could show fold level (e.g., "[Normal]", "[Expanded]", "[Folded]")
+- Different header styling per level (color, prefix character)
+- Line count indicator in folded mode (e.g., "═══ file.go (42 lines)")

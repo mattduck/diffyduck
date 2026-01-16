@@ -468,3 +468,91 @@ func makeSearchTestModel(lines []string) Model {
 	m.calculateTotalLines()
 	return m
 }
+
+func TestRefreshSearch_UpdatesMatches(t *testing.T) {
+	// Create a model with search active
+	m := makeSearchTestModel([]string{
+		"hello world",
+		"foo bar",
+	})
+
+	// Execute a search
+	m.searchInput = "hello"
+	m.executeSearch()
+
+	assert.Len(t, m.matches, 1, "should find 1 match initially")
+	assert.Equal(t, "hello", m.searchQuery)
+
+	// Change fold level - matches should update
+	m.files[0].FoldLevel = sidebyside.FoldFolded
+	m.calculateTotalLines()
+	m.refreshSearch()
+
+	// With folded view, there's no content to search (only header)
+	// If "hello" isn't in the header, there should be no matches
+	// The header is "test.go", so no "hello" matches
+	assert.Len(t, m.matches, 0, "should have no matches after folding")
+
+	// Unfold back to normal
+	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.calculateTotalLines()
+	m.refreshSearch()
+
+	// Should find the match again
+	assert.Len(t, m.matches, 1, "should find match again after unfolding")
+}
+
+func TestRefreshSearch_NoQueryDoesNothing(t *testing.T) {
+	m := makeSearchTestModel([]string{
+		"hello world",
+	})
+
+	// No search query
+	assert.Empty(t, m.searchQuery)
+
+	// Call refresh - should not panic or change anything
+	m.refreshSearch()
+
+	assert.Empty(t, m.matches)
+}
+
+func TestRefreshSearch_ExpandedViewWithMoreContent(t *testing.T) {
+	// When expanding, more content becomes searchable
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					// Only line 2 in the diff
+					{
+						Left:  sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
+					},
+				},
+				OldContent: []string{"world", "hello", "search"},
+				NewContent: []string{"world", "hello", "search"},
+			},
+		},
+		width:       80,
+		height:      20,
+		keys:        DefaultKeyMap(),
+		hscrollStep: DefaultHScrollStep,
+	}
+	m.calculateTotalLines()
+
+	// Search for "search" - shouldn't find in normal view (not in diff)
+	m.searchInput = "search"
+	m.executeSearch()
+
+	assert.Len(t, m.matches, 0, "should not find 'search' in normal view")
+
+	// Expand to full view
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.calculateTotalLines()
+	m.refreshSearch()
+
+	// Should now find "search" in the expanded content
+	assert.Len(t, m.matches, 1, "should find 'search' in expanded view")
+}

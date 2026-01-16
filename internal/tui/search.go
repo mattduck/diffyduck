@@ -254,3 +254,33 @@ func (m *Model) cancelSearch() {
 	m.searchMode = false
 	m.searchInput = ""
 }
+
+// refreshSearch re-runs the current search query.
+// This should be called when the displayable content changes (e.g., fold toggle).
+func (m *Model) refreshSearch() {
+	if m.searchQuery == "" {
+		return
+	}
+
+	// Re-find matches with the current query
+	m.matches = m.findMatches(m.searchQuery)
+
+	// If we had a currentMatch, try to find the closest match to the current scroll
+	if len(m.matches) > 0 {
+		// Find first match at or after current scroll position
+		found := false
+		for i, match := range m.matches {
+			if match.Row >= m.scroll {
+				m.currentMatch = i
+				found = true
+				break
+			}
+		}
+		// If no match after scroll, use the last match
+		if !found {
+			m.currentMatch = len(m.matches) - 1
+		}
+	} else {
+		m.currentMatch = 0
+	}
+}

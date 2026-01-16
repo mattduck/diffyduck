@@ -248,6 +248,186 @@ func TestUpdate_ScrollLeft_ArrowKey(t *testing.T) {
 	assert.Equal(t, 4, model.hscroll)
 }
 
+func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
+	m := makeTestModel(10)
+	// Initially at FoldNormal (zero value)
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+
+	// Press Tab to cycle to next level
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	// Should advance to FoldExpanded
+	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel)
+
+	// Press Tab again to cycle to Folded
+	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model2 := newM2.(Model)
+
+	assert.Equal(t, sidebyside.FoldFolded, model2.files[0].FoldLevel)
+
+	// Press Tab again to cycle back to Normal
+	newM3, _ := model2.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model3 := newM3.(Model)
+
+	assert.Equal(t, sidebyside.FoldNormal, model3.files[0].FoldLevel)
+}
+
+func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
+	// Create two files
+	pairs1 := make([]sidebyside.LinePair, 5)
+	pairs2 := make([]sidebyside.LinePair, 5)
+	for i := range pairs1 {
+		pairs1[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+		}
+	}
+	for i := range pairs2 {
+		pairs2[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+		}
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2},
+	})
+	m.width = 80
+	m.height = 20
+
+	// Both at FoldNormal initially
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldNormal, m.files[1].FoldLevel)
+
+	// Press Shift+Tab - both should advance to FoldExpanded
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	model := newM.(Model)
+
+	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, model.files[1].FoldLevel)
+}
+
+func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
+	// When expanding to FoldExpanded and content not loaded, should return a fetch command
+	m := makeTestModel(10)
+	// Set up a mock fetcher (nil fetcher means no command returned)
+	// Since we don't have a fetcher, the command will be nil
+	// but the level should still change
+
+	// Initially at FoldNormal
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+
+	// Press Tab to advance to FoldExpanded
+	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel)
+	// Without a fetcher, cmd should be nil
+	assert.Nil(t, cmd, "without fetcher, cmd should be nil")
+}
+
+func TestUpdate_FoldToggle_SkipsFetch_WhenContentLoaded(t *testing.T) {
+	// When content is already loaded, should not return a fetch command
+	m := makeTestModel(10)
+	m.files[0].OldContent = []string{"already", "loaded"}
+	m.files[0].NewContent = []string{"already", "loaded"}
+
+	// Press Tab to advance to FoldExpanded
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Content already loaded, so no fetch needed
+	assert.Nil(t, cmd)
+}
+
+func TestUpdate_FoldToggleAll_DifferentLevels(t *testing.T) {
+	// Create two files at different fold levels
+	pairs1 := make([]sidebyside.LinePair, 5)
+	pairs2 := make([]sidebyside.LinePair, 5)
+	for i := range pairs1 {
+		pairs1[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+		}
+	}
+	for i := range pairs2 {
+		pairs2[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+		}
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1, FoldLevel: sidebyside.FoldNormal},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2, FoldLevel: sidebyside.FoldExpanded},
+	})
+	m.width = 80
+	m.height = 20
+
+	// Files at different levels
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[1].FoldLevel)
+
+	// Press Shift+Tab - all should collapse to FoldFolded
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	model := newM.(Model)
+
+	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel)
+}
+
+func TestUpdate_FileContentLoadedMsg(t *testing.T) {
+	m := makeTestModel(10)
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
+
+	// Simulate receiving content loaded message
+	msg := FileContentLoadedMsg{
+		FileIndex:  0,
+		OldContent: []string{"old line 1", "old line 2"},
+		NewContent: []string{"new line 1", "new line 2", "new line 3"},
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	assert.Equal(t, []string{"old line 1", "old line 2"}, model.files[0].OldContent)
+	assert.Equal(t, []string{"new line 1", "new line 2", "new line 3"}, model.files[0].NewContent)
+}
+
+func TestUpdate_AllContentLoadedMsg(t *testing.T) {
+	pairs := make([]sidebyside.LinePair, 5)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "line"},
+			Right: sidebyside.Line{Num: i + 1, Content: "line"},
+		}
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs, FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs, FoldLevel: sidebyside.FoldExpanded},
+	})
+	m.width = 80
+	m.height = 20
+
+	// Simulate receiving all content loaded message
+	msg := AllContentLoadedMsg{
+		Contents: []FileContent{
+			{FileIndex: 0, OldContent: []string{"file1 old"}, NewContent: []string{"file1 new"}},
+			{FileIndex: 1, OldContent: []string{"file2 old"}, NewContent: []string{"file2 new"}},
+		},
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	assert.Equal(t, []string{"file1 old"}, model.files[0].OldContent)
+	assert.Equal(t, []string{"file1 new"}, model.files[0].NewContent)
+	assert.Equal(t, []string{"file2 old"}, model.files[1].OldContent)
+	assert.Equal(t, []string{"file2 new"}, model.files[1].NewContent)
+}
+
 func TestUpdate_ScrollPastEnd_ToShowLastFile(t *testing.T) {
 	// Create two files with different amounts of content
 	pairs1 := make([]sidebyside.LinePair, 5)

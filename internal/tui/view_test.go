@@ -777,6 +777,335 @@ func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
 	assert.NotContains(t, output, "─┼─")
 }
 
+func TestView_FoldedFile_HeaderOnly(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Folded view should only show the header and then padding
+	// The header should be on line 0
+	assert.Contains(t, lines[0], "foo.go", "first line should be the header")
+	assert.Contains(t, lines[0], "═══", "header should have the prefix")
+
+	// Header should NOT have trailing "=" characters after the filename
+	// The folded header format should be "═══ filename" without trailing "═"
+	// Check that the line doesn't end with many "═" (like the normal header does)
+	headerContent := strings.TrimRight(lines[0], " ")
+	assert.True(t, strings.HasSuffix(headerContent, "foo.go"),
+		"folded header should end with filename, got: %s", headerContent)
+
+	// Line pairs should NOT be shown
+	assert.NotContains(t, output, "line content", "folded view should not show line pairs")
+}
+
+func TestView_FoldedFile_NoBlankLineBefore(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "first file", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "first file", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				FoldLevel: sidebyside.FoldFolded, // Second file is folded
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "second file", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "second file", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Find the second file header
+	secondHeaderIdx := -1
+	for i, line := range lines {
+		if strings.Contains(line, "second.go") && strings.Contains(line, "═══") {
+			secondHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, secondHeaderIdx, "should find second file header")
+
+	// For folded files, there should NOT be a blank line before the header
+	// The previous line should be the last content line of first file
+	assert.Contains(t, lines[secondHeaderIdx-1], "first file",
+		"folded header should follow directly after previous content (no blank line)")
+}
+
+func TestView_MixedFoldLevels(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/normal.go",
+				NewPath:   "b/normal.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "normal file content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "normal file content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/folded.go",
+				NewPath:   "b/folded.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "folded file content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "folded file content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/another.go",
+				NewPath:   "b/another.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "another file content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "another file content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 15,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Normal files should show their content
+	assert.Contains(t, output, "normal file content")
+	assert.Contains(t, output, "another file content")
+
+	// Folded file should NOT show its content
+	assert.NotContains(t, output, "folded file content")
+
+	// But all file headers should be visible
+	assert.Contains(t, output, "normal.go")
+	assert.Contains(t, output, "folded.go")
+	assert.Contains(t, output, "another.go")
+}
+
+func TestView_TotalLines_WithFolding(t *testing.T) {
+	// Test that totalLines is calculated correctly with different fold states
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/normal.go",
+				NewPath:   "b/normal.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs:     make([]sidebyside.LinePair, 10),
+			},
+			{
+				OldPath:   "a/folded.go",
+				NewPath:   "b/folded.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs:     make([]sidebyside.LinePair, 10),
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Normal file: 1 header + 10 pairs = 11 lines
+	// Folded file: 1 header only (no blank line before since it's folded)
+	// Total should be 11 + 1 = 12
+	assert.Equal(t, 12, m.totalLines, "totalLines should account for fold states")
+}
+
+func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
+	// Expanded view should show ALL lines from the full file content
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				// Original diff pairs (just lines 5-7 with a change at line 6)
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 6, Content: "old line six", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 6, Content: "new line six", Type: sidebyside.Added},
+					},
+					{
+						Left:  sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
+					},
+				},
+				// Full file content (10 lines each)
+				OldContent: []string{
+					"line one", "line two", "line three", "line four",
+					"line five", "old line six", "line seven",
+					"line eight", "line nine", "line ten",
+				},
+				NewContent: []string{
+					"line one", "line two", "line three", "line four",
+					"line five", "new line six", "line seven",
+					"line eight", "line nine", "line ten",
+				},
+			},
+		},
+		width:  100,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should show all lines from the file (lines outside the diff context)
+	assert.Contains(t, output, "line one", "should show line 1 from full content")
+	assert.Contains(t, output, "line two", "should show line 2 from full content")
+	assert.Contains(t, output, "line three", "should show line 3 from full content")
+	assert.Contains(t, output, "line four", "should show line 4 from full content")
+	assert.Contains(t, output, "line eight", "should show line 8 from full content")
+	assert.Contains(t, output, "line nine", "should show line 9 from full content")
+	assert.Contains(t, output, "line ten", "should show line 10 from full content")
+
+	// Should still show the diff lines
+	assert.Contains(t, output, "line five")
+	assert.Contains(t, output, "old line six")
+	assert.Contains(t, output, "new line six")
+	assert.Contains(t, output, "line seven")
+}
+
+func TestView_ExpandedFile_NoContent_FallsBackToNormal(t *testing.T) {
+	// If expanded but content not loaded yet, fall back to normal view
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 5, Content: "diff context", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 5, Content: "diff context", Type: sidebyside.Context},
+					},
+				},
+				// No OldContent/NewContent loaded yet
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should show the diff pairs since content isn't loaded
+	assert.Contains(t, output, "diff context")
+}
+
+func TestView_ExpandedFile_DeletedFile(t *testing.T) {
+	// For deleted files, only left side should show content
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/deleted.go",
+				NewPath:   "/dev/null",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "deleted line", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					},
+				},
+				OldContent: []string{"deleted line", "another deleted"},
+				NewContent: nil, // No new content (file deleted)
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should show the old content
+	assert.Contains(t, output, "deleted line")
+	assert.Contains(t, output, "another deleted")
+}
+
+func TestView_ExpandedFile_NewFile(t *testing.T) {
+	// For new files, only right side should show content
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "/dev/null",
+				NewPath:   "b/new.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Right: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
+					},
+				},
+				OldContent: nil, // No old content (new file)
+				NewContent: []string{"new line", "another new"},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should show the new content
+	assert.Contains(t, output, "new line")
+	assert.Contains(t, output, "another new")
+}
+
 func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	// When content is shorter than viewport, status bar should still be at
 	// the bottom of the terminal (not immediately after content)

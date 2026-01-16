@@ -3,6 +3,7 @@ package content
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -182,4 +183,58 @@ func TestFetcher_RenamedFile(t *testing.T) {
 	new, err := f.GetNewContent("new_name.go")
 	require.NoError(t, err)
 	assert.Equal(t, "content\n", new)
+}
+
+func TestFetcher_ConcurrentAccess(t *testing.T) {
+	// Test that concurrent access to the fetcher is safe.
+	// This test would cause a data race (and potential segfault) without
+	// proper mutex protection on the cache map.
+	// Run with: go test -race ./pkg/content/...
+
+	// Create a mock with many files
+	fileContents := make(map[string]string)
+	numFiles := 50
+	for i := 0; i < numFiles; i++ {
+		oldKey := "abc123^:file" + string(rune('a'+i)) + ".go"
+		newKey := "abc123:file" + string(rune('a'+i)) + ".go"
+		fileContents[oldKey] = "old content " + string(rune('a'+i)) + "\n"
+		fileContents[newKey] = "new content " + string(rune('a'+i)) + "\n"
+	}
+
+	mock := &git.MockGit{FileContents: fileContents}
+	f := NewFetcher(mock, ModeShow, "abc123", "")
+
+	// Spawn many goroutines to access different files concurrently
+	var wg sync.WaitGroup
+	numGoroutines := 100
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			fileIdx := idx % numFiles
+			path := "file" + string(rune('a'+fileIdx)) + ".go"
+
+			// Interleave old and new content fetches
+			if idx%2 == 0 {
+				_, _ = f.GetOldContent(path)
+				_, _ = f.GetNewContent(path)
+			} else {
+				_, _ = f.GetNewContent(path)
+				_, _ = f.GetOldContent(path)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// If we get here without a race condition panic, the test passes.
+	// Verify some content was cached correctly
+	old, err := f.GetOldContent("filea.go")
+	require.NoError(t, err)
+	assert.Equal(t, "old content a\n", old)
+
+	new, err := f.GetNewContent("filea.go")
+	require.NoError(t, err)
+	assert.Equal(t, "new content a\n", new)
 }

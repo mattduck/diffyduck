@@ -58,11 +58,12 @@ func (m Model) View() string {
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
 type displayRow struct {
-	isHeader    bool
-	isSeparator bool
-	isBlank     bool
-	header      string
-	pair        sidebyside.LinePair
+	isHeader       bool
+	isFoldedHeader bool // true for folded file headers (different rendering)
+	isSeparator    bool
+	isBlank        bool
+	header         string
+	pair           sidebyside.LinePair
 }
 
 // buildRows creates all displayable rows from the model data.
@@ -70,33 +71,156 @@ func (m Model) buildRows() []displayRow {
 	var rows []displayRow
 
 	for fileIdx, fp := range m.files {
-		// Add blank line before file headers (except the first)
-		if fileIdx > 0 {
-			rows = append(rows, displayRow{isBlank: true})
+		switch fp.FoldLevel {
+		case sidebyside.FoldFolded:
+			// Folded: just the header, no blank line before, no trailing "="
+			header := formatFileHeader(fp.OldPath, fp.NewPath)
+			rows = append(rows, displayRow{isHeader: true, isFoldedHeader: true, header: header})
+
+		case sidebyside.FoldExpanded:
+			// Expanded: show full file content with diff highlighting
+			// If content not loaded yet, fall back to normal view
+			if fp.HasContent() {
+				// Add blank line before file headers (except the first)
+				if fileIdx > 0 {
+					rows = append(rows, displayRow{isBlank: true})
+				}
+
+				// File header
+				header := formatFileHeader(fp.OldPath, fp.NewPath)
+				rows = append(rows, displayRow{isHeader: true, header: header})
+
+				// Build expanded rows from full file content
+				rows = append(rows, m.buildExpandedRows(fp)...)
+				continue // Skip the normal view below
+			}
+			// Fall through to normal view if content not loaded
+			fallthrough
+
+		default: // FoldNormal
+			// Add blank line before file headers (except the first)
+			if fileIdx > 0 {
+				rows = append(rows, displayRow{isBlank: true})
+			}
+
+			// File header
+			header := formatFileHeader(fp.OldPath, fp.NewPath)
+			rows = append(rows, displayRow{isHeader: true, header: header})
+
+			// Line pairs with hunk separators
+			var prevLeft, prevRight int
+			for i, pair := range fp.Pairs {
+				// Check for gap in line numbers (hunk boundary)
+				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Left.Num, pair.Right.Num) {
+					rows = append(rows, displayRow{isSeparator: true})
+				}
+
+				rows = append(rows, displayRow{isHeader: false, pair: pair})
+
+				// Track previous line numbers (use non-zero values)
+				if pair.Left.Num > 0 {
+					prevLeft = pair.Left.Num
+				}
+				if pair.Right.Num > 0 {
+					prevRight = pair.Right.Num
+				}
+			}
+		}
+	}
+
+	return rows
+}
+
+// buildExpandedRows creates line pairs from full file content.
+// It preserves diff highlighting (Added/Removed) from the original Pairs.
+func (m Model) buildExpandedRows(fp sidebyside.FilePair) []displayRow {
+	// Build maps of line numbers that have diff status
+	leftTypes := make(map[int]sidebyside.LineType)
+	rightTypes := make(map[int]sidebyside.LineType)
+
+	for _, pair := range fp.Pairs {
+		if pair.Left.Num > 0 {
+			leftTypes[pair.Left.Num] = pair.Left.Type
+		}
+		if pair.Right.Num > 0 {
+			rightTypes[pair.Right.Num] = pair.Right.Type
+		}
+	}
+
+	var rows []displayRow
+
+	// Determine the number of lines to show
+	oldLen := len(fp.OldContent)
+	newLen := len(fp.NewContent)
+
+	// Handle deleted file (no new content)
+	if newLen == 0 && oldLen > 0 {
+		for i, content := range fp.OldContent {
+			lineNum := i + 1
+			lineType := sidebyside.Context
+			if t, ok := leftTypes[lineNum]; ok {
+				lineType = t
+			}
+			rows = append(rows, displayRow{
+				pair: sidebyside.LinePair{
+					Left:  sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
+					Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+				},
+			})
+		}
+		return rows
+	}
+
+	// Handle new file (no old content)
+	if oldLen == 0 && newLen > 0 {
+		for i, content := range fp.NewContent {
+			lineNum := i + 1
+			lineType := sidebyside.Context
+			if t, ok := rightTypes[lineNum]; ok {
+				lineType = t
+			}
+			rows = append(rows, displayRow{
+				pair: sidebyside.LinePair{
+					Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					Right: sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
+				},
+			})
+		}
+		return rows
+	}
+
+	// Both files have content - walk through them in parallel
+	maxLen := oldLen
+	if newLen > maxLen {
+		maxLen = newLen
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var left, right sidebyside.Line
+
+		if i < oldLen {
+			lineNum := i + 1
+			lineType := sidebyside.Context
+			if t, ok := leftTypes[lineNum]; ok {
+				lineType = t
+			}
+			left = sidebyside.Line{Num: lineNum, Content: fp.OldContent[i], Type: lineType}
+		} else {
+			left = sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}
 		}
 
-		// File header
-		header := formatFileHeader(fp.OldPath, fp.NewPath)
-		rows = append(rows, displayRow{isHeader: true, header: header})
-
-		// Line pairs with hunk separators
-		var prevLeft, prevRight int
-		for i, pair := range fp.Pairs {
-			// Check for gap in line numbers (hunk boundary)
-			if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Left.Num, pair.Right.Num) {
-				rows = append(rows, displayRow{isSeparator: true})
+		if i < newLen {
+			lineNum := i + 1
+			lineType := sidebyside.Context
+			if t, ok := rightTypes[lineNum]; ok {
+				lineType = t
 			}
-
-			rows = append(rows, displayRow{isHeader: false, pair: pair})
-
-			// Track previous line numbers (use non-zero values)
-			if pair.Left.Num > 0 {
-				prevLeft = pair.Left.Num
-			}
-			if pair.Right.Num > 0 {
-				prevRight = pair.Right.Num
-			}
+			right = sidebyside.Line{Num: lineNum, Content: fp.NewContent[i], Type: lineType}
+		} else {
+			right = sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}
 		}
+
+		rows = append(rows, displayRow{pair: sidebyside.LinePair{Left: left, Right: right}})
 	}
 
 	return rows
@@ -134,7 +258,11 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		if row.isBlank {
 			visible = append(visible, "")
 		} else if row.isHeader {
-			visible = append(visible, m.renderHeader(row.header, i))
+			if row.isFoldedHeader {
+				visible = append(visible, m.renderFoldedHeader(row.header, i))
+			} else {
+				visible = append(visible, m.renderHeader(row.header, i))
+			}
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth))
 		} else {
@@ -400,6 +528,17 @@ func (m Model) renderHeader(header string, rowIdx int) string {
 	line := strings.Repeat("═", remaining)
 
 	return headerStyle.Render(prefix + header + suffix + line)
+}
+
+func (m Model) renderFoldedHeader(header string, rowIdx int) string {
+	// Apply search highlighting if there are matches
+	if m.searchQuery != "" {
+		header = m.applySearchHighlight(header, rowIdx, 0)
+	}
+
+	// Folded header: "═══ filename" without trailing "═"
+	prefix := "═══ "
+	return headerStyle.Render(prefix + header)
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth, rowIdx int) string {
