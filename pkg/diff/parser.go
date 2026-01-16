@@ -29,6 +29,10 @@ func Parse(input string) (*Diff, error) {
 
 		// Start of a new file diff
 		if diffHeaderRe.MatchString(line) {
+			// Save the last hunk of the previous file before moving on
+			if currentHunk != nil && currentFile != nil {
+				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
+			}
 			if currentFile != nil {
 				diff.Files = append(diff.Files, *currentFile)
 			}

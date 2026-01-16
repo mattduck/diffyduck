@@ -87,6 +87,12 @@ index 111111..222222 100644
 	assert.Equal(t, "b/foo.go", diff.Files[0].NewPath)
 	assert.Equal(t, "a/bar.go", diff.Files[1].OldPath)
 	assert.Equal(t, "b/bar.go", diff.Files[1].NewPath)
+
+	// Verify hunks are preserved for BOTH files (regression test)
+	require.Len(t, diff.Files[0].Hunks, 1, "first file should have 1 hunk")
+	require.Len(t, diff.Files[1].Hunks, 1, "second file should have 1 hunk")
+	assert.Len(t, diff.Files[0].Hunks[0].Lines, 2, "first file's hunk should have 2 lines")
+	assert.Len(t, diff.Files[1].Hunks[0].Lines, 2, "second file's hunk should have 2 lines")
 }
 
 func TestParse_MultipleHunks(t *testing.T) {
