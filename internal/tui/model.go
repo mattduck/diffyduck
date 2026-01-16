@@ -11,9 +11,9 @@ type Model struct {
 	files []sidebyside.FilePair
 
 	// Viewport state
-	scroll     int // current scroll offset (line index at top of viewport)
-	width      int // terminal width
-	height     int // terminal height (viewport height)
+	scroll int // current scroll offset (line index at top of viewport)
+	width  int // terminal width
+	height int // terminal height (viewport height)
 
 	// Configuration
 	keys KeyMap

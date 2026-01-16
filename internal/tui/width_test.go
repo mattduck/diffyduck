@@ -42,9 +42,9 @@ func TestTruncateOrPad_Unicode(t *testing.T) {
 		{"accented truncate", "café latté", 7, "café..."},
 
 		// Wide characters (CJK takes 2 cells each)
-		{"cjk padding", "中文", 6, "中文  "},        // 2 chars × 2 width = 4, pad 2
-		{"cjk exact", "中文", 4, "中文"},            // exact fit
-		{"cjk truncate", "中文字符", 5, "中..."},    // need to truncate, but can't fit 文 (width 2) + ... (width 3) = 5
+		{"cjk padding", "中文", 6, "中文  "},    // 2 chars × 2 width = 4, pad 2
+		{"cjk exact", "中文", 4, "中文"},        // exact fit
+		{"cjk truncate", "中文字符", 5, "中..."}, // need to truncate, but can't fit 文 (width 2) + ... (width 3) = 5
 
 		// Emoji (typically width 2)
 		{"emoji padding", "👍", 4, "👍  "},
@@ -73,9 +73,9 @@ func TestDisplayWidth(t *testing.T) {
 	}{
 		{"hello", 5},
 		{"café", 4},
-		{"中文", 4},      // 2 wide chars
-		{"👍", 2},        // emoji is width 2
-		{"hi中文", 6},    // 2 + 4
+		{"中文", 4},   // 2 wide chars
+		{"👍", 2},    // emoji is width 2
+		{"hi中文", 6}, // 2 + 4
 		{"", 0},
 	}
 
