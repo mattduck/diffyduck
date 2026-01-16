@@ -659,6 +659,89 @@ func TestView_HunkSeparator(t *testing.T) {
 	assert.Contains(t, output, "────")
 }
 
+func TestView_BlankLineBeforeFileHeader(t *testing.T) {
+	// Second and subsequent file headers should have a blank line before them
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/first.go",
+				NewPath: "b/first.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath: "a/second.go",
+				NewPath: "b/second.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// First line should be the first file header (no blank before it)
+	assert.Contains(t, lines[0], "first.go")
+
+	// There should be a blank line before the second file header
+	// Find the second file header
+	secondHeaderIdx := -1
+	for i, line := range lines {
+		if strings.Contains(line, "second.go") && strings.Contains(line, "═══") {
+			secondHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, secondHeaderIdx, "should find second file header")
+	require.Greater(t, secondHeaderIdx, 1, "second header should not be at start")
+
+	// Line before second header should be blank
+	assert.Equal(t, "", strings.TrimSpace(lines[secondHeaderIdx-1]),
+		"should have blank line before second file header")
+}
+
+func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
+	// First file header should NOT have a blank line before it
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/only.go",
+				NewPath: "b/only.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// First line should be the file header, not blank
+	assert.Contains(t, lines[0], "only.go")
+	assert.Contains(t, lines[0], "═══")
+}
+
 func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
 	// When lines are consecutive, no separator should be shown
 	m := Model{

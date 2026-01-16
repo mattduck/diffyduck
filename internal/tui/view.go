@@ -12,13 +12,14 @@ import (
 
 var (
 	// Styles for different line types
-	headerStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	addedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	removedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	contextStyle = lipgloss.NewStyle()
-	lineNumStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	emptyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	statusStyle  = lipgloss.NewStyle().Reverse(true)
+	headerStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	hunkSeparatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	addedStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	removedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	contextStyle       = lipgloss.NewStyle()
+	lineNumStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	emptyStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	statusStyle        = lipgloss.NewStyle().Reverse(true)
 
 	// Inline diff highlight: inverted (black on white)
 	inlineAddedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
@@ -55,10 +56,11 @@ func (m Model) View() string {
 	return strings.Join(visibleRows, "\n")
 }
 
-// displayRow represents one row in the view (header, line pair, or hunk separator)
+// displayRow represents one row in the view (header, line pair, hunk separator, or blank)
 type displayRow struct {
 	isHeader    bool
 	isSeparator bool
+	isBlank     bool
 	header      string
 	pair        sidebyside.LinePair
 }
@@ -67,7 +69,12 @@ type displayRow struct {
 func (m Model) buildRows() []displayRow {
 	var rows []displayRow
 
-	for _, fp := range m.files {
+	for fileIdx, fp := range m.files {
+		// Add blank line before file headers (except the first)
+		if fileIdx > 0 {
+			rows = append(rows, displayRow{isBlank: true})
+		}
+
 		// File header
 		header := formatFileHeader(fp.OldPath, fp.NewPath)
 		rows = append(rows, displayRow{isHeader: true, header: header})
@@ -124,7 +131,9 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 	for i := start; i < end; i++ {
 		row := rows[i]
-		if row.isHeader {
+		if row.isBlank {
+			visible = append(visible, "")
+		} else if row.isHeader {
 			visible = append(visible, m.renderHeader(row.header, i))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth))
@@ -141,7 +150,7 @@ func (m Model) renderHunkSeparator(halfWidth int) string {
 	// Create a line of dashes with a special character in the middle
 	leftDashes := strings.Repeat("─", halfWidth)
 	rightDashes := strings.Repeat("─", halfWidth)
-	return leftDashes + "─┼─" + rightDashes
+	return hunkSeparatorStyle.Render(leftDashes + "─┼─" + rightDashes)
 }
 
 // renderStatusBar renders the status bar at the bottom of the screen.
@@ -378,7 +387,19 @@ func (m Model) renderHeader(header string, rowIdx int) string {
 	if m.searchQuery != "" {
 		header = m.applySearchHighlight(header, rowIdx, 0)
 	}
-	return headerStyle.Render(header)
+
+	// Add double line after header to fill width
+	// Format: "═══ filename ═══════════════════════"
+	prefix := "═══ "
+	suffix := " "
+	headerWidth := displayWidth(prefix) + displayWidth(header) + displayWidth(suffix)
+	remaining := m.width - headerWidth
+	if remaining < 0 {
+		remaining = 0
+	}
+	line := strings.Repeat("═", remaining)
+
+	return headerStyle.Render(prefix + header + suffix + line)
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth, rowIdx int) string {
@@ -408,7 +429,8 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth,
 	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, rowIdx, 0)
 	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rowIdx, 1)
 
-	return left + " │ " + right
+	separator := hunkSeparatorStyle.Render("│")
+	return left + " " + separator + " " + right
 }
 
 func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, spans []inlinediff.Span, rowIdx, side int) string {

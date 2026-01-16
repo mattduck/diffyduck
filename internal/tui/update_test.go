@@ -272,10 +272,10 @@ func TestUpdate_ScrollPastEnd_ToShowLastFile(t *testing.T) {
 	m.width = 80
 	m.height = 10 // viewport height
 
-	// Total lines: 2 headers + 10 pairs = 12 lines
+	// Total lines: 2 headers + 10 pairs + 1 blank line before second file = 13 lines
 	// We should be able to scroll until the LAST line is at the TOP
-	// That means max scroll should be totalLines - 1 = 11
-	// (so line 12 is at the top of a 10-line viewport, with 9 empty lines below)
+	// That means max scroll should be totalLines - 1 = 12
+	// (so line 13 is at the top of a 10-line viewport, with 9 empty lines below)
 
 	// Go to bottom
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
@@ -283,7 +283,7 @@ func TestUpdate_ScrollPastEnd_ToShowLastFile(t *testing.T) {
 
 	// With scrolling past end, max scroll should be totalLines - 1
 	// This allows the last line to be at the top of the viewport
-	assert.Equal(t, 11, model.scroll, "should scroll until last line is at top of viewport")
+	assert.Equal(t, 12, model.scroll, "should scroll until last line is at top of viewport")
 
 	// At this scroll position, the current file should be the second file
 	info := model.StatusInfo()
