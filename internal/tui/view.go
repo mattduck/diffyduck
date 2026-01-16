@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
+	"github.com/user/diffyduck/pkg/inlinediff"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -18,6 +19,10 @@ var (
 	lineNumStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	emptyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	statusStyle  = lipgloss.NewStyle().Reverse(true)
+
+	// Inline diff highlight: inverted (black on white)
+	inlineAddedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
+	inlineRemovedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
 )
 
 // View implements tea.Model.
@@ -155,13 +160,34 @@ func (m Model) renderHeader(header string) string {
 func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth int) string {
 	contentWidth := halfWidth - lineNumWidth - 1 // -1 for space after line num
 
-	left := m.renderLine(pair.Left, contentWidth, lineNumWidth)
-	right := m.renderLine(pair.Right, contentWidth, lineNumWidth)
+	// Check if this is a modified pair where we should show inline diff
+	isModifiedPair := pair.Left.Type == sidebyside.Removed && pair.Right.Type == sidebyside.Added
+
+	var leftSpans, rightSpans []inlinediff.Span
+	if isModifiedPair {
+		// Expand tabs first since that's what we'll render
+		leftContent := expandTabs(pair.Left.Content)
+		rightContent := expandTabs(pair.Right.Content)
+
+		// Only do inline diff if lines are similar enough
+		if !inlinediff.ShouldSkipInlineDiff(leftContent, rightContent) {
+			leftSpans, rightSpans = inlinediff.Diff(leftContent, rightContent)
+
+			// Also skip if too much would be highlighted (not useful)
+			if inlinediff.ShouldSkipBasedOnSpans(leftSpans, len(leftContent)) ||
+				inlinediff.ShouldSkipBasedOnSpans(rightSpans, len(rightContent)) {
+				leftSpans, rightSpans = nil, nil
+			}
+		}
+	}
+
+	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans)
+	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans)
 
 	return left + " │ " + right
 }
 
-func (m Model) renderLine(line sidebyside.Line, contentWidth, lineNumWidth int) string {
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, spans []inlinediff.Span) string {
 	// Line number (fixed, not affected by horizontal scroll)
 	var numStr string
 	if line.Num == 0 {
@@ -170,23 +196,91 @@ func (m Model) renderLine(line sidebyside.Line, contentWidth, lineNumWidth int) 
 		numStr = lineNumStyle.Render(fmt.Sprintf("%*d", lineNumWidth, line.Num))
 	}
 
-	// Content - expand tabs, then apply horizontal scroll
-	content := horizontalSlice(expandTabs(line.Content), m.hscroll, contentWidth)
+	// Content - expand tabs
+	expanded := expandTabs(line.Content)
 
-	// Apply style based on type
+	// Apply horizontal scroll to get visible portion
+	visible := horizontalSlice(expanded, m.hscroll, contentWidth)
+
+	// Apply styling
 	var styledContent string
-	switch line.Type {
-	case sidebyside.Added:
-		styledContent = addedStyle.Render(content)
-	case sidebyside.Removed:
-		styledContent = removedStyle.Render(content)
-	case sidebyside.Empty:
-		styledContent = emptyStyle.Render(content)
-	default:
-		styledContent = contextStyle.Render(content)
+	if len(spans) > 0 && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
+		// Apply inline diff highlighting
+		styledContent = m.applyInlineSpans(expanded, visible, spans, line.Type, contentWidth)
+	} else {
+		// Apply simple style based on type
+		switch line.Type {
+		case sidebyside.Added:
+			styledContent = addedStyle.Render(visible)
+		case sidebyside.Removed:
+			styledContent = removedStyle.Render(visible)
+		case sidebyside.Empty:
+			styledContent = emptyStyle.Render(visible)
+		default:
+			styledContent = contextStyle.Render(visible)
+		}
 	}
 
 	return numStr + " " + styledContent
+}
+
+// applyInlineSpans applies inline diff highlighting to visible content.
+// It maps spans from the full expanded string to the visible viewport slice.
+func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Span, lineType sidebyside.LineType, _ int) string {
+	// Determine base and highlight styles
+	var baseStyle, highlightStyle lipgloss.Style
+	if lineType == sidebyside.Added {
+		baseStyle = addedStyle
+		highlightStyle = inlineAddedStyle
+	} else {
+		baseStyle = removedStyle
+		highlightStyle = inlineRemovedStyle
+	}
+
+	// Map byte positions to display columns in the expanded string
+	byteToCol := make([]int, len(expanded)+1)
+	col := 0
+	bytePos := 0
+	for _, r := range expanded {
+		byteToCol[bytePos] = col
+		rw := runewidth.RuneWidth(r)
+		col += rw
+		bytePos += len(string(r))
+	}
+	byteToCol[len(expanded)] = col
+
+	// Build styled output for each visible column
+	var result strings.Builder
+	visibleRunes := []rune(visible)
+	visibleCol := 0
+
+	for _, vr := range visibleRunes {
+		vrWidth := runewidth.RuneWidth(vr)
+		actualCol := m.hscroll + visibleCol
+
+		// Find which span this column falls into
+		inHighlight := false
+		for _, span := range spans {
+			spanStartCol := byteToCol[span.Start]
+			spanEndCol := byteToCol[span.End]
+			if actualCol >= spanStartCol && actualCol < spanEndCol {
+				if span.Type == inlinediff.Added || span.Type == inlinediff.Removed {
+					inHighlight = true
+				}
+				break
+			}
+		}
+
+		if inHighlight {
+			result.WriteString(highlightStyle.Render(string(vr)))
+		} else {
+			result.WriteString(baseStyle.Render(string(vr)))
+		}
+
+		visibleCol += vrWidth
+	}
+
+	return result.String()
 }
 
 // TabWidth is the number of spaces a tab character expands to.

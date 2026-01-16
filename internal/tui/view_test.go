@@ -552,6 +552,66 @@ func TestView_ScrolledToMax(t *testing.T) {
 	assert.Contains(t, lines[4], "END")
 }
 
+func TestView_InlineDiffRendering(t *testing.T) {
+	// Test that inline diff is computed for modified line pairs
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						// This is a modified pair - should trigger inline diff
+						Left:  sidebyside.Line{Num: 1, Content: "fmt.Println(x)", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "fmt.Println(y)", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Output should contain the modified content
+	// (Colors are stripped in tests, but content should be present)
+	assert.Contains(t, output, "fmt.Println")
+	assert.Contains(t, output, "x")
+	assert.Contains(t, output, "y")
+}
+
+func TestView_InlineDiffSkippedForDissimilar(t *testing.T) {
+	// When lines are too different, inline diff should be skipped
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						// Completely different lines - should skip inline diff
+						Left:  sidebyside.Line{Num: 1, Content: "abcdefghijklmnop", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "1234567890123456", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Output should still render both lines
+	assert.Contains(t, output, "abcdefghijklmnop")
+	assert.Contains(t, output, "1234567890123456")
+}
+
 func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	// When content is shorter than viewport, status bar should still be at
 	// the bottom of the terminal (not immediately after content)
