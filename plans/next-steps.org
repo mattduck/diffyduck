@@ -54,6 +54,35 @@ Add a bottom status bar showing:
 Complexity: Low
 Files: internal/tui/view.go
 
+** Phase 1.5: Horizontal Scrolling
+
+*** Fixed Line Numbers with Scrollable Content
+Long lines are currently truncated. Add horizontal scrolling while keeping
+line numbers visible (like less -S or modern editors).
+
+Architecture:
+- Split view into "gutter" (line numbers, fixed) and "content" (scrollable)
+- Track horizontal scroll offset in model (per-side or unified)
+- Content pans left/right while gutter stays anchored
+
+Keybindings:
+- =h= / =l= or =left= / =right= - scroll horizontally by N columns
+- =H= / =L= or =shift+left= / =shift+right= - scroll horizontally by half-width
+- =0= - scroll to beginning of line
+- =$= - scroll to end of longest visible line
+
+Considerations:
+- Need to track max line width to know scroll bounds
+- Both sides scroll together or independently? (together is simpler)
+- Indicator when content is clipped (e.g., ">" at edge)
+
+Complexity: Medium-High (architectural change to view rendering)
+Files: internal/tui/model.go, internal/tui/view.go, internal/tui/keys.go
+
+Why early: This is fundamental to the view architecture. Adding later means
+rewriting how every line is rendered. Better to establish the gutter/content
+split now before adding more view features.
+
 ** Phase 2: Syntax Highlighting
 
 *** Treesitter Integration
@@ -129,8 +158,24 @@ Some users prefer unified diff view. Could toggle with a key.
 *** Word Wrap
 Long lines are currently truncated. Could add word wrap mode.
 
-*** Search
-=/= to search within diff content, =n/N= to navigate matches.
+*** Search (less-style)
+Less-style incremental search with match navigation:
+- =/= - open search prompt, search forward as you type
+- =?= - open search prompt, search backward
+- =n= - jump to next match
+- =N= - jump to previous match
+- =Enter= or =Esc= - close search prompt, stay at current match
+
+Implementation notes:
+- Highlight all matches in visible area
+- Current match gets distinct highlight (e.g., reverse video vs just color)
+- Search should work across both sides in side-by-side view
+- Consider regex support (like less) vs literal-only (simpler)
+- Store search history for up-arrow recall
+
+Complexity: Medium
+Files: internal/tui/model.go (search state), internal/tui/update.go (input handling),
+       internal/tui/view.go (match highlighting), internal/tui/keys.go
 
 *** Copy to Clipboard
 Yank selected lines or regions.
@@ -143,11 +188,24 @@ Bubble Tea supports mouse. Could add:
 
 ** Recommended Next Steps (in order)
 
-1. *Status bar* - Quick win, improves usability
-2. *Git diff support* - Essential for daily use
-3. *Hunk separators* - Visual clarity
-4. *File navigation* - Essential for multi-file diffs
-5. *Treesitter highlighting* - The big feature
+Ordered by "fundamentality" - things that affect architecture first, additive
+features later. Doing fundamental work late causes painful rewrites.
+
+*** Fundamental (do early)
+1. *Horizontal scrolling* - Architectural: establishes gutter/content split
+2. *Plan data flow for highlighting* - Need full file content, not just diff lines
+3. *Inline character diff* - Affects how we pair modified lines
+
+*** Important but additive
+4. *Status bar* - Quick win, improves usability
+5. *Git diff support* - Essential for daily use
+6. *File navigation* - Essential for multi-file diffs
+7. *Hunk separators* - Visual clarity
+
+*** Big features (after foundation is solid)
+8. *Treesitter highlighting* - The big feature, depends on data flow
+9. *Folding* - State tracking, conditional rendering
+10. *Semantic awareness* - Depends on treesitter
 
 ** Testing Strategy Reminder
 

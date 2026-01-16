@@ -206,3 +206,48 @@ func TestView_ZeroSize(t *testing.T) {
 	output := m.View()
 	assert.Equal(t, "", output)
 }
+
+func TestView_HorizontalScroll(t *testing.T) {
+	// Create content with long lines to test horizontal scrolling
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 2, Content: "this is a much longer line that will be truncated without scroll", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 2, Content: "this is a much longer line that will be truncated without scroll", Type: sidebyside.Added},
+					},
+					{
+						Left:  sidebyside.Line{Num: 3, Content: "0123456789abcdefghij", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 3, Content: "0123456789abcdefghij", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:       80,
+		height:      10,
+		hscroll:     8, // Scroll right by 8 columns
+		hscrollStep: DefaultHScrollStep,
+		keys:        DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	goldenPath := filepath.Join("testdata", "horizontal_scroll.golden")
+	if *update {
+		err := os.WriteFile(goldenPath, []byte(output), 0644)
+		require.NoError(t, err)
+		return
+	}
+
+	expected, err := os.ReadFile(goldenPath)
+	require.NoError(t, err, "Run with -update to create golden file")
+	assert.Equal(t, string(expected), output)
+}

@@ -56,6 +56,15 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case matchesKey(msg, keys.Bottom):
 		m.scroll = m.maxScroll()
+
+	case matchesKey(msg, keys.Left):
+		m.hscroll -= m.hscrollStep
+		if m.hscroll < 0 {
+			m.hscroll = 0
+		}
+
+	case matchesKey(msg, keys.Right):
+		m.hscroll += m.hscrollStep
 	}
 
 	return m, nil

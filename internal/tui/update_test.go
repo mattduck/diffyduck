@@ -187,3 +187,63 @@ func TestUpdate_WindowResize_SmallContent(t *testing.T) {
 	// Content fits in viewport, scroll should be 0
 	assert.Equal(t, 0, model.scroll)
 }
+
+func TestUpdate_ScrollRight(t *testing.T) {
+	m := makeTestModel(10)
+	m.hscroll = 0
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	model := newM.(Model)
+
+	assert.Equal(t, 4, model.hscroll) // default step is 4
+}
+
+func TestUpdate_ScrollLeft(t *testing.T) {
+	m := makeTestModel(10)
+	m.hscroll = 8
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	model := newM.(Model)
+
+	assert.Equal(t, 4, model.hscroll) // 8 - 4 = 4
+}
+
+func TestUpdate_ScrollLeft_AtZero(t *testing.T) {
+	m := makeTestModel(10)
+	m.hscroll = 0
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	model := newM.(Model)
+
+	assert.Equal(t, 0, model.hscroll) // can't go negative
+}
+
+func TestUpdate_ScrollLeft_ClampToZero(t *testing.T) {
+	m := makeTestModel(10)
+	m.hscroll = 2 // less than step (4)
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	model := newM.(Model)
+
+	assert.Equal(t, 0, model.hscroll) // clamps to 0, not negative
+}
+
+func TestUpdate_ScrollRight_ArrowKey(t *testing.T) {
+	m := makeTestModel(10)
+	m.hscroll = 0
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	model := newM.(Model)
+
+	assert.Equal(t, 4, model.hscroll)
+}
+
+func TestUpdate_ScrollLeft_ArrowKey(t *testing.T) {
+	m := makeTestModel(10)
+	m.hscroll = 8
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	model := newM.(Model)
+
+	assert.Equal(t, 4, model.hscroll)
+}

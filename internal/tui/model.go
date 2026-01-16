@@ -11,22 +11,28 @@ type Model struct {
 	files []sidebyside.FilePair
 
 	// Viewport state
-	scroll int // current scroll offset (line index at top of viewport)
-	width  int // terminal width
-	height int // terminal height (viewport height)
+	scroll  int // vertical scroll offset (line index at top of viewport)
+	hscroll int // horizontal scroll offset (display columns)
+	width   int // terminal width
+	height  int // terminal height (viewport height)
 
 	// Configuration
-	keys KeyMap
+	keys        KeyMap
+	hscrollStep int // columns to scroll horizontally per keypress
 
 	// Derived/cached
 	totalLines int // total number of displayable lines across all files
 }
 
+// DefaultHScrollStep is the default number of columns to scroll horizontally.
+const DefaultHScrollStep = 4
+
 // New creates a new Model with the given file pairs.
 func New(files []sidebyside.FilePair) Model {
 	m := Model{
-		files: files,
-		keys:  DefaultKeyMap(),
+		files:       files,
+		keys:        DefaultKeyMap(),
+		hscrollStep: DefaultHScrollStep,
 	}
 	m.calculateTotalLines()
 	return m

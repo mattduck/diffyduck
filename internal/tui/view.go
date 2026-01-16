@@ -108,14 +108,14 @@ func (m Model) renderHeader(header string) string {
 func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth int) string {
 	contentWidth := halfWidth - lineNumWidth - 1 // -1 for space after line num
 
-	left := renderLine(pair.Left, contentWidth, lineNumWidth)
-	right := renderLine(pair.Right, contentWidth, lineNumWidth)
+	left := m.renderLine(pair.Left, contentWidth, lineNumWidth)
+	right := m.renderLine(pair.Right, contentWidth, lineNumWidth)
 
 	return left + " │ " + right
 }
 
-func renderLine(line sidebyside.Line, contentWidth, lineNumWidth int) string {
-	// Line number
+func (m Model) renderLine(line sidebyside.Line, contentWidth, lineNumWidth int) string {
+	// Line number (fixed, not affected by horizontal scroll)
 	var numStr string
 	if line.Num == 0 {
 		numStr = strings.Repeat(" ", lineNumWidth)
@@ -123,8 +123,8 @@ func renderLine(line sidebyside.Line, contentWidth, lineNumWidth int) string {
 		numStr = lineNumStyle.Render(fmt.Sprintf("%*d", lineNumWidth, line.Num))
 	}
 
-	// Content - expand tabs first for consistent width calculation
-	content := truncateOrPad(expandTabs(line.Content), contentWidth)
+	// Content - expand tabs, then apply horizontal scroll
+	content := horizontalSlice(expandTabs(line.Content), m.hscroll, contentWidth)
 
 	// Apply style based on type
 	var styledContent string
@@ -192,4 +192,67 @@ func truncateOrPad(s string, width int) string {
 
 	// Truncate with ellipsis
 	return runewidth.Truncate(s, width, "...")
+}
+
+// horizontalSlice returns a slice of a string starting at the given display
+// column offset and spanning the given width. It handles wide characters
+// (CJK, emoji) properly - if the offset lands in the middle of a wide char,
+// that position is replaced with a space. The result is always exactly `width`
+// display columns, padded with spaces if needed.
+func horizontalSlice(s string, offset, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	var result strings.Builder
+	col := 0             // current display column
+	resultWidth := 0     // width of result so far
+	skippedHalf := false // true if we skipped half of a wide char at offset
+
+	for _, r := range s {
+		rw := runewidth.RuneWidth(r)
+
+		// Still in the skip zone (before offset)
+		if col < offset {
+			// Check if this wide char spans the offset boundary
+			if col+rw > offset && rw > 1 {
+				// Wide char straddles the offset - we're cutting it in half
+				skippedHalf = true
+			}
+			col += rw
+			continue
+		}
+
+		// We're at or past the offset - start collecting
+
+		// If we just started and skipped half a wide char, emit a space
+		if col == offset && skippedHalf {
+			result.WriteRune(' ')
+			resultWidth++
+			skippedHalf = false
+		}
+
+		// Check if this rune fits in remaining width
+		if resultWidth+rw > width {
+			break
+		}
+
+		result.WriteRune(r)
+		resultWidth += rw
+		col += rw
+	}
+
+	// Handle case where offset was past content, or we skipped into empty
+	if col <= offset && skippedHalf {
+		// We never emitted anything but owe a space for half-wide-char
+		result.WriteRune(' ')
+		resultWidth++
+	}
+
+	// Pad to exact width
+	if resultWidth < width {
+		result.WriteString(strings.Repeat(" ", width-resultWidth))
+	}
+
+	return result.String()
 }

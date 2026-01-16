@@ -12,6 +12,8 @@ type KeyMap struct {
 	HalfDown []string
 	Top      []string
 	Bottom   []string
+	Left     []string
+	Right    []string
 	Quit     []string
 }
 
@@ -26,6 +28,8 @@ func DefaultKeyMap() KeyMap {
 		HalfDown: []string{"ctrl+d"},
 		Top:      []string{"home", "g"},
 		Bottom:   []string{"end", "G"},
+		Left:     []string{"left", "h"},
+		Right:    []string{"right", "l"},
 		Quit:     []string{"q", "ctrl+c"},
 	}
 }
