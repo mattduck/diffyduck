@@ -519,3 +519,32 @@ For each feature:
 2. Write state-based tests for TUI behavior (internal/tui/update_test.go)
 3. Add golden tests for visual output (internal/tui/view_test.go)
 4. Add integration tests if it touches the pipeline (internal/tui/integration_test.go)
+
+*** Known Issue: lipgloss ANSI codes in tests
+
+lipgloss disables ANSI escape code output when it detects no TTY (e.g., during tests).
+This makes it difficult to write golden tests that verify styling/colors.
+
+Findings:
+- =lipgloss.SetColorProfile(termenv.ANSI256)= does NOT work - lipgloss detects no TTY
+- =termenv.WithUnsafe()= forces ANSI output, but timing is tricky
+- Package var initialization order matters: need to set renderer before styles are created
+- Creating a custom renderer with =termenv.NewOutput(os.Stdout, termenv.WithUnsafe())=
+  and =lipgloss.SetDefaultRenderer()= should work, but getting it to run before
+  package-level style vars are initialized is problematic in test context
+
+Potential solutions to investigate:
+1. Make styles lazy (functions that return styles instead of package vars)
+2. Use =TestMain= to set up the renderer before any tests run
+3. Avoid testing ANSI output directly; test that the right styling functions are called
+4. Use a mock renderer for tests that captures style applications
+
+*** Known Issue: Current search match highlighting inconsistent
+
+The search feature uses two yellow colors:
+- Color 3 (darker yellow) for all matches
+- Color 11 (bright yellow) for the current match
+
+Sometimes the current match shows the distinct bright yellow, sometimes it doesn't.
+Need to debug why - likely an issue with how =currentMatch= index is tracked or
+how =isCurrent= is determined in =highlightSearchInVisible= or =applyInlineSpans=.

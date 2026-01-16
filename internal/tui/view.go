@@ -23,6 +23,10 @@ var (
 	// Inline diff highlight: inverted (black on white)
 	inlineAddedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
 	inlineRemovedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
+
+	// Search highlight styles (black text on yellow background)
+	searchMatchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
+	searchCurrentMatchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("11"))
 )
 
 // View implements tea.Model.
@@ -93,9 +97,9 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	for i := start; i < end; i++ {
 		row := rows[i]
 		if row.isHeader {
-			visible = append(visible, m.renderHeader(row.header))
+			visible = append(visible, m.renderHeader(row.header, i))
 		} else {
-			visible = append(visible, m.renderLinePair(row.pair, halfWidth, lineNumWidth))
+			visible = append(visible, m.renderLinePair(row.pair, halfWidth, lineNumWidth, i))
 		}
 	}
 
@@ -104,6 +108,11 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 // renderStatusBar renders the status bar at the bottom of the screen.
 func (m Model) renderStatusBar() string {
+	// In search mode, show search prompt
+	if m.searchMode {
+		return m.renderSearchPrompt()
+	}
+
 	info := m.StatusInfo()
 
 	// Build left side: file name and file count
@@ -115,14 +124,25 @@ func (m Model) renderStatusBar() string {
 		}
 	}
 
-	// Build right side: position info
+	// Build right side: position info and search match count
 	var right string
+
+	// Show search match info if there's an active query
+	if m.searchQuery != "" {
+		if len(m.matches) == 0 {
+			right = "No matches "
+		} else {
+			right = fmt.Sprintf("%d/%d ", m.currentMatch+1, len(m.matches))
+		}
+	}
+
+	// Add position info
 	if info.AtEnd {
-		right = "END "
+		right += "END "
 	} else if info.CurrentLine == 1 && info.Percentage == 0 {
-		right = "TOP "
+		right += "TOP "
 	} else {
-		right = fmt.Sprintf("%d%% ", info.Percentage)
+		right += fmt.Sprintf("%d%% ", info.Percentage)
 	}
 
 	// Calculate padding to fill the width
@@ -135,6 +155,168 @@ func (m Model) renderStatusBar() string {
 
 	statusContent := left + strings.Repeat(" ", padding) + right
 	return statusStyle.Render(statusContent)
+}
+
+// renderSearchPrompt renders the status bar as a search input prompt.
+func (m Model) renderSearchPrompt() string {
+	// Show / for forward, ? for backward
+	prefix := "/"
+	if !m.searchForward {
+		prefix = "?"
+	}
+
+	left := " " + prefix + m.searchInput
+
+	// Calculate padding to fill the width
+	leftWidth := displayWidth(left)
+	padding := m.width - leftWidth
+	if padding < 0 {
+		padding = 0
+	}
+
+	statusContent := left + strings.Repeat(" ", padding)
+	return statusStyle.Render(statusContent)
+}
+
+// hasMatchOnRow returns true if there are search matches on the given row and side.
+func (m Model) hasMatchOnRow(rowIdx, side int) bool {
+	for _, match := range m.matches {
+		if match.Row == rowIdx && match.Side == side {
+			return true
+		}
+	}
+	return false
+}
+
+// highlightSearchInVisible highlights search matches in visible text.
+// It finds the query in the visible text and applies highlighting.
+func (m Model) highlightSearchInVisible(visible string, rowIdx, side int) string {
+	if m.searchQuery == "" {
+		return visible
+	}
+
+	query := m.searchQuery
+	caseSensitive := isSmartCaseSensitive(query)
+
+	searchIn := visible
+	if !caseSensitive {
+		searchIn = strings.ToLower(visible)
+		query = strings.ToLower(query)
+	}
+
+	// Find the current match index for this row/side to highlight it differently
+	currentMatchOnRow := -1
+	for i, match := range m.matches {
+		if match.Row == rowIdx && match.Side == side && i == m.currentMatch {
+			currentMatchOnRow = match.Col
+			break
+		}
+	}
+
+	// Find and highlight all occurrences
+	var result strings.Builder
+	lastEnd := 0
+
+	for {
+		idx := strings.Index(searchIn[lastEnd:], query)
+		if idx == -1 {
+			break
+		}
+		pos := lastEnd + idx
+
+		// Add text before match
+		result.WriteString(visible[lastEnd:pos])
+
+		// Determine if this is the current match
+		// We check if the position in the original content would match
+		originalPos := pos + m.hscroll
+		isCurrent := originalPos == currentMatchOnRow
+
+		// Add highlighted match
+		end := pos + len(m.searchQuery)
+		if end > len(visible) {
+			end = len(visible)
+		}
+
+		matchText := visible[pos:end]
+		if isCurrent {
+			result.WriteString(searchCurrentMatchStyle.Render(matchText))
+		} else {
+			result.WriteString(searchMatchStyle.Render(matchText))
+		}
+		lastEnd = end
+	}
+
+	// Add remaining text
+	if lastEnd < len(visible) {
+		result.WriteString(visible[lastEnd:])
+	}
+
+	return result.String()
+}
+
+// applySearchHighlight applies search highlighting to text for a given row and side.
+func (m Model) applySearchHighlight(text string, rowIdx, side int) string {
+	if len(m.matches) == 0 {
+		return text
+	}
+
+	// Find matches for this row and side
+	var rowMatches []Match
+	for i, match := range m.matches {
+		if match.Row == rowIdx && match.Side == side {
+			rowMatches = append(rowMatches, match)
+			// Mark if this is the current match
+			if i == m.currentMatch {
+				rowMatches[len(rowMatches)-1].Col = -rowMatches[len(rowMatches)-1].Col - 1 // negative marks current
+			}
+		}
+	}
+
+	if len(rowMatches) == 0 {
+		return text
+	}
+
+	// Build highlighted text
+	queryLen := len(m.searchQuery)
+	var result strings.Builder
+	lastEnd := 0
+
+	for _, match := range rowMatches {
+		col := match.Col
+		isCurrent := col < 0
+		if isCurrent {
+			col = -col - 1
+		}
+
+		if col < lastEnd || col >= len(text) {
+			continue
+		}
+
+		// Add text before match
+		result.WriteString(text[lastEnd:col])
+
+		// Add highlighted match
+		end := col + queryLen
+		if end > len(text) {
+			end = len(text)
+		}
+
+		matchText := text[col:end]
+		if isCurrent {
+			result.WriteString(searchCurrentMatchStyle.Render(matchText))
+		} else {
+			result.WriteString(searchMatchStyle.Render(matchText))
+		}
+		lastEnd = end
+	}
+
+	// Add remaining text
+	if lastEnd < len(text) {
+		result.WriteString(text[lastEnd:])
+	}
+
+	return result.String()
 }
 
 func formatFileHeader(oldPath, newPath string) string {
@@ -153,11 +335,15 @@ func formatFileHeader(oldPath, newPath string) string {
 	return old + " → " + new
 }
 
-func (m Model) renderHeader(header string) string {
+func (m Model) renderHeader(header string, rowIdx int) string {
+	// Apply search highlighting if there are matches
+	if m.searchQuery != "" {
+		header = m.applySearchHighlight(header, rowIdx, 0)
+	}
 	return headerStyle.Render(header)
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth int) string {
+func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth, rowIdx int) string {
 	contentWidth := halfWidth - lineNumWidth - 1 // -1 for space after line num
 
 	// Check if this is a modified pair where we should show inline diff
@@ -181,13 +367,13 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth 
 		}
 	}
 
-	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans)
-	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans)
+	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, rowIdx, 0)
+	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rowIdx, 1)
 
 	return left + " │ " + right
 }
 
-func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, spans []inlinediff.Span) string {
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, spans []inlinediff.Span, rowIdx, side int) string {
 	// Line number (fixed, not affected by horizontal scroll)
 	var numStr string
 	if line.Num == 0 {
@@ -205,19 +391,25 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	// Apply styling
 	var styledContent string
 	if len(spans) > 0 && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
-		// Apply inline diff highlighting
-		styledContent = m.applyInlineSpans(expanded, visible, spans, line.Type, contentWidth)
+		// Apply inline diff highlighting (with search highlighting taking precedence)
+		styledContent = m.applyInlineSpans(expanded, visible, spans, line.Type, contentWidth, rowIdx, side)
 	} else {
+		// Apply search highlighting first if applicable
+		displayContent := visible
+		if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
+			displayContent = m.highlightSearchInVisible(visible, rowIdx, side)
+		}
+
 		// Apply simple style based on type
 		switch line.Type {
 		case sidebyside.Added:
-			styledContent = addedStyle.Render(visible)
+			styledContent = addedStyle.Render(displayContent)
 		case sidebyside.Removed:
-			styledContent = removedStyle.Render(visible)
+			styledContent = removedStyle.Render(displayContent)
 		case sidebyside.Empty:
-			styledContent = emptyStyle.Render(visible)
+			styledContent = emptyStyle.Render(displayContent)
 		default:
-			styledContent = contextStyle.Render(visible)
+			styledContent = contextStyle.Render(displayContent)
 		}
 	}
 
@@ -226,7 +418,8 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 // applyInlineSpans applies inline diff highlighting to visible content.
 // It maps spans from the full expanded string to the visible viewport slice.
-func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Span, lineType sidebyside.LineType, _ int) string {
+// Search highlighting takes precedence over inline diff highlighting.
+func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Span, lineType sidebyside.LineType, _ int, rowIdx, side int) string {
 	// Determine base and highlight styles
 	var baseStyle, highlightStyle lipgloss.Style
 	if lineType == sidebyside.Added {
@@ -249,35 +442,101 @@ func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Spa
 	}
 	byteToCol[len(expanded)] = col
 
+	// Build search match ranges (in visible coordinates) if we have matches
+	type searchRange struct {
+		start, end int
+		isCurrent  bool
+	}
+	var searchRanges []searchRange
+	if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
+		queryLen := len(m.searchQuery)
+		caseSensitive := isSmartCaseSensitive(m.searchQuery)
+		query := m.searchQuery
+		searchIn := visible
+		if !caseSensitive {
+			searchIn = strings.ToLower(visible)
+			query = strings.ToLower(query)
+		}
+
+		// Find all occurrences in visible text
+		pos := 0
+		for {
+			idx := strings.Index(searchIn[pos:], query)
+			if idx == -1 {
+				break
+			}
+			start := pos + idx
+			end := start + queryLen
+			if end > len(visible) {
+				end = len(visible)
+			}
+
+			// Check if this is the current match
+			originalPos := start + m.hscroll
+			isCurrent := false
+			for i, match := range m.matches {
+				if match.Row == rowIdx && match.Side == side && match.Col == originalPos && i == m.currentMatch {
+					isCurrent = true
+					break
+				}
+			}
+
+			searchRanges = append(searchRanges, searchRange{start: start, end: end, isCurrent: isCurrent})
+			pos = start + 1
+		}
+	}
+
 	// Build styled output for each visible column
 	var result strings.Builder
 	visibleRunes := []rune(visible)
 	visibleCol := 0
+	visibleBytePos := 0
 
 	for _, vr := range visibleRunes {
 		vrWidth := runewidth.RuneWidth(vr)
 		actualCol := m.hscroll + visibleCol
 
-		// Find which span this column falls into
-		inHighlight := false
-		for _, span := range spans {
-			spanStartCol := byteToCol[span.Start]
-			spanEndCol := byteToCol[span.End]
-			if actualCol >= spanStartCol && actualCol < spanEndCol {
-				if span.Type == inlinediff.Added || span.Type == inlinediff.Removed {
-					inHighlight = true
-				}
+		// Check if in search match first (takes precedence)
+		inSearch := false
+		isCurrentSearch := false
+		for _, sr := range searchRanges {
+			if visibleBytePos >= sr.start && visibleBytePos < sr.end {
+				inSearch = true
+				isCurrentSearch = sr.isCurrent
 				break
 			}
 		}
 
-		if inHighlight {
-			result.WriteString(highlightStyle.Render(string(vr)))
+		if inSearch {
+			// Search highlight takes precedence
+			if isCurrentSearch {
+				result.WriteString(searchCurrentMatchStyle.Render(string(vr)))
+			} else {
+				result.WriteString(searchMatchStyle.Render(string(vr)))
+			}
 		} else {
-			result.WriteString(baseStyle.Render(string(vr)))
+			// Check inline diff highlight
+			inHighlight := false
+			for _, span := range spans {
+				spanStartCol := byteToCol[span.Start]
+				spanEndCol := byteToCol[span.End]
+				if actualCol >= spanStartCol && actualCol < spanEndCol {
+					if span.Type == inlinediff.Added || span.Type == inlinediff.Removed {
+						inHighlight = true
+					}
+					break
+				}
+			}
+
+			if inHighlight {
+				result.WriteString(highlightStyle.Render(string(vr)))
+			} else {
+				result.WriteString(baseStyle.Render(string(vr)))
+			}
 		}
 
 		visibleCol += vrWidth
+		visibleBytePos += len(string(vr))
 	}
 
 	return result.String()

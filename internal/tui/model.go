@@ -20,6 +20,15 @@ type Model struct {
 	keys        KeyMap
 	hscrollStep int // columns to scroll horizontally per keypress
 
+	// Search state
+	searchMode       bool    // true when in search input mode
+	searchForward    bool    // true for forward search (/), false for backward (?)
+	searchInput      string  // current input being typed
+	searchQuery      string  // executed search query
+	matches          []Match // search match positions
+	currentMatch     int     // index of current match in matches slice
+	lastSearchScroll int     // scroll position when last search navigation occurred
+
 	// Derived/cached
 	totalLines int // total number of displayable lines across all files
 }
