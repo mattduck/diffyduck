@@ -55,11 +55,12 @@ func (m Model) View() string {
 	return strings.Join(visibleRows, "\n")
 }
 
-// displayRow represents one row in the view (either a header or a line pair)
+// displayRow represents one row in the view (header, line pair, or hunk separator)
 type displayRow struct {
-	isHeader bool
-	header   string
-	pair     sidebyside.LinePair
+	isHeader    bool
+	isSeparator bool
+	header      string
+	pair        sidebyside.LinePair
 }
 
 // buildRows creates all displayable rows from the model data.
@@ -71,13 +72,40 @@ func (m Model) buildRows() []displayRow {
 		header := formatFileHeader(fp.OldPath, fp.NewPath)
 		rows = append(rows, displayRow{isHeader: true, header: header})
 
-		// Line pairs
-		for _, pair := range fp.Pairs {
+		// Line pairs with hunk separators
+		var prevLeft, prevRight int
+		for i, pair := range fp.Pairs {
+			// Check for gap in line numbers (hunk boundary)
+			if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Left.Num, pair.Right.Num) {
+				rows = append(rows, displayRow{isSeparator: true})
+			}
+
 			rows = append(rows, displayRow{isHeader: false, pair: pair})
+
+			// Track previous line numbers (use non-zero values)
+			if pair.Left.Num > 0 {
+				prevLeft = pair.Left.Num
+			}
+			if pair.Right.Num > 0 {
+				prevRight = pair.Right.Num
+			}
 		}
 	}
 
 	return rows
+}
+
+// isHunkBoundary returns true if there's a gap between consecutive line pairs.
+func isHunkBoundary(prevLeft, prevRight, currLeft, currRight int) bool {
+	// Check left side for gap (ignoring empty lines with Num=0)
+	if prevLeft > 0 && currLeft > 0 && currLeft > prevLeft+1 {
+		return true
+	}
+	// Check right side for gap
+	if prevRight > 0 && currRight > 0 && currRight > prevRight+1 {
+		return true
+	}
+	return false
 }
 
 // getVisibleRows returns the rendered rows visible in the current viewport.
@@ -98,12 +126,22 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		row := rows[i]
 		if row.isHeader {
 			visible = append(visible, m.renderHeader(row.header, i))
+		} else if row.isSeparator {
+			visible = append(visible, m.renderHunkSeparator(halfWidth))
 		} else {
 			visible = append(visible, m.renderLinePair(row.pair, halfWidth, lineNumWidth, i))
 		}
 	}
 
 	return visible
+}
+
+// renderHunkSeparator renders a separator line between hunks.
+func (m Model) renderHunkSeparator(halfWidth int) string {
+	// Create a line of dashes with a special character in the middle
+	leftDashes := strings.Repeat("─", halfWidth)
+	rightDashes := strings.Repeat("─", halfWidth)
+	return leftDashes + "─┼─" + rightDashes
 }
 
 // renderStatusBar renders the status bar at the bottom of the screen.

@@ -62,14 +62,9 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 	return m
 }
 
-// calculateTotalLines counts total lines including file headers.
+// calculateTotalLines counts total lines including file headers and hunk separators.
 func (m *Model) calculateTotalLines() {
-	total := 0
-	for _, fp := range m.files {
-		total++ // file header line
-		total += len(fp.Pairs)
-	}
-	m.totalLines = total
+	m.totalLines = len(m.buildRows())
 }
 
 // Init implements tea.Model.

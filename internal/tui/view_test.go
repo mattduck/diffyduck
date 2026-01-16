@@ -612,6 +612,88 @@ func TestView_InlineDiffSkippedForDissimilar(t *testing.T) {
 	assert.Contains(t, output, "1234567890123456")
 }
 
+func TestView_HunkSeparator(t *testing.T) {
+	// When there's a gap in line numbers, a separator should be shown
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					// First hunk: lines 1-3
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
+					},
+					// Gap here - next hunk starts at line 100
+					{
+						Left:  sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 101, Content: "line hundred one", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 101, Content: "line hundred one", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 15,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should contain a separator line with box drawing dashes and the cross in the middle
+	assert.Contains(t, output, "─┼─")
+	// Should have horizontal lines on both sides
+	assert.Contains(t, output, "────")
+}
+
+func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
+	// When lines are consecutive, no separator should be shown
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should NOT contain separator characters
+	assert.NotContains(t, output, "─┼─")
+}
+
 func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	// When content is shorter than viewport, status bar should still be at
 	// the bottom of the terminal (not immediately after content)
