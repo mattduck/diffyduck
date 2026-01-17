@@ -142,98 +142,203 @@ func (m Model) buildRows() []displayRow {
 }
 
 // buildExpandedRows creates line pairs from full file content.
-// It preserves diff highlighting (Added/Removed) from the original Pairs.
+// It uses the Pairs as alignment anchors to properly align added/removed lines,
+// then fills in context lines from the full file content.
 func (m Model) buildExpandedRows(fp sidebyside.FilePair) []displayRow {
-	// Build maps of line numbers that have diff status
-	leftTypes := make(map[int]sidebyside.LineType)
-	rightTypes := make(map[int]sidebyside.LineType)
-
-	for _, pair := range fp.Pairs {
-		if pair.Left.Num > 0 {
-			leftTypes[pair.Left.Num] = pair.Left.Type
-		}
-		if pair.Right.Num > 0 {
-			rightTypes[pair.Right.Num] = pair.Right.Type
-		}
-	}
-
-	var rows []displayRow
-
-	// Determine the number of lines to show
 	oldLen := len(fp.OldContent)
 	newLen := len(fp.NewContent)
 
 	// Handle deleted file (no new content)
 	if newLen == 0 && oldLen > 0 {
-		for i, content := range fp.OldContent {
-			lineNum := i + 1
-			lineType := sidebyside.Context
-			if t, ok := leftTypes[lineNum]; ok {
-				lineType = t
-			}
-			rows = append(rows, displayRow{
-				pair: sidebyside.LinePair{
-					Left:  sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
-					Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-				},
-			})
-		}
-		return rows
+		return m.buildExpandedRowsDeletedFile(fp)
 	}
 
 	// Handle new file (no old content)
 	if oldLen == 0 && newLen > 0 {
-		for i, content := range fp.NewContent {
-			lineNum := i + 1
-			lineType := sidebyside.Context
-			if t, ok := rightTypes[lineNum]; ok {
-				lineType = t
-			}
-			rows = append(rows, displayRow{
-				pair: sidebyside.LinePair{
-					Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-					Right: sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
-				},
-			})
-		}
-		return rows
+		return m.buildExpandedRowsNewFile(fp)
 	}
 
-	// Both files have content - walk through them in parallel
-	maxLen := oldLen
-	if newLen > maxLen {
-		maxLen = newLen
+	// Both files have content - use Pairs as alignment skeleton
+	return m.buildExpandedRowsWithAlignment(fp)
+}
+
+// buildExpandedRowsDeletedFile handles the case where the file was deleted.
+func (m Model) buildExpandedRowsDeletedFile(fp sidebyside.FilePair) []displayRow {
+	leftTypes := buildLineTypeMap(fp.Pairs, true)
+	var rows []displayRow
+
+	for i, content := range fp.OldContent {
+		lineNum := i + 1
+		lineType := sidebyside.Context
+		if t, ok := leftTypes[lineNum]; ok {
+			lineType = t
+		}
+		rows = append(rows, displayRow{
+			pair: sidebyside.LinePair{
+				Left:  sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
+				Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+			},
+		})
+	}
+	return rows
+}
+
+// buildExpandedRowsNewFile handles the case where the file is new.
+func (m Model) buildExpandedRowsNewFile(fp sidebyside.FilePair) []displayRow {
+	rightTypes := buildLineTypeMap(fp.Pairs, false)
+	var rows []displayRow
+
+	for i, content := range fp.NewContent {
+		lineNum := i + 1
+		lineType := sidebyside.Context
+		if t, ok := rightTypes[lineNum]; ok {
+			lineType = t
+		}
+		rows = append(rows, displayRow{
+			pair: sidebyside.LinePair{
+				Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+				Right: sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
+			},
+		})
+	}
+	return rows
+}
+
+// buildLineTypeMap extracts line types from Pairs for one side.
+func buildLineTypeMap(pairs []sidebyside.LinePair, leftSide bool) map[int]sidebyside.LineType {
+	types := make(map[int]sidebyside.LineType)
+	for _, pair := range pairs {
+		if leftSide {
+			if pair.Left.Num > 0 {
+				types[pair.Left.Num] = pair.Left.Type
+			}
+		} else {
+			if pair.Right.Num > 0 {
+				types[pair.Right.Num] = pair.Right.Type
+			}
+		}
+	}
+	return types
+}
+
+// buildExpandedRowsWithAlignment uses Pairs as alignment anchors and fills gaps.
+func (m Model) buildExpandedRowsWithAlignment(fp sidebyside.FilePair) []displayRow {
+	var rows []displayRow
+	oldIdx := 0 // 0-based index into OldContent
+	newIdx := 0 // 0-based index into NewContent
+
+	// Process each pair from the diff, filling in context gaps
+	for _, pair := range fp.Pairs {
+		// Fill context lines before this pair
+		// These are lines that exist in both files but weren't in the diff context
+		oldTarget := pair.Left.Num - 1  // 0-based target for old (or -1 if empty)
+		newTarget := pair.Right.Num - 1 // 0-based target for new (or -1 if empty)
+
+		if pair.Left.Num == 0 {
+			// Added line - old side is empty, fill new context up to this line
+			for newIdx < newTarget {
+				// Find corresponding old line (context lines match 1:1 before additions)
+				if oldIdx < len(fp.OldContent) {
+					rows = append(rows, displayRow{
+						pair: sidebyside.LinePair{
+							Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+							Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+						},
+					})
+					oldIdx++
+				}
+				newIdx++
+			}
+		} else if pair.Right.Num == 0 {
+			// Removed line - new side is empty, fill old context up to this line
+			for oldIdx < oldTarget {
+				if newIdx < len(fp.NewContent) {
+					rows = append(rows, displayRow{
+						pair: sidebyside.LinePair{
+							Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+							Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+						},
+					})
+					newIdx++
+				}
+				oldIdx++
+			}
+		} else {
+			// Context or modified line - fill gaps on both sides
+			for oldIdx < oldTarget && newIdx < newTarget {
+				rows = append(rows, displayRow{
+					pair: sidebyside.LinePair{
+						Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+					},
+				})
+				oldIdx++
+				newIdx++
+			}
+		}
+
+		// Add the pair itself (with content from full file if available)
+		pairRow := m.buildPairRow(pair, fp)
+		rows = append(rows, pairRow)
+
+		// Advance indices past this pair
+		if pair.Left.Num > 0 {
+			oldIdx = pair.Left.Num // Now at 0-based index after this line
+		}
+		if pair.Right.Num > 0 {
+			newIdx = pair.Right.Num
+		}
 	}
 
-	for i := 0; i < maxLen; i++ {
-		var left, right sidebyside.Line
+	// Fill remaining context after the last pair
+	for oldIdx < len(fp.OldContent) && newIdx < len(fp.NewContent) {
+		rows = append(rows, displayRow{
+			pair: sidebyside.LinePair{
+				Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+				Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+			},
+		})
+		oldIdx++
+		newIdx++
+	}
 
-		if i < oldLen {
-			lineNum := i + 1
-			lineType := sidebyside.Context
-			if t, ok := leftTypes[lineNum]; ok {
-				lineType = t
-			}
-			left = sidebyside.Line{Num: lineNum, Content: fp.OldContent[i], Type: lineType}
-		} else {
-			left = sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}
-		}
-
-		if i < newLen {
-			lineNum := i + 1
-			lineType := sidebyside.Context
-			if t, ok := rightTypes[lineNum]; ok {
-				lineType = t
-			}
-			right = sidebyside.Line{Num: lineNum, Content: fp.NewContent[i], Type: lineType}
-		} else {
-			right = sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}
-		}
-
-		rows = append(rows, displayRow{pair: sidebyside.LinePair{Left: left, Right: right}})
+	// Handle any remaining lines on one side only (shouldn't happen in normal diffs)
+	for oldIdx < len(fp.OldContent) {
+		rows = append(rows, displayRow{
+			pair: sidebyside.LinePair{
+				Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+				Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+			},
+		})
+		oldIdx++
+	}
+	for newIdx < len(fp.NewContent) {
+		rows = append(rows, displayRow{
+			pair: sidebyside.LinePair{
+				Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+				Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+			},
+		})
+		newIdx++
 	}
 
 	return rows
+}
+
+// buildPairRow creates a displayRow from a Pair, using full file content when available.
+func (m Model) buildPairRow(pair sidebyside.LinePair, fp sidebyside.FilePair) displayRow {
+	left := pair.Left
+	right := pair.Right
+
+	// Use content from full file if available (it should match, but ensures consistency)
+	if left.Num > 0 && left.Num <= len(fp.OldContent) {
+		left.Content = fp.OldContent[left.Num-1]
+	}
+	if right.Num > 0 && right.Num <= len(fp.NewContent) {
+		right.Content = fp.NewContent[right.Num-1]
+	}
+
+	return displayRow{pair: sidebyside.LinePair{Left: left, Right: right}}
 }
 
 // isHunkBoundary returns true if there's a gap between consecutive line pairs.

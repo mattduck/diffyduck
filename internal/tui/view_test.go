@@ -1193,6 +1193,148 @@ func TestView_ExpandedFile_NewFile(t *testing.T) {
 	assert.Contains(t, output, "another new")
 }
 
+func TestView_ExpandedFile_AlignmentWithAddedLines(t *testing.T) {
+	// Bug: When lines are added, expanded view pairs old[i] with new[i] by index,
+	// not by semantic alignment. This test verifies proper alignment.
+	//
+	// Scenario:
+	// - Old file: line1, line2, line3, line4, line5 (5 lines)
+	// - New file: line1, line2, INSERTED, line3, line4, line5 (6 lines)
+	// - Diff shows the insertion between line2 and line3
+	//
+	// Expected alignment in expanded view:
+	//   old line1 | new line1
+	//   old line2 | new line2
+	//   (empty)   | INSERTED  <- added line
+	//   old line3 | new line3 (which is new line 4 in new file)
+	//   old line4 | new line4 (which is new line 5 in new file)
+	//   old line5 | new line5 (which is new line 6 in new file)
+	//
+	// Bug behavior: old line3 pairs with new line3 (INSERTED) - wrong!
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				// Diff pairs showing the insertion
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Right: sidebyside.Line{Num: 3, Content: "INSERTED", Type: sidebyside.Added},
+					},
+					{
+						Left:  sidebyside.Line{Num: 3, Content: "line3", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 4, Content: "line3", Type: sidebyside.Context},
+					},
+				},
+				OldContent: []string{"line1", "line2", "line3", "line4", "line5"},
+				NewContent: []string{"line1", "line2", "INSERTED", "line3", "line4", "line5"},
+			},
+		},
+		width:  100,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Skip header row
+	// Find the row that has old line 3
+	var oldLine3Row *displayRow
+	for i := range rows {
+		if rows[i].pair.Left.Num == 3 {
+			oldLine3Row = &rows[i]
+			break
+		}
+	}
+
+	if oldLine3Row == nil {
+		t.Fatal("could not find row with old line 3")
+	}
+
+	// Old line 3 should be paired with new line 4 (both have content "line3")
+	// NOT with new line 3 (which is "INSERTED")
+	assert.Equal(t, "line3", oldLine3Row.pair.Left.Content, "left side should be line3")
+	assert.Equal(t, "line3", oldLine3Row.pair.Right.Content,
+		"right side should also be line3 (new line 4), not INSERTED")
+	assert.Equal(t, 4, oldLine3Row.pair.Right.Num,
+		"right side line number should be 4 (after the insertion)")
+}
+
+func TestView_ExpandedFile_AlignmentWithRemovedLines(t *testing.T) {
+	// Similar test but for removed lines
+	//
+	// Scenario:
+	// - Old file: line1, line2, REMOVED, line3, line4 (5 lines)
+	// - New file: line1, line2, line3, line4 (4 lines)
+	//
+	// Expected alignment:
+	//   old line1 | new line1
+	//   old line2 | new line2
+	//   REMOVED   | (empty)   <- removed line
+	//   old line4 | new line3 (same content "line3")
+	//   old line5 | new line4 (same content "line4")
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 3, Content: "REMOVED", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					},
+					{
+						Left:  sidebyside.Line{Num: 4, Content: "line3", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 3, Content: "line3", Type: sidebyside.Context},
+					},
+				},
+				OldContent: []string{"line1", "line2", "REMOVED", "line3", "line4"},
+				NewContent: []string{"line1", "line2", "line3", "line4"},
+			},
+		},
+		width:  100,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find the row that has new line 3
+	var newLine3Row *displayRow
+	for i := range rows {
+		if rows[i].pair.Right.Num == 3 && rows[i].pair.Right.Content == "line3" {
+			newLine3Row = &rows[i]
+			break
+		}
+	}
+
+	if newLine3Row == nil {
+		t.Fatal("could not find row with new line 3 content 'line3'")
+	}
+
+	// New line 3 (content "line3") should be paired with old line 4 (same content)
+	assert.Equal(t, "line3", newLine3Row.pair.Right.Content, "right side should be line3")
+	assert.Equal(t, "line3", newLine3Row.pair.Left.Content,
+		"left side should also be line3 (old line 4), not REMOVED")
+	assert.Equal(t, 4, newLine3Row.pair.Left.Num,
+		"left side line number should be 4 (after the removed line)")
+}
+
 func TestView_GutterIndicators(t *testing.T) {
 	// Test that +/- indicators appear in the gutter for added/removed lines
 	m := Model{
