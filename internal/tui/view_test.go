@@ -777,6 +777,66 @@ func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
 	assert.NotContains(t, output, "─┼─")
 }
 
+func TestFoldLevelIcon(t *testing.T) {
+	tests := []struct {
+		level    sidebyside.FoldLevel
+		expected string
+	}{
+		{sidebyside.FoldFolded, "○"},
+		{sidebyside.FoldNormal, "◐"},
+		{sidebyside.FoldExpanded, "●"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.level.String(), func(t *testing.T) {
+			icon := foldLevelIcon(tt.level)
+			assert.Equal(t, tt.expected, icon)
+		})
+	}
+}
+
+func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
+	// Test that each fold level shows the correct icon in the header
+	tests := []struct {
+		name     string
+		level    sidebyside.FoldLevel
+		wantIcon string
+	}{
+		{"folded shows empty circle", sidebyside.FoldFolded, "○"},
+		{"normal shows half circle", sidebyside.FoldNormal, "◐"},
+		{"expanded shows full circle", sidebyside.FoldExpanded, "●"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := Model{
+				files: []sidebyside.FilePair{
+					{
+						OldPath:    "a/test.go",
+						NewPath:    "b/test.go",
+						FoldLevel:  tt.level,
+						Pairs:      []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1}, Right: sidebyside.Line{Num: 1}}},
+						OldContent: []string{"line"}, // For expanded mode
+						NewContent: []string{"line"},
+					},
+				},
+				width:  80,
+				height: 10,
+				keys:   DefaultKeyMap(),
+			}
+			m.calculateTotalLines()
+
+			output := m.View()
+			lines := strings.Split(output, "\n")
+
+			// First non-blank line should be the header with the icon
+			headerLine := lines[0]
+			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
+			assert.Contains(t, headerLine, "═══ "+tt.wantIcon+" test.go", "header format should be: ═══ <icon> filename")
+		})
+	}
+}
+
 func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{

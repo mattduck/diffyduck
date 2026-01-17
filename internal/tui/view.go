@@ -58,12 +58,12 @@ func (m Model) View() string {
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
 type displayRow struct {
-	isHeader       bool
-	isFoldedHeader bool // true for folded file headers (different rendering)
-	isSeparator    bool
-	isBlank        bool
-	header         string
-	pair           sidebyside.LinePair
+	isHeader    bool
+	isSeparator bool
+	isBlank     bool
+	header      string
+	foldLevel   sidebyside.FoldLevel // fold level for headers (used for icon and styling)
+	pair        sidebyside.LinePair
 }
 
 // buildRows creates all displayable rows from the model data.
@@ -75,7 +75,7 @@ func (m Model) buildRows() []displayRow {
 		case sidebyside.FoldFolded:
 			// Folded: just the header, no blank line before, no trailing "="
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{isHeader: true, isFoldedHeader: true, header: header})
+			rows = append(rows, displayRow{isHeader: true, foldLevel: sidebyside.FoldFolded, header: header})
 
 		case sidebyside.FoldExpanded:
 			// Expanded: show full file content with diff highlighting
@@ -88,7 +88,7 @@ func (m Model) buildRows() []displayRow {
 
 				// File header
 				header := formatFileHeader(fp.OldPath, fp.NewPath)
-				rows = append(rows, displayRow{isHeader: true, header: header})
+				rows = append(rows, displayRow{isHeader: true, foldLevel: sidebyside.FoldExpanded, header: header})
 
 				// Build expanded rows from full file content
 				rows = append(rows, m.buildExpandedRows(fp)...)
@@ -105,7 +105,7 @@ func (m Model) buildRows() []displayRow {
 
 			// File header
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{isHeader: true, header: header})
+			rows = append(rows, displayRow{isHeader: true, foldLevel: sidebyside.FoldNormal, header: header})
 
 			// Line pairs with hunk separators
 			var prevLeft, prevRight int
@@ -258,11 +258,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		if row.isBlank {
 			visible = append(visible, "")
 		} else if row.isHeader {
-			if row.isFoldedHeader {
-				visible = append(visible, m.renderFoldedHeader(row.header, i))
-			} else {
-				visible = append(visible, m.renderHeader(row.header, i))
-			}
+			visible = append(visible, m.renderHeader(row.header, row.foldLevel, i))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth))
 		} else {
@@ -510,15 +506,37 @@ func formatFileHeader(oldPath, newPath string) string {
 	return old + " → " + new
 }
 
-func (m Model) renderHeader(header string, rowIdx int) string {
+// foldLevelIcon returns the icon for a given fold level.
+// ○ = Folded (empty/minimal), ◐ = Normal (half), ● = Expanded (full)
+func foldLevelIcon(level sidebyside.FoldLevel) string {
+	switch level {
+	case sidebyside.FoldFolded:
+		return "○"
+	case sidebyside.FoldExpanded:
+		return "●"
+	default: // FoldNormal
+		return "◐"
+	}
+}
+
+func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowIdx int) string {
 	// Apply search highlighting if there are matches
 	if m.searchQuery != "" {
 		header = m.applySearchHighlight(header, rowIdx, 0)
 	}
 
-	// Add double line after header to fill width
-	// Format: "═══ filename ═══════════════════════"
-	prefix := "═══ "
+	// Get fold level icon
+	icon := foldLevelIcon(foldLevel)
+
+	// Format: "═══ ○ filename" (folded) or "═══ ◐ filename ════" (normal/expanded)
+	prefix := "═══ " + icon + " "
+
+	if foldLevel == sidebyside.FoldFolded {
+		// Folded header: no trailing "═"
+		return headerStyle.Render(prefix + header)
+	}
+
+	// Normal/Expanded: add trailing "═" to fill width
 	suffix := " "
 	headerWidth := displayWidth(prefix) + displayWidth(header) + displayWidth(suffix)
 	remaining := m.width - headerWidth
@@ -528,17 +546,6 @@ func (m Model) renderHeader(header string, rowIdx int) string {
 	line := strings.Repeat("═", remaining)
 
 	return headerStyle.Render(prefix + header + suffix + line)
-}
-
-func (m Model) renderFoldedHeader(header string, rowIdx int) string {
-	// Apply search highlighting if there are matches
-	if m.searchQuery != "" {
-		header = m.applySearchHighlight(header, rowIdx, 0)
-	}
-
-	// Folded header: "═══ filename" without trailing "═"
-	prefix := "═══ "
-	return headerStyle.Render(prefix + header)
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth, rowIdx int) string {
