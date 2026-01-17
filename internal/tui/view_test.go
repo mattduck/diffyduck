@@ -796,15 +796,16 @@ func TestFoldLevelIcon(t *testing.T) {
 }
 
 func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
-	// Test that each fold level shows the correct icon in the header
+	// Test that each fold level shows the correct icon and trailing line in the header
 	tests := []struct {
-		name     string
-		level    sidebyside.FoldLevel
-		wantIcon string
+		name         string
+		level        sidebyside.FoldLevel
+		wantIcon     string
+		wantTrailing string // "" for none, "─" for single, "═" for double
 	}{
-		{"folded shows empty circle", sidebyside.FoldFolded, "○"},
-		{"normal shows half circle", sidebyside.FoldNormal, "◐"},
-		{"expanded shows full circle", sidebyside.FoldExpanded, "●"},
+		{"folded shows empty circle, no trailing", sidebyside.FoldFolded, "○", ""},
+		{"normal shows half circle, single line", sidebyside.FoldNormal, "◐", "─"},
+		{"expanded shows full circle, double line", sidebyside.FoldExpanded, "●", "═"},
 	}
 
 	for _, tt := range tests {
@@ -833,6 +834,18 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 			headerLine := lines[0]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
 			assert.Contains(t, headerLine, "═══ "+tt.wantIcon+" test.go", "header format should be: ═══ <icon> filename")
+
+			// Check trailing line character
+			if tt.wantTrailing == "" {
+				// Folded: should end with filename, no trailing line
+				assert.NotContains(t, headerLine, "─", "folded header should not have trailing line")
+				assert.True(t, strings.HasSuffix(strings.TrimSpace(headerLine), "test.go"),
+					"folded header should end with filename")
+			} else {
+				// Normal/Expanded: should have trailing line of correct type
+				assert.Contains(t, headerLine, " "+tt.wantTrailing,
+					"header should have trailing %s characters", tt.wantTrailing)
+			}
 		})
 	}
 }

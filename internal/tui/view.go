@@ -528,22 +528,30 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowId
 	// Get fold level icon
 	icon := foldLevelIcon(foldLevel)
 
-	// Format: "═══ ○ filename" (folded) or "═══ ◐ filename ════" (normal/expanded)
+	// Format varies by fold level:
+	// - Folded:   "═══ ○ filename" (no trailing line)
+	// - Normal:   "═══ ◐ filename ────" (single line trailing, full width)
+	// - Expanded: "═══ ● filename ════" (double line trailing, full width)
 	prefix := "═══ " + icon + " "
 
 	if foldLevel == sidebyside.FoldFolded {
-		// Folded header: no trailing "═"
+		// Folded header: no trailing line
 		return headerStyle.Render(prefix + header)
 	}
 
-	// Normal/Expanded: add trailing "═" to fill width
+	// Trailing line character: ─ for Normal, ═ for Expanded
+	lineChar := "═"
+	if foldLevel == sidebyside.FoldNormal {
+		lineChar = "─"
+	}
+
 	suffix := " "
 	headerWidth := displayWidth(prefix) + displayWidth(header) + displayWidth(suffix)
 	remaining := m.width - headerWidth
 	if remaining < 0 {
 		remaining = 0
 	}
-	line := strings.Repeat("═", remaining)
+	line := strings.Repeat(lineChar, remaining)
 
 	return headerStyle.Render(prefix + header + suffix + line)
 }
