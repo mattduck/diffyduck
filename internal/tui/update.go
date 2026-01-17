@@ -31,7 +31,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.adjustScrollToRow(newRowIdx)
 
 			m.refreshSearch()
+
+			// Trigger syntax highlighting for this file
+			return m, m.RequestHighlight(msg.FileIndex)
 		}
+		return m, nil
+
+	case HighlightReadyMsg:
+		m.storeHighlightSpans(msg)
 		return m, nil
 
 	case AllContentLoadedMsg:
@@ -52,6 +59,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.adjustScrollToRow(newRowIdx)
 
 			m.refreshSearch()
+
+			// Trigger syntax highlighting for all files
+			return m, m.RequestHighlightAll()
 		}
 		return m, nil
 	}

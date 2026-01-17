@@ -405,8 +405,107 @@ internal/tui/
 
 ** Dependencies
 
-- github.com/smacker/go-tree-sitter (Go bindings)
-- Language grammars (usually included or easily added)
+- github.com/tree-sitter/go-tree-sitter (official Go bindings)
+- github.com/tree-sitter/tree-sitter-go (Go grammar)
+- Note: Using official bindings, not smacker/go-tree-sitter (see Resolved Questions)
+
+** Implementation Progress
+
+*** Phase 1: Foundation - DONE
+
+Completed:
+- [X] Added official go-tree-sitter dependency
+- [X] Created Category enum (pkg/highlight/categories.go)
+- [X] Created Theme with DefaultTheme() (pkg/highlight/theme.go)
+- [X] Created Highlighter with parser caching (pkg/highlight/highlighter.go)
+- [X] Implemented Go language config (pkg/highlight/go_lang.go)
+- [X] Created SpansForLine utility (pkg/highlight/spans.go)
+- [X] Created Registry for language detection (pkg/highlight/registry.go)
+- [X] 11 unit tests for Go highlighting (pkg/highlight/highlight_test.go)
+
+Deviations from plan:
+- Flattened package structure (no languages/ subdir) to avoid import cycles
+- Using official tree-sitter bindings instead of smacker's
+
+*** Phase 2: TUI Integration - DONE
+
+Completed:
+- [X] Added HighlightReadyMsg and HighlightSpan (internal/tui/messages.go)
+- [X] Added highlighter and highlightSpans to Model (internal/tui/model.go)
+- [X] Created RequestHighlight async command (internal/tui/highlight.go)
+- [X] Trigger highlighting when content loads (internal/tui/update.go)
+- [X] Integrated applySyntaxHighlight into renderLineWithSpans (internal/tui/view.go)
+- [X] 5 integration tests (internal/tui/highlight_test.go)
+
+Current limitation:
+- Syntax highlighting ONLY works in expanded view (Tab to expand)
+- Normal diff view has no full file content, so no highlighting
+- This is by design - tree-sitter needs full file context for accurate parsing
+
+*** Phase 3: Style Composition - PARTIAL
+
+Status:
+- [X] Syntax highlighting as base layer
+- [X] Search highlighting overrides syntax (implemented in applySyntaxHighlight)
+- [ ] Word diff + syntax composition NOT yet working
+  - Current code: inline diff takes precedence, syntax ignored for modified lines
+  - Could improve: apply syntax colors, then overlay word-diff highlighting
+
+*** Phase 4: Performance Optimization - NOT STARTED
+
+Deferred - current implementation parses full files. For large files, consider:
+- [ ] Visible-range parsing
+- [ ] Parse tree caching (currently parsers cached, not trees)
+- [ ] Background pre-parsing
+
+*** Phase 5: More Languages - NOT STARTED
+
+Only Go implemented. Adding more languages requires:
+- Import grammar package (e.g., tree-sitter-javascript)
+- Create node type -> category mappings
+- Add context rules for ambiguous nodes
+- Register in NewRegistry()
+
+** Known Issues and Improvements
+
+*** Testing Limitations
+
+lipgloss strips ANSI escape codes when there's no TTY (test environment).
+Tests verify the logic works but can't verify actual color output.
+
+Potential solutions:
+1. Use termenv.WithUnsafe() in TestMain - tricky timing with package init
+2. Test at lower level (verify spans, not rendered output) - current approach
+3. Manual testing in real terminal - necessary for full verification
+
+*** Normal View Highlighting
+
+Currently no syntax highlighting in normal diff view because:
+1. OldContent/NewContent are nil (not loaded)
+2. Tree-sitter needs file context for accurate parsing
+
+Possible improvements:
+1. *Eager loading*: Always fetch content in background, even for normal view
+2. *Line-by-line parsing*: Parse just the diff lines (less accurate but better than nothing)
+3. *Hybrid*: Use diff line content with heuristic-based highlighting
+
+*** Word Diff + Syntax Composition
+
+Current behavior: word-diff lines get inline highlighting only, no syntax colors.
+
+Ideal behavior: syntax colors as base, word-diff inverts/highlights on top.
+
+Fix approach:
+1. In renderLineWithSpans, when inlineSpans exist, still get syntaxSpans
+2. In applyInlineSpans, use syntax colors as base instead of contextStyle
+3. Overlay word-diff highlight style on top of syntax colors
+
+*** Performance for Large Files
+
+Current implementation parses entire file content. For very large files:
+1. Could implement HighlightRange to parse only visible portion
+2. Cache parse trees by content hash
+3. Pre-parse content in background goroutine
 
 ** Resolved Questions
 
@@ -422,8 +521,14 @@ internal/tui/
    treesitter work). This simplifies composition since syntax highlighting
    applies uniformly to content.
 
+5. *Which tree-sitter bindings*: Using official github.com/tree-sitter/go-tree-sitter
+   instead of smacker/go-tree-sitter. Official bindings are newer, maintained by
+   tree-sitter org, and kept up-to-date. smacker's has CGO cross-compilation issues
+   and version lag.
+
 ** References
 
-- go-tree-sitter: https://github.com/smacker/go-tree-sitter
+- go-tree-sitter (official): https://github.com/tree-sitter/go-tree-sitter
+- tree-sitter-go grammar: https://github.com/tree-sitter/tree-sitter-go
 - Tree-sitter docs: https://tree-sitter.github.io/tree-sitter/
 - Tree-sitter playground: https://tree-sitter.github.io/tree-sitter/playground

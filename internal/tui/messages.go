@@ -20,3 +20,18 @@ type FileContent struct {
 	NewContent []string
 	Err        error
 }
+
+// HighlightReadyMsg is sent when syntax highlighting spans are ready for a file.
+type HighlightReadyMsg struct {
+	FileIndex int
+	OldSpans  []HighlightSpan // spans for old file content
+	NewSpans  []HighlightSpan // spans for new file content
+}
+
+// HighlightSpan represents a highlighted range with a category.
+// This is a copy of highlight.Span to avoid import cycles.
+type HighlightSpan struct {
+	Start    int // byte offset
+	End      int // byte offset (exclusive)
+	Category int // highlight.Category value
+}

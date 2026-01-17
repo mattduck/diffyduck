@@ -3,6 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/content"
+	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -11,6 +12,10 @@ type Model struct {
 	// Data
 	files   []sidebyside.FilePair
 	fetcher *content.Fetcher // for fetching full file contents (lazy)
+
+	// Syntax highlighting
+	highlighter    *highlight.Highlighter
+	highlightSpans map[int]*FileHighlight // file index -> highlight spans
 
 	// Viewport state
 	scroll  int // vertical scroll offset (line index at top of viewport)
@@ -39,6 +44,12 @@ type Model struct {
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
 const DefaultHScrollStep = 4
 
+// FileHighlight stores syntax highlighting spans for a file's old and new content.
+type FileHighlight struct {
+	OldSpans []highlight.Span // spans for old content
+	NewSpans []highlight.Span // spans for new content
+}
+
 // Option is a function that configures a Model.
 type Option func(*Model)
 
@@ -52,9 +63,11 @@ func WithFetcher(f *content.Fetcher) Option {
 // New creates a new Model with the given file pairs.
 func New(files []sidebyside.FilePair, opts ...Option) Model {
 	m := Model{
-		files:       files,
-		keys:        DefaultKeyMap(),
-		hscrollStep: DefaultHScrollStep,
+		files:          files,
+		keys:           DefaultKeyMap(),
+		hscrollStep:    DefaultHScrollStep,
+		highlighter:    highlight.New(),
+		highlightSpans: make(map[int]*FileHighlight),
 	}
 	for _, opt := range opts {
 		opt(&m)

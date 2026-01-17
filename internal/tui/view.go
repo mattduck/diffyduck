@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
+	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/inlinediff"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
@@ -400,7 +401,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
 		} else {
-			visible = append(visible, m.renderLinePair(row.pair, halfWidth, lineNumWidth, i, isCursorRow))
+			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, halfWidth, lineNumWidth, i, isCursorRow))
 		}
 	}
 
@@ -766,7 +767,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowId
 	return headerStyle.Render(fullPrefix + header + suffix + line)
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool) string {
+func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool) string {
 	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
 
 	// Check if this is a modified pair where we should show inline diff
@@ -790,14 +791,18 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth,
 		}
 	}
 
-	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, rowIdx, 0, isCursorRow)
-	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rowIdx, 1, isCursorRow)
+	// Get syntax highlight spans for each side
+	leftSyntax := m.getLineSpans(fileIndex, pair.Left.Num, true)
+	rightSyntax := m.getLineSpans(fileIndex, pair.Right.Num, false)
+
+	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, leftSyntax, rowIdx, 0, isCursorRow)
+	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rightSyntax, rowIdx, 1, isCursorRow)
 
 	separator := hunkSeparatorStyle.Render("│")
 	return left + " " + separator + " " + right
 }
 
-func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, spans []inlinediff.Span, rowIdx, side int, isCursorRow bool) string {
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool) string {
 	// Diff indicator (+/-/space) before line number
 	var indicator string
 	switch line.Type {
@@ -835,11 +840,14 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	// Apply horizontal scroll to get visible portion
 	visible := horizontalSlice(expanded, m.hscroll, contentWidth)
 
-	// Apply styling
+	// Apply styling with layers: syntax (base) -> inline diff -> search (top)
 	var styledContent string
-	if len(spans) > 0 && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
+	if len(inlineSpans) > 0 && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		// Apply inline diff highlighting (with search highlighting taking precedence)
-		styledContent = m.applyInlineSpans(expanded, visible, spans, line.Type, contentWidth, rowIdx, side)
+		styledContent = m.applyInlineSpans(expanded, visible, inlineSpans, line.Type, contentWidth, rowIdx, side)
+	} else if len(syntaxSpans) > 0 {
+		// Apply syntax highlighting as base, with search on top
+		styledContent = m.applySyntaxHighlight(line.Content, expanded, visible, syntaxSpans, rowIdx, side)
 	} else {
 		// Apply search highlighting first if applicable
 		displayContent := visible
@@ -975,6 +983,147 @@ func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Spa
 				result.WriteString(highlightStyle.Render(string(vr)))
 			} else {
 				result.WriteString(baseStyle.Render(string(vr)))
+			}
+		}
+
+		visibleCol += vrWidth
+		visibleBytePos += len(string(vr))
+	}
+
+	return result.String()
+}
+
+// applySyntaxHighlight applies syntax highlighting to visible content.
+// It maps spans from the original line to the visible viewport slice,
+// with search highlighting taking precedence.
+// The `original` parameter is the original line content (before tab expansion).
+func (m Model) applySyntaxHighlight(original, _, visible string, syntaxSpans []highlight.Span, rowIdx, side int) string {
+	if len(syntaxSpans) == 0 {
+		// No syntax spans, just apply search if applicable
+		if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
+			return m.highlightSearchInVisible(visible, rowIdx, side)
+		}
+		return visible
+	}
+
+	// Map byte positions from ORIGINAL content to display columns
+	// Syntax spans have offsets into the original (non-tab-expanded) content
+	byteToCol := make([]int, len(original)+1)
+	col := 0
+	bytePos := 0
+	for _, r := range original {
+		byteToCol[bytePos] = col
+		var rw int
+		if r == '\t' {
+			// Tab expands to next tab stop
+			rw = TabWidth - (col % TabWidth)
+		} else {
+			rw = runewidth.RuneWidth(r)
+		}
+		col += rw
+		bytePos += len(string(r))
+	}
+	byteToCol[len(original)] = col
+
+	// Build search match ranges (in visible coordinates) if we have matches
+	type searchRange struct {
+		start, end int
+		isCurrent  bool
+	}
+	var searchRanges []searchRange
+	if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
+		queryLen := len(m.searchQuery)
+		caseSensitive := isSmartCaseSensitive(m.searchQuery)
+		query := m.searchQuery
+		searchIn := visible
+		if !caseSensitive {
+			searchIn = strings.ToLower(visible)
+			query = strings.ToLower(query)
+		}
+
+		pos := 0
+		for {
+			idx := strings.Index(searchIn[pos:], query)
+			if idx == -1 {
+				break
+			}
+			start := pos + idx
+			end := start + queryLen
+			if end > len(visible) {
+				end = len(visible)
+			}
+
+			// Check if this is the current match
+			originalPos := start + m.hscroll
+			isCurrent := false
+			for i, match := range m.matches {
+				if match.Row == rowIdx && match.Side == side && match.Col == originalPos && i == m.currentMatch {
+					isCurrent = true
+					break
+				}
+			}
+
+			searchRanges = append(searchRanges, searchRange{start: start, end: end, isCurrent: isCurrent})
+			pos = start + 1
+		}
+	}
+
+	// Get theme for syntax coloring
+	theme := m.highlighter.Theme()
+
+	// Build styled output for each visible character
+	var result strings.Builder
+	visibleRunes := []rune(visible)
+	visibleCol := 0
+	visibleBytePos := 0
+
+	for _, vr := range visibleRunes {
+		vrWidth := runewidth.RuneWidth(vr)
+		actualCol := m.hscroll + visibleCol
+
+		// Check if in search match first (takes precedence)
+		inSearch := false
+		isCurrentSearch := false
+		for _, sr := range searchRanges {
+			if visibleBytePos >= sr.start && visibleBytePos < sr.end {
+				inSearch = true
+				isCurrentSearch = sr.isCurrent
+				break
+			}
+		}
+
+		if inSearch {
+			// Search highlight takes precedence
+			if isCurrentSearch {
+				result.WriteString(searchCurrentMatchStyle.Render(string(vr)))
+			} else {
+				result.WriteString(searchMatchStyle.Render(string(vr)))
+			}
+		} else {
+			// Find syntax category for this position
+			foundStyle := false
+			for _, span := range syntaxSpans {
+				spanStartCol := 0
+				spanEndCol := 0
+				if span.Start < len(byteToCol) {
+					spanStartCol = byteToCol[span.Start]
+				}
+				if span.End < len(byteToCol) {
+					spanEndCol = byteToCol[span.End]
+				} else if span.End >= len(byteToCol) {
+					spanEndCol = byteToCol[len(byteToCol)-1]
+				}
+
+				if actualCol >= spanStartCol && actualCol < spanEndCol {
+					style := theme.Style(span.Category)
+					result.WriteString(style.Render(string(vr)))
+					foundStyle = true
+					break
+				}
+			}
+
+			if !foundStyle {
+				result.WriteString(string(vr))
 			}
 		}
 
