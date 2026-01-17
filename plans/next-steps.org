@@ -204,7 +204,8 @@ A major feature with three distinct view modes for each file:
 
 1. *Collapsed (stats only)*: Just the file header with +/- line counts
    #+begin_example
-   ▸ internal/tui/view.go  +45 -12
+   ═══ ○ internal/tui/view.go      | +142 -16 +++++++++++++++++++++--
+   ═══ ○ internal/tui/view_test.go | +353     ++++++++++++++++++++++++
    #+end_example
 
 2. *Normal (default)*: Standard diff view with hunk edits (what we have now)
@@ -282,6 +283,42 @@ type FileFoldState struct {
 Complexity: High (architectural, git integration, state management)
 Files: internal/tui/model.go, pkg/sidebyside/types.go, pkg/git/git.go (new methods)
 New consideration: May want pkg/content or similar for file content management
+
+*** File Stats in Folded View [DONE]
+
+Git-style statistics shown only in folded view, with alignment:
+
+#+begin_example
+═══ ○ internal/tui/view.go      | +142 -16 +++++++++++++++++++++--
+═══ ○ internal/tui/view_test.go | +353     ++++++++++++++++++++++++
+═══ ○ pkg/sidebyside/types.go   | +5  -2   +++++--
+#+end_example
+
+**** Features Implemented
+
+- *Folded-only display*: Stats only appear in folded view (not normal/expanded)
+- *Filename alignment*: The =|= separator aligns across all files based on longest filename
+- *Count alignment*: The bar (=++++--=) starts at same column regardless of count width
+- *Proportional scaling*: Bar capped at 24 characters, scaled proportionally for large diffs
+- *Colored output*: =+N= and =+= chars in green, =-M= and =-= chars in red
+- *Zero omission*: If additions=0, only shows =-M=; if deletions=0, only shows =+N=
+
+**** Implementation
+
+Key functions in =internal/tui/view.go=:
+
+- =countFileStats(fp FilePair) (added, removed int)=: Counts by checking =LinePair.Right.Type == Added= and =LinePair.Left.Type == Removed=
+- =statsCountWidth(added, removed int) int=: Returns display width of count portion for alignment
+- =formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth int) string=: Formats the colored stats string with padding
+- =buildRows()=: Calculates =maxHeaderWidth= and =maxCountWidth= across all files in first pass
+- =displayRow= struct: Extended with =maxHeaderWidth= and =maxCountWidth= fields
+
+**** Future Improvements
+
+- *Binary files*: Show "Binary file changed" or similar instead of line counts
+- *Renamed files*: Show rename info (=old -> new=) with optional similarity percentage
+- *Mode changes*: Show permission changes (e.g., =+x=)
+- *Large file indicator*: Visual cue when diff is very large (e.g., =+1000+=)
 
 ** Phase 4: Semantic Awareness
 

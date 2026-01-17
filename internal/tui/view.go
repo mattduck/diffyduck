@@ -62,25 +62,48 @@ func (m Model) View() string {
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
 type displayRow struct {
-	fileIndex   int // index of the file this row belongs to
-	isHeader    bool
-	isSeparator bool
-	isBlank     bool
-	header      string
-	foldLevel   sidebyside.FoldLevel // fold level for headers (used for icon and styling)
-	pair        sidebyside.LinePair
+	fileIndex      int // index of the file this row belongs to
+	isHeader       bool
+	isSeparator    bool
+	isBlank        bool
+	header         string
+	foldLevel      sidebyside.FoldLevel // fold level for headers (used for icon and styling)
+	pair           sidebyside.LinePair
+	added          int // number of added lines (for headers)
+	removed        int // number of removed lines (for headers)
+	maxHeaderWidth int // max header width across all files (for alignment in folded view)
+	maxCountWidth  int // max stats count width across all files (for bar alignment)
 }
 
 // buildRows creates all displayable rows from the model data.
 func (m Model) buildRows() []displayRow {
 	var rows []displayRow
 
+	// Calculate max header width and max count width across all files for alignment
+	maxHeaderWidth := 0
+	maxCountWidth := 0
+	for _, fp := range m.files {
+		header := formatFileHeader(fp.OldPath, fp.NewPath)
+		w := displayWidth(header)
+		if w > maxHeaderWidth {
+			maxHeaderWidth = w
+		}
+		added, removed := countFileStats(fp)
+		cw := statsCountWidth(added, removed)
+		if cw > maxCountWidth {
+			maxCountWidth = cw
+		}
+	}
+
 	for fileIdx, fp := range m.files {
+		// Count stats once per file for header display
+		added, removed := countFileStats(fp)
+
 		switch fp.FoldLevel {
 		case sidebyside.FoldFolded:
 			// Folded: just the header, no blank line before, no trailing "="
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, header: header})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
 
 		case sidebyside.FoldExpanded:
 			// Expanded: show full file content with diff highlighting
@@ -92,7 +115,7 @@ func (m Model) buildRows() []displayRow {
 					rows = append(rows, displayRow{fileIndex: fileIdx - 1, isBlank: true})
 				}
 
-				// File header
+				// File header (no stats in expanded view)
 				header := formatFileHeader(fp.OldPath, fp.NewPath)
 				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, header: header})
 
@@ -114,7 +137,7 @@ func (m Model) buildRows() []displayRow {
 				rows = append(rows, displayRow{fileIndex: fileIdx - 1, isBlank: true})
 			}
 
-			// File header
+			// File header (no stats in normal view)
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
 			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, header: header})
 
@@ -398,7 +421,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 				visible = append(visible, "")
 			}
 		} else if row.isHeader {
-			visible = append(visible, m.renderHeader(row.header, row.foldLevel, i, isCursorRow))
+			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.added, row.removed, row.maxHeaderWidth, row.maxCountWidth, i, isCursorRow))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
 		} else {
@@ -664,6 +687,64 @@ func (m Model) applySearchHighlight(text string, rowIdx, side int) string {
 	return result.String()
 }
 
+// countFileStats counts the number of added and removed lines in a file.
+// TODO: Handle binary files and renames - they should display differently
+// (e.g., "Binary file changed" or show rename info without line stats).
+func countFileStats(fp sidebyside.FilePair) (added, removed int) {
+	for _, pair := range fp.Pairs {
+		if pair.Right.Type == sidebyside.Added {
+			added++
+		}
+		if pair.Left.Type == sidebyside.Removed {
+			removed++
+		}
+	}
+	return added, removed
+}
+
+// formatStatsBar formats the stats as "+N -M +++---" with proportional scaling.
+// If total changes exceed maxWidth, the bar is scaled proportionally.
+// Returns empty string if there are no changes.
+func formatStatsBar(added, removed, maxWidth int) string {
+	if added == 0 && removed == 0 {
+		return ""
+	}
+
+	var parts []string
+
+	// Build the count prefix: "+N" and/or "-M"
+	if added > 0 {
+		parts = append(parts, fmt.Sprintf("+%d", added))
+	}
+	if removed > 0 {
+		parts = append(parts, fmt.Sprintf("-%d", removed))
+	}
+
+	// Calculate bar characters
+	total := added + removed
+	plusChars := added
+	minusChars := removed
+
+	// Scale if exceeds maxWidth
+	if total > maxWidth {
+		scale := float64(maxWidth) / float64(total)
+		plusChars = int(float64(added) * scale)
+		minusChars = int(float64(removed) * scale)
+		// Ensure we don't lose representation for non-zero counts
+		if added > 0 && plusChars == 0 {
+			plusChars = 1
+		}
+		if removed > 0 && minusChars == 0 {
+			minusChars = 1
+		}
+	}
+
+	bar := strings.Repeat("+", plusChars) + strings.Repeat("-", minusChars)
+	parts = append(parts, bar)
+
+	return strings.Join(parts, " ")
+}
+
 func formatFileHeader(oldPath, newPath string) string {
 	if oldPath == newPath || oldPath == "/dev/null" {
 		return newPath
@@ -693,7 +774,74 @@ func foldLevelIcon(level sidebyside.FoldLevel) string {
 	}
 }
 
-func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowIdx int, isCursorRow bool) string {
+// statsCountWidth returns the display width of the count portion "+N -M" (without bar).
+func statsCountWidth(added, removed int) int {
+	width := 0
+	if added > 0 {
+		width += len(fmt.Sprintf("+%d", added))
+	}
+	if removed > 0 {
+		if width > 0 {
+			width++ // space between +N and -M
+		}
+		width += len(fmt.Sprintf("-%d", removed))
+	}
+	return width
+}
+
+// formatColoredStatsBar returns the stats display with colored +/- characters.
+// Returns empty string if no changes. Format: " | +N -M +++---"
+// maxCountWidth is used to pad the count portion for alignment across files.
+func formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth int) string {
+	if added == 0 && removed == 0 {
+		return ""
+	}
+
+	var parts []string
+	parts = append(parts, "|")
+
+	// Build count string and pad for alignment
+	var countParts []string
+	if added > 0 {
+		countParts = append(countParts, addedStyle.Render(fmt.Sprintf("+%d", added)))
+	}
+	if removed > 0 {
+		countParts = append(countParts, removedStyle.Render(fmt.Sprintf("-%d", removed)))
+	}
+	countStr := strings.Join(countParts, " ")
+
+	// Pad to align bars
+	currentCountWidth := statsCountWidth(added, removed)
+	if maxCountWidth > currentCountWidth {
+		countStr += strings.Repeat(" ", maxCountWidth-currentCountWidth)
+	}
+	parts = append(parts, countStr)
+
+	// Calculate bar characters with scaling
+	total := added + removed
+	plusChars := added
+	minusChars := removed
+
+	if total > maxBarWidth {
+		scale := float64(maxBarWidth) / float64(total)
+		plusChars = int(float64(added) * scale)
+		minusChars = int(float64(removed) * scale)
+		if added > 0 && plusChars == 0 {
+			plusChars = 1
+		}
+		if removed > 0 && minusChars == 0 {
+			minusChars = 1
+		}
+	}
+
+	// Build colored bar
+	bar := addedStyle.Render(strings.Repeat("+", plusChars)) + removedStyle.Render(strings.Repeat("-", minusChars))
+	parts = append(parts, bar)
+
+	return " " + strings.Join(parts, " ")
+}
+
+func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, added, removed, maxHeaderWidth, maxCountWidth, rowIdx int, isCursorRow bool) string {
 	// Apply search highlighting if there are matches
 	if m.searchQuery != "" {
 		header = m.applySearchHighlight(header, rowIdx, 0)
@@ -709,14 +857,24 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowId
 	fullPrefix := equalsPrefix + iconPart
 
 	if foldLevel == sidebyside.FoldFolded {
-		// Folded header: no trailing line, just highlight equals prefix if cursor
-		if isCursorRow {
-			return cursorStyle.Render(equalsPrefix) + headerStyle.Render(iconPart+header)
+		// Folded header: show stats with aligned | separator and bar
+		const maxBarWidth = 24
+		statsBar := formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth)
+
+		// Pad header to align | separator across all files
+		headerWidth := displayWidth(header)
+		padding := ""
+		if maxHeaderWidth > headerWidth {
+			padding = strings.Repeat(" ", maxHeaderWidth-headerWidth)
 		}
-		return headerStyle.Render(fullPrefix + header)
+
+		if isCursorRow {
+			return cursorStyle.Render(equalsPrefix) + headerStyle.Render(iconPart+header+padding) + statsBar
+		}
+		return headerStyle.Render(fullPrefix+header+padding) + statsBar
 	}
 
-	// Normal or Expanded: include trailing line and right gutter highlight when cursor
+	// Normal or Expanded: include trailing line, no stats
 	lineChar := "═"
 	if foldLevel == sidebyside.FoldNormal {
 		lineChar = "─"
