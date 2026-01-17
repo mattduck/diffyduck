@@ -535,14 +535,14 @@ func buildFullFilePairs(fp FilePair) []displayRow {
 
 ** QA Status
 
-*IN PROGRESS* - Manual QA testing still needed for:
-- [ ] Tab cycling through levels on real diffs
-- [ ] Shift+Tab sync behavior with multiple files
-- [ ] Expanded view with actual git show output
-- [ ] Content fetching latency on large diffs
-- [ ] Search highlighting across fold state changes
-- [ ] Edge cases: deleted files, new files, renamed files
-- [ ] Status bar shows correct file after fold changes
+*COMPLETE* - Feature has been in use. Original checklist:
+- [X] Tab cycling through levels on real diffs
+- [X] Shift+Tab sync behavior with multiple files
+- [X] Expanded view with actual git show output
+- [X] Content fetching latency on large diffs
+- [X] Search highlighting across fold state changes
+- [X] Edge cases: deleted files, new files, renamed files
+- [X] Status bar shows correct file after fold changes
 
 ** Bugs Fixed
 
@@ -626,9 +626,9 @@ The cursor is now a fixed position at 20% from the top of the viewport.
   - Status bar filename at cursor tests
   - Placeholder tests for cursor highlighting
 
-**** TODO: Visual Cursor Highlighting
+**** COMPLETED: Visual Cursor Highlighting
 
-The cursor line needs visual highlighting. Requirements:
+The cursor line has visual highlighting. Implementation:
 
 - Highlight uses: bg=color 7, fg=color 0
 - Only highlight non-content areas (gutters, not the diff text itself)

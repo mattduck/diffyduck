@@ -55,12 +55,14 @@ func init() {
 *.golden -text
 #+end_example
 
-** Phase 1: Minimal Side-by-Side Viewer
+** Phase 1: Minimal Side-by-Side Viewer [COMPLETE]
 
 *** Goal
 
 Run ~git show <commit>~ and display a side-by-side view of changes.
 No syntax highlighting. No folding. Just the core viewing loop.
+
+*Status: All items in this phase are complete.*
 
 *** What We Need
 
@@ -265,17 +267,18 @@ diffyduck/
 
 ** Future Phases
 
-*** Phase 2: Syntax Highlighting
-- Integrate go-tree-sitter
-- Language detection from file extension
-- Apply highlighting spans to view
+*** Phase 2: Syntax Highlighting [COMPLETE]
+- Integrate go-tree-sitter ✓
+- Language detection from file extension ✓
+- Apply highlighting spans to view ✓
+- Pairs-based highlighting for normal view ✓
 
-*** Phase 3: Folding
-- Fold/unfold individual hunks
-- Fold/unfold entire files
-- Keyboard shortcuts (zo/zc vim-style?)
+*** Phase 3: Folding [COMPLETE]
+- Fold/unfold individual hunks ✓
+- Fold/unfold entire files ✓
+- TAB/Shift+TAB keybindings ✓
 
-*** Phase 4: Semantic Awareness
+*** Phase 4: Semantic Awareness [TODO]
 - Parse treesitter to identify functions/classes
 - Show "affected: func Foo, func Bar" in header
 - Jump between affected symbols

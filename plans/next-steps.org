@@ -12,24 +12,9 @@ What works:
 
 ** Immediate Polish Options
 
-*** Hunk Separators
-Currently hunks from the same file run together with no visual break.
-Add a separator line between non-contiguous hunks showing the gap.
-
-Example:
-#+begin_example
-   10 context line                    │   10 context line
-────────────── 15 lines hidden ───────────────────────────
-   25 context line                    │   25 context line
-#+end_example
-
-Complexity: Low
-Files: internal/tui/view.go, pkg/sidebyside/types.go
-
 *** File Navigation
 Add keybindings to jump between files:
 - =]f= / =[f= - next/previous file
-- =]h= / =[h= - next/previous hunk
 - Maybe a file list sidebar or overlay
 
 Complexity: Medium
@@ -45,7 +30,7 @@ Currently only =git show <ref>= works. Add:
 Complexity: Low
 Files: pkg/git/git.go, cmd/diffyduck/main.go (CLI args)
 
-*** Status Bar [FOUNDATIONAL]
+*** Status Bar [DONE]
 
 Add a bottom status bar like =less= pager. This is a *critical dependency*
 for search (and useful on its own).
@@ -85,7 +70,7 @@ During search:
 Complexity: Low
 Files: internal/tui/view.go, internal/tui/model.go (status state)
 
-** Phase 1.5: Horizontal Scrolling
+** Phase 1.5: Horizontal Scrolling [DONE]
 
 *** Fixed Line Numbers with Scrollable Content
 Long lines are currently truncated. Add horizontal scrolling while keeping
@@ -114,7 +99,7 @@ Why early: This is fundamental to the view architecture. Adding later means
 rewriting how every line is rendered. Better to establish the gutter/content
 split now before adding more view features.
 
-** Phase 2: Inline/Word Diff
+** Phase 2: Inline/Word Diff [DONE]
 
 Highlight the specific changed characters within modified lines, making it
 easy to spot exactly what changed.
@@ -188,7 +173,7 @@ Complexity: Medium
 New package: pkg/inlinediff
 Files: pkg/sidebyside/transform.go, internal/tui/view.go
 
-** Phase 2.5: Syntax Highlighting
+** Phase 2.5: Syntax Highlighting [DONE]
 
 *** Treesitter Integration
 Use go-tree-sitter to parse and highlight code.
@@ -211,7 +196,7 @@ Complexity: High
 New package: pkg/highlight
 Depends on: File content fetching layer (from folding work)
 
-** Phase 3: Folding
+** Phase 3: Folding [DONE]
 
 A major feature with three distinct view modes for each file:
 
@@ -323,7 +308,7 @@ Some users prefer unified diff view. Could toggle with a key.
 *** Word Wrap
 Long lines are currently truncated. Could add word wrap mode.
 
-*** Search (less-style) [MAJOR FEATURE]
+*** Search (less-style) [DONE]
 
 A major feature: less-pager-style incremental search.
 
@@ -391,88 +376,55 @@ Bubble Tea supports mouse. Could add:
 - Scroll wheel
 - Click on file header to fold/unfold
 
-** Recommended Next Steps (in order)
+** Recommended Next Steps
 
-Ordered by "fundamentality" - things that affect architecture first, additive
-features later. Doing fundamental work late causes painful rewrites.
+Most core features are complete. Remaining work:
 
-*** Dependency Graph
+*** Remaining Features
+
+1. *File navigation* - Jump between files with =]f= / =[f=
+2. *Word diff + syntax composition* - Currently word-diff lines lose syntax colors
+3. *More languages* - Only Go syntax highlighting implemented (JS/TS, Python next)
+4. *Semantic awareness* - Parse treesitter for affected functions/classes
+
+*** Dependency Graph (Historical - Most Complete)
 
 #+begin_example
                     ┌─────────────────┐
-                    │ Horizontal Scroll│ (DONE - Phase 1.5)
+                    │ Horizontal Scroll│ ✓ DONE
                     └─────────────────┘
                              │
     ┌────────────────────────┼────────────────────────┐
     ▼                        ▼                        ▼
 ┌──────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Status Bar  │    │   Git Layer     │    │  Inline/Word    │
-│ (low effort) │    │ (diff support)  │    │     Diff        │
-└──────────────┘    └─────────────────┘    └─────────────────┘
-    │                        │                        │
-    ▼                        ▼                        │
+│  Status Bar  │ ✓  │   Git Layer     │ ✓  │  Inline/Word    │ ✓
+└──────────────┘    └─────────────────┘    │     Diff        │
+                             │             └─────────────────┘
+    ┌────────────────────────┘                        │
+    ▼                                                 │
 ┌──────────────┐    ┌─────────────────┐               │
-│    Search    │    │  File Content   │               │
-│ (less-style) │    │   Fetching      │               │
-└──────────────┘    └─────────────────┘               │
+│    Search    │ ✓  │  File Content   │ ✓             │
+└──────────────┘    │   Fetching      │               │
+                    └─────────────────┘               │
                              │                        │
                              ▼                        │
                     ┌─────────────────┐               │
-                    │    Folding      │               │
+                    │    Folding      │ ✓             │
                     │   (3 levels)    │               │
                     └─────────────────┘               │
                              │                        │
                              ▼                        ▼
                     ┌─────────────────────────────────┐
-                    │       Treesitter Highlighting   │
-                    │  (needs full content + composes │
-                    │       with inline diff)         │
+                    │       Treesitter Highlighting   │ ✓
+                    │  (Go only, pairs + full content)│
                     └─────────────────────────────────┘
                                       │
                                       ▼
                              ┌─────────────────┐
-                             │    Semantic     │
+                             │    Semantic     │ TODO
                              │   Awareness     │
                              └─────────────────┘
 #+end_example
-
-*** Recommended Order
-
-1. *Status bar* [FOUNDATIONAL] - Low effort, high value
-   - Dependency for search
-   - Provides orientation (line/file position, %)
-   - Establishes UI chrome pattern
-   - No other dependencies
-
-2. *Inline/Word diff* [PHASE 2] - Medium effort, high impact
-   - No dependencies (works with current diff lines)
-   - Big visual improvement for reviewing changes
-   - Can be built in parallel with git layer work
-
-3. *Git diff support* - Essential for daily use
-   - =git diff=, =git diff --cached=, =git diff <ref1> <ref2>=
-   - Lays groundwork for file content fetching
-
-4. *File content fetching layer* - Enables folding + highlighting
-   - =git show <ref>:<path>= for old/new versions
-   - Lazy loading with caching
-   - This is the "full file content" that folding needs
-
-5. *Folding (3 levels)* [MAJOR FEATURE] - Depends on #4
-   - Collapsed (stats) → Normal (diff) → Expanded (full file)
-   - TAB / Shift+TAB keybindings
-   - State tracking per file
-
-6. *Search (less-style)* [MAJOR FEATURE] - Depends on #1
-   - Search visible content only (respects fold state)
-   - =/= forward, =?= backward, =n=/=N= navigation
-   - Can be built in parallel with folding after status bar
-
-*** Later Phases
-7. *Treesitter highlighting* - Needs content layer, composes with inline diff
-8. *File navigation* - Useful but not blocking
-9. *Hunk separators* - Polish
-10. *Semantic awareness* - Future
 
 ** Performance Philosophy
 
