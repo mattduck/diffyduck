@@ -437,10 +437,17 @@ Completed:
 - [X] Integrated applySyntaxHighlight into renderLineWithSpans (internal/tui/view.go)
 - [X] 5 integration tests (internal/tui/highlight_test.go)
 
-Current limitation:
-- Syntax highlighting ONLY works in expanded view (Tab to expand)
-- Normal diff view has no full file content, so no highlighting
-- This is by design - tree-sitter needs full file context for accurate parsing
+Previous limitation (now resolved):
+- Syntax highlighting used to ONLY work in expanded view (Tab to expand)
+- Normal diff view had no full file content, so no highlighting
+
+Now implemented pairs-based highlighting:
+- [X] Extract content from diff Pairs (hunk lines) and parse with tree-sitter
+- [X] Store spans with line number mapping (handles non-contiguous line numbers)
+- [X] First file highlighted synchronously in New() for instant first render
+- [X] Remaining files highlighted async via Init() to avoid blocking
+- [X] Full content spans take priority when available (expanded view)
+- [X] Comprehensive test coverage (13 new tests)
 
 *** Phase 3: Style Composition - PARTIAL
 
@@ -478,16 +485,27 @@ Potential solutions:
 2. Test at lower level (verify spans, not rendered output) - current approach
 3. Manual testing in real terminal - necessary for full verification
 
-*** Normal View Highlighting
+*** Normal View Highlighting - RESOLVED
 
-Currently no syntax highlighting in normal diff view because:
-1. OldContent/NewContent are nil (not loaded)
-2. Tree-sitter needs file context for accurate parsing
+Implemented pairs-based highlighting that extracts content from diff Pairs:
 
-Possible improvements:
-1. *Eager loading*: Always fetch content in background, even for normal view
-2. *Line-by-line parsing*: Parse just the diff lines (less accurate but better than nothing)
-3. *Hybrid*: Use diff line content with heuristic-based highlighting
+How it works:
+1. buildContentFromPairs() extracts line content from Pairs array
+2. Lines are concatenated into a string for tree-sitter parsing
+3. Line number mappings track where each line starts in the concatenated content
+4. Tree-sitter parses the partial content (works well for most syntax elements)
+5. getLineSpansFromPairs() retrieves spans by original line number
+
+Execution timing:
+- *First file*: Highlighted synchronously in New() so first render has colors
+- *Remaining files*: Highlighted async via Init() using tea.Batch commands
+- *When expanded*: Full content highlighting replaces pairs-based (higher quality)
+
+Limitations of partial parsing:
+- Context-dependent categorization may be less accurate (e.g., some identifiers)
+- Keywords, strings, comments, function calls work well
+- Type vs variable distinction may be wrong without full context
+- This is acceptable tradeoff for having highlighting in normal view
 
 *** Word Diff + Syntax Composition
 
@@ -506,6 +524,40 @@ Current implementation parses entire file content. For very large files:
 1. Could implement HighlightRange to parse only visible portion
 2. Cache parse trees by content hash
 3. Pre-parse content in background goroutine
+
+** Potential Follow-up Work
+
+*** High Priority
+
+1. *Word diff + syntax composition*: Currently word-diff lines lose syntax colors.
+   Could apply syntax as base layer, then overlay word-diff highlighting.
+
+2. *More languages*: Only Go is implemented. JavaScript/TypeScript and Python
+   would cover most common diff use cases.
+
+*** Medium Priority
+
+3. *Visible-range parsing for large files*: Current implementation parses entire
+   file content. For very large files (1000+ lines), could parse only visible
+   portion plus buffer.
+
+4. *Pre-parse content in background*: When scrolling toward unhighlighted content,
+   start parsing before it becomes visible.
+
+5. *Parse tree caching*: Cache tree-sitter parse trees by content hash to avoid
+   re-parsing when toggling between files.
+
+*** Low Priority
+
+6. *Theme customization*: Allow users to customize syntax colors via config file.
+
+7. *Better type detection*: Use additional heuristics for partial content to
+   improve type vs variable distinction (e.g., capitalized identifiers in Go).
+
+*** Bug Fixes Applied
+
+- Fixed index out of range panic in buildExpandedRowsWithAlignment when filling
+  context gaps (missing bounds check on content arrays).
 
 ** Resolved Questions
 

@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/highlight"
+	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // RequestHighlight returns a command that parses syntax highlighting for a file.
@@ -63,6 +64,156 @@ func (m Model) RequestHighlightAll() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// RequestHighlightFromPairs returns a command that parses syntax highlighting from Pairs content.
+// This is used for normal (non-expanded) view where full file content isn't available.
+func (m Model) RequestHighlightFromPairs(fileIndex int) tea.Cmd {
+	return func() tea.Msg {
+		if fileIndex < 0 || fileIndex >= len(m.files) {
+			return nil
+		}
+
+		fp := m.files[fileIndex]
+
+		// Determine filename for language detection
+		filename := fp.NewPath
+		if filename == "/dev/null" {
+			filename = fp.OldPath
+		}
+
+		// Check if highlighter supports this file type
+		if m.highlighter == nil || !m.highlighter.SupportsFile(filename) {
+			return nil
+		}
+
+		// Build concatenated content from Pairs for both sides
+		oldContent, oldLineStarts, oldLineLens := buildContentFromPairs(fp.Pairs, true)
+		newContent, newLineStarts, newLineLens := buildContentFromPairs(fp.Pairs, false)
+
+		var oldSpans, newSpans []HighlightSpan
+
+		// Parse old content if we have any
+		if len(oldContent) > 0 {
+			spans, _ := m.highlighter.Highlight(filename, oldContent)
+			oldSpans = convertSpans(spans)
+		}
+
+		// Parse new content if we have any
+		if len(newContent) > 0 {
+			spans, _ := m.highlighter.Highlight(filename, newContent)
+			newSpans = convertSpans(spans)
+		}
+
+		return PairsHighlightReadyMsg{
+			FileIndex:     fileIndex,
+			OldSpans:      oldSpans,
+			NewSpans:      newSpans,
+			OldLineStarts: oldLineStarts,
+			NewLineStarts: newLineStarts,
+			OldLineLens:   oldLineLens,
+			NewLineLens:   newLineLens,
+		}
+	}
+}
+
+// RequestHighlightFromPairsAll returns a command that parses all files from Pairs.
+func (m Model) RequestHighlightFromPairsAll() tea.Cmd {
+	var cmds []tea.Cmd
+	for i := range m.files {
+		cmds = append(cmds, m.RequestHighlightFromPairs(i))
+	}
+	return tea.Batch(cmds...)
+}
+
+// RequestHighlightFromPairsExcept returns a command that parses all files except the given indices.
+func (m Model) RequestHighlightFromPairsExcept(skip map[int]bool) tea.Cmd {
+	var cmds []tea.Cmd
+	for i := range m.files {
+		if !skip[i] {
+			cmds = append(cmds, m.RequestHighlightFromPairs(i))
+		}
+	}
+	return tea.Batch(cmds...)
+}
+
+// highlightPairsSync synchronously highlights a file's Pairs content.
+// This is used for the initial file to ensure first render has highlighting.
+func (m *Model) highlightPairsSync(fileIndex int) {
+	if fileIndex < 0 || fileIndex >= len(m.files) {
+		return
+	}
+
+	fp := m.files[fileIndex]
+
+	// Determine filename for language detection
+	filename := fp.NewPath
+	if filename == "/dev/null" {
+		filename = fp.OldPath
+	}
+
+	// Check if highlighter supports this file type
+	if m.highlighter == nil || !m.highlighter.SupportsFile(filename) {
+		return
+	}
+
+	// Build concatenated content from Pairs for both sides
+	oldContent, oldLineStarts, oldLineLens := buildContentFromPairs(fp.Pairs, true)
+	newContent, newLineStarts, newLineLens := buildContentFromPairs(fp.Pairs, false)
+
+	var oldSpans, newSpans []highlight.Span
+
+	// Parse old content if we have any
+	if len(oldContent) > 0 {
+		oldSpans, _ = m.highlighter.Highlight(filename, oldContent)
+	}
+
+	// Parse new content if we have any
+	if len(newContent) > 0 {
+		newSpans, _ = m.highlighter.Highlight(filename, newContent)
+	}
+
+	// Store directly
+	m.pairsHighlightSpans[fileIndex] = &PairsFileHighlight{
+		OldSpans:      oldSpans,
+		NewSpans:      newSpans,
+		OldLineStarts: oldLineStarts,
+		NewLineStarts: newLineStarts,
+		OldLineLens:   oldLineLens,
+		NewLineLens:   newLineLens,
+	}
+}
+
+// buildContentFromPairs extracts line content from Pairs and builds a concatenated string.
+// Returns the content bytes, a map of line number to byte offset, and line number to length.
+// If isOld is true, extracts from Left side; otherwise from Right side.
+func buildContentFromPairs(pairs []sidebyside.LinePair, isOld bool) ([]byte, map[int]int, map[int]int) {
+	lineStarts := make(map[int]int)
+	lineLens := make(map[int]int)
+
+	var buf []byte
+	for _, pair := range pairs {
+		var line sidebyside.Line
+		if isOld {
+			line = pair.Left
+		} else {
+			line = pair.Right
+		}
+
+		// Skip empty lines (no line number)
+		if line.Num == 0 {
+			continue
+		}
+
+		// Record where this line starts in the concatenated content
+		lineStarts[line.Num] = len(buf)
+		lineLens[line.Num] = len(line.Content)
+
+		buf = append(buf, line.Content...)
+		buf = append(buf, '\n')
+	}
+
+	return buf, lineStarts, lineLens
+}
+
 // convertSpans converts highlight.Span to HighlightSpan (avoiding import in messages.go).
 func convertSpans(spans []highlight.Span) []HighlightSpan {
 	if len(spans) == 0 {
@@ -87,6 +238,18 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 	}
 }
 
+// storePairsHighlightSpans stores the spans from a PairsHighlightReadyMsg into the model.
+func (m *Model) storePairsHighlightSpans(msg PairsHighlightReadyMsg) {
+	m.pairsHighlightSpans[msg.FileIndex] = &PairsFileHighlight{
+		OldSpans:      unconvertSpans(msg.OldSpans),
+		NewSpans:      unconvertSpans(msg.NewSpans),
+		OldLineStarts: msg.OldLineStarts,
+		NewLineStarts: msg.NewLineStarts,
+		OldLineLens:   msg.OldLineLens,
+		NewLineLens:   msg.NewLineLens,
+	}
+}
+
 // unconvertSpans converts HighlightSpan back to highlight.Span.
 func unconvertSpans(spans []HighlightSpan) []highlight.Span {
 	if len(spans) == 0 {
@@ -106,11 +269,23 @@ func unconvertSpans(spans []HighlightSpan) []highlight.Span {
 // getLineSpans returns syntax highlight spans for a specific line in a file.
 // lineNum is 1-based line number, isOld indicates old vs new content side.
 // The returned spans have byte offsets relative to the line start.
+// It first tries full-content spans, then falls back to pairs-based spans.
 func (m Model) getLineSpans(fileIndex int, lineNum int, isOld bool) []highlight.Span {
 	if lineNum <= 0 {
 		return nil
 	}
 
+	// Try full-content spans first (available when file is expanded)
+	if spans := m.getLineSpansFromFullContent(fileIndex, lineNum, isOld); spans != nil {
+		return spans
+	}
+
+	// Fall back to pairs-based spans (available for normal view)
+	return m.getLineSpansFromPairs(fileIndex, lineNum, isOld)
+}
+
+// getLineSpansFromFullContent returns spans from full file content highlighting.
+func (m Model) getLineSpansFromFullContent(fileIndex int, lineNum int, isOld bool) []highlight.Span {
 	fh, ok := m.highlightSpans[fileIndex]
 	if !ok || fh == nil {
 		return nil
@@ -144,6 +319,46 @@ func (m Model) getLineSpans(fileIndex int, lineNum int, isOld bool) []highlight.
 	}
 
 	lineEnd := lineStart + len(content[lineNum-1])
+
+	return highlight.SpansForLine(allSpans, lineStart, lineEnd)
+}
+
+// getLineSpansFromPairs returns spans from pairs-based highlighting.
+func (m Model) getLineSpansFromPairs(fileIndex int, lineNum int, isOld bool) []highlight.Span {
+	pfh, ok := m.pairsHighlightSpans[fileIndex]
+	if !ok || pfh == nil {
+		return nil
+	}
+
+	var allSpans []highlight.Span
+	var lineStarts, lineLens map[int]int
+
+	if isOld {
+		allSpans = pfh.OldSpans
+		lineStarts = pfh.OldLineStarts
+		lineLens = pfh.OldLineLens
+	} else {
+		allSpans = pfh.NewSpans
+		lineStarts = pfh.NewLineStarts
+		lineLens = pfh.NewLineLens
+	}
+
+	if len(allSpans) == 0 {
+		return nil
+	}
+
+	// Look up this line's position in the concatenated content
+	lineStart, ok := lineStarts[lineNum]
+	if !ok {
+		return nil // This line isn't in the pairs
+	}
+
+	lineLen, ok := lineLens[lineNum]
+	if !ok {
+		return nil
+	}
+
+	lineEnd := lineStart + lineLen
 
 	return highlight.SpansForLine(allSpans, lineStart, lineEnd)
 }

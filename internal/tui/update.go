@@ -41,6 +41,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.storeHighlightSpans(msg)
 		return m, nil
 
+	case PairsHighlightReadyMsg:
+		m.storePairsHighlightSpans(msg)
+		return m, nil
+
 	case AllContentLoadedMsg:
 		if len(msg.Contents) > 0 {
 			// Capture cursor identity before content changes the row layout

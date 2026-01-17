@@ -14,8 +14,9 @@ type Model struct {
 	fetcher *content.Fetcher // for fetching full file contents (lazy)
 
 	// Syntax highlighting
-	highlighter    *highlight.Highlighter
-	highlightSpans map[int]*FileHighlight // file index -> highlight spans
+	highlighter         *highlight.Highlighter
+	highlightSpans      map[int]*FileHighlight      // file index -> full content highlight spans
+	pairsHighlightSpans map[int]*PairsFileHighlight // file index -> pairs-based highlight spans
 
 	// Viewport state
 	scroll  int // vertical scroll offset (line index at top of viewport)
@@ -50,6 +51,19 @@ type FileHighlight struct {
 	NewSpans []highlight.Span // spans for new content
 }
 
+// PairsFileHighlight stores syntax highlighting spans derived from diff Pairs.
+// Unlike FileHighlight which has spans for full file content, this has spans
+// for the concatenated lines from Pairs, with a mapping from line numbers back
+// to positions in the concatenated content.
+type PairsFileHighlight struct {
+	OldSpans      []highlight.Span // spans for concatenated old lines
+	NewSpans      []highlight.Span // spans for concatenated new lines
+	OldLineStarts map[int]int      // line number -> byte offset in concatenated old content
+	NewLineStarts map[int]int      // line number -> byte offset in concatenated new content
+	OldLineLens   map[int]int      // line number -> length of line content
+	NewLineLens   map[int]int      // line number -> length of line content
+}
+
 // Option is a function that configures a Model.
 type Option func(*Model)
 
@@ -63,16 +77,24 @@ func WithFetcher(f *content.Fetcher) Option {
 // New creates a new Model with the given file pairs.
 func New(files []sidebyside.FilePair, opts ...Option) Model {
 	m := Model{
-		files:          files,
-		keys:           DefaultKeyMap(),
-		hscrollStep:    DefaultHScrollStep,
-		highlighter:    highlight.New(),
-		highlightSpans: make(map[int]*FileHighlight),
+		files:               files,
+		keys:                DefaultKeyMap(),
+		hscrollStep:         DefaultHScrollStep,
+		highlighter:         highlight.New(),
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
 	}
 	for _, opt := range opts {
 		opt(&m)
 	}
 	m.calculateTotalLines()
+
+	// Synchronously highlight the first file so initial render has highlighting.
+	// The rest will be highlighted async in Init().
+	if len(files) > 0 {
+		m.highlightPairsSync(0)
+	}
+
 	return m
 }
 
@@ -92,8 +114,13 @@ func (m *Model) calculateTotalLines() {
 }
 
 // Init implements tea.Model.
+// Triggers async highlighting for all files except the first (which is highlighted sync in New).
 func (m Model) Init() tea.Cmd {
-	return nil
+	if len(m.files) <= 1 {
+		return nil // First file already highlighted sync, no more to do
+	}
+	// Highlight remaining files async
+	return m.RequestHighlightFromPairsExcept(map[int]bool{0: true})
 }
 
 // contentHeight returns the height available for content (minus status bar).

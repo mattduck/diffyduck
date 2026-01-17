@@ -266,7 +266,8 @@ func (m Model) buildExpandedRowsWithAlignment(fp sidebyside.FilePair) []displayR
 			}
 		} else {
 			// Context or modified line - fill gaps on both sides
-			for oldIdx < oldTarget && newIdx < newTarget {
+			for oldIdx < oldTarget && newIdx < newTarget &&
+				oldIdx < len(fp.OldContent) && newIdx < len(fp.NewContent) {
 				rows = append(rows, displayRow{
 					pair: sidebyside.LinePair{
 						Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
