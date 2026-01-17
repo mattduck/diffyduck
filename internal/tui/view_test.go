@@ -1289,6 +1289,61 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 	}
 }
 
+func TestView_LineNumberColorMatchesIndicator(t *testing.T) {
+	// Test that line numbers are colored to match the +/- indicator
+	// Added lines should have green line numbers, removed lines should have red
+
+	// Temporarily enable ANSI colors for this test
+	oldProfile := lipgloss.DefaultRenderer().ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(oldProfile)
+
+	tests := []struct {
+		name      string
+		lineType  sidebyside.LineType
+		wantColor string // ANSI color code prefix
+	}{
+		{"added line has green line number", sidebyside.Added, "\x1b[92m"},   // bright green
+		{"removed line has red line number", sidebyside.Removed, "\x1b[91m"}, // bright red
+		{"context line has dim line number", sidebyside.Context, "\x1b[90m"}, // dim gray
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := Model{
+				files: []sidebyside.FilePair{
+					{
+						OldPath: "a/test.go",
+						NewPath: "b/test.go",
+						Pairs: []sidebyside.LinePair{
+							// First line (cursor will be here)
+							{
+								Left:  sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+								Right: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+							},
+							// Second line (the one we're testing, cursor not here)
+							{
+								Left:  sidebyside.Line{Num: 2, Content: "content", Type: tt.lineType},
+								Right: sidebyside.Line{Num: 2, Content: "content", Type: tt.lineType},
+							},
+						},
+					},
+				},
+				width:  80,
+				height: 10,
+				keys:   DefaultKeyMap(),
+			}
+			m.calculateTotalLines()
+
+			output := m.View()
+
+			// The line number "2" should be styled with the expected color
+			assert.Contains(t, output, tt.wantColor+"   2",
+				"line number should be styled with color code %q", tt.wantColor)
+		})
+	}
+}
+
 func TestView_LargeLineNumbers(t *testing.T) {
 	// Test that line numbers up to 10000 are displayed correctly
 	// This requires dynamic gutter width calculation

@@ -705,18 +705,22 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	}
 
 	// Line number (fixed, not affected by horizontal scroll)
+	// Color matches the +/- indicator: green for added, red for removed, dim for context
 	var numStr string
+	numContent := fmt.Sprintf("%*d", lineNumWidth, line.Num)
 	if line.Num == 0 {
-		if isCursorRow {
-			numStr = cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-		} else {
-			numStr = strings.Repeat(" ", lineNumWidth)
-		}
+		numContent = strings.Repeat(" ", lineNumWidth)
+	}
+	if isCursorRow {
+		numStr = cursorStyle.Render(numContent)
 	} else {
-		if isCursorRow {
-			numStr = cursorStyle.Render(fmt.Sprintf("%*d", lineNumWidth, line.Num))
-		} else {
-			numStr = lineNumStyle.Render(fmt.Sprintf("%*d", lineNumWidth, line.Num))
+		switch line.Type {
+		case sidebyside.Added:
+			numStr = addedStyle.Render(numContent)
+		case sidebyside.Removed:
+			numStr = removedStyle.Render(numContent)
+		default:
+			numStr = lineNumStyle.Render(numContent)
 		}
 	}
 
@@ -740,10 +744,6 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 		// Apply simple style based on type
 		switch line.Type {
-		case sidebyside.Added:
-			styledContent = addedStyle.Render(displayContent)
-		case sidebyside.Removed:
-			styledContent = removedStyle.Render(displayContent)
 		case sidebyside.Empty:
 			styledContent = emptyStyle.Render(displayContent)
 		default:
@@ -759,12 +759,12 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 // Search highlighting takes precedence over inline diff highlighting.
 func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Span, lineType sidebyside.LineType, _ int, rowIdx, side int) string {
 	// Determine base and highlight styles
-	var baseStyle, highlightStyle lipgloss.Style
+	// Base style is context (no color) since gutter shows +/- indicators
+	var highlightStyle lipgloss.Style
+	baseStyle := contextStyle
 	if lineType == sidebyside.Added {
-		baseStyle = addedStyle
 		highlightStyle = inlineAddedStyle
 	} else {
-		baseStyle = removedStyle
 		highlightStyle = inlineRemovedStyle
 	}
 
