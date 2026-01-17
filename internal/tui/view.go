@@ -58,6 +58,7 @@ func (m Model) View() string {
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
 type displayRow struct {
+	fileIndex   int // index of the file this row belongs to
 	isHeader    bool
 	isSeparator bool
 	isBlank     bool
@@ -75,7 +76,7 @@ func (m Model) buildRows() []displayRow {
 		case sidebyside.FoldFolded:
 			// Folded: just the header, no blank line before, no trailing "="
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{isHeader: true, foldLevel: sidebyside.FoldFolded, header: header})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, header: header})
 
 		case sidebyside.FoldExpanded:
 			// Expanded: show full file content with diff highlighting
@@ -83,15 +84,19 @@ func (m Model) buildRows() []displayRow {
 			if fp.HasContent() {
 				// Add blank line before file headers (except the first)
 				if fileIdx > 0 {
-					rows = append(rows, displayRow{isBlank: true})
+					rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
 				}
 
 				// File header
 				header := formatFileHeader(fp.OldPath, fp.NewPath)
-				rows = append(rows, displayRow{isHeader: true, foldLevel: sidebyside.FoldExpanded, header: header})
+				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, header: header})
 
 				// Build expanded rows from full file content
-				rows = append(rows, m.buildExpandedRows(fp)...)
+				expandedRows := m.buildExpandedRows(fp)
+				for i := range expandedRows {
+					expandedRows[i].fileIndex = fileIdx
+				}
+				rows = append(rows, expandedRows...)
 				continue // Skip the normal view below
 			}
 			// Fall through to normal view if content not loaded
@@ -100,22 +105,22 @@ func (m Model) buildRows() []displayRow {
 		default: // FoldNormal
 			// Add blank line before file headers (except the first)
 			if fileIdx > 0 {
-				rows = append(rows, displayRow{isBlank: true})
+				rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
 			}
 
 			// File header
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{isHeader: true, foldLevel: sidebyside.FoldNormal, header: header})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, header: header})
 
 			// Line pairs with hunk separators
 			var prevLeft, prevRight int
 			for i, pair := range fp.Pairs {
 				// Check for gap in line numbers (hunk boundary)
 				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Left.Num, pair.Right.Num) {
-					rows = append(rows, displayRow{isSeparator: true})
+					rows = append(rows, displayRow{fileIndex: fileIdx, isSeparator: true})
 				}
 
-				rows = append(rows, displayRow{isHeader: false, pair: pair})
+				rows = append(rows, displayRow{fileIndex: fileIdx, pair: pair})
 
 				// Track previous line numbers (use non-zero values)
 				if pair.Left.Num > 0 {
@@ -249,11 +254,20 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 	start := m.scroll
 	end := m.scroll + contentHeight
+
+	// Handle negative scroll by adding blank padding at the top
+	if start < 0 {
+		for i := start; i < 0 && len(visible) < contentHeight; i++ {
+			visible = append(visible, "")
+		}
+		start = 0
+	}
+
 	if end > len(rows) {
 		end = len(rows)
 	}
 
-	for i := start; i < end; i++ {
+	for i := start; i < end && len(visible) < contentHeight; i++ {
 		row := rows[i]
 		if row.isBlank {
 			visible = append(visible, "")

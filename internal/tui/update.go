@@ -98,7 +98,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.clampScroll()
 
 	case matchesKey(msg, keys.Top):
-		m.scroll = 0
+		m.scroll = m.minScroll()
 
 	case matchesKey(msg, keys.Bottom):
 		m.scroll = m.maxScroll()

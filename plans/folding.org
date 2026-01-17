@@ -562,3 +562,123 @@ Consider adding visual indicators to make the current level more obvious:
 - Status bar could show fold level (e.g., "[Normal]", "[Expanded]", "[Folded]")
 - Different header styling per level (color, prefix character)
 - Line count indicator in folded mode (e.g., "═══ file.go (42 lines)")
+
+** Scroll Position Stability on Fold Changes
+
+*** Problem
+
+When folding or collapsing, the user can lose their position - ending up looking
+at a different file than before.
+
+*** Desired Behavior
+
+- If you were on a line which is still visible in the next level, jump to that same line
+- If you were on a line that's no longer visible, jump up to the closest chunk or file header that appears before that line
+- If you were on a blank line between file headers, count as the file header below (except at the bottom, which counts as the last file)
+
+*** Resolved Questions
+
+1. *What counts as "the line you were on"?*
+   ANSWER: Fixed cursor position at 20% from top of viewport. The cursor is always
+   at this visual position; scroll position changes to move content under it.
+
+2. *Blank lines between file headers*
+   ANSWER: Yes, blank separator lines count as the file below them.
+
+*** Implementation Status
+
+**** COMPLETED: Cursor Position Tracking
+
+The cursor is now a fixed position at 20% from the top of the viewport.
+
+**New methods in ~internal/tui/model.go~:**
+
+- ~cursorOffset()~ - Returns 20% of content height (the fixed visual offset)
+- ~cursorLine()~ - Returns ~scroll + cursorOffset~ (the content line cursor points to)
+- ~minScroll()~ - Returns negative cursorOffset, allows cursor to reach line 0
+- ~maxScroll()~ - Updated to allow cursor to reach last line of content
+- ~clampScroll()~ - Updated to use minScroll/maxScroll bounds
+- ~fileAtLine(line int)~ - Returns (fileIndex, fileName) for a given display line
+
+**Changes to ~StatusInfo()~:**
+
+- Now uses cursor position (not scroll) to determine current file
+- Percentage is based on cursor position through content
+- Blank separator lines count as the file below
+
+**Changes to ~internal/tui/view.go~:**
+
+- Added ~fileIndex~ field to ~displayRow~ struct
+- ~buildRows()~ sets fileIndex on all row types
+- ~getVisibleRows()~ handles negative scroll with blank padding at top
+
+**Changes to key handlers:**
+
+- ~g~ (Top) now goes to ~minScroll()~ so cursor is on first line
+- ~G~ (Bottom) goes to ~maxScroll()~ so cursor is on last line
+
+**Tests:**
+
+- All existing tests updated for new cursor-based behavior
+- New tests in ~internal/tui/cursor_test.go~:
+  - Cursor position calculation tests
+  - Scroll bounds tests (negative scroll, beyond content)
+  - Status bar filename at cursor tests
+  - Placeholder tests for cursor highlighting
+
+**** TODO: Visual Cursor Highlighting
+
+The cursor line needs visual highlighting. Requirements:
+
+- Highlight uses: bg=color 7, fg=color 0
+- Only highlight non-content areas (gutters, not the diff text itself)
+
+**For file headers:**
+- Highlight only the filename portion (not the ~═══~ decorations)
+
+**For diff lines:**
+- Highlight both gutter areas (line number columns)
+- Both left and right gutters, even if one side is empty (e.g., added line)
+
+**For blank separator lines:**
+- Highlight where the gutter areas would be (same width as diff line gutters)
+
+**For hunk separators (~┈┈┈~):**
+- Highlight the gutter areas
+
+**Implementation hints:**
+
+- ~renderHeader()~ in view.go needs cursor awareness
+- ~renderLinePair()~ needs cursor awareness
+- ~renderHunkSeparator()~ needs cursor awareness
+- Pass the current row index to render functions, compare with ~cursorLine()~
+- Use lipgloss styling with ~Background(lipgloss.Color("7")).Foreground(lipgloss.Color("0"))~
+
+**Existing test stubs to make pass:**
+
+- ~TestView_CursorHighlight_OnFileHeader~
+- ~TestView_CursorHighlight_OnDiffLine~
+- ~TestView_CursorHighlight_OnBlankSeparator~
+- ~TestView_CursorHighlight_OnHunkSeparator~
+- ~TestView_CursorHighlight_BothGuttersOnAddedLine~
+
+These tests currently just check that content renders; they need assertions for
+actual highlight styling once implemented.
+
+**** TODO: Scroll Position Preservation on Fold Changes
+
+After cursor highlighting is done, implement scroll adjustment when fold level
+changes so the user stays on the same logical position.
+
+*** Open Questions (for future work)
+
+3. *For the "jump up to closest chunk or file header" rule* - when a line is no longer visible after folding, should we:
+   - Jump to the *file header* of that same file, OR
+   - Jump to the *start of the hunk* that contained that line (when going from Expanded → Normal), OR
+   - Depends on which fold transition?
+
+5. *What about transitions in each direction?* The behavior might differ:
+   - Normal → Expanded (shows more lines)
+   - Expanded → Folded (hides almost everything)
+   - Folded → Normal (shows hunks again)
+   - And when using Shift+Tab to fold/expand all files at once?

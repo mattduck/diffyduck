@@ -313,10 +313,10 @@ func TestSearch_NextMatch_AfterScrollToTop(t *testing.T) {
 	m.scroll = 4           // scrolled to last match
 	m.lastSearchScroll = 4 // last search nav was at scroll 4
 
-	// Press g to go to top
+	// Press g to go to top (now goes to minScroll)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model := newM.(Model)
-	assert.Equal(t, 0, model.scroll)
+	assert.Equal(t, m.minScroll(), model.scroll)
 
 	// Press n to go to next match - should find first match from top
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})

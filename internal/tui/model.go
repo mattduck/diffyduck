@@ -81,21 +81,48 @@ func (m Model) contentHeight() int {
 	return h
 }
 
+// cursorOffset returns the fixed offset from the top of the viewport where the cursor sits.
+// This is 20% of the content height.
+func (m Model) cursorOffset() int {
+	return m.contentHeight() * 20 / 100
+}
+
+// cursorLine returns the display row index that the cursor points to.
+// This is the scroll position plus the cursor offset.
+func (m Model) cursorLine() int {
+	return m.scroll + m.cursorOffset()
+}
+
+// minScroll returns the minimum valid scroll offset.
+// This is negative, allowing the cursor to reach the first line of content.
+// When scroll = minScroll, cursor (at cursorOffset) points to line 0.
+func (m Model) minScroll() int {
+	return -m.cursorOffset()
+}
+
 // maxScroll returns the maximum valid scroll offset.
-// We allow scrolling until the last line is at the TOP of the viewport,
-// which enables the status bar to show the correct file when viewing the end.
+// This allows the cursor to reach the last line of content.
+// When scroll = maxScroll, cursor points to (totalLines - 1).
 func (m Model) maxScroll() int {
-	max := m.totalLines - 1
-	if max < 0 {
+	if m.totalLines == 0 {
 		return 0
+	}
+	// cursor = scroll + cursorOffset
+	// We want cursor to be able to reach totalLines - 1
+	// So: totalLines - 1 = scroll + cursorOffset
+	// scroll = totalLines - 1 - cursorOffset
+	max := m.totalLines - 1 - m.cursorOffset()
+	// Don't go below minScroll (handles case where content is smaller than viewport)
+	if max < m.minScroll() {
+		return m.minScroll()
 	}
 	return max
 }
 
 // clampScroll ensures scroll is within valid bounds.
 func (m *Model) clampScroll() {
-	if m.scroll < 0 {
-		m.scroll = 0
+	if min := m.minScroll(); m.scroll < min {
+		m.scroll = min
 	}
 	if max := m.maxScroll(); m.scroll > max {
 		m.scroll = max
@@ -113,7 +140,7 @@ type StatusInfo struct {
 	AtEnd       bool   // true if scrolled to the end
 }
 
-// StatusInfo computes information for the status bar based on current scroll position.
+// StatusInfo computes information for the status bar based on cursor position.
 func (m Model) StatusInfo() StatusInfo {
 	info := StatusInfo{
 		TotalFiles: len(m.files),
@@ -124,45 +151,74 @@ func (m Model) StatusInfo() StatusInfo {
 		return info
 	}
 
-	// Calculate current line (1-based, top of viewport)
-	info.CurrentLine = m.scroll + 1
+	// Use cursor position (not scroll) to determine current file
+	cursorPos := m.cursorLine()
 
-	// Calculate percentage
-	contentH := m.contentHeight()
-	if m.totalLines <= contentH {
-		// Everything fits on screen
+	// Calculate current line (1-based, cursor position)
+	info.CurrentLine = cursorPos + 1
+
+	// Calculate percentage based on cursor position through the content
+	if m.totalLines <= 1 {
 		info.Percentage = 100
 		info.AtEnd = true
 	} else {
-		maxScroll := m.maxScroll()
-		if m.scroll >= maxScroll {
+		maxCursor := m.totalLines - 1
+		if cursorPos >= maxCursor {
 			info.Percentage = 100
 			info.AtEnd = true
+		} else if cursorPos <= 0 {
+			info.Percentage = 0
 		} else {
-			info.Percentage = (m.scroll * 100) / maxScroll
+			info.Percentage = (cursorPos * 100) / maxCursor
 		}
 	}
 
-	// Find which file contains the current scroll position
-	linesSoFar := 0
-	for i, fp := range m.files {
-		fileLines := 1 + len(fp.Pairs) // header + pairs
-		if m.scroll < linesSoFar+fileLines {
-			info.CurrentFile = i + 1 // 1-based
-			info.FileName = formatFilePath(fp.OldPath, fp.NewPath)
-			break
-		}
-		linesSoFar += fileLines
-	}
-
-	// Edge case: if scroll is past all content
-	if info.CurrentFile == 0 && len(m.files) > 0 {
-		info.CurrentFile = len(m.files)
-		lastFile := m.files[len(m.files)-1]
-		info.FileName = formatFilePath(lastFile.OldPath, lastFile.NewPath)
-	}
+	// Find which file contains the cursor position
+	info.CurrentFile, info.FileName = m.fileAtLine(cursorPos)
 
 	return info
+}
+
+// fileAtLine returns the file index (1-based) and filename at the given display line.
+// For blank separator lines between files, returns the file BELOW (except at the very end).
+func (m Model) fileAtLine(line int) (int, string) {
+	if len(m.files) == 0 {
+		return 0, ""
+	}
+
+	// Clamp line to valid range
+	if line < 0 {
+		line = 0
+	}
+	if line >= m.totalLines {
+		// Past all content - return last file
+		lastFile := m.files[len(m.files)-1]
+		return len(m.files), formatFilePath(lastFile.OldPath, lastFile.NewPath)
+	}
+
+	// Build rows to understand the structure
+	rows := m.buildRows()
+	if line >= len(rows) {
+		// Shouldn't happen, but handle gracefully
+		lastFile := m.files[len(m.files)-1]
+		return len(m.files), formatFilePath(lastFile.OldPath, lastFile.NewPath)
+	}
+
+	row := rows[line]
+
+	// If this is a blank separator line, look at the next row to find the file below
+	if row.isBlank && line+1 < len(rows) {
+		nextRow := rows[line+1]
+		return nextRow.fileIndex + 1, formatFilePath(
+			m.files[nextRow.fileIndex].OldPath,
+			m.files[nextRow.fileIndex].NewPath,
+		)
+	}
+
+	return row.fileIndex + 1, formatFilePath(
+		m.files[row.fileIndex].OldPath,
+		m.files[row.fileIndex].NewPath,
+	)
 }
 
 // formatFilePath returns a display-friendly file path.

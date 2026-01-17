@@ -279,9 +279,13 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, 1, info.TotalFiles)
 	assert.Equal(t, "test.go", info.FileName)
-	assert.Equal(t, 1, info.CurrentLine)
+	// With cursor-based positioning: height=20, contentHeight=19, cursorOffset=3
+	// cursorLine = scroll(0) + cursorOffset(3) = 3
+	// CurrentLine = cursorLine + 1 = 4
+	assert.Equal(t, 4, info.CurrentLine)
 	assert.Equal(t, 51, info.TotalLines) // 50 pairs + 1 header
-	assert.Equal(t, 0, info.Percentage)
+	// Percentage: cursorLine(3) / maxCursor(50) * 100 = 6%
+	assert.Equal(t, 6, info.Percentage)
 	assert.False(t, info.AtEnd)
 }
 
@@ -300,10 +304,12 @@ func TestStatusInfo_AtEnd(t *testing.T) {
 		},
 		width:  80,
 		height: 20, // bigger than content (11 lines)
-		scroll: 0,
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+
+	// Set scroll to maxScroll so cursor is at the end
+	m.scroll = m.maxScroll()
 
 	info := m.StatusInfo()
 
@@ -454,21 +460,22 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines() // 101 lines total
+	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 100
 
-	// At scroll 0, percentage should be 0
-	m.scroll = 0
+	// At minScroll, cursor is at line 0, percentage should be 0
+	m.scroll = m.minScroll()
 	info := m.StatusInfo()
 	assert.Equal(t, 0, info.Percentage)
 	assert.False(t, info.AtEnd)
 
-	// At scroll 50 (half of maxScroll=100), percentage should be 50
-	m.scroll = 50
+	// At scroll that puts cursor at line 50, percentage should be 50
+	m.scroll = 50 - m.cursorOffset() // cursor at 50
 	info = m.StatusInfo()
 	assert.Equal(t, 50, info.Percentage)
 	assert.False(t, info.AtEnd)
 
-	// At maxScroll (100), percentage should be 100
-	m.scroll = 100
+	// At maxScroll, cursor is at last line, percentage should be 100
+	m.scroll = m.maxScroll()
 	info = m.StatusInfo()
 	assert.Equal(t, 100, info.Percentage)
 	assert.True(t, info.AtEnd)
@@ -487,22 +494,23 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{
 			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-10 (header + 10 pairs)
-			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // lines 11-21
+			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 11 blank, lines 12-22
 		},
 		width:  80,
-		height: 10,
+		height: 10, // contentHeight=9, cursorOffset=1
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
-	// Scroll 10 = last line of first file (pair 10)
-	m.scroll = 10
+	// With cursorOffset=1:
+	// scroll=9 → cursor at line 10 (last line of first file) → first.go
+	m.scroll = 9
 	info := m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// Scroll 11 = header of second file
-	m.scroll = 11
+	// scroll=10 → cursor at line 11 (blank before second file) → second.go
+	m.scroll = 10
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile)
 	assert.Equal(t, "second.go", info.FileName)

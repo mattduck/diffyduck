@@ -53,17 +53,20 @@ func TestUpdate_ScrollUp_AtTop(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 	model := newM.(Model)
 
-	assert.Equal(t, 0, model.scroll) // can't go negative
+	// Scroll can now go negative to allow cursor to reach first line
+	assert.Equal(t, -1, model.scroll)
 }
 
 func TestUpdate_ScrollDown_AtBottom(t *testing.T) {
 	m := makeTestModel(30) // 30 pairs + 1 header = 31 lines
-	m.scroll = 30          // 31 - 1 = 30 is max (allows last line at top of viewport)
+	// height=20, contentHeight=19, cursorOffset=3
+	// maxScroll = 31 - 1 - 3 = 27
+	m.scroll = m.maxScroll()
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	model := newM.(Model)
 
-	assert.Equal(t, 30, model.scroll) // can't exceed max
+	assert.Equal(t, m.maxScroll(), model.scroll) // can't exceed max
 }
 
 func TestUpdate_PageDown(t *testing.T) {
@@ -141,7 +144,8 @@ func TestUpdate_GoToTop(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model := newM.(Model)
 
-	assert.Equal(t, 0, model.scroll)
+	// g now goes to minScroll so cursor is at first line
+	assert.Equal(t, m.minScroll(), model.scroll)
 }
 
 func TestUpdate_GoToBottom(t *testing.T) {
@@ -151,8 +155,9 @@ func TestUpdate_GoToBottom(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
-	// max scroll = 101 - 1 = 100 (allows last line at top of viewport)
-	assert.Equal(t, 100, model.scroll)
+	// G now goes to maxScroll so cursor is at last line
+	// maxScroll = 101 - 1 - cursorOffset
+	assert.Equal(t, m.maxScroll(), model.scroll)
 }
 
 func TestUpdate_Quit(t *testing.T) {
@@ -453,20 +458,19 @@ func TestUpdate_ScrollPastEnd_ToShowLastFile(t *testing.T) {
 	m.height = 10 // viewport height
 
 	// Total lines: 2 headers + 10 pairs + 1 blank line before second file = 13 lines
-	// We should be able to scroll until the LAST line is at the TOP
-	// That means max scroll should be totalLines - 1 = 12
-	// (so line 13 is at the top of a 10-line viewport, with 9 empty lines below)
+	// With cursor-based scrolling:
+	// - height=10, contentHeight=9, cursorOffset=1
+	// - maxScroll = 13 - 1 - 1 = 11 (cursor at line 12, last content line)
 
 	// Go to bottom
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
-	// With scrolling past end, max scroll should be totalLines - 1
-	// This allows the last line to be at the top of the viewport
-	assert.Equal(t, 12, model.scroll, "should scroll until last line is at top of viewport")
+	// maxScroll allows cursor to reach last line
+	assert.Equal(t, m.maxScroll(), model.scroll, "should scroll to maxScroll")
 
-	// At this scroll position, the current file should be the second file
+	// At this scroll position, the cursor is on the last line (second file's last pair)
 	info := model.StatusInfo()
-	assert.Equal(t, 2, info.CurrentFile, "should show second file when scrolled to its header")
+	assert.Equal(t, 2, info.CurrentFile, "should show second file when cursor is at end")
 	assert.Equal(t, "second.go", info.FileName)
 }
