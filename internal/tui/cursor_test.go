@@ -572,6 +572,419 @@ func TestView_CursorHighlight_BothGuttersOnAddedLine(t *testing.T) {
 }
 
 // =============================================================================
+// Scroll Position Preservation on Fold Changes
+// =============================================================================
+
+// Test: When cursor is on a file header and we fold/unfold, cursor stays on header
+func TestFoldToggle_CursorOnHeader_StaysOnHeader(t *testing.T) {
+	// Setup: cursor on file header (line 0)
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Left: sidebyside.Line{Num: 2, Content: "line2"}, Right: sidebyside.Line{Num: 2, Content: "line2"}},
+				},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+		},
+		width:  80,
+		height: 20, // cursor offset = 3 (20% of 19)
+		scroll: -3, // cursor at line 0 (the header)
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Verify cursor is on header initially
+	assert.Equal(t, 0, m.cursorLine(), "cursor should start on header (line 0)")
+
+	// Toggle fold: Normal -> Expanded
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	// Cursor should still be on header (which is still line 0)
+	assert.Equal(t, 0, model.cursorLine(), "after Normal->Expanded, cursor should still be on header")
+
+	// Toggle fold again: Expanded -> Folded
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = newM.(Model)
+
+	// Cursor should still be on header (line 0, now the only line)
+	assert.Equal(t, 0, model.cursorLine(), "after Expanded->Folded, cursor should still be on header")
+
+	// Toggle fold again: Folded -> Normal
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = newM.(Model)
+
+	// Cursor should still be on header
+	assert.Equal(t, 0, model.cursorLine(), "after Folded->Normal, cursor should still be on header")
+}
+
+// Test: When cursor is on a diff line that remains visible, cursor stays on it
+func TestFoldToggle_CursorOnDiffLine_StaysOnDiffLine(t *testing.T) {
+	// Setup: cursor on diff line (line 1 = first diff line after header)
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Left: sidebyside.Line{Num: 2, Content: "line2"}, Right: sidebyside.Line{Num: 2, Content: "line2"}},
+				},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+		},
+		width:  80,
+		height: 20, // cursor offset = 3
+		scroll: -2, // cursor at line 1 (first diff line)
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Verify cursor is on first diff line
+	assert.Equal(t, 1, m.cursorLine(), "cursor should start on first diff line")
+
+	// Toggle fold: Normal -> Expanded
+	// The diff line should still be visible (expanded shows more, not less)
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	// Cursor should still be pointing to the same logical line
+	// In expanded view, line 1 is still the first content line after header
+	assert.Equal(t, 1, model.cursorLine(), "after Normal->Expanded, cursor should stay on same line")
+}
+
+// Test: When cursor is on a diff line and we fold to Folded, cursor jumps to header
+func TestFoldToggle_CursorOnDiffLine_FoldToHeader(t *testing.T) {
+	// Setup: cursor on diff line, then fold to Folded
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Left: sidebyside.Line{Num: 2, Content: "line2"}, Right: sidebyside.Line{Num: 2, Content: "line2"}},
+				},
+				FoldLevel: sidebyside.FoldExpanded, // Start at Expanded so next toggle goes to Folded
+			},
+		},
+		width:  80,
+		height: 20, // cursor offset = 3
+		scroll: -2, // cursor at line 1 (first diff line)
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Verify cursor starts on diff line
+	assert.Equal(t, 1, m.cursorLine(), "cursor should start on diff line")
+
+	// Toggle fold: Expanded -> Folded
+	// The diff line disappears, cursor should jump to header (the only visible line)
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	// In Folded mode, only line 0 (header) exists
+	// Cursor should be adjusted to point to it
+	assert.Equal(t, 0, model.cursorLine(), "after folding, cursor should jump to header")
+}
+
+// Test: When cursor is on blank separator line between files, and that line still exists
+func TestFoldToggle_CursorOnBlankLine_StaysOnBlankLine(t *testing.T) {
+	// Setup: two files, cursor on blank line between them
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+		},
+		width:  80,
+		height: 20, // cursor offset = 3
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+	// Layout: line 0 = first header, line 1 = first diff, line 2 = blank, line 3 = second header, line 4 = second diff
+	// Put cursor on blank line (line 2)
+	m.scroll = -1 // cursor at line 2 (blank separator)
+
+	assert.Equal(t, 2, m.cursorLine(), "cursor should start on blank line")
+
+	// Toggle fold on first file: Normal -> Expanded
+	// Blank line should still exist at some position
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	// The blank line still exists (it's between two files both in Normal/Expanded mode)
+	// Cursor should stay on it or the equivalent position
+	// Since first file expanded, blank might be at a different absolute line number
+	// but the cursor should be adjusted to stay on the blank line
+	rows := model.buildRows()
+	cursorPos := model.cursorLine()
+	if cursorPos >= 0 && cursorPos < len(rows) {
+		assert.True(t, rows[cursorPos].isBlank, "cursor should still be on blank line after fold")
+	}
+}
+
+// Test: When cursor is on blank line and all files are folded, blank disappears
+func TestFoldToggle_CursorOnBlankLine_BlankDisappears(t *testing.T) {
+	// Setup: two files at same level, cursor on blank line between them
+	// Use Shift+Tab to fold ALL files to Folded - this removes the blank lines
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldExpanded, // Will toggle to Folded via Shift+Tab
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldExpanded, // Same level, so Shift+Tab advances to Folded
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find the blank line position (blank line separates the two files)
+	rows := m.buildRows()
+	blankLineIdx := -1
+	for i, row := range rows {
+		if row.isBlank {
+			blankLineIdx = i
+			break
+		}
+	}
+	assert.NotEqual(t, -1, blankLineIdx, "should have a blank line between files")
+
+	// Position cursor on blank line
+	m.scroll = blankLineIdx - m.cursorOffset()
+	assert.Equal(t, blankLineIdx, m.cursorLine(), "cursor should be on blank line")
+
+	// Shift+Tab: all files Expanded -> Folded
+	// When BOTH files are Folded, there are no blank lines between them
+	// Layout becomes: [first header] [second header]
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	model := newM.(Model)
+
+	// Verify both files are now Folded
+	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel)
+
+	// The blank line is gone - cursor should jump to first file header (nearest above)
+	assert.Equal(t, 0, model.cursorLine(), "cursor should jump to header when blank line disappears")
+}
+
+// Test: Cursor on hunk separator line that disappears when folding
+func TestFoldToggle_CursorOnHunkSeparator_FoldToHeader(t *testing.T) {
+	// Setup: file with gap between hunks, cursor on hunk separator
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
+					// Gap - next line number is 100, creating a hunk separator
+					{Left: sidebyside.Line{Num: 100, Content: "line100"}, Right: sidebyside.Line{Num: 100, Content: "line100"}},
+				},
+				FoldLevel: sidebyside.FoldExpanded, // Will toggle to Folded
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find the hunk separator position
+	rows := m.buildRows()
+	sepLineIdx := -1
+	for i, row := range rows {
+		if row.isSeparator {
+			sepLineIdx = i
+			break
+		}
+	}
+	assert.NotEqual(t, -1, sepLineIdx, "should have a hunk separator")
+
+	// Position cursor on separator
+	m.scroll = sepLineIdx - m.cursorOffset()
+	assert.Equal(t, sepLineIdx, m.cursorLine(), "cursor should be on hunk separator")
+
+	// Toggle fold: Expanded -> Folded
+	// Hunk separator disappears, cursor should go to header
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	assert.Equal(t, 0, model.cursorLine(), "cursor should jump to header when separator disappears")
+}
+
+// Test: Shift+Tab (all files) preserves scroll position appropriately
+func TestFoldToggleAll_PreservesScrollPosition(t *testing.T) {
+	// Setup: multiple files, cursor in middle of second file
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+		},
+		width:  80,
+		height: 20, // cursor offset = 3
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Layout: 0=first header, 1=first diff, 2=blank, 3=second header, 4=second diff
+	// Put cursor on second file's diff line (line 4)
+	m.scroll = 1 // cursor at line 4
+
+	assert.Equal(t, 4, m.cursorLine(), "cursor should start on second file's diff line")
+
+	// Shift+Tab: all files Normal -> Expanded
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	model := newM.(Model)
+
+	// After expanding all, the cursor should still be pointing to second file content
+	// The exact line number may change, but we should still be in second file
+	info := model.StatusInfo()
+	assert.Equal(t, "second.go", info.FileName, "cursor should still be in second file after toggle all")
+}
+
+// Test: When all files folded, cursor on a file header stays there
+func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Put cursor on second file's header (line 3)
+	m.scroll = 0 // cursor offset = 3, so cursor at line 3
+
+	assert.Equal(t, 3, m.cursorLine(), "cursor should start on second file header")
+	rows := m.buildRows()
+	assert.True(t, rows[3].isHeader, "line 3 should be a header")
+
+	// Toggle all: Normal -> Expanded -> Folded
+	// After folding all, second file header should be at line 1 (since no blanks in Folded)
+	newM, _ := m.handleFoldToggleAll() // -> Expanded
+	m = newM.(Model)
+	newM, _ = m.handleFoldToggleAll() // -> Folded
+	m = newM.(Model)
+
+	// In Folded mode: line 0 = first header, line 1 = second header
+	// Cursor should now be on second header (line 1)
+	assert.Equal(t, 1, m.cursorLine(), "cursor should be on second file header after fold all")
+	rows = m.buildRows()
+	assert.True(t, rows[1].isHeader, "line 1 should be second file header")
+}
+
+// =============================================================================
+// Bug Reproduction Tests
+// =============================================================================
+
+// Test: Tab should expand the file shown in status bar, not a different file
+// Bug: When all files are folded, Tab expands wrong file (first instead of cursor's file)
+// Repro: Start -> Shift+Tab (expand all) -> Shift+Tab (fold all) -> navigate to file 2 -> Tab
+// Expected: file 2 expands
+// Actual bug: file 1 expands
+func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
+	// Setup: 3 files, all folded
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+			{
+				OldPath:   "a/third.go",
+				NewPath:   "b/third.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+		},
+		width:  80,
+		height: 20, // cursor offset = 3
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// When all folded, layout is compact:
+	// Line 0: first header
+	// Line 1: second header
+	// Line 2: third header
+	// (no blank lines between folded files)
+
+	// Position cursor on second file's header (line 1)
+	// With cursorOffset=3, to get cursor on line 1: scroll = 1 - 3 = -2
+	m.scroll = -2
+	assert.Equal(t, 1, m.cursorLine(), "cursor should be on line 1 (second file header)")
+
+	// Verify status bar shows second file
+	info := m.StatusInfo()
+	assert.Equal(t, "second.go", info.FileName, "status bar should show second.go")
+	assert.Equal(t, 2, info.CurrentFile, "should be file 2 of 3")
+
+	// Press Tab to expand
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	// THE BUG: This should expand second.go, but actually expands first.go
+	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel, "first file should still be folded")
+	assert.Equal(t, sidebyside.FoldNormal, model.files[1].FoldLevel, "second file should be expanded (Normal)")
+	assert.Equal(t, sidebyside.FoldFolded, model.files[2].FoldLevel, "third file should still be folded")
+}
+
+// =============================================================================
 // Integration Tests
 // =============================================================================
 

@@ -665,20 +665,47 @@ The cursor line needs visual highlighting. Requirements:
 These tests currently just check that content renders; they need assertions for
 actual highlight styling once implemented.
 
-**** TODO: Scroll Position Preservation on Fold Changes
+**** COMPLETED: Scroll Position Preservation on Fold Changes
 
-After cursor highlighting is done, implement scroll adjustment when fold level
-changes so the user stays on the same logical position.
+Implemented scroll adjustment when fold level changes so the user stays on the
+same logical position.
 
-*** Open Questions (for future work)
+**Implementation in ~internal/tui/update.go~:**
 
-3. *For the "jump up to closest chunk or file header" rule* - when a line is no longer visible after folding, should we:
-   - Jump to the *file header* of that same file, OR
-   - Jump to the *start of the hunk* that contained that line (when going from Expanded → Normal), OR
-   - Depends on which fold transition?
+- ~cursorRowIdentity~ struct: captures the "identity" of a row (fileIndex, type, line numbers)
+- ~getCursorRowIdentity()~: returns identity of row at cursor position
+- ~findRowOrNearestAbove(identity)~: finds matching row after fold, or nearest header/separator above
+- ~rowMatchesIdentity(row, identity)~: checks if a row matches an identity
+- ~adjustScrollToRow(rowIndex)~: adjusts scroll so cursor points to the given row
 
-5. *What about transitions in each direction?* The behavior might differ:
-   - Normal → Expanded (shows more lines)
-   - Expanded → Folded (hides almost everything)
-   - Folded → Normal (shows hunks again)
-   - And when using Shift+Tab to fold/expand all files at once?
+**Behavior:**
+
+1. Before fold change: capture identity of row at cursor (file index, row type, line numbers)
+2. After fold change and recalculating total lines:
+   - Try to find the same logical row in the new layout
+   - If found, adjust scroll to keep cursor on it
+   - If not found (row disappeared), jump to nearest header or hunk separator above
+
+**Tests in ~internal/tui/cursor_test.go~:**
+
+- ~TestFoldToggle_CursorOnHeader_StaysOnHeader~
+- ~TestFoldToggle_CursorOnDiffLine_StaysOnDiffLine~
+- ~TestFoldToggle_CursorOnDiffLine_FoldToHeader~
+- ~TestFoldToggle_CursorOnBlankLine_StaysOnBlankLine~
+- ~TestFoldToggle_CursorOnBlankLine_BlankDisappears~
+- ~TestFoldToggle_CursorOnHunkSeparator_FoldToHeader~
+- ~TestFoldToggleAll_PreservesScrollPosition~
+- ~TestFoldToggleAll_CursorOnHeader_FoldAll~
+
+*** Resolved Questions
+
+3. *For the "jump up to closest chunk or file header" rule* - when a line is no longer visible after folding:
+   ANSWER: Jump to the nearest visible thing above. If that's a hunk separator, use that.
+   If it's a file header (because the whole file is collapsed, there aren't multiple hunks,
+   or cursor was above the top hunk), use that.
+
+5. *What about transitions in each direction?*
+   ANSWER: Same rule applies regardless of direction:
+   - If the line the cursor was on is still visible anywhere in the new view, move to that position
+   - This includes empty/blank lines (e.g., empty line in Normal that still exists in Expanded)
+   - If the line is no longer available, go up to the nearest chunk separator or file header

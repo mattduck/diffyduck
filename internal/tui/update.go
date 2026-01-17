@@ -122,6 +122,114 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// cursorRowIdentity captures the "identity" of the row the cursor is on.
+// This is used to preserve scroll position across fold changes.
+type cursorRowIdentity struct {
+	fileIndex   int
+	isHeader    bool
+	isBlank     bool
+	isSeparator bool
+	// For content rows, the line numbers to match
+	leftNum  int
+	rightNum int
+}
+
+// getCursorRowIdentity returns the identity of the row at the cursor position.
+func (m Model) getCursorRowIdentity() cursorRowIdentity {
+	rows := m.buildRows()
+	cursorPos := m.cursorLine()
+
+	// Clamp to valid range
+	if cursorPos < 0 {
+		cursorPos = 0
+	}
+	if cursorPos >= len(rows) {
+		cursorPos = len(rows) - 1
+	}
+	if cursorPos < 0 {
+		return cursorRowIdentity{}
+	}
+
+	row := rows[cursorPos]
+	return cursorRowIdentity{
+		fileIndex:   row.fileIndex,
+		isHeader:    row.isHeader,
+		isBlank:     row.isBlank,
+		isSeparator: row.isSeparator,
+		leftNum:     row.pair.Left.Num,
+		rightNum:    row.pair.Right.Num,
+	}
+}
+
+// findRowOrNearestAbove finds the row matching identity, or the nearest header/separator above.
+// Returns the line index of the found row.
+func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
+	rows := m.buildRows()
+	if len(rows) == 0 {
+		return 0
+	}
+
+	// First, try to find an exact match
+	for i, row := range rows {
+		if m.rowMatchesIdentity(row, identity) {
+			return i
+		}
+	}
+
+	// No exact match - find the nearest header or separator above the original position
+	// Walk through rows looking for the last header/separator at or before identity.fileIndex
+	lastHeaderOrSep := 0
+	for i, row := range rows {
+		if row.fileIndex > identity.fileIndex {
+			break // Past our file, stop searching
+		}
+		if row.isHeader || row.isSeparator {
+			lastHeaderOrSep = i
+		}
+	}
+
+	return lastHeaderOrSep
+}
+
+// rowMatchesIdentity checks if a row matches the given identity.
+func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity) bool {
+	// File index must match
+	if row.fileIndex != identity.fileIndex {
+		return false
+	}
+
+	// Type must match
+	if identity.isHeader {
+		return row.isHeader
+	}
+	if identity.isBlank {
+		return row.isBlank
+	}
+	if identity.isSeparator {
+		return row.isSeparator
+	}
+
+	// For content rows, match by line numbers
+	// Handle cases where one side might be 0 (added/removed lines)
+	if identity.leftNum > 0 && row.pair.Left.Num == identity.leftNum {
+		return true
+	}
+	if identity.rightNum > 0 && row.pair.Right.Num == identity.rightNum {
+		return true
+	}
+	// If both are 0, no match (can't identify the row)
+	return false
+}
+
+// adjustScrollToRow adjusts scroll so the cursor points to the given row index.
+func (m *Model) adjustScrollToRow(rowIndex int) {
+	// cursor = scroll + cursorOffset
+	// We want cursor = rowIndex
+	// So: scroll = rowIndex - cursorOffset
+	m.scroll = rowIndex - m.cursorOffset()
+	m.clampScroll()
+}
+
 // handleFoldToggle cycles the fold level of the current file.
 func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	fileIdx := m.currentFileIndex()
@@ -129,9 +237,17 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Capture cursor identity before fold change
+	identity := m.getCursorRowIdentity()
+
 	newLevel := m.files[fileIdx].FoldLevel.NextLevel()
 	m.files[fileIdx].FoldLevel = newLevel
 	m.calculateTotalLines()
+
+	// Preserve scroll position
+	newRowIdx := m.findRowOrNearestAbove(identity)
+	m.adjustScrollToRow(newRowIdx)
+
 	m.refreshSearch()
 
 	// If expanding to full view and content not loaded, fetch it
@@ -149,6 +265,9 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	if len(m.files) == 0 {
 		return m, nil
 	}
+
+	// Capture cursor identity before fold change
+	identity := m.getCursorRowIdentity()
 
 	// Check if all files are at the same level
 	firstLevel := m.files[0].FoldLevel
@@ -174,6 +293,11 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	}
 
 	m.calculateTotalLines()
+
+	// Preserve scroll position
+	newRowIdx := m.findRowOrNearestAbove(identity)
+	m.adjustScrollToRow(newRowIdx)
+
 	m.refreshSearch()
 
 	// If expanding to full view, fetch content for files that don't have it
@@ -194,46 +318,17 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// currentFileIndex returns the index of the file at the current scroll position.
+// currentFileIndex returns the index of the file at the cursor position.
+// This matches what the status bar displays.
 func (m Model) currentFileIndex() int {
 	if len(m.files) == 0 {
 		return -1
 	}
 
-	linesSoFar := 0
-	for i, fp := range m.files {
-		fileLines := m.fileLinesCount(fp, i)
-		if m.scroll < linesSoFar+fileLines {
-			return i
-		}
-		linesSoFar += fileLines
-	}
-
-	// Past all content - return last file
-	return len(m.files) - 1
-}
-
-// fileLinesCount returns the number of display lines for a file.
-func (m Model) fileLinesCount(fp sidebyside.FilePair, fileIdx int) int {
-	switch fp.FoldLevel {
-	case sidebyside.FoldFolded:
-		// Just the header, no blank line before
-		return 1
-	case sidebyside.FoldExpanded:
-		// Header + all content lines (+ blank line before if not first file)
-		lines := 1 + len(fp.Pairs) // For now, use Pairs; will change when expanded view is implemented
-		if fileIdx > 0 {
-			lines++ // blank line before
-		}
-		return lines
-	default: // FoldNormal
-		// Header + pairs (+ blank line before if not first file)
-		lines := 1 + len(fp.Pairs)
-		if fileIdx > 0 {
-			lines++ // blank line before
-		}
-		return lines
-	}
+	// Use cursor position, not scroll position
+	// This ensures Tab acts on the file shown in the status bar
+	fileIdx, _ := m.fileAtLine(m.cursorLine())
+	return fileIdx - 1 // fileAtLine returns 1-based, we need 0-based
 }
 
 // handleSearchInput handles keypresses while in search input mode.
