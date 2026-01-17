@@ -509,8 +509,14 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=10 → cursor at line 11 (blank before second file) → second.go
+	// scroll=10 → cursor at line 11 (blank before second file) → first.go (blank belongs to file above)
 	m.scroll = 10
+	info = m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile)
+	assert.Equal(t, "first.go", info.FileName)
+
+	// scroll=11 → cursor at line 12 (header of second file) → second.go
+	m.scroll = 11
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile)
 	assert.Equal(t, "second.go", info.FileName)

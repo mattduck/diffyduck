@@ -86,8 +86,9 @@ func (m Model) buildRows() []displayRow {
 			// If content not loaded yet, fall back to normal view
 			if fp.HasContent() {
 				// Add blank line before file headers (except the first)
+				// Blank line belongs to the file above, not below
 				if fileIdx > 0 {
-					rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
+					rows = append(rows, displayRow{fileIndex: fileIdx - 1, isBlank: true})
 				}
 
 				// File header
@@ -107,8 +108,9 @@ func (m Model) buildRows() []displayRow {
 
 		default: // FoldNormal
 			// Add blank line before file headers (except the first)
+			// Blank line belongs to the file above, not below
 			if fileIdx > 0 {
-				rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
+				rows = append(rows, displayRow{fileIndex: fileIdx - 1, isBlank: true})
 			}
 
 			// File header

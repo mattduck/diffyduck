@@ -213,8 +213,8 @@ func TestStatusInfo_UseCursorPosition_NotScrollPosition(t *testing.T) {
 	assert.Equal(t, "second.go", info.FileName, "cursor at line 24 should be in second file")
 }
 
-func TestStatusInfo_CursorOnBlankLine_CountsAsFileBelow(t *testing.T) {
-	// When cursor is on a blank line between files, it should count as the file below
+func TestStatusInfo_CursorOnBlankLine_CountsAsFileAbove(t *testing.T) {
+	// When cursor is on a blank line between files, it should count as the file above
 	pairs := make([]sidebyside.LinePair, 5)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
@@ -236,7 +236,7 @@ func TestStatusInfo_CursorOnBlankLine_CountsAsFileBelow(t *testing.T) {
 	m.calculateTotalLines()
 
 	info := m.StatusInfo()
-	assert.Equal(t, "second.go", info.FileName, "cursor on blank line should count as file below")
+	assert.Equal(t, "first.go", info.FileName, "cursor on blank line should count as file above")
 }
 
 func TestStatusInfo_CursorOnLastBlankLine_CountsAsLastFile(t *testing.T) {
@@ -600,9 +600,9 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 
 	// File layout:
 	// alpha.go: lines 0-10 (header + 10 pairs = 11 lines)
-	// blank:    line 11 (counts as beta.go - file below)
+	// blank:    line 11 (counts as alpha.go - file above)
 	// beta.go:  lines 12-22 (header + 10 pairs = 11 lines)
-	// blank:    line 23 (counts as gamma.go - file below)
+	// blank:    line 23 (counts as beta.go - file above)
 	// gamma.go: lines 24-34 (header + 10 pairs = 11 lines)
 
 	// Scroll through and verify status bar matches cursor position
@@ -612,11 +612,11 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 		info := m.StatusInfo()
 
 		// Determine expected file based on cursor position
-		// Note: blank separator lines count as the file below
+		// Note: blank separator lines count as the file above
 		expectedFile := "alpha.go"
-		if cursorPos >= 11 && cursorPos < 23 { // Line 11 is blank before beta, counts as beta
+		if cursorPos >= 12 && cursorPos < 24 { // Line 12 is beta header
 			expectedFile = "beta.go"
-		} else if cursorPos >= 23 { // Line 23 is blank before gamma, counts as gamma
+		} else if cursorPos >= 24 { // Line 24 is gamma header
 			expectedFile = "gamma.go"
 		}
 

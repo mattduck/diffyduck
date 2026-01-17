@@ -180,7 +180,7 @@ func (m Model) StatusInfo() StatusInfo {
 }
 
 // fileAtLine returns the file index (1-based) and filename at the given display line.
-// For blank separator lines between files, returns the file BELOW (except at the very end).
+// Blank separator lines between files belong to the file above them.
 func (m Model) fileAtLine(line int) (int, string) {
 	if len(m.files) == 0 {
 		return 0, ""
@@ -205,16 +205,6 @@ func (m Model) fileAtLine(line int) (int, string) {
 	}
 
 	row := rows[line]
-
-	// If this is a blank separator line, look at the next row to find the file below
-	if row.isBlank && line+1 < len(rows) {
-		nextRow := rows[line+1]
-		return nextRow.fileIndex + 1, formatFilePath(
-			m.files[nextRow.fileIndex].OldPath,
-			m.files[nextRow.fileIndex].NewPath,
-		)
-	}
-
 	return row.fileIndex + 1, formatFilePath(
 		m.files[row.fileIndex].OldPath,
 		m.files[row.fileIndex].NewPath,
