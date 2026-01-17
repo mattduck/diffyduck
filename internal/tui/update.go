@@ -19,22 +19,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FileContentLoadedMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
+			// Capture cursor identity before content changes the row layout
+			identity := m.getCursorRowIdentity()
+
 			m.files[msg.FileIndex].OldContent = msg.OldContent
 			m.files[msg.FileIndex].NewContent = msg.NewContent
 			m.calculateTotalLines()
+
+			// Preserve scroll position
+			newRowIdx := m.findRowOrNearestAbove(identity)
+			m.adjustScrollToRow(newRowIdx)
+
 			m.refreshSearch()
 		}
 		return m, nil
 
 	case AllContentLoadedMsg:
-		for _, fc := range msg.Contents {
-			if fc.FileIndex >= 0 && fc.FileIndex < len(m.files) {
-				m.files[fc.FileIndex].OldContent = fc.OldContent
-				m.files[fc.FileIndex].NewContent = fc.NewContent
+		if len(msg.Contents) > 0 {
+			// Capture cursor identity before content changes the row layout
+			identity := m.getCursorRowIdentity()
+
+			for _, fc := range msg.Contents {
+				if fc.FileIndex >= 0 && fc.FileIndex < len(m.files) {
+					m.files[fc.FileIndex].OldContent = fc.OldContent
+					m.files[fc.FileIndex].NewContent = fc.NewContent
+				}
 			}
+			m.calculateTotalLines()
+
+			// Preserve scroll position
+			newRowIdx := m.findRowOrNearestAbove(identity)
+			m.adjustScrollToRow(newRowIdx)
+
+			m.refreshSearch()
 		}
-		m.calculateTotalLines()
-		m.refreshSearch()
 		return m, nil
 	}
 

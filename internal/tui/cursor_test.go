@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -982,6 +983,102 @@ func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel, "first file should still be folded")
 	assert.Equal(t, sidebyside.FoldNormal, model.files[1].FoldLevel, "second file should be expanded (Normal)")
 	assert.Equal(t, sidebyside.FoldFolded, model.files[2].FoldLevel, "third file should still be folded")
+}
+
+// Test: When content loads asynchronously after Tab expand, cursor should stay on same line
+// Bug: After Tab expands a file without content, FileContentLoadedMsg doesn't preserve scroll
+// Repro: Cursor on diff line 5 -> Tab to expand -> content loads -> cursor lost
+// Expected: cursor stays on line 5
+// Actual bug: cursor jumps to different position
+func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
+	// Setup: file in Normal view with cursor on a specific diff line
+	// The diff shows lines 10-15 of the file
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{Left: sidebyside.Line{Num: 10, Content: "line10"}, Right: sidebyside.Line{Num: 10, Content: "line10"}},
+					{Left: sidebyside.Line{Num: 11, Content: "line11"}, Right: sidebyside.Line{Num: 11, Content: "line11"}},
+					{Left: sidebyside.Line{Num: 12, Content: "line12"}, Right: sidebyside.Line{Num: 12, Content: "line12"}},
+					{Left: sidebyside.Line{Num: 13, Content: "line13"}, Right: sidebyside.Line{Num: 13, Content: "line13"}},
+					{Left: sidebyside.Line{Num: 14, Content: "line14"}, Right: sidebyside.Line{Num: 14, Content: "line14"}},
+					{Left: sidebyside.Line{Num: 15, Content: "line15"}, Right: sidebyside.Line{Num: 15, Content: "line15"}},
+				},
+				FoldLevel: sidebyside.FoldNormal,
+				// No OldContent/NewContent - content not loaded yet
+			},
+		},
+		width:  80,
+		height: 20, // cursor offset = 3
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Layout in Normal view:
+	// Line 0: header
+	// Line 1: diff line (file line 10)
+	// Line 2: diff line (file line 11)
+	// Line 3: diff line (file line 12) <- cursor here
+	// Line 4: diff line (file line 13)
+	// ...
+
+	// Position cursor on line 3 (file line 12)
+	m.scroll = 0 // cursor offset is 3, so cursor at line 3
+	assert.Equal(t, 3, m.cursorLine(), "cursor should be on line 3")
+
+	// Verify we're on the line with content "line12"
+	rows := m.buildRows()
+	assert.Equal(t, 12, rows[3].pair.Left.Num, "cursor should be on file line 12")
+
+	// Press Tab to expand
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	// File should now be in Expanded mode
+	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel, "file should be Expanded")
+
+	// Since content isn't loaded yet, buildRows falls back to Normal view
+	// Cursor should still be pointing to the same logical line
+
+	// Now simulate the content loading
+	// The full file has 20 lines (1-20), our diff showed lines 10-15
+	fullContent := make([]string, 20)
+	for i := range fullContent {
+		fullContent[i] = fmt.Sprintf("line%d", i+1)
+	}
+
+	contentMsg := FileContentLoadedMsg{
+		FileIndex:  0,
+		OldContent: fullContent,
+		NewContent: fullContent,
+	}
+
+	newM, _ = model.Update(contentMsg)
+	model = newM.(Model)
+
+	// After content loads, cursor should still be on file line 12
+	// In expanded view with 20 lines:
+	// Line 0: header
+	// Line 1: file line 1
+	// Line 2: file line 2
+	// ...
+	// Line 12: file line 12 <- cursor should be here
+	// ...
+
+	cursorPos := model.cursorLine()
+	rows = model.buildRows()
+
+	// The cursor should point to a row with file line 12
+	if cursorPos >= 0 && cursorPos < len(rows) {
+		row := rows[cursorPos]
+		assert.Equal(t, 12, row.pair.Left.Num,
+			"after content loads, cursor should still be on file line 12 (got line %d at cursor pos %d)",
+			row.pair.Left.Num, cursorPos)
+	} else {
+		t.Errorf("cursor position %d is out of bounds (total rows: %d)", cursorPos, len(rows))
+	}
 }
 
 // =============================================================================
