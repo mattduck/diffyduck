@@ -28,6 +28,9 @@ var (
 	// Search highlight styles (black text on yellow background)
 	searchMatchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
 	searchCurrentMatchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("11"))
+
+	// Cursor highlight style (bg=7 white, fg=0 black) for gutter areas
+	cursorStyle = lipgloss.NewStyle().Background(lipgloss.Color("7")).Foreground(lipgloss.Color("0"))
 )
 
 // View implements tea.Model.
@@ -252,13 +255,21 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	halfWidth := (m.width - 3) / 2 // -3 for the separator " │ "
 	lineNumWidth := 4
 
+	// The cursor is at a fixed viewport position
+	cursorViewportRow := m.cursorOffset()
+
 	start := m.scroll
 	end := m.scroll + contentHeight
 
 	// Handle negative scroll by adding blank padding at the top
 	if start < 0 {
 		for i := start; i < 0 && len(visible) < contentHeight; i++ {
-			visible = append(visible, "")
+			isCursorRow := len(visible) == cursorViewportRow
+			if isCursorRow {
+				visible = append(visible, m.renderBlankWithCursor(halfWidth, lineNumWidth))
+			} else {
+				visible = append(visible, "")
+			}
 		}
 		start = 0
 	}
@@ -269,14 +280,20 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 	for i := start; i < end && len(visible) < contentHeight; i++ {
 		row := rows[i]
+		isCursorRow := len(visible) == cursorViewportRow
+
 		if row.isBlank {
-			visible = append(visible, "")
+			if isCursorRow {
+				visible = append(visible, m.renderBlankWithCursor(halfWidth, lineNumWidth))
+			} else {
+				visible = append(visible, "")
+			}
 		} else if row.isHeader {
-			visible = append(visible, m.renderHeader(row.header, row.foldLevel, i))
+			visible = append(visible, m.renderHeader(row.header, row.foldLevel, i, isCursorRow))
 		} else if row.isSeparator {
-			visible = append(visible, m.renderHunkSeparator(halfWidth))
+			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
 		} else {
-			visible = append(visible, m.renderLinePair(row.pair, halfWidth, lineNumWidth, i))
+			visible = append(visible, m.renderLinePair(row.pair, halfWidth, lineNumWidth, i, isCursorRow))
 		}
 	}
 
@@ -284,11 +301,43 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 }
 
 // renderHunkSeparator renders a separator line between hunks.
-func (m Model) renderHunkSeparator(halfWidth int) string {
-	// Create a line of dashes with a special character in the middle
+func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
+	lineNumWidth := 4
+
+	if isCursorRow {
+		// Highlight the gutter areas (where line numbers would be)
+		leftGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+		rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+
+		// Content area with dashes
+		leftContentWidth := halfWidth - lineNumWidth - 1
+		rightContentWidth := halfWidth - lineNumWidth - 1
+		leftDashes := strings.Repeat("─", leftContentWidth)
+		rightDashes := strings.Repeat("─", rightContentWidth)
+
+		separator := hunkSeparatorStyle.Render("│")
+		return leftGutter + " " + hunkSeparatorStyle.Render(leftDashes) + " " + separator + " " + rightGutter + " " + hunkSeparatorStyle.Render(rightDashes)
+	}
+
+	// Normal rendering: full line of dashes
 	leftDashes := strings.Repeat("─", halfWidth)
 	rightDashes := strings.Repeat("─", halfWidth)
 	return hunkSeparatorStyle.Render(leftDashes + "─┼─" + rightDashes)
+}
+
+// renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
+func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
+	// Highlight both gutter areas (left and right)
+	leftGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+	rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+
+	// Empty content areas
+	contentWidth := halfWidth - lineNumWidth - 1
+	leftContent := strings.Repeat(" ", contentWidth)
+	rightContent := strings.Repeat(" ", contentWidth)
+
+	separator := hunkSeparatorStyle.Render("│")
+	return leftGutter + " " + leftContent + " " + separator + " " + rightGutter + " " + rightContent
 }
 
 // renderStatusBar renders the status bar at the bottom of the screen.
@@ -533,7 +582,7 @@ func foldLevelIcon(level sidebyside.FoldLevel) string {
 	}
 }
 
-func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowIdx int) string {
+func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowIdx int, isCursorRow bool) string {
 	// Apply search highlighting if there are matches
 	if m.searchQuery != "" {
 		header = m.applySearchHighlight(header, rowIdx, 0)
@@ -542,35 +591,73 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowId
 	// Get fold level icon
 	icon := foldLevelIcon(foldLevel)
 
-	// Format varies by fold level:
-	// - Folded:   "═══ ○ filename" (no trailing line)
-	// - Normal:   "═══ ◐ filename ────" (single line trailing, full width)
-	// - Expanded: "═══ ● filename ════" (double line trailing, full width)
-	prefix := "═══ " + icon + " "
+	// Split prefix into highlightable part and icon part
+	// Only "═══" gets highlighted (not the space or icon)
+	equalsPrefix := "═══"
+	iconPart := " " + icon + " "
+	fullPrefix := equalsPrefix + iconPart
 
 	if foldLevel == sidebyside.FoldFolded {
-		// Folded header: no trailing line
-		return headerStyle.Render(prefix + header)
+		// Folded header: no trailing line, just highlight equals prefix if cursor
+		if isCursorRow {
+			return cursorStyle.Render(equalsPrefix) + headerStyle.Render(iconPart+header)
+		}
+		return headerStyle.Render(fullPrefix + header)
 	}
 
-	// Trailing line character: ─ for Normal, ═ for Expanded
+	// Normal or Expanded: include trailing line and right gutter highlight when cursor
 	lineChar := "═"
 	if foldLevel == sidebyside.FoldNormal {
 		lineChar = "─"
 	}
 
+	// Calculate layout to match diff line structure
+	halfWidth := (m.width - 3) / 2 // -3 for " │ "
+	lineNumWidth := 4
+
+	if isCursorRow {
+		// Build header with highlighted equals prefix and right gutter
+		styledEqualsPrefix := cursorStyle.Render(equalsPrefix)
+
+		// Left portion needs to fill exactly halfWidth display columns
+		equalsPrefixWidth := displayWidth(equalsPrefix)
+		iconPartWidth := displayWidth(iconPart)
+		headerTextWidth := displayWidth(header)
+		suffix := " "
+		suffixWidth := displayWidth(suffix)
+
+		contentWidth := equalsPrefixWidth + iconPartWidth + headerTextWidth + suffixWidth
+		trailingBeforeSep := halfWidth - contentWidth
+		if trailingBeforeSep < 0 {
+			trailingBeforeSep = 0
+		}
+
+		// Right side: space + gutter (highlighted) + space + trailing
+		rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+		// Right half also has halfWidth columns: gutter(4) + space(1) + content
+		trailingAfterGutter := halfWidth - lineNumWidth - 1
+		if trailingAfterGutter < 0 {
+			trailingAfterGutter = 0
+		}
+
+		return styledEqualsPrefix + headerStyle.Render(iconPart+header+suffix+strings.Repeat(lineChar, trailingBeforeSep)) +
+			" " + hunkSeparatorStyle.Render("│") + " " + rightGutter + " " +
+			headerStyle.Render(strings.Repeat(lineChar, trailingAfterGutter))
+	}
+
+	// Normal rendering: full width trailing line
 	suffix := " "
-	headerWidth := displayWidth(prefix) + displayWidth(header) + displayWidth(suffix)
+	headerWidth := displayWidth(fullPrefix) + displayWidth(header) + displayWidth(suffix)
 	remaining := m.width - headerWidth
 	if remaining < 0 {
 		remaining = 0
 	}
 	line := strings.Repeat(lineChar, remaining)
 
-	return headerStyle.Render(prefix + header + suffix + line)
+	return headerStyle.Render(fullPrefix + header + suffix + line)
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth, rowIdx int) string {
+func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool) string {
 	contentWidth := halfWidth - lineNumWidth - 1 // -1 for space after line num
 
 	// Check if this is a modified pair where we should show inline diff
@@ -594,20 +681,28 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth,
 		}
 	}
 
-	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, rowIdx, 0)
-	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rowIdx, 1)
+	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, rowIdx, 0, isCursorRow)
+	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rowIdx, 1, isCursorRow)
 
 	separator := hunkSeparatorStyle.Render("│")
 	return left + " " + separator + " " + right
 }
 
-func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, spans []inlinediff.Span, rowIdx, side int) string {
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, spans []inlinediff.Span, rowIdx, side int, isCursorRow bool) string {
 	// Line number (fixed, not affected by horizontal scroll)
 	var numStr string
 	if line.Num == 0 {
-		numStr = strings.Repeat(" ", lineNumWidth)
+		if isCursorRow {
+			numStr = cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+		} else {
+			numStr = strings.Repeat(" ", lineNumWidth)
+		}
 	} else {
-		numStr = lineNumStyle.Render(fmt.Sprintf("%*d", lineNumWidth, line.Num))
+		if isCursorRow {
+			numStr = cursorStyle.Render(fmt.Sprintf("%*d", lineNumWidth, line.Num))
+		} else {
+			numStr = lineNumStyle.Render(fmt.Sprintf("%*d", lineNumWidth, line.Num))
+		}
 	}
 
 	// Content - expand tabs

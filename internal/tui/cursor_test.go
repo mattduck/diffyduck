@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
@@ -269,9 +271,100 @@ func TestStatusInfo_CursorOnLastBlankLine_CountsAsLastFile(t *testing.T) {
 // Cursor Line Highlighting Tests
 // =============================================================================
 
+// ANSI escape sequences for cursor highlighting (bg=7, fg=0)
+const (
+	// lipgloss combines fg and bg into single escape: \x1b[30;47m = fg black + bg white
+	ansiCursorStyle = "\x1b[30;47m"
+	ansiReset       = "\x1b[0m"
+)
+
+// withANSIColors runs a test function with ANSI color output enabled
+func withANSIColors(_ *testing.T, fn func()) {
+	// Enable ANSI output for this test
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+	fn()
+}
+
 func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 	// When cursor is on a file header, the filename portion should be highlighted
 	// Highlight = bg color 7, fg color 0
+	withANSIColors(t, func() {
+		m := Model{
+			files: []sidebyside.FilePair{
+				{
+					OldPath: "a/test.go",
+					NewPath: "b/test.go",
+					Pairs: []sidebyside.LinePair{
+						{
+							Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						},
+					},
+				},
+			},
+			width:  80,
+			height: 10, // cursor offset = 1 (20% of 9)
+			scroll: -1, // cursor at line 0 (the header)
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		output := m.View()
+
+		// With scroll=-1, viewport row 0 is blank padding, row 1 is the header
+		lines := strings.Split(output, "\n")
+		assert.True(t, len(lines) > 1)
+		headerLine := lines[1]
+
+		// The header should contain the filename
+		assert.Contains(t, headerLine, "test.go", "header should contain filename")
+
+		// The header should have cursor highlighting (fg=0, bg=7 combined)
+		assert.Contains(t, headerLine, ansiCursorStyle, "header should have cursor highlighting")
+	})
+}
+
+func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
+	// The fold icon (◐/○/●) should NOT be highlighted, only the "═══ " prefix
+	withANSIColors(t, func() {
+		m := Model{
+			files: []sidebyside.FilePair{
+				{
+					OldPath: "a/test.go",
+					NewPath: "b/test.go",
+					Pairs: []sidebyside.LinePair{
+						{
+							Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						},
+					},
+				},
+			},
+			width:  80,
+			height: 10,
+			scroll: -1, // cursor at line 0 (the header)
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		output := m.View()
+		lines := strings.Split(output, "\n")
+		headerLine := lines[1]
+
+		// The cursor style should end before the space and icon
+		// Pattern: [cursor style]═══[reset][header style] ◐ filename...
+		// Only the "═══" part is highlighted, not the space or icon
+		assert.Contains(t, headerLine, ansiCursorStyle+"═══"+ansiReset, "only the ═══ should be highlighted, not the space or icon")
+	})
+}
+
+func TestView_CursorHighlight_OnFileHeader_SeparatorAligned(t *testing.T) {
+	// When cursor is on a Normal/Expanded header, the │ separator should align with diff lines
+	// Explicitly disable colors so we can compare character positions directly
+	lipgloss.SetColorProfile(termenv.Ascii)
+	defer lipgloss.SetColorProfile(termenv.Ascii) // keep disabled after test
+
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
@@ -279,162 +372,203 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Left:  sidebyside.Line{Num: 1, Content: "left content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "right content", Type: sidebyside.Context},
 					},
 				},
 			},
 		},
 		width:  80,
-		height: 10, // cursor offset = 1 (20% of 9)
+		height: 10,
 		scroll: -1, // cursor at line 0 (the header)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
 	output := m.View()
-
-	// With scroll=-1, viewport row 0 is blank padding, row 1 is the header
 	lines := strings.Split(output, "\n")
-	assert.True(t, len(lines) > 1)
-	// The second line (index 1) is the header since we have 1 blank padding line
-	assert.Contains(t, lines[1], "test.go", "header should contain filename")
-	// TODO: Check for actual highlight styling once implemented
+
+	// Find the header line and a diff line
+	headerLine := lines[1] // header (cursor is here)
+	diffLine := lines[2]   // first diff line
+
+	// Find display column of │ in both lines by measuring width up to the separator
+	headerSepPos := displayColumnOf(headerLine, "│")
+	diffSepPos := displayColumnOf(diffLine, "│")
+
+	assert.NotEqual(t, -1, headerSepPos, "header should have │ separator")
+	assert.NotEqual(t, -1, diffSepPos, "diff line should have │ separator")
+	assert.Equal(t, diffSepPos, headerSepPos, "│ separator should be at same display column in header and diff line")
+}
+
+// displayColumnOf returns the display column where substr starts, or -1 if not found
+func displayColumnOf(s, substr string) int {
+	idx := strings.Index(s, substr)
+	if idx == -1 {
+		return -1
+	}
+	// Count display width of characters before the substring
+	return displayWidth(s[:idx])
 }
 
 func TestView_CursorHighlight_OnDiffLine(t *testing.T) {
 	// When cursor is on a diff line, the gutter areas should be highlighted
-	m := Model{
-		files: []sidebyside.FilePair{
-			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
-				Pairs: []sidebyside.LinePair{
-					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+	withANSIColors(t, func() {
+		m := Model{
+			files: []sidebyside.FilePair{
+				{
+					OldPath: "a/test.go",
+					NewPath: "b/test.go",
+					Pairs: []sidebyside.LinePair{
+						{
+							Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+							Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						},
 					},
 				},
 			},
-		},
-		width:  80,
-		height: 10, // cursor offset = 1
-		scroll: 0,  // cursor at line 1 (the diff line)
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
+			width:  80,
+			height: 10, // cursor offset = 1
+			scroll: 0,  // cursor at line 1 (the diff line)
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
 
-	output := m.View()
-	lines := strings.Split(output, "\n")
+		output := m.View()
+		lines := strings.Split(output, "\n")
 
-	// Line 1 (index 1) should have the diff content with highlighted gutters
-	assert.True(t, len(lines) > 1)
-	// This test will fail until we implement cursor gutter highlighting
+		// Line 1 (index 1) should have the diff content with highlighted gutters
+		assert.True(t, len(lines) > 1)
+		diffLine := lines[1]
+
+		// The diff line gutters should have cursor highlighting
+		assert.Contains(t, diffLine, ansiCursorStyle, "diff line should have cursor highlighting on gutter")
+	})
 }
 
 func TestView_CursorHighlight_OnBlankSeparator(t *testing.T) {
 	// When cursor is on a blank separator line, the gutter areas should be highlighted
-	m := Model{
-		files: []sidebyside.FilePair{
-			{
-				OldPath: "a/first.go",
-				NewPath: "b/first.go",
-				Pairs: []sidebyside.LinePair{
-					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+	withANSIColors(t, func() {
+		m := Model{
+			files: []sidebyside.FilePair{
+				{
+					OldPath: "a/first.go",
+					NewPath: "b/first.go",
+					Pairs: []sidebyside.LinePair{
+						{
+							Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						},
+					},
+				},
+				{
+					OldPath: "a/second.go",
+					NewPath: "b/second.go",
+					Pairs: []sidebyside.LinePair{
+						{
+							Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						},
 					},
 				},
 			},
-			{
-				OldPath: "a/second.go",
-				NewPath: "b/second.go",
-				Pairs: []sidebyside.LinePair{
-					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-					},
-				},
-			},
-		},
-		width:  80,
-		height: 10, // cursor offset = 1
-		scroll: 1,  // cursor at line 2 (blank separator before second file)
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
+			width:  80,
+			height: 10, // cursor offset = 1
+			scroll: 1,  // cursor at line 2 (blank separator before second file)
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
 
-	output := m.View()
-	lines := strings.Split(output, "\n")
+		output := m.View()
+		lines := strings.Split(output, "\n")
 
-	// The blank separator line should have highlighted gutter areas
-	// This test will fail until we implement cursor highlighting
-	assert.True(t, len(lines) > 2)
+		// With scroll=1 and cursorOffset=1, cursor is at content line 2
+		// Viewport: [content[1], content[2], content[3], ...]
+		// So cursor row in viewport is index 1 (content[2] = blank separator)
+		assert.True(t, len(lines) > 1)
+		blankLine := lines[1]
+
+		// Even blank lines should have highlighted gutters when cursor is on them
+		assert.Contains(t, blankLine, ansiCursorStyle, "blank separator should have cursor highlighting on gutter areas")
+	})
 }
 
 func TestView_CursorHighlight_OnHunkSeparator(t *testing.T) {
 	// When cursor is on a hunk separator (┈┈┈), the gutter areas should be highlighted
-	m := Model{
-		files: []sidebyside.FilePair{
-			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
-				Pairs: []sidebyside.LinePair{
-					{
-						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
-					},
-					// Gap - next line is 100, so there will be a hunk separator
-					{
-						Left:  sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+	withANSIColors(t, func() {
+		m := Model{
+			files: []sidebyside.FilePair{
+				{
+					OldPath: "a/test.go",
+					NewPath: "b/test.go",
+					Pairs: []sidebyside.LinePair{
+						{
+							Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+							Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						},
+						// Gap - next line is 100, so there will be a hunk separator
+						{
+							Left:  sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+							Right: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+						},
 					},
 				},
 			},
-		},
-		width:  80,
-		height: 10, // cursor offset = 1
-		scroll: 1,  // cursor at line 2 (hunk separator)
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
+			width:  80,
+			height: 10, // cursor offset = 1
+			scroll: 1,  // cursor at line 2 (hunk separator)
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
 
-	output := m.View()
+		output := m.View()
+		lines := strings.Split(output, "\n")
 
-	// Should contain the hunk separator
-	assert.Contains(t, output, "─┼─", "should have hunk separator")
-	// The separator line should have highlighted gutter areas
-	// This test will fail until we implement cursor highlighting
+		// With scroll=1 and cursorOffset=1, cursor is at content line 2
+		// Viewport: [content[1], content[2], content[3], ...]
+		// So cursor row in viewport is index 1 (content[2] = hunk separator)
+		assert.True(t, len(lines) > 1)
+		separatorLine := lines[1]
+
+		// The separator line gutters should have cursor highlighting
+		// Note: when cursor is on hunk separator, we use │ instead of ┼ because gutters are styled
+		assert.Contains(t, separatorLine, ansiCursorStyle, "hunk separator should have cursor highlighting on gutter")
+	})
 }
 
 func TestView_CursorHighlight_BothGuttersOnAddedLine(t *testing.T) {
 	// For an added line (left side empty), both gutter areas should be highlighted
-	m := Model{
-		files: []sidebyside.FilePair{
-			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
-				Pairs: []sidebyside.LinePair{
-					{
-						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 1, Content: "added", Type: sidebyside.Added},
+	withANSIColors(t, func() {
+		m := Model{
+			files: []sidebyside.FilePair{
+				{
+					OldPath: "a/test.go",
+					NewPath: "b/test.go",
+					Pairs: []sidebyside.LinePair{
+						{
+							Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+							Right: sidebyside.Line{Num: 1, Content: "added", Type: sidebyside.Added},
+						},
 					},
 				},
 			},
-		},
-		width:  80,
-		height: 10, // cursor offset = 1
-		scroll: 0,  // cursor at line 1 (the added line)
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
+			width:  80,
+			height: 10, // cursor offset = 1
+			scroll: 0,  // cursor at line 1 (the added line)
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
 
-	output := m.View()
-	lines := strings.Split(output, "\n")
+		output := m.View()
+		lines := strings.Split(output, "\n")
 
-	// Line 1 should have both left (empty) and right gutters highlighted
-	assert.True(t, len(lines) > 1)
-	// This test will fail until we implement cursor highlighting
+		// Line 1 should have both left (empty) and right gutters highlighted
+		assert.True(t, len(lines) > 1)
+		addedLine := lines[1]
+
+		// Both left gutter (empty) and right gutter should be highlighted
+		assert.Contains(t, addedLine, ansiCursorStyle, "added line should have cursor highlighting on both gutters")
+	})
 }
 
 // =============================================================================
