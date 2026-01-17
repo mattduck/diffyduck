@@ -847,7 +847,9 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 			// First non-blank line should be the header with the icon
 			headerLine := lines[0]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
-			assert.Contains(t, headerLine, "═══ "+tt.wantIcon+" test.go", "header format should be: ═══ <icon> filename")
+			// Header format is: ═══ <foldIcon> <statusIndicator> filename
+			// For modified files (a/test.go -> b/test.go with same name), status is "~"
+			assert.Contains(t, headerLine, "═══ "+tt.wantIcon+" ~ test.go", "header format should be: ═══ <icon> <status> filename")
 
 			// Check trailing line character
 			if tt.wantTrailing == "" {
@@ -2171,4 +2173,158 @@ func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 	assert.Contains(t, header, "-3", "header should show deletion count")
 	// Check there's no + count (but the filename might contain + in other contexts)
 	// The format should be "-3 ---" not "+0 -3 ---"
+}
+
+func TestFileStatus(t *testing.T) {
+	tests := []struct {
+		name       string
+		oldPath    string
+		newPath    string
+		wantStatus FileStatus
+	}{
+		{
+			name:       "added file",
+			oldPath:    "/dev/null",
+			newPath:    "b/new.go",
+			wantStatus: FileStatusAdded,
+		},
+		{
+			name:       "deleted file",
+			oldPath:    "a/old.go",
+			newPath:    "/dev/null",
+			wantStatus: FileStatusDeleted,
+		},
+		{
+			name:       "renamed file",
+			oldPath:    "a/old.go",
+			newPath:    "b/new.go",
+			wantStatus: FileStatusRenamed,
+		},
+		{
+			name:       "modified file - same name with prefixes",
+			oldPath:    "a/file.go",
+			newPath:    "b/file.go",
+			wantStatus: FileStatusModified,
+		},
+		{
+			name:       "modified file - identical paths",
+			oldPath:    "file.go",
+			newPath:    "file.go",
+			wantStatus: FileStatusModified,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fileStatus(tt.oldPath, tt.newPath)
+			assert.Equal(t, tt.wantStatus, got)
+		})
+	}
+}
+
+func TestFileStatusIndicator(t *testing.T) {
+	tests := []struct {
+		status     FileStatus
+		wantSymbol string
+	}{
+		{FileStatusAdded, "+"},
+		{FileStatusDeleted, "-"},
+		{FileStatusRenamed, ">"},
+		{FileStatusModified, "~"},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.status), func(t *testing.T) {
+			symbol, _ := fileStatusIndicator(tt.status)
+			assert.Equal(t, tt.wantSymbol, symbol)
+		})
+	}
+}
+
+func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
+	// Test that file status indicators appear in headers for all fold levels
+	tests := []struct {
+		name          string
+		oldPath       string
+		newPath       string
+		foldLevel     sidebyside.FoldLevel
+		wantIndicator string
+	}{
+		{
+			name:          "added file - folded",
+			oldPath:       "/dev/null",
+			newPath:       "b/new.go",
+			foldLevel:     sidebyside.FoldFolded,
+			wantIndicator: "+",
+		},
+		{
+			name:          "deleted file - folded",
+			oldPath:       "a/old.go",
+			newPath:       "/dev/null",
+			foldLevel:     sidebyside.FoldFolded,
+			wantIndicator: "-",
+		},
+		{
+			name:          "renamed file - folded",
+			oldPath:       "a/old.go",
+			newPath:       "b/new.go",
+			foldLevel:     sidebyside.FoldFolded,
+			wantIndicator: ">",
+		},
+		{
+			name:          "modified file - folded",
+			oldPath:       "a/file.go",
+			newPath:       "b/file.go",
+			foldLevel:     sidebyside.FoldFolded,
+			wantIndicator: "~",
+		},
+		{
+			name:          "added file - normal",
+			oldPath:       "/dev/null",
+			newPath:       "b/new.go",
+			foldLevel:     sidebyside.FoldNormal,
+			wantIndicator: "+",
+		},
+		{
+			name:          "modified file - expanded",
+			oldPath:       "a/file.go",
+			newPath:       "b/file.go",
+			foldLevel:     sidebyside.FoldExpanded,
+			wantIndicator: "~",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := Model{
+				files: []sidebyside.FilePair{
+					{
+						OldPath:    tt.oldPath,
+						NewPath:    tt.newPath,
+						FoldLevel:  tt.foldLevel,
+						Pairs:      []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1}, Right: sidebyside.Line{Num: 1}}},
+						OldContent: []string{"line"},
+						NewContent: []string{"line"},
+					},
+				},
+				width:  100,
+				height: 10,
+				keys:   DefaultKeyMap(),
+			}
+			m.calculateTotalLines()
+
+			output := m.View()
+			lines := strings.Split(output, "\n")
+			header := lines[0]
+
+			// Get the expected fold icon
+			foldIcon := foldLevelIcon(tt.foldLevel)
+
+			// Header format should be: ═══ <foldIcon> <statusIndicator> filename
+			// e.g., "═══ ○ + new.go" or "═══ ◐ ~ file.go"
+			expectedPattern := "═══ " + foldIcon + " " + tt.wantIndicator + " "
+			assert.Contains(t, header, expectedPattern,
+				"header should contain fold icon followed by status indicator: %s", expectedPattern)
+		})
+	}
 }

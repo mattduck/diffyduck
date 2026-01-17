@@ -68,6 +68,7 @@ type displayRow struct {
 	isBlank        bool
 	header         string
 	foldLevel      sidebyside.FoldLevel // fold level for headers (used for icon and styling)
+	status         FileStatus           // file status (added, deleted, renamed, modified) for headers
 	pair           sidebyside.LinePair
 	added          int // number of added lines (for headers)
 	removed        int // number of removed lines (for headers)
@@ -98,12 +99,13 @@ func (m Model) buildRows() []displayRow {
 	for fileIdx, fp := range m.files {
 		// Count stats once per file for header display
 		added, removed := countFileStats(fp)
+		status := fileStatus(fp.OldPath, fp.NewPath)
 
 		switch fp.FoldLevel {
 		case sidebyside.FoldFolded:
 			// Folded: just the header, no blank line before, no trailing "="
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
 
 		case sidebyside.FoldExpanded:
 			// Expanded: show full file content with diff highlighting
@@ -117,7 +119,7 @@ func (m Model) buildRows() []displayRow {
 
 				// File header (no stats in expanded view)
 				header := formatFileHeader(fp.OldPath, fp.NewPath)
-				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, header: header})
+				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header})
 
 				// Build expanded rows from full file content
 				expandedRows := m.buildExpandedRows(fp)
@@ -139,7 +141,7 @@ func (m Model) buildRows() []displayRow {
 
 			// File header (no stats in normal view)
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, header: header})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, status: status, header: header})
 
 			// Line pairs with hunk separators
 			var prevLeft, prevRight int
@@ -421,7 +423,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 				visible = append(visible, "")
 			}
 		} else if row.isHeader {
-			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.added, row.removed, row.maxHeaderWidth, row.maxCountWidth, i, isCursorRow))
+			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxCountWidth, i, isCursorRow))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
 		} else {
@@ -774,6 +776,51 @@ func foldLevelIcon(level sidebyside.FoldLevel) string {
 	}
 }
 
+// FileStatus represents the status of a file in a diff.
+type FileStatus string
+
+const (
+	FileStatusAdded    FileStatus = "added"
+	FileStatusDeleted  FileStatus = "deleted"
+	FileStatusRenamed  FileStatus = "renamed"
+	FileStatusModified FileStatus = "modified"
+)
+
+// fileStatus determines the status of a file based on its old and new paths.
+func fileStatus(oldPath, newPath string) FileStatus {
+	// Added: old path is /dev/null
+	if oldPath == "/dev/null" {
+		return FileStatusAdded
+	}
+	// Deleted: new path is /dev/null
+	if newPath == "/dev/null" {
+		return FileStatusDeleted
+	}
+	// Renamed: paths differ after stripping a/ and b/ prefixes
+	old := strings.TrimPrefix(oldPath, "a/")
+	new := strings.TrimPrefix(newPath, "b/")
+	if old != new {
+		return FileStatusRenamed
+	}
+	// Modified: everything else
+	return FileStatusModified
+}
+
+// fileStatusIndicator returns the symbol and style for a file status.
+// + (green) for added, - (red) for deleted, > (blue) for renamed, ~ (blue) for modified.
+func fileStatusIndicator(status FileStatus) (symbol string, style lipgloss.Style) {
+	switch status {
+	case FileStatusAdded:
+		return "+", addedStyle
+	case FileStatusDeleted:
+		return "-", removedStyle
+	case FileStatusRenamed:
+		return ">", lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	default: // FileStatusModified
+		return "~", lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	}
+}
+
 // statsCountWidth returns the display width of the count portion "+N -M" (without bar).
 func statsCountWidth(added, removed int) int {
 	width := 0
@@ -818,19 +865,24 @@ func formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth int) strin
 	parts = append(parts, countStr)
 
 	// Calculate bar characters with scaling
+	// We derive minusChars from plusChars to ensure total is always exactly maxBarWidth
 	total := added + removed
 	plusChars := added
 	minusChars := removed
 
 	if total > maxBarWidth {
-		scale := float64(maxBarWidth) / float64(total)
-		plusChars = int(float64(added) * scale)
-		minusChars = int(float64(removed) * scale)
+		// Calculate plusChars proportionally, derive minusChars from remainder
+		plusChars = int(float64(added) / float64(total) * float64(maxBarWidth))
+		minusChars = maxBarWidth - plusChars
+
+		// Ensure minimum 1 char representation if changes exist
 		if added > 0 && plusChars == 0 {
 			plusChars = 1
+			minusChars = maxBarWidth - 1
 		}
 		if removed > 0 && minusChars == 0 {
 			minusChars = 1
+			plusChars = maxBarWidth - 1
 		}
 	}
 
@@ -841,19 +893,22 @@ func formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth int) strin
 	return " " + strings.Join(parts, " ")
 }
 
-func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, added, removed, maxHeaderWidth, maxCountWidth, rowIdx int, isCursorRow bool) string {
+func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, status FileStatus, added, removed, maxHeaderWidth, maxCountWidth, rowIdx int, isCursorRow bool) string {
 	// Apply search highlighting if there are matches
 	if m.searchQuery != "" {
 		header = m.applySearchHighlight(header, rowIdx, 0)
 	}
 
-	// Get fold level icon
+	// Get fold level icon and file status indicator
 	icon := foldLevelIcon(foldLevel)
+	statusSymbol, statusStyle := fileStatusIndicator(status)
+	styledStatus := statusStyle.Render(statusSymbol)
 
 	// Split prefix into highlightable part and icon part
 	// Only "═══" gets highlighted (not the space or icon)
+	// Format: ═══ <foldIcon> <statusIndicator> <header>
 	equalsPrefix := "═══"
-	iconPart := " " + icon + " "
+	iconPart := " " + icon + " " + styledStatus + " "
 	fullPrefix := equalsPrefix + iconPart
 
 	if foldLevel == sidebyside.FoldFolded {
@@ -869,9 +924,9 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, added
 		}
 
 		if isCursorRow {
-			return cursorStyle.Render(equalsPrefix) + headerStyle.Render(iconPart+header+padding) + statsBar
+			return cursorStyle.Render(equalsPrefix) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar
 		}
-		return headerStyle.Render(fullPrefix+header+padding) + statsBar
+		return headerStyle.Render(equalsPrefix+" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar
 	}
 
 	// Normal or Expanded: include trailing line, no stats
@@ -889,8 +944,9 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, added
 		styledEqualsPrefix := cursorStyle.Render(equalsPrefix)
 
 		// Left portion needs to fill exactly halfWidth display columns
+		// iconPart includes the status indicator now, account for its width
 		equalsPrefixWidth := displayWidth(equalsPrefix)
-		iconPartWidth := displayWidth(iconPart)
+		iconPartWidth := displayWidth(" " + icon + " " + statusSymbol + " ")
 		headerTextWidth := displayWidth(header)
 		suffix := " "
 		suffixWidth := displayWidth(suffix)
@@ -909,7 +965,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, added
 			trailingAfterGutter = 0
 		}
 
-		return styledEqualsPrefix + headerStyle.Render(iconPart+header+suffix+strings.Repeat(lineChar, trailingBeforeSep)) +
+		return styledEqualsPrefix + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+suffix+strings.Repeat(lineChar, trailingBeforeSep)) +
 			" " + hunkSeparatorStyle.Render("│") + " " + rightGutter + " " +
 			headerStyle.Render(strings.Repeat(lineChar, trailingAfterGutter))
 	}
@@ -923,7 +979,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, added
 	}
 	line := strings.Repeat(lineChar, remaining)
 
-	return headerStyle.Render(fullPrefix + header + suffix + line)
+	return headerStyle.Render(equalsPrefix+" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+suffix+line)
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool) string {

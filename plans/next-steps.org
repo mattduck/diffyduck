@@ -204,9 +204,13 @@ A major feature with three distinct view modes for each file:
 
 1. *Collapsed (stats only)*: Just the file header with +/- line counts
    #+begin_example
-   ═══ ○ internal/tui/view.go      | +142 -16 +++++++++++++++++++++--
-   ═══ ○ internal/tui/view_test.go | +353     ++++++++++++++++++++++++
+   ═══ ○ ~ internal/tui/view.go      | +142 -16 +++++++++++++++++++++--
+   ═══ ○ + internal/tui/new_file.go  | +50      +++++++++++++++++++++++
+   ═══ ○ - internal/tui/deleted.go   | -30      --------------
+   ═══ ○ > old.go → new.go           | +5  -2   +++++--
    #+end_example
+
+   Status indicators: =~= modified (blue), =+= added (green), =-= deleted (red), =>= renamed (blue)
 
 2. *Normal (default)*: Standard diff view with hunk edits (what we have now)
    #+begin_example
@@ -289,9 +293,9 @@ New consideration: May want pkg/content or similar for file content management
 Git-style statistics shown only in folded view, with alignment:
 
 #+begin_example
-═══ ○ internal/tui/view.go      | +142 -16 +++++++++++++++++++++--
-═══ ○ internal/tui/view_test.go | +353     ++++++++++++++++++++++++
-═══ ○ pkg/sidebyside/types.go   | +5  -2   +++++--
+═══ ○ ~ internal/tui/view.go      | +142 -16 +++++++++++++++++++++--
+═══ ○ ~ internal/tui/view_test.go | +353     ++++++++++++++++++++++++
+═══ ○ ~ pkg/sidebyside/types.go   | +5  -2   +++++--
 #+end_example
 
 **** Features Implemented
@@ -313,12 +317,22 @@ Key functions in =internal/tui/view.go=:
 - =buildRows()=: Calculates =maxHeaderWidth= and =maxCountWidth= across all files in first pass
 - =displayRow= struct: Extended with =maxHeaderWidth= and =maxCountWidth= fields
 
+**** File Status Indicators [DONE]
+
+Each file header shows a colored status indicator after the fold icon:
+- =~= (blue): Modified file
+- =+= (green): Added file (new)
+- =-= (red): Deleted file
+- =>= (blue): Renamed file
+
+Format: =═══ ○ ~ filename= (space between fold icon and status indicator)
+
 **** Future Improvements
 
 - *Binary files*: Show "Binary file changed" or similar instead of line counts
-- *Renamed files*: Show rename info (=old -> new=) with optional similarity percentage
 - *Mode changes*: Show permission changes (e.g., =+x=)
 - *Large file indicator*: Visual cue when diff is very large (e.g., =+1000+=)
+- *Rename similarity*: Show similarity percentage for renamed files
 
 ** Phase 4: Semantic Awareness
 
