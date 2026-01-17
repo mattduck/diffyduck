@@ -4,6 +4,7 @@
 -    3     fmt.Println("old")          │ +    3     fmt.Println("new")         
                                        │ +    4     fmt.Println("added")       
      4 }                               │      5 }                              
+═══ ●   1 file changed, 2 insertions(+), 1 deletion(-)
 
 
 
@@ -16,5 +17,4 @@
 
 
 
-
- main.go                                                                    60% 
+ main.go                                                                    50% 

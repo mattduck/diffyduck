@@ -351,15 +351,23 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 }
 
 // currentFileIndex returns the index of the file at the cursor position.
+// Returns -1 if cursor is on the summary row (no file association).
 // This matches what the status bar displays.
 func (m Model) currentFileIndex() int {
 	if len(m.files) == 0 {
 		return -1
 	}
 
+	// Build rows to check if cursor is on summary row
+	rows := m.buildRows()
+	cursorLine := m.cursorLine()
+	if cursorLine >= 0 && cursorLine < len(rows) && rows[cursorLine].isSummary {
+		return -1 // Summary row has no associated file
+	}
+
 	// Use cursor position, not scroll position
 	// This ensures Tab acts on the file shown in the status bar
-	fileIdx, _ := m.fileAtLine(m.cursorLine())
+	fileIdx, _ := m.fileAtLine(cursorLine)
 	return fileIdx - 1 // fileAtLine returns 1-based, we need 0-based
 }
 

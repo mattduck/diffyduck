@@ -126,7 +126,7 @@ func TestStartup_ScrollIsZero_NoBlankSpaceAtTop(t *testing.T) {
 func TestScrollDown_CanGoBeyondContent(t *testing.T) {
 	// Scrolling down should allow scroll to exceed totalLines
 	// so the cursor can reach the last line of content
-	m := makeTestModel(10) // 11 total lines (header + 10 pairs)
+	m := makeTestModel(10) // 12 total lines (header + 10 pairs + summary)
 	m.height = 50          // cursor at line 9
 	m.scroll = 0
 
@@ -134,19 +134,11 @@ func TestScrollDown_CanGoBeyondContent(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
-	// Last content line is at index 10 (0-indexed)
-	// Cursor is at offset 9, so scroll should be 10 - 9 = 1
-	// Wait, that's not right. Let me reconsider.
-	// We want cursor (at scroll + cursorOffset) to be on line 10
-	// So scroll + 9 = 10, scroll = 1
-	// But actually with 11 lines and viewport of 50, we'd see everything
-	// Let me test with smaller content
-
-	// cursor at index 9, we want it to point to line 10 (last line)
-	// scroll + cursorOffset = lineIndex
-	// scroll + 9 = 10
-	// scroll = 1
-	assert.Equal(t, 1, model.scroll, "G should put cursor on last line")
+	// Last content line is at index 11 (0-indexed) - the summary row
+	// Cursor is at offset 9, so scroll should be 11 - 9 = 2
+	// We want cursor (at scroll + cursorOffset) to be on line 11
+	// So scroll + 9 = 11, scroll = 2
+	assert.Equal(t, 2, model.scroll, "G should put cursor on last line")
 }
 
 func TestMaxScroll_AllowsCursorOnLastLine(t *testing.T) {

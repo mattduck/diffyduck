@@ -256,6 +256,11 @@ func (m Model) fileAtLine(line int) (int, string) {
 	}
 
 	row := rows[line]
+	// Summary row has fileIndex = -1, return last file info
+	if row.fileIndex < 0 {
+		lastFile := m.files[len(m.files)-1]
+		return len(m.files), formatFilePath(lastFile.OldPath, lastFile.NewPath)
+	}
 	return row.fileIndex + 1, formatFilePath(
 		m.files[row.fileIndex].OldPath,
 		m.files[row.fileIndex].NewPath,

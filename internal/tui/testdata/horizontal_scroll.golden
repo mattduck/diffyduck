@@ -2,9 +2,9 @@
      1                                 │      1                                
 -    2 a much longer line that will be │ +    2 a much longer line that will be
      3 89abcdefghij                    │      3 89abcdefghij                   
+═══ ●   1 file changed, 1 insertion(+), 1 deletion(-)
 
 
 
 
-
- foo.go                                                                     33% 
+ foo.go                                                                     25% 

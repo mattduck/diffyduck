@@ -62,10 +62,11 @@ func (m Model) View() string {
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
 type displayRow struct {
-	fileIndex      int // index of the file this row belongs to
+	fileIndex      int // index of the file this row belongs to (-1 for summary row)
 	isHeader       bool
 	isSeparator    bool
 	isBlank        bool
+	isSummary      bool // summary row at the end showing total stats
 	header         string
 	foldLevel      sidebyside.FoldLevel // fold level for headers (used for icon and styling)
 	status         FileStatus           // file status (added, deleted, renamed, modified) for headers
@@ -74,6 +75,10 @@ type displayRow struct {
 	removed        int // number of removed lines (for headers)
 	maxHeaderWidth int // max header width across all files (for alignment in folded view)
 	maxCountWidth  int // max stats count width across all files (for bar alignment)
+	// Summary row fields
+	totalFiles   int // total number of files changed
+	totalAdded   int // total insertions across all files
+	totalRemoved int // total deletions across all files
 }
 
 // buildRows creates all displayable rows from the model data.
@@ -162,6 +167,25 @@ func (m Model) buildRows() []displayRow {
 				}
 			}
 		}
+	}
+
+	// Add summary row at the end
+	if len(m.files) > 0 {
+		totalAdded := 0
+		totalRemoved := 0
+		for _, fp := range m.files {
+			added, removed := countFileStats(fp)
+			totalAdded += added
+			totalRemoved += removed
+		}
+		rows = append(rows, displayRow{
+			fileIndex:      -1, // No file association
+			isSummary:      true,
+			totalFiles:     len(m.files),
+			totalAdded:     totalAdded,
+			totalRemoved:   totalRemoved,
+			maxHeaderWidth: maxHeaderWidth,
+		})
 	}
 
 	return rows
@@ -426,6 +450,8 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxCountWidth, i, isCursorRow))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
+		} else if row.isSummary {
+			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
 		} else {
 			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, halfWidth, lineNumWidth, i, isCursorRow))
 		}
@@ -891,6 +917,60 @@ func formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth int) strin
 	parts = append(parts, bar)
 
 	return " " + strings.Join(parts, " ")
+}
+
+// formatSummaryStats returns a git-style summary string like "2 files changed, 5 insertions(+), 3 deletions(-)".
+// Handles singular/plural and omits zero-count sections.
+func formatSummaryStats(files, added, removed int) string {
+	var parts []string
+
+	// Files changed
+	if files == 1 {
+		parts = append(parts, "1 file changed")
+	} else {
+		parts = append(parts, fmt.Sprintf("%d files changed", files))
+	}
+
+	// Insertions
+	if added > 0 {
+		if added == 1 {
+			parts = append(parts, "1 insertion(+)")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d insertions(+)", added))
+		}
+	}
+
+	// Deletions
+	if removed > 0 {
+		if removed == 1 {
+			parts = append(parts, "1 deletion(-)")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d deletions(-)", removed))
+		}
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// renderSummary renders the summary row at the bottom of the diff view.
+// Format: "═══ ●   N files changed, N insertions(+), N deletions(-)"
+// Uses expanded icon (●) since there's no additional content to show.
+// Text is not bold, unlike file headers.
+func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidth int, isCursorRow bool) string {
+	equalsPrefix := "═══"
+	icon := foldLevelIcon(sidebyside.FoldExpanded) // Always use expanded icon
+	// Space where status indicator would be (empty for summary)
+	iconPart := " " + icon + "   " // icon + 3 spaces (status position + space)
+
+	summary := formatSummaryStats(totalFiles, totalAdded, totalRemoved)
+
+	// Use non-bold style for summary (just the foreground color)
+	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+
+	if isCursorRow {
+		return cursorStyle.Render(equalsPrefix) + summaryStyle.Render(iconPart+summary)
+	}
+	return summaryStyle.Render(equalsPrefix + iconPart + summary)
 }
 
 func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, status FileStatus, added, removed, maxHeaderWidth, maxCountWidth, rowIdx int, isCursorRow bool) string {

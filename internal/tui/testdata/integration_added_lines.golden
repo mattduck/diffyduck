@@ -4,6 +4,7 @@
                                                  │ +    7     "github.com/mattn/go-runewidth"      
      7     "github.com/user/diffyduck/pkg/sideby │      8     "github.com/user/diffyduck/pkg/sideby
      8 )                                         │      9 )                                        
+═══ ●   1 file changed, 1 insertion(+)
 
 
 
@@ -16,5 +17,4 @@
 
 
 
-
- internal/tui/view.go                                                                           60% 
+ internal/tui/view.go                                                                           50% 

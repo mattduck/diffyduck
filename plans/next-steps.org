@@ -551,3 +551,40 @@ The search feature uses two yellow colors:
 Sometimes the current match shows the distinct bright yellow, sometimes it doesn't.
 Need to debug why - likely an issue with how =currentMatch= index is tracked or
 how =isCurrent= is determined in =highlightSearchInVisible= or =applyInlineSpans=.
+
+** Summary Row [DONE]
+
+Git-style summary line at the bottom of the diff view showing aggregate stats.
+
+*** Features Implemented
+
+- Appears at the end of all files in all view modes (folded, normal, expanded)
+- Format: =═══ ●   N files changed, N insertions(+), N deletions(-)=
+- Uses expanded bullet icon (●) since there's no additional content to show
+- Non-bold text to visually distinguish from file headers
+- Properly handles singular/plural ("1 file" vs "2 files", etc.)
+- Omits zero-count sections (no "0 insertions" shown)
+- Selectable with cursor like any other row
+- Tab/fold toggle does nothing when cursor is on summary row (no file association)
+
+*** Implementation
+
+Key functions in =internal/tui/view.go=:
+
+- =formatSummaryStats(files, added, removed int) string=: Produces git-style text
+- =renderSummary(...)=: Renders the summary row with proper styling
+- =buildRows()=: Adds summary row at end with =isSummary: true= and =fileIndex: -1=
+
+Changes to =internal/tui/model.go=:
+- =fileAtLine()=: Returns last file info when on summary row
+
+Changes to =internal/tui/update.go=:
+- =currentFileIndex()=: Returns -1 when cursor is on summary row
+
+*** Future Improvements
+
+- *Performance*: =currentFileIndex()= calls =buildRows()= which is expensive; could cache rows or add a simpler check
+- *Binary files*: Currently counts binary files the same as text; could show "N binary files" separately
+- *Mode changes*: Git shows mode changes (permissions) in its summary; we don't track these
+- *Summary row cursor highlight*: The =═══= prefix gets highlighted but the bullet doesn't; could highlight the whole prefix area consistently
+- *Alignment*: Summary row doesn't align with file headers' stats column; could pad to match =maxHeaderWidth= for visual consistency in folded view

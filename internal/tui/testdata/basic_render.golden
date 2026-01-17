@@ -2,9 +2,9 @@
      1 package main                    │      1 package main                   
 -    2 old line                        │ +    2 new line                       
      3 func main() {}                  │      3 func main() {}                 
+═══ ●   1 file changed, 1 insertion(+), 1 deletion(-)
 
 
 
 
-
- foo.go                                                                     33% 
+ foo.go                                                                     25% 

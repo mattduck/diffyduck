@@ -283,9 +283,9 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	// cursorLine = scroll(0) + cursorOffset(3) = 3
 	// CurrentLine = cursorLine + 1 = 4
 	assert.Equal(t, 4, info.CurrentLine)
-	assert.Equal(t, 51, info.TotalLines) // 50 pairs + 1 header
-	// Percentage: cursorLine(3) / maxCursor(50) * 100 = 6%
-	assert.Equal(t, 6, info.Percentage)
+	assert.Equal(t, 52, info.TotalLines) // 50 pairs + 1 header + 1 summary
+	// Percentage: cursorLine(3) / maxCursor(51) * 100 = 5%
+	assert.Equal(t, 5, info.Percentage)
 	assert.False(t, info.AtEnd)
 }
 
@@ -377,12 +377,14 @@ func TestView_StatusBarContent(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	// Scroll to end so we see "END" in status bar
+	m.scroll = m.maxScroll()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 	lastLine := lines[len(lines)-1]
 
-	// Status bar should contain the file name and END (since content fits in viewport)
+	// Status bar should contain the file name and END (when scrolled to bottom)
 	assert.Contains(t, lastLine, "foo.go")
 	assert.Contains(t, lastLine, "END")
 }
@@ -442,7 +444,7 @@ func TestStatusInfo_ScrollPastAllContent(t *testing.T) {
 }
 
 func TestStatusInfo_PercentageAccuracy(t *testing.T) {
-	// Create 101 lines (100 pairs + 1 header) for easy percentage math
+	// Create 102 lines (100 pairs + 1 header + 1 summary)
 	pairs := make([]sidebyside.LinePair, 100)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
@@ -459,8 +461,8 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 		height: 11, // 10 content lines + 1 status bar
 		keys:   DefaultKeyMap(),
 	}
-	m.calculateTotalLines() // 101 lines total
-	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 100
+	m.calculateTotalLines() // 102 lines total
+	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 101
 
 	// At minScroll, cursor is at line 0, percentage should be 0
 	m.scroll = m.minScroll()
@@ -468,10 +470,11 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 	assert.Equal(t, 0, info.Percentage)
 	assert.False(t, info.AtEnd)
 
-	// At scroll that puts cursor at line 50, percentage should be 50
+	// At scroll that puts cursor at approx line 50, percentage should be ~49
+	// (50/101 * 100 = 49.5, rounded to 49)
 	m.scroll = 50 - m.cursorOffset() // cursor at 50
 	info = m.StatusInfo()
-	assert.Equal(t, 50, info.Percentage)
+	assert.Equal(t, 49, info.Percentage)
 	assert.False(t, info.AtEnd)
 
 	// At maxScroll, cursor is at last line, percentage should be 100
@@ -523,7 +526,7 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 }
 
 func TestView_ScrolledToMax(t *testing.T) {
-	// When scrolled to max, only the last line should show at top, rest is padding
+	// When scrolled to max, the summary row should be visible, rest is padding
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
@@ -545,16 +548,16 @@ func TestView_ScrolledToMax(t *testing.T) {
 		height: 5, // Small viewport
 		keys:   DefaultKeyMap(),
 	}
-	m.calculateTotalLines() // 3 lines: header + 2 pairs
-	m.scroll = 2            // Max scroll = 3 - 1 = 2, so last line at top
+	m.calculateTotalLines() // 4 lines: header + 2 pairs + summary
+	m.scroll = m.maxScroll()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
 	assert.Equal(t, 5, len(lines), "should have exactly height lines")
 
-	// First line should be the last content line
-	assert.Contains(t, lines[0], "last")
+	// First line should be the summary row (last content line at maxScroll)
+	assert.Contains(t, lines[0], "file changed")
 
 	// Lines 1-3 should be empty padding
 	for i := 1; i < 4; i++ {
@@ -1040,8 +1043,9 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 
 	// Normal file: 1 header + 10 pairs = 11 lines
 	// Folded file: 1 header only (no blank line before since it's folded)
-	// Total should be 11 + 1 = 12
-	assert.Equal(t, 12, m.totalLines, "totalLines should account for fold states")
+	// Summary row: 1 line
+	// Total should be 11 + 1 + 1 = 13
+	assert.Equal(t, 13, m.totalLines, "totalLines should account for fold states and summary")
 }
 
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
@@ -1713,10 +1717,12 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 			},
 		},
 		width:  80,
-		height: 10, // Much taller than content (2 lines: header + 1 pair)
+		height: 10, // Much taller than content (3 lines: header + 1 pair + summary)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	// Scroll to end to verify END appears
+	m.scroll = m.maxScroll()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -1729,15 +1735,12 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	assert.Contains(t, lastLine, "foo.go")
 	assert.Contains(t, lastLine, "END")
 
-	// First two lines should be content (header + pair)
-	assert.Contains(t, lines[0], "foo.go")
-	assert.Contains(t, lines[1], "only line")
-
-	// Lines between content and status bar should be empty/padding
-	for i := 2; i < 9; i++ {
-		assert.Equal(t, "", strings.TrimSpace(lines[i]),
-			"line %d should be empty padding", i)
-	}
+	// When scrolled to end with small content:
+	// - scroll = maxScroll = 1, cursorOffset = 1
+	// - line[0] is at scroll position (line index 1 = the pair)
+	// - line[1] is cursor position (line index 2 = summary)
+	assert.Contains(t, lines[0], "only line", "first visible line should be the pair")
+	assert.Contains(t, lines[1], "file changed", "second line should be summary at cursor")
 }
 
 // === File Stats Tests ===
@@ -2327,4 +2330,366 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 				"header should contain fold icon followed by status indicator: %s", expectedPattern)
 		})
 	}
+}
+
+// Summary row tests
+
+func TestBuildRows_IncludesSummaryRow(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Last row should be the summary
+	require.NotEmpty(t, rows)
+	lastRow := rows[len(rows)-1]
+	assert.True(t, lastRow.isSummary, "last row should be summary row")
+}
+
+func TestBuildRows_SummaryRowHasCorrectStats(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+					{
+						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Right: sidebyside.Line{Num: 2, Content: "added", Type: sidebyside.Added},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "deleted", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	lastRow := rows[len(rows)-1]
+	require.True(t, lastRow.isSummary)
+	// Total: 2 files, 2 added lines (one.go), 2 removed lines (one.go + two.go)
+	assert.Equal(t, 2, lastRow.totalFiles)
+	assert.Equal(t, 2, lastRow.totalAdded)
+	assert.Equal(t, 2, lastRow.totalRemoved)
+}
+
+func TestBuildRows_SummaryRowNoFile(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	lastRow := rows[len(rows)-1]
+	require.True(t, lastRow.isSummary)
+	// Summary row should have fileIndex = -1 to indicate no file association
+	assert.Equal(t, -1, lastRow.fileIndex)
+}
+
+func TestView_SummaryRowFormat(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should contain git-style summary: "1 file changed, 1 insertion(+), 1 deletion(-)"
+	assert.Contains(t, output, "1 file changed")
+	assert.Contains(t, output, "1 insertion(+)")
+	assert.Contains(t, output, "1 deletion(-)")
+}
+
+func TestView_SummaryRowPluralFormat(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+					{
+						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Right: sidebyside.Line{Num: 2, Content: "added", Type: sidebyside.Added},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should use plural forms: "2 files changed, 3 insertions(+), 2 deletions(-)"
+	assert.Contains(t, output, "2 files changed")
+	assert.Contains(t, output, "3 insertions(+)")
+	assert.Contains(t, output, "2 deletions(-)")
+}
+
+func TestView_SummaryRowHasEqualsPrefix(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Find the summary line (contains "file changed" or "files changed")
+	var summaryLine string
+	for _, line := range lines {
+		if strings.Contains(line, "file changed") || strings.Contains(line, "files changed") {
+			summaryLine = line
+			break
+		}
+	}
+	require.NotEmpty(t, summaryLine, "should find summary line")
+	// Should start with "═══" prefix
+	assert.True(t, strings.HasPrefix(summaryLine, "═══"), "summary should start with ═══")
+}
+
+func TestView_SummaryRowIsSelectable(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// The summary row should be included in totalLines
+	// With folded view: 1 header + 1 summary = 2 lines
+	rows := m.buildRows()
+	assert.Equal(t, 2, len(rows), "should have header + summary")
+}
+
+func TestView_SummaryRowAppearsInAllModes(t *testing.T) {
+	tests := []struct {
+		name      string
+		foldLevel sidebyside.FoldLevel
+	}{
+		{"folded", sidebyside.FoldFolded},
+		{"normal", sidebyside.FoldNormal},
+		{"expanded", sidebyside.FoldExpanded},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := Model{
+				files: []sidebyside.FilePair{
+					{
+						OldPath:    "a/foo.go",
+						NewPath:    "b/foo.go",
+						FoldLevel:  tt.foldLevel,
+						OldContent: []string{"line1"},
+						NewContent: []string{"line1"},
+						Pairs: []sidebyside.LinePair{
+							{
+								Left:  sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+								Right: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+							},
+						},
+					},
+				},
+				width:  80,
+				height: 20,
+				keys:   DefaultKeyMap(),
+			}
+			m.calculateTotalLines()
+
+			output := m.View()
+			assert.Contains(t, output, "file changed", "summary should appear in %s mode", tt.name)
+		})
+	}
+}
+
+func TestFormatSummaryStats(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    int
+		added    int
+		removed  int
+		expected string
+	}{
+		{
+			name:     "singular all",
+			files:    1,
+			added:    1,
+			removed:  1,
+			expected: "1 file changed, 1 insertion(+), 1 deletion(-)",
+		},
+		{
+			name:     "plural all",
+			files:    3,
+			added:    10,
+			removed:  5,
+			expected: "3 files changed, 10 insertions(+), 5 deletions(-)",
+		},
+		{
+			name:     "no insertions",
+			files:    1,
+			added:    0,
+			removed:  3,
+			expected: "1 file changed, 3 deletions(-)",
+		},
+		{
+			name:     "no deletions",
+			files:    2,
+			added:    5,
+			removed:  0,
+			expected: "2 files changed, 5 insertions(+)",
+		},
+		{
+			name:     "no changes",
+			files:    1,
+			added:    0,
+			removed:  0,
+			expected: "1 file changed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatSummaryStats(tt.files, tt.added, tt.removed)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestCurrentFileIndex_ReturnsMinusOneForSummaryRow(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Scroll to put cursor on summary row (last line)
+	m.scroll = m.maxScroll()
+
+	// currentFileIndex should return -1 when cursor is on summary row
+	idx := m.currentFileIndex()
+	assert.Equal(t, -1, idx, "currentFileIndex should return -1 for summary row")
 }

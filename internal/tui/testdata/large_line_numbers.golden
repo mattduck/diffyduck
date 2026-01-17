@@ -2,9 +2,9 @@
    9999 line 9999                                │    9999 line 9999                               
 - 10000 line 10000                               │ + 10000 line 10000 modified                     
   10001 line 10001                               │   10001 line 10001                              
+═══ ●   1 file changed, 1 insertion(+), 1 deletion(-)
 
 
 
 
-
- large.go                                                                                       33% 
+ large.go                                                                                       25% 
