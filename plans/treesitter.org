@@ -1,0 +1,429 @@
+* Treesitter Syntax Highlighting
+
+** Overview
+
+Add syntax highlighting using tree-sitter to make diffs easier to read.
+Syntax colors should be the "base layer" that other highlights (search, cursor,
+word-diff) modify on top of.
+
+** Architecture
+
+*** Layer 1: Semantic Categories
+
+A universal set of semantic categories that all languages map to:
+
+#+begin_src go
+// pkg/highlight/categories.go
+
+type Category int
+
+const (
+    CategoryNone Category = iota
+
+    // Basics
+    CategoryKeyword      // func, if, else, return, import, etc.
+    CategoryOperator     // +, -, *, /, =, ==, etc.
+    CategoryPunctuation  // (), {}, [], ;, etc.
+
+    // Literals
+    CategoryString       // "hello", 'c', `raw`
+    CategoryNumber       // 42, 3.14, 0xFF
+    CategoryBoolean      // true, false
+    CategoryNil          // nil, null, None
+
+    // Names
+    CategoryFunction     // function/method names at definition
+    CategoryFunctionCall // function/method names at call site
+    CategoryType         // type names
+    CategoryVariable     // variable names
+    CategoryConstant     // constant names (ALL_CAPS convention)
+    CategoryParameter    // function parameters
+    CategoryField        // struct/object fields
+
+    // Comments
+    CategoryComment      // // or /* */
+    CategoryDocComment   // /// or /** */ (if distinguishable)
+
+    // Special
+    CategoryTag          // struct tags, annotations
+    CategoryAttribute    // @decorators, #[attributes]
+    CategoryNamespace    // package names, module names
+)
+#+end_src
+
+*** Layer 2: Theme/Palette
+
+Maps semantic categories to terminal colors. Single source of truth for colors
+across all languages.
+
+#+begin_src go
+// pkg/highlight/theme.go
+
+type Theme struct {
+    Colors map[Category]lipgloss.Style
+}
+
+// DefaultTheme returns the default color scheme.
+// Colors chosen to work on both light and dark terminals.
+func DefaultTheme() Theme {
+    return Theme{
+        Colors: map[Category]lipgloss.Style{
+            CategoryKeyword:      lipgloss.NewStyle().Foreground(lipgloss.Color("5")),  // magenta
+            CategoryString:       lipgloss.NewStyle().Foreground(lipgloss.Color("2")),  // green
+            CategoryNumber:       lipgloss.NewStyle().Foreground(lipgloss.Color("6")),  // cyan
+            CategoryComment:      lipgloss.NewStyle().Foreground(lipgloss.Color("8")),  // bright black (gray)
+            CategoryFunction:     lipgloss.NewStyle().Foreground(lipgloss.Color("4")),  // blue
+            CategoryFunctionCall: lipgloss.NewStyle().Foreground(lipgloss.Color("4")),  // blue
+            CategoryType:         lipgloss.NewStyle().Foreground(lipgloss.Color("3")),  // yellow
+            CategoryVariable:     lipgloss.NewStyle(),                                   // default
+            CategoryConstant:     lipgloss.NewStyle().Foreground(lipgloss.Color("6")),  // cyan
+            CategoryOperator:     lipgloss.NewStyle(),                                   // default
+            CategoryPunctuation:  lipgloss.NewStyle(),                                   // default
+            // ... etc
+        },
+    }
+}
+#+end_src
+
+*** Layer 3: Language Configurations
+
+Each language maps its tree-sitter node types to semantic categories.
+
+#+begin_src go
+// pkg/highlight/languages/go.go
+
+// GoLanguage provides tree-sitter highlighting for Go.
+var GoLanguage = LanguageConfig{
+    Name:       "go",
+    Extensions: []string{".go"},
+
+    // Map tree-sitter node types to categories
+    NodeTypes: map[string]Category{
+        // Keywords
+        "func":        CategoryKeyword,
+        "return":      CategoryKeyword,
+        "if":          CategoryKeyword,
+        "else":        CategoryKeyword,
+        "for":         CategoryKeyword,
+        "range":       CategoryKeyword,
+        "switch":      CategoryKeyword,
+        "case":        CategoryKeyword,
+        "default":     CategoryKeyword,
+        "package":     CategoryKeyword,
+        "import":      CategoryKeyword,
+        "type":        CategoryKeyword,
+        "struct":      CategoryKeyword,
+        "interface":   CategoryKeyword,
+        "map":         CategoryKeyword,
+        "chan":        CategoryKeyword,
+        "go":          CategoryKeyword,
+        "defer":       CategoryKeyword,
+        "var":         CategoryKeyword,
+        "const":       CategoryKeyword,
+
+        // Literals
+        "interpreted_string_literal": CategoryString,
+        "raw_string_literal":         CategoryString,
+        "rune_literal":               CategoryString,
+        "int_literal":                CategoryNumber,
+        "float_literal":              CategoryNumber,
+        "imaginary_literal":          CategoryNumber,
+        "true":                       CategoryBoolean,
+        "false":                      CategoryBoolean,
+        "nil":                        CategoryNil,
+
+        // Comments
+        "comment": CategoryComment,
+
+        // Types
+        "type_identifier": CategoryType,
+
+        // ... etc
+    },
+
+    // Some nodes need context (parent type) to categorize correctly
+    // E.g., "identifier" could be function name, variable, type, etc.
+    ContextRules: []ContextRule{
+        {
+            NodeType:   "identifier",
+            ParentType: "function_declaration",
+            Field:      "name",
+            Category:   CategoryFunction,
+        },
+        {
+            NodeType:   "identifier",
+            ParentType: "call_expression",
+            Field:      "function",
+            Category:   CategoryFunctionCall,
+        },
+        // ... etc
+    },
+}
+#+end_src
+
+*** Layer 4: Highlighter
+
+The main interface for getting highlight spans from source code.
+
+#+begin_src go
+// pkg/highlight/highlighter.go
+
+// Span represents a highlighted range in source code.
+type Span struct {
+    Start    int      // byte offset
+    End      int      // byte offset
+    Category Category
+}
+
+// Highlighter provides syntax highlighting for source code.
+type Highlighter struct {
+    theme     Theme
+    languages map[string]*LanguageConfig  // by extension
+    parsers   map[string]*sitter.Parser   // cached parsers
+    cache     *SpanCache                  // cached results
+}
+
+// Highlight returns spans for the given source code.
+// Results are cached by content hash.
+func (h *Highlighter) Highlight(filename string, content []byte) ([]Span, error)
+
+// HighlightRange returns spans for a specific line range.
+// Parses with context to ensure correct highlighting at boundaries.
+func (h *Highlighter) HighlightRange(filename string, content []byte, startLine, endLine int) ([]Span, error)
+#+end_src
+
+** Performance Strategy
+
+*** Non-Blocking Parsing
+
+Parsing must not block user interaction. Use async pattern like content fetching:
+
+#+begin_src go
+// internal/tui/messages.go
+
+type HighlightReadyMsg struct {
+    FileIndex int
+    Spans     []highlight.Span
+}
+
+// internal/tui/commands.go
+
+func (m Model) RequestHighlight(fileIndex int) tea.Cmd {
+    return func() tea.Msg {
+        content := m.files[fileIndex].NewContent  // or OldContent
+        filename := m.files[fileIndex].NewPath
+        spans, _ := m.highlighter.Highlight(filename, []byte(strings.Join(content, "\n")))
+        return HighlightReadyMsg{FileIndex: fileIndex, Spans: spans}
+    }
+}
+#+end_src
+
+*** Parse Visible + Context
+
+Don't parse entire files upfront. Parse visible lines + buffer:
+
+#+begin_example
+Total file: 1000 lines
+Visible: lines 100-150
+Parse range: lines 80-170 (visible + 20 line buffer each side)
+
+When scrolling to lines 200-250:
+- If new range overlaps existing: extend parse
+- If new range disjoint: parse new range, keep old cached
+#+end_example
+
+*** Caching Strategy
+
+Multiple cache levels:
+
+1. *Parse tree cache*: Tree-sitter parse trees by content hash
+   - Trees can be reused if content unchanged
+   - Tree-sitter supports incremental parsing for edits
+
+2. *Span cache*: Highlight spans by (content hash, line range)
+   - Avoid re-walking tree for same content
+   - Invalidate on theme change
+
+3. *Rendered line cache*: Final styled strings
+   - Most expensive to compute (applies all style layers)
+   - Invalidate on scroll, search, fold change
+
+** Style Composition
+
+*** Layer Order (bottom to top)
+
+1. *Syntax highlighting* (base layer)
+   - Colors from treesitter based on node types
+
+2. *Diff line type* (add/remove/context)
+   - May adjust foreground slightly for removed lines
+   - Could desaturate syntax colors on removed lines
+
+3. *Word diff*
+   - Inverts or highlights changed portions within a line
+   - Overrides syntax colors in changed spans
+
+4. *Search matches*
+   - Yellow background for matches
+   - Brighter yellow for current match
+   - Completely overrides underlying colors
+
+5. *Cursor highlight*
+   - Only affects gutter areas, not content
+   - Doesn't interact with syntax highlighting
+
+*** Implementation
+
+#+begin_src go
+// Composing styles for a line:
+
+func (m Model) styleLine(line string, lineNum int, syntaxSpans []Span) string {
+    // Start with syntax highlighting
+    styled := applySyntaxSpans(line, syntaxSpans, m.theme)
+
+    // Apply word diff if this line has inline changes
+    if inlineSpans := m.getInlineDiffSpans(lineNum); len(inlineSpans) > 0 {
+        styled = applyInlineSpans(styled, inlineSpans)
+    }
+
+    // Apply search highlights if any matches on this line
+    if searchSpans := m.getSearchSpans(lineNum); len(searchSpans) > 0 {
+        styled = applySearchSpans(styled, searchSpans, m.currentMatch)
+    }
+
+    return styled
+}
+#+end_src
+
+** Supported Languages (Initial)
+
+Start with languages commonly seen in diffs:
+
+1. *Go* - Primary test language for this project
+2. *JavaScript/TypeScript* - Very common
+3. *Python* - Very common
+4. *Rust* - Growing popularity
+5. *JSON/YAML* - Config files in diffs
+
+Add more based on demand. Each language requires:
+- Tree-sitter grammar (usually available)
+- Node type → Category mapping (manual work)
+- Testing with real code samples
+
+** File Structure
+
+#+begin_example
+pkg/highlight/
+├── categories.go      # Category enum
+├── theme.go           # Theme struct, DefaultTheme()
+├── highlighter.go     # Main Highlighter type
+├── cache.go           # SpanCache implementation
+├── spans.go           # Span manipulation utilities
+├── languages/
+│   ├── registry.go    # Language detection, registration
+│   ├── go.go          # Go language config
+│   ├── javascript.go  # JS/TS language config
+│   ├── python.go      # Python language config
+│   └── ...
+└── highlight_test.go  # Tests
+
+internal/tui/
+├── highlight.go       # TUI integration, async loading
+└── highlight_test.go  # Integration tests
+#+end_example
+
+** Implementation Phases
+
+*** Phase 1: Foundation
+
+1. Add go-tree-sitter dependency
+2. Create Category enum and Theme
+3. Create Highlighter with basic caching
+4. Implement Go language config
+5. Unit tests for Go highlighting
+
+*** Phase 2: TUI Integration
+
+1. Add HighlightReadyMsg and async command
+2. Store highlight spans in FilePair (or separate cache)
+3. Integrate into renderLinePair() as base layer
+4. Test with real Go diffs
+
+*** Phase 3: Style Composition
+
+1. Ensure word diff composes correctly with syntax
+2. Ensure search highlights override syntax
+3. Test various combinations:
+   - Syntax + word diff
+   - Syntax + search
+   - Syntax + word diff + search
+   - All of above + cursor on line
+
+*** Phase 4: Performance Optimization
+
+1. Implement visible-range parsing
+2. Add parse tree caching
+3. Profile with large files
+4. Consider background parsing for upcoming content
+
+*** Phase 5: More Languages
+
+1. Add JavaScript/TypeScript
+2. Add Python
+3. Add Rust
+4. Add JSON/YAML
+5. Fallback for unknown languages (no highlighting)
+
+** Testing Strategy
+
+*** Unit Tests (pkg/highlight)
+
+- Parse known code snippets, verify correct spans
+- Test each language config independently
+- Test theme color mapping
+- Test cache hit/miss behavior
+
+*** Integration Tests (internal/tui)
+
+- Render lines with syntax highlighting
+- Verify composition with word diff
+- Verify composition with search
+- Verify async loading doesn't block
+
+*** Golden Tests
+
+- Capture rendered output for known diffs
+- Detect unintended style changes
+- Test both light and dark theme assumptions
+
+*** Performance Tests
+
+- Parse large files (1000+ lines)
+- Measure time to first visible highlight
+- Verify scrolling remains smooth
+- Test cache effectiveness
+
+** Dependencies
+
+- github.com/smacker/go-tree-sitter (Go bindings)
+- Language grammars (usually included or easily added)
+
+** Resolved Questions
+
+1. *Incremental parsing*: No - only relevant for edits, we're read-only.
+
+2. *Theme customization*: Hardcode for now, keep colors in one place for easy
+   tweaking. Add user customization later if needed.
+
+3. *Language detection*: File extension/suffix only to start.
+
+4. *Diff-specific styling*: Keep same syntax colors on both sides. Diff info
+   (add/remove indicators) will move to the gutter only (separate task before
+   treesitter work). This simplifies composition since syntax highlighting
+   applies uniformly to content.
+
+** References
+
+- go-tree-sitter: https://github.com/smacker/go-tree-sitter
+- Tree-sitter docs: https://tree-sitter.github.io/tree-sitter/
+- Tree-sitter playground: https://tree-sitter.github.io/tree-sitter/playground
