@@ -1,9 +1,9 @@
 ═══ ◐ internal/tui/view.go ─────────────────────────────────────────────────────────────────────────
-   5     "strings"                               │    5     "strings"                              
-   6     "github.com/charmbracelet/lipgloss"     │    6     "github.com/charmbracelet/lipgloss"    
-                                                 │    7     "github.com/mattn/go-runewidth"        
-   7     "github.com/user/diffyduck/pkg/sidebysi │    8     "github.com/user/diffyduck/pkg/sidebysi
-   8 )                                           │    9 )                                          
+     5     "strings"                             │      5     "strings"                            
+     6     "github.com/charmbracelet/lipgloss"   │      6     "github.com/charmbracelet/lipgloss"  
+                                                 │ +    7     "github.com/mattn/go-runewidth"      
+     7     "github.com/user/diffyduck/pkg/sideby │      8     "github.com/user/diffyduck/pkg/sideby
+     8 )                                         │      9 )                                        
 
 
 

@@ -32,7 +32,8 @@ type Model struct {
 	lastSearchScroll int     // scroll position when last search navigation occurred
 
 	// Derived/cached
-	totalLines int // total number of displayable lines across all files
+	totalLines     int // total number of displayable lines across all files
+	maxLineNumSeen int // largest line number seen (for dynamic gutter width, only grows)
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
@@ -63,8 +64,18 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 }
 
 // calculateTotalLines counts total lines including file headers and hunk separators.
+// Also updates maxLineNumSeen based on visible line numbers.
 func (m *Model) calculateTotalLines() {
-	m.totalLines = len(m.buildRows())
+	rows := m.buildRows()
+	m.totalLines = len(rows)
+
+	// Scan for max line numbers to ensure gutter width is adequate
+	for _, row := range rows {
+		if !row.isHeader && !row.isSeparator && !row.isBlank {
+			m.updateMaxLineNum(row.pair.Left.Num)
+			m.updateMaxLineNum(row.pair.Right.Num)
+		}
+	}
 }
 
 // Init implements tea.Model.
@@ -225,4 +236,23 @@ func formatFilePath(oldPath, newPath string) string {
 		path = path[2:]
 	}
 	return path
+}
+
+// updateMaxLineNum updates maxLineNumSeen if n is larger (never shrinks).
+func (m *Model) updateMaxLineNum(n int) {
+	if n > m.maxLineNumSeen {
+		m.maxLineNumSeen = n
+	}
+}
+
+// lineNumWidth returns the width needed for line numbers based on the largest seen.
+// Minimum width is 4 to handle typical files up to 9999 lines.
+func (m Model) lineNumWidth() int {
+	width := 4 // minimum
+	n := m.maxLineNumSeen
+	for n >= 10000 {
+		width++
+		n /= 10
+	}
+	return width
 }

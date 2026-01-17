@@ -255,7 +255,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 	// Calculate column widths
 	halfWidth := (m.width - 3) / 2 // -3 for the separator " │ "
-	lineNumWidth := 4
+	lineNumWidth := m.lineNumWidth()
 
 	// The cursor is at a fixed viewport position
 	cursorViewportRow := m.cursorOffset()
@@ -304,21 +304,22 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 // renderHunkSeparator renders a separator line between hunks.
 func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
-	lineNumWidth := 4
+	lineNumWidth := m.lineNumWidth()
 
 	if isCursorRow {
-		// Highlight the gutter areas (where line numbers would be)
-		leftGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-		rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+		// Gutter area gets dashes, highlighted with cursor style
+		// Format: indicator(dash) + space + gutter(dashes) + space + content(dashes)
+		gutterDashes := cursorStyle.Render(strings.Repeat("─", lineNumWidth))
 
 		// Content area with dashes
-		leftContentWidth := halfWidth - lineNumWidth - 1
-		rightContentWidth := halfWidth - lineNumWidth - 1
-		leftDashes := strings.Repeat("─", leftContentWidth)
-		rightDashes := strings.Repeat("─", rightContentWidth)
+		contentWidth := halfWidth - lineNumWidth - 3
+		contentDashes := strings.Repeat("─", contentWidth)
 
 		separator := hunkSeparatorStyle.Render("│")
-		return leftGutter + " " + hunkSeparatorStyle.Render(leftDashes) + " " + separator + " " + rightGutter + " " + hunkSeparatorStyle.Render(rightDashes)
+		// Build: dash + space + gutter_dashes + space + content_dashes
+		return hunkSeparatorStyle.Render("─ ") + gutterDashes + hunkSeparatorStyle.Render(" "+contentDashes) +
+			" " + separator + " " +
+			hunkSeparatorStyle.Render("─ ") + gutterDashes + hunkSeparatorStyle.Render(" "+contentDashes)
 	}
 
 	// Normal rendering: full line of dashes
@@ -333,13 +334,14 @@ func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
 	leftGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
 	rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
 
-	// Empty content areas
-	contentWidth := halfWidth - lineNumWidth - 1
+	// Empty content areas (accounting for indicator + space + gutter + space)
+	contentWidth := halfWidth - lineNumWidth - 3
 	leftContent := strings.Repeat(" ", contentWidth)
 	rightContent := strings.Repeat(" ", contentWidth)
 
 	separator := hunkSeparatorStyle.Render("│")
-	return leftGutter + " " + leftContent + " " + separator + " " + rightGutter + " " + rightContent
+	// Format: indicator(space) + space + gutter + space + content
+	return "  " + leftGutter + " " + leftContent + " " + separator + " " + "  " + rightGutter + " " + rightContent
 }
 
 // renderStatusBar renders the status bar at the bottom of the screen.
@@ -615,7 +617,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowId
 
 	// Calculate layout to match diff line structure
 	halfWidth := (m.width - 3) / 2 // -3 for " │ "
-	lineNumWidth := 4
+	lineNumWidth := m.lineNumWidth()
 
 	if isCursorRow {
 		// Build header with highlighted equals prefix and right gutter
@@ -660,7 +662,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, rowId
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool) string {
-	contentWidth := halfWidth - lineNumWidth - 1 // -1 for space after line num
+	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
 
 	// Check if this is a modified pair where we should show inline diff
 	isModifiedPair := pair.Left.Type == sidebyside.Removed && pair.Right.Type == sidebyside.Added
@@ -691,6 +693,17 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, halfWidth, lineNumWidth,
 }
 
 func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, spans []inlinediff.Span, rowIdx, side int, isCursorRow bool) string {
+	// Diff indicator (+/-/space) before line number
+	var indicator string
+	switch line.Type {
+	case sidebyside.Added:
+		indicator = addedStyle.Render("+")
+	case sidebyside.Removed:
+		indicator = removedStyle.Render("-")
+	default:
+		indicator = " "
+	}
+
 	// Line number (fixed, not affected by horizontal scroll)
 	var numStr string
 	if line.Num == 0 {
@@ -738,7 +751,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 		}
 	}
 
-	return numStr + " " + styledContent
+	return indicator + " " + numStr + " " + styledContent
 }
 
 // applyInlineSpans applies inline diff highlighting to visible content.
