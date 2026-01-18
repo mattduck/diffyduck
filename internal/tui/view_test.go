@@ -1451,9 +1451,9 @@ func TestView_LineNumberColorMatchesIndicator(t *testing.T) {
 		lineType  sidebyside.LineType
 		wantColor string // ANSI color code prefix
 	}{
-		{"added line has green line number", sidebyside.Added, "\x1b[92m"},   // bright green
-		{"removed line has red line number", sidebyside.Removed, "\x1b[91m"}, // bright red
-		{"context line has dim line number", sidebyside.Context, "\x1b[90m"}, // dim gray
+		{"added line has green line number", sidebyside.Added, "\x1b[92m"},     // bright green
+		{"removed line has red line number", sidebyside.Removed, "\x1b[91m"},   // bright red
+		{"context line has dim line number", sidebyside.Context, "\x1b[2;90m"}, // faint + gray
 	}
 
 	for _, tt := range tests {

@@ -18,13 +18,14 @@ var (
 	addedStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	removedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	contextStyle       = lipgloss.NewStyle()
-	lineNumStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	contextDimStyle    = lipgloss.NewStyle().Faint(true) // for context on old side
+	lineNumStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 	emptyStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	statusStyle        = lipgloss.NewStyle().Reverse(true)
 
-	// Inline diff highlight: inverted (black on white)
-	inlineAddedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
-	inlineRemovedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
+	// Inline diff highlight: underlined
+	inlineAddedStyle   = lipgloss.NewStyle().Underline(true)
+	inlineRemovedStyle = lipgloss.NewStyle().Underline(true)
 
 	// Search highlight styles (black text on yellow background)
 	searchMatchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
@@ -1168,8 +1169,18 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	visible := horizontalSlice(expanded, m.hscroll, contentWidth)
 
 	// Apply styling with layers: syntax (base) -> inline diff -> search (top)
+	// Exception: context lines on old side are dimmed (no syntax highlighting)
 	var styledContent string
-	if len(inlineSpans) > 0 && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
+	isOldSideContext := side == 0 && line.Type == sidebyside.Context
+
+	if isOldSideContext {
+		// Dim context lines on the old side - they're duplicates of the new side
+		displayContent := visible
+		if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
+			displayContent = m.highlightSearchInVisible(visible, rowIdx, side)
+		}
+		styledContent = contextDimStyle.Render(displayContent)
+	} else if len(inlineSpans) > 0 && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		// Apply inline diff highlighting (with search highlighting taking precedence)
 		styledContent = m.applyInlineSpans(expanded, visible, inlineSpans, line.Type, contentWidth, rowIdx, side)
 	} else if len(syntaxSpans) > 0 {
