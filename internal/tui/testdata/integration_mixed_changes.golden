@@ -1,3 +1,4 @@
+◐ ~ example.go +5 -2                                                            
 ═══ ◐ ~ example.go ─────────────────────────────────────────────────────────────
      1   package main                  │      1   package main                 
 -    2 ░ import "fmt"                ░ │ +    2 ░ import (                    ░
@@ -16,5 +17,4 @@
 
 
 
-
- line 4/10 33%    ◐ ~ example.go +5 -2                                          
+ line 4/10 33%                                                                  

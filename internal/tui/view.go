@@ -52,16 +52,26 @@ func (m Model) View() string {
 	// Apply scroll and viewport
 	visibleRows := m.getVisibleRows(rows, contentH)
 
-	// Pad with empty lines to fill viewport (so status bar is always at bottom)
+	// Pad with empty lines to fill viewport (so bottom bar is always at bottom)
 	for len(visibleRows) < contentH {
 		visibleRows = append(visibleRows, "")
 	}
 
-	// Add status bar
-	statusBar := m.renderStatusBar()
-	visibleRows = append(visibleRows, statusBar)
+	// Build final output: top bar + content + bottom bar
+	var output []string
 
-	return strings.Join(visibleRows, "\n")
+	// Add top bar (file info)
+	topBar := m.renderTopBar()
+	output = append(output, topBar)
+
+	// Add content rows
+	output = append(output, visibleRows...)
+
+	// Add bottom bar (less-style indicator)
+	bottomBar := m.renderStatusBar()
+	output = append(output, bottomBar)
+
+	return strings.Join(output, "\n")
 }
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
@@ -511,7 +521,28 @@ func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
 	return "  " + leftGutter + " " + leftContent + " " + separator + " " + "  " + rightGutter + " " + rightContent
 }
 
+// renderTopBar renders the top bar showing file info.
+func (m Model) renderTopBar() string {
+	info := m.StatusInfo()
+
+	// Only show file info when cursor is on a file (not on summary row)
+	var content string
+	if info.CurrentFile > 0 {
+		content = m.formatStatusFileInfo(info)
+	}
+
+	// Pad to fill the width
+	contentWidth := displayWidth(content)
+	padding := m.width - contentWidth
+	if padding < 0 {
+		padding = 0
+	}
+
+	return content + strings.Repeat(" ", padding)
+}
+
 // renderStatusBar renders the status bar at the bottom of the screen.
+// This now only contains the less-style indicator (file info is in top bar).
 func (m Model) renderStatusBar() string {
 	// In search mode, show search prompt
 	if m.searchMode {
@@ -520,7 +551,7 @@ func (m Model) renderStatusBar() string {
 
 	info := m.StatusInfo()
 
-	// Build left side: less-style line indicator (with reverse styling)
+	// Build less-style line indicator (with reverse styling)
 	lessIndicator := formatLessIndicator(info.CurrentLine, info.TotalLines, info.Percentage, info.AtEnd)
 
 	// Pad to max width to prevent shrinking (maxLessWidth is computed in calculateTotalLines)
@@ -529,28 +560,22 @@ func (m Model) renderStatusBar() string {
 		lessIndicator += strings.Repeat(" ", m.maxLessWidth-lessWidth)
 	}
 
-	// Apply reverse style only to the less indicator portion
+	// Apply reverse style to the less indicator portion
 	styledLessIndicator := statusStyle.Render(" " + lessIndicator)
 
-	// Build right side: file info with icons and stats (normal styling, not reversed)
-	// Only show file info when cursor is on a file (not on summary row)
-	var fileInfo string
-	if info.CurrentFile > 0 {
-		fileInfo = m.formatStatusFileInfo(info)
-	}
-
-	// When there's an active search query, show search info instead of file info
+	// When there's an active search query, show search info
+	var searchInfo string
 	if m.searchQuery != "" {
 		if len(m.matches) == 0 {
-			fileInfo = "No matches"
+			searchInfo = " No matches"
 		} else {
-			fileInfo = fmt.Sprintf("%d/%d", m.currentMatch+1, len(m.matches))
+			searchInfo = fmt.Sprintf(" %d/%d", m.currentMatch+1, len(m.matches))
 		}
 	}
 
-	// Combine: reversed_less_indicator + space + file_info + padding
-	content := styledLessIndicator + " " + fileInfo
-	contentWidth := displayWidth(" "+lessIndicator) + 1 + displayWidth(fileInfo)
+	// Combine: reversed_less_indicator + search_info + padding
+	content := styledLessIndicator + searchInfo
+	contentWidth := displayWidth(" "+lessIndicator) + displayWidth(searchInfo)
 	padding := m.width - contentWidth
 	if padding < 0 {
 		padding = 0

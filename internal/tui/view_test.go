@@ -382,16 +382,16 @@ func TestView_StatusBarContent(t *testing.T) {
 	m.calculateTotalLines()
 	// Position cursor on last file content line (not summary)
 	// totalLines = 1 header + 20 pairs + 1 summary = 22
-	// cursorOffset = (10-1)*20/100 = 1
+	// cursorOffset = (10-2)*20/100 = 1
 	// To put cursor on line 20 (last pair), scroll = 20 - cursorOffset = 19
 	m.scroll = 19
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	lastLine := lines[len(lines)-1]
+	topBar := lines[0]
 
-	// Status bar should contain the file name
-	assert.Contains(t, lastLine, "foo.go")
+	// Top bar should contain the file name (file info moved from bottom to top bar)
+	assert.Contains(t, topBar, "foo.go")
 }
 
 func TestStatusInfo_DeletedFile(t *testing.T) {
@@ -562,16 +562,20 @@ func TestView_ScrolledToMax(t *testing.T) {
 
 	assert.Equal(t, 5, len(lines), "should have exactly height lines")
 
-	// First line should be the summary row (last content line at maxScroll)
-	assert.Contains(t, lines[0], "file changed")
+	// Layout: [topBar, content[0..contentH-1], bottomBar]
+	// lines[0] = top bar (no file name when on summary)
+	assert.NotContains(t, lines[0], "foo.go", "top bar should not show file name when on summary")
 
-	// Lines 1-3 should be empty padding
-	for i := 1; i < 4; i++ {
-		assert.Equal(t, "", lines[i], "line %d should be empty padding", i)
-	}
+	// lines[1] = summary row (last content line at maxScroll)
+	assert.Contains(t, lines[1], "file changed")
 
-	// Last line should be status bar with END (no file name when cursor is on summary)
-	assert.NotContains(t, lines[4], "foo.go", "summary row should not show file name")
+	// lines[2] should be empty padding (contentH = height - 2 = 3, only 1 content row visible)
+	assert.Equal(t, "", lines[2], "line 2 should be empty padding")
+
+	// lines[3] is empty padding
+	assert.Equal(t, "", lines[3], "line 3 should be empty padding")
+
+	// lines[4] = bottom bar with END
 	assert.Contains(t, lines[4], "END")
 }
 
@@ -760,9 +764,11 @@ func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// First line should be the file header, not blank
-	assert.Contains(t, lines[0], "only.go")
-	assert.Contains(t, lines[0], "═══")
+	// Layout: [topBar, content..., bottomBar]
+	// lines[0] = top bar
+	// lines[1] = first content line (file header), not blank
+	assert.Contains(t, lines[1], "only.go")
+	assert.Contains(t, lines[1], "═══")
 }
 
 func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
@@ -853,8 +859,9 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 			output := m.View()
 			lines := strings.Split(output, "\n")
 
-			// First non-blank line should be the header with the icon
-			headerLine := lines[0]
+			// Layout: [topBar, content..., bottomBar]
+			// lines[0] = top bar, lines[1] = first content line (header)
+			headerLine := lines[1]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
 			// Header format is: ═══ <foldIcon> <statusIndicator> filename
 			// For modified files (a/test.go -> b/test.go with same name), status is "~"
@@ -899,15 +906,16 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
+	// Layout: [topBar, content..., bottomBar]
+	// lines[0] = top bar, lines[1] = first content line (header)
 	// Folded view should only show the header and then padding
-	// The header should be on line 0
-	assert.Contains(t, lines[0], "foo.go", "first line should be the header")
-	assert.Contains(t, lines[0], "═══", "header should have the prefix")
+	assert.Contains(t, lines[1], "foo.go", "first content line should be the header")
+	assert.Contains(t, lines[1], "═══", "header should have the prefix")
 
 	// Header should NOT have trailing "=" characters after the filename
 	// The folded header format should be "═══ filename" without trailing "═"
 	// Check that the line doesn't end with many "═" (like the normal header does)
-	headerContent := strings.TrimRight(lines[0], " ")
+	headerContent := strings.TrimRight(lines[1], " ")
 	assert.True(t, strings.HasSuffix(headerContent, "foo.go"),
 		"folded header should end with filename, got: %s", headerContent)
 
@@ -1431,8 +1439,9 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 			output := m.View()
 			lines := strings.Split(output, "\n")
 
-			// Find the content line (second line, after header)
-			contentLine := lines[1]
+			// Layout: [topBar, content..., bottomBar]
+			// lines[0] = top bar, lines[1] = header, lines[2] = content line
+			contentLine := lines[2]
 
 			// The line should contain the indicator followed by space then line number
 			// Format is: indicator + space + lineNum + space + [gutter] + content
@@ -1581,12 +1590,12 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Line 1 (index 1, after header): line 9999
-	// Line 2 (index 2): line 10000
-	// Line 3 (index 3): line 10001
-	line1 := lines[1]
-	line2 := lines[2]
-	line3 := lines[3]
+	// Layout: [topBar, content..., bottomBar]
+	// lines[0] = top bar, lines[1] = header
+	// Content lines: lines[2] = 9999, lines[3] = 10000, lines[4] = 10001
+	line1 := lines[2]
+	line2 := lines[3]
+	line3 := lines[4]
 
 	// All lines should have their content starting at the same column position
 	// The gutter width should accommodate 5 digits for consistency
@@ -1739,20 +1748,23 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Output should have exactly `height` lines (content + padding + status bar)
+	// Output should have exactly `height` lines (top bar + content + bottom bar)
 	assert.Equal(t, 10, len(lines), "view should fill entire viewport height")
 
-	// Status bar should be the last line (no file name when cursor is on summary)
+	// Layout: [topBar, content..., bottomBar]
+	// Top bar should not show file name when cursor is on summary
+	assert.NotContains(t, lines[0], "foo.go", "top bar should not show file name when on summary")
+
+	// Bottom bar should show END
 	lastLine := lines[len(lines)-1]
-	assert.NotContains(t, lastLine, "foo.go", "summary row should not show file name")
 	assert.Contains(t, lastLine, "END")
 
 	// When scrolled to end with small content:
 	// - scroll = maxScroll = 1, cursorOffset = 1
-	// - line[0] is at scroll position (line index 1 = the pair)
-	// - line[1] is cursor position (line index 2 = summary)
-	assert.Contains(t, lines[0], "only line", "first visible line should be the pair")
-	assert.Contains(t, lines[1], "file changed", "second line should be summary at cursor")
+	// - lines[1] is at scroll position (line index 1 = the pair)
+	// - lines[2] is cursor position (line index 2 = summary)
+	assert.Contains(t, lines[1], "only line", "first content line should be the pair")
+	assert.Contains(t, lines[2], "file changed", "second content line should be summary at cursor")
 }
 
 // === File Stats Tests ===
@@ -1977,8 +1989,9 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
+	// Layout: [topBar, content..., bottomBar]
 	// Folded header should contain filename, stats counts, and +/- bar
-	header := lines[0]
+	header := lines[1]
 	assert.Contains(t, header, "main.go", "header should contain filename")
 	assert.Contains(t, header, "|", "header should contain separator")
 	assert.Contains(t, header, "+3", "header should show addition count")
@@ -2023,9 +2036,10 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
+	// Layout: [topBar, content..., bottomBar]
 	// Find position of | in each header
-	header1 := lines[0]
-	header2 := lines[1]
+	header1 := lines[1]
+	header2 := lines[2] // second header is at lines[2] (after blank line between files? Let me check)
 
 	pos1 := strings.Index(header1, "|")
 	pos2 := strings.Index(header2, "|")
@@ -2078,8 +2092,9 @@ func TestFileHeaderWithStats_BarAlignment(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	header1 := lines[0] // +100 -> bar has 24 chars (scaled)
-	header2 := lines[1] // +5 -> bar has 5 chars
+	// Layout: [topBar, content..., bottomBar]
+	header1 := lines[1] // +100 -> bar has 24 chars (scaled)
+	header2 := lines[2] // +5 -> bar has 5 chars
 
 	// Find the position of the bar (consecutive + or - characters)
 	// The bar starts after "| +NNN " - we look for where the repeated +/- begins
@@ -2144,7 +2159,8 @@ func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	header := lines[0]
+	// Layout: [topBar, content..., bottomBar]
+	header := lines[1]
 
 	assert.Contains(t, header, "newfile.go", "header should contain filename")
 	assert.Contains(t, header, "+2", "header should show addition count")
@@ -2182,7 +2198,8 @@ func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	header := lines[0]
+	// Layout: [topBar, content..., bottomBar]
+	header := lines[1]
 
 	assert.Contains(t, header, "deleted.go", "header should contain filename")
 	assert.Contains(t, header, "-3", "header should show deletion count")
@@ -2330,7 +2347,8 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
-			header := lines[0]
+			// Layout: [topBar, content..., bottomBar]
+			header := lines[1]
 
 			// Get the expected fold icon
 			foldIcon := foldLevelIcon(tt.foldLevel)
@@ -2786,28 +2804,29 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	statusBar := lines[len(lines)-1]
+	topBar := lines[0]
+	bottomBar := lines[len(lines)-1]
 
-	// Should contain less-style line indicator
-	assert.Contains(t, statusBar, "line ")
-	assert.Contains(t, statusBar, "/")
+	// Bottom bar should contain less-style line indicator
+	assert.Contains(t, bottomBar, "line ")
+	assert.Contains(t, bottomBar, "/")
 
-	// Should contain fold icon (◐ for normal)
-	assert.Contains(t, statusBar, "◐")
+	// Top bar should contain fold icon (◐ for normal)
+	assert.Contains(t, topBar, "◐")
 
-	// Should contain status icon (~ for modified)
-	assert.Contains(t, statusBar, "~")
+	// Top bar should contain status icon (~ for modified)
+	assert.Contains(t, topBar, "~")
 
-	// Should contain file path
-	assert.Contains(t, statusBar, "foo.go")
+	// Top bar should contain file path
+	assert.Contains(t, topBar, "foo.go")
 
-	// Should contain stats (+1 -1)
-	assert.Contains(t, statusBar, "+1")
-	assert.Contains(t, statusBar, "-1")
+	// Top bar should contain stats (+1 -1)
+	assert.Contains(t, topBar, "+1")
+	assert.Contains(t, topBar, "-1")
 
 	// Should NOT contain [1/1] file counter anymore
-	assert.NotContains(t, statusBar, "[")
-	assert.NotContains(t, statusBar, "]")
+	assert.NotContains(t, topBar, "[")
+	assert.NotContains(t, topBar, "]")
 }
 
 func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
@@ -2835,10 +2854,10 @@ func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	statusBar := lines[len(lines)-1]
+	topBar := lines[0]
 
-	// Should contain folded icon (○)
-	assert.Contains(t, statusBar, "○")
+	// Top bar should contain folded icon (○)
+	assert.Contains(t, topBar, "○")
 }
 
 func TestStatusBar_NewFormat_ExpandedFile(t *testing.T) {
@@ -2864,10 +2883,10 @@ func TestStatusBar_NewFormat_ExpandedFile(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	statusBar := lines[len(lines)-1]
+	topBar := lines[0]
 
-	// Should contain expanded icon (●)
-	assert.Contains(t, statusBar, "●")
+	// Top bar should contain expanded icon (●)
+	assert.Contains(t, topBar, "●")
 }
 
 func TestStatusBar_NewFormat_AddedFile(t *testing.T) {
@@ -2893,12 +2912,11 @@ func TestStatusBar_NewFormat_AddedFile(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	statusBar := lines[len(lines)-1]
+	topBar := lines[0]
 
-	// Should contain added status icon (+)
-	// Note: Need to check for the styled version or look for the pattern
-	assert.Contains(t, statusBar, "newfile.go")
-	assert.Contains(t, statusBar, "+1")
+	// Top bar should contain file name and stats
+	assert.Contains(t, topBar, "newfile.go")
+	assert.Contains(t, topBar, "+1")
 }
 
 func TestStatusBar_NewFormat_DeletedFile(t *testing.T) {
@@ -2924,11 +2942,11 @@ func TestStatusBar_NewFormat_DeletedFile(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	statusBar := lines[len(lines)-1]
+	topBar := lines[0]
 
-	// Should show old path for deleted files
-	assert.Contains(t, statusBar, "deleted.go")
-	assert.Contains(t, statusBar, "-1")
+	// Top bar should show old path for deleted files
+	assert.Contains(t, topBar, "deleted.go")
+	assert.Contains(t, topBar, "-1")
 }
 
 func TestStatusBar_NewFormat_AtEnd(t *testing.T) {
@@ -2986,13 +3004,13 @@ func TestStatusBar_NewFormat_NoStats(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	statusBar := lines[len(lines)-1]
+	topBar := lines[0]
 
-	// Should contain file path but no +/- stats
-	assert.Contains(t, statusBar, "foo.go")
+	// Top bar should contain file path but no +/- stats
+	assert.Contains(t, topBar, "foo.go")
 	// Stats should be omitted when there are no changes
-	assert.NotContains(t, statusBar, "+0")
-	assert.NotContains(t, statusBar, "-0")
+	assert.NotContains(t, topBar, "+0")
+	assert.NotContains(t, topBar, "-0")
 }
 
 func TestStatusBar_NonShrinkingWidth(t *testing.T) {
@@ -3031,4 +3049,257 @@ func TestStatusBar_NonShrinkingWidth(t *testing.T) {
 	// Extract the "line X/Y Z%" portion and compare widths
 	// The max width should be maintained (padded with trailing spaces)
 	assert.Equal(t, len(bar1), len(bar2), "status bar should maintain consistent width")
+}
+
+// ============================================================================
+// Top Bar Tests
+// ============================================================================
+
+func TestTopBar_ContainsFileInfo(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	topBar := lines[0]
+
+	// Top bar should contain file info
+	assert.Contains(t, topBar, "foo.go", "top bar should contain file name")
+	assert.Contains(t, topBar, "◐", "top bar should contain fold icon")
+	assert.Contains(t, topBar, "~", "top bar should contain status icon for modified file")
+	assert.Contains(t, topBar, "+1", "top bar should contain added count")
+	assert.Contains(t, topBar, "-1", "top bar should contain removed count")
+}
+
+func TestTopBar_LeftAligned(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	topBar := lines[0]
+
+	// Top bar should be left-aligned (starts with content, not spaces)
+	assert.True(t, len(topBar) > 0, "top bar should not be empty")
+	// The fold icon should be near the start
+	idx := strings.Index(topBar, "◐")
+	assert.True(t, idx >= 0 && idx < 5, "fold icon should be near the start (left-aligned)")
+}
+
+func TestBottomBar_OnlyLessStyle(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	bottomBar := lines[len(lines)-1]
+
+	// Bottom bar should contain less-style indicator
+	assert.Contains(t, bottomBar, "line ", "bottom bar should contain 'line' indicator")
+	assert.Contains(t, bottomBar, "/", "bottom bar should contain line count separator")
+
+	// Bottom bar should NOT contain file info (that's now in top bar)
+	assert.NotContains(t, bottomBar, "foo.go", "bottom bar should not contain file name")
+	assert.NotContains(t, bottomBar, "◐", "bottom bar should not contain fold icon")
+}
+
+func TestView_Layout_TopBarFirst_BottomBarLast(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Should have exactly height lines (10)
+	assert.Equal(t, 10, len(lines), "view should have exactly height lines")
+
+	topBar := lines[0]
+	bottomBar := lines[len(lines)-1]
+
+	// Top bar has file info
+	assert.Contains(t, topBar, "foo.go", "first line should be top bar with file info")
+
+	// Bottom bar has less-style indicator
+	assert.Contains(t, bottomBar, "line ", "last line should be bottom bar with less indicator")
+}
+
+func TestContentHeight_ReservesTwoLines(t *testing.T) {
+	m := Model{
+		height: 20,
+	}
+
+	// contentHeight should be height - 2 (for top bar and bottom bar)
+	assert.Equal(t, 18, m.contentHeight(), "contentHeight should be height - 2")
+}
+
+func TestContentHeight_MinimumOne(t *testing.T) {
+	m := Model{
+		height: 2,
+	}
+
+	// contentHeight should be at least 1, even if height - 2 = 0
+	assert.Equal(t, 1, m.contentHeight(), "contentHeight should be at least 1")
+
+	m.height = 1
+	assert.Equal(t, 1, m.contentHeight(), "contentHeight should be at least 1 even with tiny height")
+}
+
+func TestTopBar_SearchMode_StillShowsFileInfo(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:      80,
+		height:     10,
+		keys:       DefaultKeyMap(),
+		searchMode: true,
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	topBar := lines[0]
+
+	// Top bar should still show file info during search
+	assert.Contains(t, topBar, "foo.go", "top bar should show file info even in search mode")
+}
+
+func TestBottomBar_SearchMode_ShowsSearchPrompt(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:         80,
+		height:        10,
+		keys:          DefaultKeyMap(),
+		searchMode:    true,
+		searchForward: true,
+		searchInput:   "test",
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	bottomBar := lines[len(lines)-1]
+
+	// Bottom bar should show search prompt in search mode
+	assert.Contains(t, bottomBar, "/test", "bottom bar should show search prompt")
+}
+
+func TestTopBar_NoFileInfo_WhenOnSummary(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+	// Position cursor on summary row (last row at index totalLines-1)
+	// cursorLine = scroll + cursorOffset
+	// totalLines-1 = scroll + cursorOffset
+	// scroll = totalLines - 1 - cursorOffset
+	m.scroll = m.totalLines - 1 - m.cursorOffset()
+
+	topBar := m.renderTopBar()
+
+	// When cursor is on summary (not a file), top bar should be empty or minimal
+	assert.NotContains(t, topBar, "foo.go", "top bar should not show file name when on summary")
 }

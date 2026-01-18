@@ -301,7 +301,7 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 				},
 			},
 			width:  80,
-			height: 10, // cursor offset = 1 (20% of 9)
+			height: 10, // cursor offset = 1 (20% of 8)
 			scroll: -1, // cursor at line 0 (the header)
 			keys:   DefaultKeyMap(),
 		}
@@ -309,10 +309,12 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 
 		output := m.View()
 
-		// With scroll=-1, viewport row 0 is blank padding, row 1 is the header
+		// Layout: [topBar, content[0..contentH-1], bottomBar]
+		// With scroll=-1, content row 0 is blank padding, content row 1 is the header
+		// So lines[0]=topBar, lines[1]=blank, lines[2]=header
 		lines := strings.Split(output, "\n")
-		assert.True(t, len(lines) > 1)
-		headerLine := lines[1]
+		assert.True(t, len(lines) > 2)
+		headerLine := lines[2]
 
 		// The header should contain the filename
 		assert.Contains(t, headerLine, "test.go", "header should contain filename")
@@ -347,7 +349,8 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 
 		output := m.View()
 		lines := strings.Split(output, "\n")
-		headerLine := lines[1]
+		// lines[0]=topBar, lines[1]=blank, lines[2]=header
+		headerLine := lines[2]
 
 		// The cursor style should end before the space and icon
 		// Pattern: [cursor style]═══[reset][header style] ◐ filename...
@@ -385,9 +388,10 @@ func TestView_CursorHighlight_OnFileHeader_SeparatorAligned(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the header line and a diff line
-	headerLine := lines[1] // header (cursor is here)
-	diffLine := lines[2]   // first diff line
+	// Layout: [topBar, content[0..contentH-1], bottomBar]
+	// With scroll=-1: lines[0]=topBar, lines[1]=blank, lines[2]=header, lines[3]=diffLine
+	headerLine := lines[2] // header (cursor is here)
+	diffLine := lines[3]   // first diff line
 
 	// Find display column of │ in both lines by measuring width up to the separator
 	headerSepPos := displayColumnOf(headerLine, "│")
@@ -434,9 +438,11 @@ func TestView_CursorHighlight_OnDiffLine(t *testing.T) {
 		output := m.View()
 		lines := strings.Split(output, "\n")
 
-		// Line 1 (index 1) should have the diff content with highlighted gutters
-		assert.True(t, len(lines) > 1)
-		diffLine := lines[1]
+		// Layout: [topBar, content[0..contentH-1], bottomBar]
+		// With scroll=0, content row 0 = header, content row 1 = diff line
+		// So lines[0]=topBar, lines[1]=header, lines[2]=diffLine
+		assert.True(t, len(lines) > 2)
+		diffLine := lines[2]
 
 		// The diff line gutters should have cursor highlighting
 		assert.Contains(t, diffLine, ansiCursorStyle, "diff line should have cursor highlighting on gutter")
@@ -479,11 +485,12 @@ func TestView_CursorHighlight_OnBlankSeparator(t *testing.T) {
 		output := m.View()
 		lines := strings.Split(output, "\n")
 
+		// Layout: [topBar, content[0..contentH-1], bottomBar]
 		// With scroll=1 and cursorOffset=1, cursor is at content line 2
-		// Viewport: [content[1], content[2], content[3], ...]
-		// So cursor row in viewport is index 1 (content[2] = blank separator)
-		assert.True(t, len(lines) > 1)
-		blankLine := lines[1]
+		// Viewport content: [content[1], content[2], content[3], ...]
+		// So lines[0]=topBar, lines[1]=content[1], lines[2]=content[2]=blank separator
+		assert.True(t, len(lines) > 2)
+		blankLine := lines[2]
 
 		// Even blank lines should have highlighted gutters when cursor is on them
 		assert.Contains(t, blankLine, ansiCursorStyle, "blank separator should have cursor highlighting on gutter areas")
@@ -521,11 +528,12 @@ func TestView_CursorHighlight_OnHunkSeparator(t *testing.T) {
 		output := m.View()
 		lines := strings.Split(output, "\n")
 
+		// Layout: [topBar, content[0..contentH-1], bottomBar]
 		// With scroll=1 and cursorOffset=1, cursor is at content line 2
-		// Viewport: [content[1], content[2], content[3], ...]
-		// So cursor row in viewport is index 1 (content[2] = hunk separator)
-		assert.True(t, len(lines) > 1)
-		separatorLine := lines[1]
+		// Viewport content: [content[1], content[2], content[3], ...]
+		// So lines[0]=topBar, lines[1]=content[1], lines[2]=content[2]=hunk separator
+		assert.True(t, len(lines) > 2)
+		separatorLine := lines[2]
 
 		// The separator line gutters should have cursor highlighting
 		// Note: when cursor is on hunk separator, we use │ instead of ┼ because gutters are styled
@@ -559,9 +567,11 @@ func TestView_CursorHighlight_BothGuttersOnAddedLine(t *testing.T) {
 		output := m.View()
 		lines := strings.Split(output, "\n")
 
-		// Line 1 should have both left (empty) and right gutters highlighted
-		assert.True(t, len(lines) > 1)
-		addedLine := lines[1]
+		// Layout: [topBar, content[0..contentH-1], bottomBar]
+		// With scroll=0, content row 0 = header, content row 1 = added line
+		// So lines[0]=topBar, lines[1]=header, lines[2]=addedLine
+		assert.True(t, len(lines) > 2)
+		addedLine := lines[2]
 
 		// Both left gutter (empty) and right gutter should be highlighted
 		assert.Contains(t, addedLine, ansiCursorStyle, "added line should have cursor highlighting on both gutters")

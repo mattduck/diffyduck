@@ -1,3 +1,4 @@
+◐ ~ foo.go +1 -1                                                                
 ═══ ◐ ~ foo.go ─────────────────────────────────────────────────────────────────
      1                                 │      1                                
 -    2 ░ a much longer line that wil ░ │ +    2 ░ a much longer line that wil ░
@@ -6,5 +7,4 @@
 
 
 
-
- line 2/5 25%   ◐ ~ foo.go +1 -1                                                
+ line 2/5 25%                                                                   
