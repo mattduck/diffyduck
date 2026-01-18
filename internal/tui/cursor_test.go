@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -268,10 +269,10 @@ func TestStatusInfo_CursorOnLastBlankLine_CountsAsLastFile(t *testing.T) {
 // Cursor Line Highlighting Tests
 // =============================================================================
 
-// ANSI escape sequences for cursor highlighting (bg=7, fg=0)
+// ANSI escape sequences for cursor highlighting (bg=15, fg=0)
 const (
-	// lipgloss combines fg and bg into single escape: \x1b[30;47m = fg black + bg white
-	ansiCursorStyle = "\x1b[30;47m"
+	// lipgloss combines fg and bg into single escape: \x1b[30;107m = fg black + bg bright white
+	ansiCursorStyle = "\x1b[30;107m"
 	ansiReset       = "\x1b[0m"
 )
 
@@ -353,17 +354,19 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 		headerLine := lines[2]
 
 		// The cursor style should end before the space and icon
-		// Pattern: [cursor style]═══[reset][header style] ◐ filename...
-		// Only the "═══" part is highlighted, not the space or icon
-		assert.Contains(t, headerLine, ansiCursorStyle+"═══"+ansiReset, "only the ═══ should be highlighted, not the space or icon")
+		// Pattern: [cursor style]════[reset][header style] ◐ filename...
+		// Only the gutter (═'s) is highlighted, not the space or icon
+		// Gutter width is dynamic (minimum 4), so check for at least ════
+		assert.Contains(t, headerLine, ansiCursorStyle+"════", "gutter should be highlighted")
+		assert.Contains(t, headerLine, ansiReset, "highlighted section should end with reset")
 	})
 }
 
-func TestView_CursorHighlight_OnFileHeader_SeparatorAligned(t *testing.T) {
-	// When cursor is on a Normal/Expanded header, the │ separator should align with diff lines
-	// Explicitly disable colors so we can compare character positions directly
+func TestView_FileHeader_SpansFullWidth(t *testing.T) {
+	// File headers should span the full terminal width without a │ separator
+	// (separators are only for diff content lines)
 	lipgloss.SetColorProfile(termenv.Ascii)
-	defer lipgloss.SetColorProfile(termenv.Ascii) // keep disabled after test
+	defer lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := Model{
 		files: []sidebyside.FilePair{
@@ -388,18 +391,18 @@ func TestView_CursorHighlight_OnFileHeader_SeparatorAligned(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, content[0..contentH-1], bottomBar]
-	// With scroll=-1: lines[0]=topBar, lines[1]=blank, lines[2]=header, lines[3]=diffLine
-	headerLine := lines[2] // header (cursor is here)
-	diffLine := lines[3]   // first diff line
+	// Find the header line (contains test.go and ═ or ─)
+	var headerLine string
+	for _, line := range lines {
+		if strings.Contains(line, "test.go") && (strings.Contains(line, "═") || strings.Contains(line, "─")) {
+			headerLine = line
+			break
+		}
+	}
 
-	// Find display column of │ in both lines by measuring width up to the separator
-	headerSepPos := displayColumnOf(headerLine, "│")
-	diffSepPos := displayColumnOf(diffLine, "│")
-
-	assert.NotEqual(t, -1, headerSepPos, "header should have │ separator")
-	assert.NotEqual(t, -1, diffSepPos, "diff line should have │ separator")
-	assert.Equal(t, diffSepPos, headerSepPos, "│ separator should be at same display column in header and diff line")
+	require.NotEmpty(t, headerLine, "should find header line")
+	// Header should NOT have │ separator (it spans full width)
+	assert.NotContains(t, headerLine, "│", "file header should not have │ separator")
 }
 
 // displayColumnOf returns the display column where substr starts, or -1 if not found

@@ -1,11 +1,11 @@
-◐ ~ main.go +2 -1                                                               
-═══ ◐ ~ main.go ────────────────────────────────────────────────────────────────
+    ◐ ~ main.go +2 -1                                                           
+  ════ ◐ ~ main.go ─────────────────────────────────────────────────────────────
      1   package main                  │      1   package main                 
      2                                 │      2                                
--    3 ░     fmt.Println("old")      ░ │ +    3 ░     fmt.Println("new")      ░
+➤    3 ░     fmt.Println("old")      ░ │ ➤    3 ░     fmt.Println("new")      ░
                                        │ +    4 ░     fmt.Println("added")    ░
      4   }                             │      5   }                            
-═══ ●   1 file changed, 2 insertions(+), 1 deletion(-)
+  ════ ●   1 file changed, 2 insertions(+), 1 deletion(-)
 
 
 

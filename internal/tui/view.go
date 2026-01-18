@@ -34,8 +34,11 @@ var (
 	searchMatchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
 	searchCurrentMatchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("11"))
 
-	// Cursor highlight style (bg=7 white, fg=0 black) for gutter areas
-	cursorStyle = lipgloss.NewStyle().Background(lipgloss.Color("7")).Foreground(lipgloss.Color("0"))
+	// Cursor highlight style (bg=15 bright white, fg=0 black) for gutter areas
+	cursorStyle = lipgloss.NewStyle().Background(lipgloss.Color("15")).Foreground(lipgloss.Color("0"))
+
+	// Cursor arrow style (fg=15, no background)
+	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 )
 
 // View implements tea.Model.
@@ -483,23 +486,24 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
 	lineNumWidth := m.lineNumWidth()
 
-	if isCursorRow {
-		// Gutter area gets dashes, highlighted with cursor style
-		// Format: indicator(dash) + space + gutter(dashes) + space + content(dashes)
-		gutterDashes := cursorStyle.Render(strings.Repeat("─", lineNumWidth))
+	// Content area width: halfWidth - indicator(1) - space(1) - gutter(lineNumWidth) - space(1)
+	contentWidth := halfWidth - lineNumWidth - 3
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
 
-		// Content area with dashes
-		contentWidth := halfWidth - lineNumWidth - 3
+	if isCursorRow {
+		// Format: arrow + space + gutter(dashes with bg) + space + content(dashes)
+		gutterDashes := cursorStyle.Render(strings.Repeat("─", lineNumWidth))
 		contentDashes := strings.Repeat("─", contentWidth)
 
 		separator := hunkSeparatorStyle.Render("│")
-		// Build: dash + space + gutter_dashes + space + content_dashes
-		return hunkSeparatorStyle.Render("─ ") + gutterDashes + hunkSeparatorStyle.Render(" "+contentDashes) +
+		return cursorArrowStyle.Render("➤") + " " + gutterDashes + hunkSeparatorStyle.Render(" "+contentDashes) +
 			" " + separator + " " +
-			hunkSeparatorStyle.Render("─ ") + gutterDashes + hunkSeparatorStyle.Render(" "+contentDashes)
+			cursorArrowStyle.Render("➤") + " " + gutterDashes + hunkSeparatorStyle.Render(" "+contentDashes)
 	}
 
-	// Normal rendering: full line of dashes
+	// Normal rendering: full line of dashes with ─┼─ in the middle
 	leftDashes := strings.Repeat("─", halfWidth)
 	rightDashes := strings.Repeat("─", halfWidth)
 	return hunkSeparatorStyle.Render(leftDashes + "─┼─" + rightDashes)
@@ -513,12 +517,16 @@ func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
 
 	// Empty content areas (accounting for indicator + space + gutter + space)
 	contentWidth := halfWidth - lineNumWidth - 3
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
 	leftContent := strings.Repeat(" ", contentWidth)
 	rightContent := strings.Repeat(" ", contentWidth)
 
 	separator := hunkSeparatorStyle.Render("│")
-	// Format: indicator(space) + space + gutter + space + content
-	return "  " + leftGutter + " " + leftContent + " " + separator + " " + "  " + rightGutter + " " + rightContent
+	// Format: arrow + space + gutter + space + content
+	return cursorArrowStyle.Render("➤") + " " + leftGutter + " " + leftContent + " " + separator + " " +
+		cursorArrowStyle.Render("➤") + " " + rightGutter + " " + rightContent
 }
 
 // renderTopBar renders the top bar showing file info.
@@ -531,14 +539,17 @@ func (m Model) renderTopBar() string {
 		content = m.formatStatusFileInfo(info)
 	}
 
-	// Pad to fill the width
+	// Leading 4 spaces with bg=15 (matches cursor style)
+	prefix := cursorStyle.Render("    ")
+
+	// Pad to fill the width (accounting for prefix)
 	contentWidth := displayWidth(content)
-	padding := m.width - contentWidth
+	padding := m.width - contentWidth - 4
 	if padding < 0 {
 		padding = 0
 	}
 
-	return content + strings.Repeat(" ", padding)
+	return prefix + content + strings.Repeat(" ", padding)
 }
 
 // renderStatusBar renders the status bar at the bottom of the screen.
@@ -1020,11 +1031,12 @@ func formatSummaryStats(files, added, removed int) string {
 }
 
 // renderSummary renders the summary row at the bottom of the diff view.
-// Format: "═══ ●   N files changed, N insertions(+), N deletions(-)"
+// Format: "➤ ═══ ●   N files changed, N insertions(+), N deletions(-)" (when cursor)
 // Uses expanded icon (●) since there's no additional content to show.
 // Text is not bold, unlike file headers.
 func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidth int, isCursorRow bool) string {
-	equalsPrefix := "═══"
+	lineNumWidth := m.lineNumWidth()
+	equalsGutter := strings.Repeat("═", lineNumWidth)
 	icon := foldLevelIcon(sidebyside.FoldExpanded) // Always use expanded icon
 	// Space where status indicator would be (empty for summary)
 	iconPart := " " + icon + "   " // icon + 3 spaces (status position + space)
@@ -1035,9 +1047,11 @@ func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidt
 	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 
 	if isCursorRow {
-		return cursorStyle.Render(equalsPrefix) + summaryStyle.Render(iconPart+summary)
+		// Format: arrow + space + gutter(═══ with bg) + space + icon + summary
+		return cursorArrowStyle.Render("➤") + " " + cursorStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
 	}
-	return summaryStyle.Render(equalsPrefix + iconPart + summary)
+	// Format: space + space + gutter(═══) + space + icon + summary
+	return "  " + summaryStyle.Render(equalsGutter+iconPart+summary)
 }
 
 func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, status FileStatus, added, removed, maxHeaderWidth, maxCountWidth, rowIdx int, isCursorRow bool) string {
@@ -1051,12 +1065,9 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	statusSymbol, statusStyle := fileStatusIndicator(status)
 	styledStatus := statusStyle.Render(statusSymbol)
 
-	// Split prefix into highlightable part and icon part
-	// Only "═══" gets highlighted (not the space or icon)
-	// Format: ═══ <foldIcon> <statusIndicator> <header>
-	equalsPrefix := "═══"
-	iconPart := " " + icon + " " + styledStatus + " "
-	fullPrefix := equalsPrefix + iconPart
+	lineNumWidth := m.lineNumWidth()
+	// Gutter uses ═ repeated to match line number width
+	equalsGutter := strings.Repeat("═", lineNumWidth)
 
 	if foldLevel == sidebyside.FoldFolded {
 		// Folded header: show stats with aligned | separator and bar
@@ -1071,9 +1082,11 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 		}
 
 		if isCursorRow {
-			return cursorStyle.Render(equalsPrefix) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar
+			// Format: arrow + space + gutter(═══) + space + icon + status + header + stats
+			return cursorArrowStyle.Render("➤") + " " + cursorStyle.Render(equalsGutter) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar
 		}
-		return headerStyle.Render(equalsPrefix+" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar
+		// Format: space + space + gutter(═══) + space + icon + status + header + stats
+		return "  " + headerStyle.Render(equalsGutter+" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar
 	}
 
 	// Normal or Expanded: include trailing line, no stats
@@ -1082,51 +1095,37 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 		lineChar = "─"
 	}
 
-	// Calculate layout to match diff line structure
-	halfWidth := (m.width - 3) / 2 // -3 for " │ "
-	lineNumWidth := m.lineNumWidth()
-
 	if isCursorRow {
-		// Build header with highlighted equals prefix and right gutter
-		styledEqualsPrefix := cursorStyle.Render(equalsPrefix)
+		// Format: arrow + space + gutter(═══ with bg) + space + icon + status + header + trailing (full width, no divider)
+		styledGutter := cursorStyle.Render(equalsGutter)
 
-		// Left portion needs to fill exactly halfWidth display columns
-		// iconPart includes the status indicator now, account for its width
-		equalsPrefixWidth := displayWidth(equalsPrefix)
+		// Calculate trailing to fill the full width
+		// Used: arrow(1) + space(1) + gutter(lineNumWidth) + iconPart + header + suffix
 		iconPartWidth := displayWidth(" " + icon + " " + statusSymbol + " ")
 		headerTextWidth := displayWidth(header)
 		suffix := " "
 		suffixWidth := displayWidth(suffix)
 
-		contentWidth := equalsPrefixWidth + iconPartWidth + headerTextWidth + suffixWidth
-		trailingBeforeSep := halfWidth - contentWidth
-		if trailingBeforeSep < 0 {
-			trailingBeforeSep = 0
+		leftUsed := 1 + 1 + lineNumWidth + iconPartWidth + headerTextWidth + suffixWidth
+		trailing := m.width - leftUsed
+		if trailing < 0 {
+			trailing = 0
 		}
 
-		// Right side: space + gutter (highlighted) + space + trailing
-		rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-		// Right half also has halfWidth columns: gutter(4) + space(1) + content
-		trailingAfterGutter := halfWidth - lineNumWidth - 1
-		if trailingAfterGutter < 0 {
-			trailingAfterGutter = 0
-		}
-
-		return styledEqualsPrefix + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+suffix+strings.Repeat(lineChar, trailingBeforeSep)) +
-			" " + hunkSeparatorStyle.Render("│") + " " + rightGutter + " " +
-			headerStyle.Render(strings.Repeat(lineChar, trailingAfterGutter))
+		return cursorArrowStyle.Render("➤") + " " + styledGutter + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+suffix+strings.Repeat(lineChar, trailing))
 	}
 
-	// Normal rendering: full width trailing line
-	suffix := " "
-	headerWidth := displayWidth(fullPrefix) + displayWidth(header) + displayWidth(suffix)
+	// Normal rendering: space + space + gutter + space + rest, full width trailing line
+	// Format: space + space + gutter(═══) + space + icon + status + header + trailing
+	fullPrefix := "  " + equalsGutter + " " + icon + " " + statusSymbol + " "
+	headerWidth := displayWidth(fullPrefix) + displayWidth(header) + 1 // +1 for suffix space
 	remaining := m.width - headerWidth
 	if remaining < 0 {
 		remaining = 0
 	}
 	line := strings.Repeat(lineChar, remaining)
 
-	return headerStyle.Render(equalsPrefix+" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+suffix+line)
+	return "  " + headerStyle.Render(equalsGutter+" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+" "+line)
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, leftIndicatorStart, rightIndicatorStart int) string {
@@ -1166,14 +1165,19 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, li
 
 func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool, indicatorStart int) string {
 	// Diff indicator (+/-/space) before line number
+	// On cursor row, show arrowhead instead
 	var indicator string
-	switch line.Type {
-	case sidebyside.Added:
-		indicator = addedStyle.Render("+")
-	case sidebyside.Removed:
-		indicator = removedStyle.Render("-")
-	default:
-		indicator = " "
+	if isCursorRow {
+		indicator = cursorArrowStyle.Render("➤")
+	} else {
+		switch line.Type {
+		case sidebyside.Added:
+			indicator = addedStyle.Render("+")
+		case sidebyside.Removed:
+			indicator = removedStyle.Render("-")
+		default:
+			indicator = " "
+		}
 	}
 
 	// Line number (fixed, not affected by horizontal scroll)

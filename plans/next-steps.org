@@ -542,6 +542,55 @@ Potential solutions to investigate:
 3. Avoid testing ANSI output directly; test that the right styling functions are called
 4. Use a mock renderer for tests that captures style applications
 
+*** Known Issue: Long filename exceeds terminal width
+
+When a file header has a very long filename, the current implementation doesn't
+truncate the filename to fit within the terminal width.
+
+Expected behavior: Truncate the filename (with ellipsis?) to ensure the header
+stays within the terminal width.
+
+Location: =internal/tui/view.go= in =renderHeader()=. When =leftUsed > m.width=,
+the trailing becomes 0 but we don't truncate the header text itself.
+
+** Cursor & Gutter Styling [DONE]
+
+Consistent cursor indicator and gutter styling across all row types.
+
+*** Features Implemented
+
+- *Cursor arrow indicator*: All row types show =➤= (fg=15, no bg) when cursor is on them
+- *Highlighted gutter*: Line number gutter area has bg=15 (bright white) on cursor row
+- *Dynamic gutter width*: Gutter width matches =lineNumWidth()= (minimum 4, expands for larger numbers)
+- *Top bar prefix*: 4 spaces with bg=15 at start of top bar (matches cursor gutter style)
+- *Consistent layout*: All rows follow =indicator + space + gutter + space + content= pattern
+
+*** Row Type Behaviors
+
+| Row Type       | Cursor State | Indicator | Gutter Content      |
+|----------------|--------------|-----------|---------------------|
+| Diff line      | cursor       | ➤ (fg=15) | line num (bg=15)    |
+| Diff line      | normal       | +/-/space | line num (colored)  |
+| File header    | cursor       | ➤ (fg=15) | ════ (bg=15)        |
+| File header    | normal       | (space)   | ════                |
+| Summary row    | cursor       | ➤ (fg=15) | ════ (bg=15)        |
+| Summary row    | normal       | (space)   | ════                |
+| Hunk separator | cursor       | ➤ (fg=15) | ──── (bg=15)        |
+| Hunk separator | normal       | (full line of ─┼─)            |
+| Blank line     | cursor       | ➤ (fg=15) | spaces (bg=15)      |
+
+*** Design Decisions
+
+- *File headers span full width*: No │ divider in file headers (unlike diff lines)
+- *Hunk separators*: Non-cursor shows continuous =────┼────= line; cursor shows gutter structure
+- *Arrow replaces +/-*: On cursor row, the diff indicator (+/-) is replaced by the arrow
+
+*** Styles Defined
+
+In =internal/tui/view.go=:
+- =cursorStyle=: bg=15 (bright white), fg=0 (black) - for gutter highlighting
+- =cursorArrowStyle=: fg=15 (bright white), no bg - for the ➤ arrow
+
 *** Known Issue: Current search match highlighting inconsistent
 
 The search feature uses two yellow colors:
@@ -559,13 +608,15 @@ Git-style summary line at the bottom of the diff view showing aggregate stats.
 *** Features Implemented
 
 - Appears at the end of all files in all view modes (folded, normal, expanded)
-- Format: =═══ ●   N files changed, N insertions(+), N deletions(-)=
+- Format: =  ════ ●   N files changed, N insertions(+), N deletions(-)=
+- Gutter area (════) matches dynamic =lineNumWidth()= for alignment
 - Uses expanded bullet icon (●) since there's no additional content to show
 - Non-bold text to visually distinguish from file headers
 - Properly handles singular/plural ("1 file" vs "2 files", etc.)
 - Omits zero-count sections (no "0 insertions" shown)
 - Selectable with cursor like any other row
 - Tab/fold toggle does nothing when cursor is on summary row (no file association)
+- Cursor row shows ➤ arrow and highlighted gutter (see Cursor & Gutter Styling)
 
 *** Implementation
 
