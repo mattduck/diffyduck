@@ -562,17 +562,15 @@ func TestView_ScrolledToMax(t *testing.T) {
 
 	assert.Equal(t, 5, len(lines), "should have exactly height lines")
 
-	// Layout: [topBar, content[0..contentH-1], bottomBar]
+	// Layout: [topBar, divider, content[0..contentH-1], bottomBar]
 	// lines[0] = top bar (no file name when on summary)
 	assert.NotContains(t, lines[0], "foo.go", "top bar should not show file name when on summary")
 
-	// lines[1] = summary row (last content line at maxScroll)
-	assert.Contains(t, lines[1], "file changed")
+	// lines[1] = divider
+	// lines[2] = summary row (last content line at maxScroll)
+	assert.Contains(t, lines[2], "file changed")
 
-	// lines[2] should be empty padding (contentH = height - 2 = 3, only 1 content row visible)
-	assert.Equal(t, "", lines[2], "line 2 should be empty padding")
-
-	// lines[3] is empty padding
+	// lines[3] should be empty padding (contentH = height - 3 = 2, only 1 content row visible)
 	assert.Equal(t, "", lines[3], "line 3 should be empty padding")
 
 	// lines[4] = bottom bar with END
@@ -765,11 +763,12 @@ func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, content..., bottomBar]
+	// Layout: [topBar, divider, content..., bottomBar]
 	// lines[0] = top bar
-	// lines[1] = first content line (file header), not blank
-	assert.Contains(t, lines[1], "only.go")
-	assert.Contains(t, lines[1], "═══")
+	// lines[1] = divider
+	// lines[2] = first content line (file header), not blank
+	assert.Contains(t, lines[2], "only.go")
+	assert.Contains(t, lines[2], "═══")
 }
 
 func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
@@ -860,9 +859,9 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 			output := m.View()
 			lines := strings.Split(output, "\n")
 
-			// Layout: [topBar, content..., bottomBar]
-			// lines[0] = top bar, lines[1] = first content line (header)
-			headerLine := lines[1]
+			// Layout: [topBar, divider, content..., bottomBar]
+			// lines[0] = top bar, lines[1] = divider, lines[2] = first content line (header)
+			headerLine := lines[2]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
 			// Header format is: ═══ <foldIcon> <statusIndicator> filename
 			// For modified files (a/test.go -> b/test.go with same name), status is "~"
@@ -907,16 +906,16 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, content..., bottomBar]
-	// lines[0] = top bar, lines[1] = first content line (header)
+	// Layout: [topBar, divider, content..., bottomBar]
+	// lines[0] = top bar, lines[1] = divider, lines[2] = first content line (header)
 	// Folded view should only show the header and then padding
-	assert.Contains(t, lines[1], "foo.go", "first content line should be the header")
-	assert.Contains(t, lines[1], "═══", "header should have the prefix")
+	assert.Contains(t, lines[2], "foo.go", "first content line should be the header")
+	assert.Contains(t, lines[2], "═══", "header should have the prefix")
 
 	// Header should NOT have trailing "=" characters after the filename
 	// The folded header format should be "═══ filename" without trailing "═"
 	// Check that the line doesn't end with many "═" (like the normal header does)
-	headerContent := strings.TrimRight(lines[1], " ")
+	headerContent := strings.TrimRight(lines[2], " ")
 	assert.True(t, strings.HasSuffix(headerContent, "foo.go"),
 		"folded header should end with filename, got: %s", headerContent)
 
@@ -1604,12 +1603,12 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, content..., bottomBar]
-	// lines[0] = top bar, lines[1] = header
-	// Content lines: lines[2] = 9999, lines[3] = 10000, lines[4] = 10001
-	line1 := lines[2]
-	line2 := lines[3]
-	line3 := lines[4]
+	// Layout: [topBar, divider, content..., bottomBar]
+	// lines[0] = top bar, lines[1] = divider, lines[2] = header
+	// Content lines: lines[3] = 9999, lines[4] = 10000, lines[5] = 10001
+	line1 := lines[3]
+	line2 := lines[4]
+	line3 := lines[5]
 
 	// All lines should have their content starting at the same display column position
 	// The gutter width should accommodate 5 digits for consistency
@@ -1776,10 +1775,10 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 
 	// When scrolled to end with small content:
 	// - scroll = maxScroll = 1, cursorOffset = 1
-	// - lines[1] is at scroll position (line index 1 = the pair)
-	// - lines[2] is cursor position (line index 2 = summary)
-	assert.Contains(t, lines[1], "only line", "first content line should be the pair")
-	assert.Contains(t, lines[2], "file changed", "second content line should be summary at cursor")
+	// - lines[2] is at scroll position (line index 1 = the pair)
+	// - lines[3] is cursor position (line index 2 = summary)
+	assert.Contains(t, lines[2], "only line", "first content line should be the pair")
+	assert.Contains(t, lines[3], "file changed", "second content line should be summary at cursor")
 }
 
 // === File Stats Tests ===
@@ -2004,9 +2003,9 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, content..., bottomBar]
+	// Layout: [topBar, divider, content..., bottomBar]
 	// Folded header should contain filename, stats counts, and +/- bar
-	header := lines[1]
+	header := lines[2]
 	assert.Contains(t, header, "main.go", "header should contain filename")
 	assert.Contains(t, header, "|", "header should contain separator")
 	assert.Contains(t, header, "+3", "header should show addition count")
@@ -2051,10 +2050,10 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, content..., bottomBar]
+	// Layout: [topBar, divider, content..., bottomBar]
 	// Find display column position of | in each header (using rune position for multi-byte chars)
-	header1 := lines[1]
-	header2 := lines[2] // second header is at lines[2] (after blank line between files? Let me check)
+	header1 := lines[2]
+	header2 := lines[3] // second header is at lines[3] (folded files have no content between them)
 
 	pos1 := displayColumnOf(header1, "|")
 	pos2 := displayColumnOf(header2, "|")
@@ -2107,9 +2106,9 @@ func TestFileHeaderWithStats_BarAlignment(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, content..., bottomBar]
-	header1 := lines[1] // +100 -> bar has 24 chars (scaled)
-	header2 := lines[2] // +5 -> bar has 5 chars
+	// Layout: [topBar, divider, content..., bottomBar]
+	header1 := lines[2] // +100 -> bar has 24 chars (scaled)
+	header2 := lines[3] // +5 -> bar has 5 chars
 
 	// Find the display column position of the bar (consecutive + or - characters)
 	// The bar starts after "| +NNN " - we look for where the repeated +/- begins
@@ -2180,8 +2179,8 @@ func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	// Layout: [topBar, content..., bottomBar]
-	header := lines[1]
+	// Layout: [topBar, divider, content..., bottomBar]
+	header := lines[2]
 
 	assert.Contains(t, header, "newfile.go", "header should contain filename")
 	assert.Contains(t, header, "+2", "header should show addition count")
@@ -2219,8 +2218,8 @@ func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	// Layout: [topBar, content..., bottomBar]
-	header := lines[1]
+	// Layout: [topBar, divider, content..., bottomBar]
+	header := lines[2]
 
 	assert.Contains(t, header, "deleted.go", "header should contain filename")
 	assert.Contains(t, header, "-3", "header should show deletion count")
@@ -2368,8 +2367,8 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
-			// Layout: [topBar, content..., bottomBar]
-			header := lines[1]
+			// Layout: [topBar, divider, content..., bottomBar]
+			header := lines[2]
 
 			// Get the expected fold icon
 			foldIcon := foldLevelIcon(tt.foldLevel)
@@ -3213,13 +3212,13 @@ func TestView_Layout_TopBarFirst_BottomBarLast(t *testing.T) {
 	assert.Contains(t, bottomBar, "line ", "last line should be bottom bar with less indicator")
 }
 
-func TestContentHeight_ReservesTwoLines(t *testing.T) {
+func TestContentHeight_ReservesThreeLines(t *testing.T) {
 	m := Model{
 		height: 20,
 	}
 
-	// contentHeight should be height - 2 (for top bar and bottom bar)
-	assert.Equal(t, 18, m.contentHeight(), "contentHeight should be height - 2")
+	// contentHeight should be height - 3 (for top bar, divider, and bottom bar)
+	assert.Equal(t, 17, m.contentHeight(), "contentHeight should be height - 3")
 }
 
 func TestContentHeight_MinimumOne(t *testing.T) {

@@ -1,4 +1,5 @@
-    ◐ ~ internal/tui/view.go +1                                                                     
+➤ ◐ ~ internal/tui/view.go +1                                                                       
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
   ════ ◐ ~ internal/tui/view.go ────────────────────────────────────────────────────────────────────
      5       "strings"                           │      5       "strings"                          
      6       "github.com/charmbracelet/lipglos   │      6       "github.com/charmbracelet/lipglos  
@@ -6,7 +7,6 @@
      7       "github.com/user/diffyduck/pkg/si   │      8       "github.com/user/diffyduck/pkg/si  
      8   )                                       │      9   )                                      
   ════ ●   1 file changed, 1 insertion(+)
-
 
 
 

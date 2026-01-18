@@ -146,9 +146,9 @@ func (m Model) Init() tea.Cmd {
 	return m.RequestHighlightFromPairsExcept(map[int]bool{0: true})
 }
 
-// contentHeight returns the height available for content (minus top bar and bottom bar).
+// contentHeight returns the height available for content (minus top bar, divider, and bottom bar).
 func (m Model) contentHeight() int {
-	h := m.height - 2 // Reserve 1 line for top bar + 1 line for bottom bar
+	h := m.height - 3 // Reserve 1 line for top bar + 1 line for divider + 1 line for bottom bar
 	if h < 1 {
 		return 1
 	}

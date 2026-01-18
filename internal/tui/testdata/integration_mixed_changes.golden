@@ -1,4 +1,5 @@
-    ◐ ~ example.go +5 -2                                                        
+➤ ◐ ~ example.go +5 -2                                                          
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
   ════ ◐ ~ example.go ──────────────────────────────────────────────────────────
      1   package main                  │      1   package main                 
 -    2 ░ import "fmt"                ░ │ +    2 ░ import (                    ░
@@ -9,7 +10,6 @@
 -    4 ░     fmt.Println("hello")    ░ │ +    7 ░     fmt.Println(os.Args)    ░
      5   }                             │      8   }                            
   ════ ●   1 file changed, 5 insertions(+), 2 deletions(-)
-
 
 
 

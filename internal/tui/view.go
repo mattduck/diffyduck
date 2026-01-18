@@ -21,7 +21,7 @@ var (
 	contextDimStyle    = lipgloss.NewStyle().Faint(true) // for context on old side
 	lineNumStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 	emptyStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	statusStyle        = lipgloss.NewStyle().Reverse(true)
+	statusStyle        = lipgloss.NewStyle().Background(lipgloss.Color("8")).Foreground(lipgloss.Color("0"))
 
 	// Inline diff highlight: underlined
 	inlineAddedStyle   = lipgloss.NewStyle().Underline(true)
@@ -529,7 +529,7 @@ func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
 		cursorArrowStyle.Render("➤") + " " + rightGutter + " " + rightContent
 }
 
-// renderTopBar renders the top bar showing file info.
+// renderTopBar renders the top bar showing file info with a divider line below.
 func (m Model) renderTopBar() string {
 	info := m.StatusInfo()
 
@@ -539,17 +539,23 @@ func (m Model) renderTopBar() string {
 		content = m.formatStatusFileInfo(info)
 	}
 
-	// Leading 4 spaces with bg=15 (matches cursor style)
-	prefix := cursorStyle.Render("    ")
+	// Leading arrow indicator (matches cursor arrow in gutter)
+	prefix := cursorArrowStyle.Render("➤") + " "
 
-	// Pad to fill the width (accounting for prefix)
+	// Pad to fill the width (accounting for prefix: arrow + space = 2)
 	contentWidth := displayWidth(content)
-	padding := m.width - contentWidth - 4
+	padding := m.width - contentWidth - 2
 	if padding < 0 {
 		padding = 0
 	}
 
-	return prefix + content + strings.Repeat(" ", padding)
+	topLine := prefix + content + strings.Repeat(" ", padding)
+
+	// Divider line using upper 1/8 block (dim)
+	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	divider := dividerStyle.Render(strings.Repeat("▔", m.width))
+
+	return topLine + "\n" + divider
 }
 
 // renderStatusBar renders the status bar at the bottom of the screen.

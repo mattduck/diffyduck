@@ -1,10 +1,10 @@
-    ◐ ~ foo.go +2 -2                                                            
+➤ ◐ ~ foo.go +2 -2                                                              
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
   ════ ◐ ~ foo.go ──────────────────────────────────────────────────────────────
 ➤    1   context line                  │ ➤    1   context line                 
 -    2 ░ removed line                ░ │ +    2 ░ added line                  ░
                                        │ +    3 ░ pure add                    ░
 -    3 ░ pure remove                 ░ │                                       
   ════ ●   1 file changed, 2 insertions(+), 2 deletions(-)
-
 
  line 2/6 20%                                                                   
