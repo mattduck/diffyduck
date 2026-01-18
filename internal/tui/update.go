@@ -79,6 +79,17 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchInput(msg)
 	}
 
+	// Handle multi-key sequences (e.g., gg, gj, gk)
+	if m.pendingKey == "g" {
+		return m.handlePendingG(msg)
+	}
+
+	// Check for prefix keys that start multi-key sequences
+	if msg.String() == "g" {
+		m.pendingKey = "g"
+		return m, nil
+	}
+
 	keys := m.keys
 
 	switch {
@@ -394,4 +405,100 @@ func (m Model) handleSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// handlePendingG handles the second key after 'g' is pressed.
+func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.pendingKey = "" // Always clear pending state
+
+	switch msg.String() {
+	case "g":
+		// gg: go to top
+		m.scroll = m.minScroll()
+	case "j":
+		// gj: next heading (file header)
+		m.goToNextHeading()
+	case "k":
+		// gk: previous heading (file header)
+		m.goToPrevHeading()
+	}
+	// Any other key just cancels the pending state without action
+
+	return m, nil
+}
+
+// goToNextHeading moves the cursor to the next file header or summary row.
+func (m *Model) goToNextHeading() {
+	rows := m.buildRows()
+	cursorPos := m.cursorLine()
+
+	// Find the current file index and whether we're on summary
+	currentFileIdx := -1
+	onSummary := false
+	if cursorPos >= 0 && cursorPos < len(rows) {
+		currentFileIdx = rows[cursorPos].fileIndex
+		onSummary = rows[cursorPos].isSummary
+	}
+
+	// If already on summary, nowhere to go
+	if onSummary {
+		return
+	}
+
+	// Find the next file header or summary row after the current file
+	for i, row := range rows {
+		if row.isHeader && row.fileIndex > currentFileIdx {
+			m.adjustScrollToRow(i)
+			return
+		}
+		if row.isSummary && currentFileIdx >= 0 {
+			// On a file, can jump to summary
+			m.adjustScrollToRow(i)
+			return
+		}
+	}
+}
+
+// goToPrevHeading moves the cursor to the previous file header.
+func (m *Model) goToPrevHeading() {
+	rows := m.buildRows()
+	cursorPos := m.cursorLine()
+
+	// Find the current file index and whether we're on summary
+	currentFileIdx := 0
+	onSummary := false
+	if cursorPos >= 0 && cursorPos < len(rows) {
+		fi := rows[cursorPos].fileIndex
+		onSummary = rows[cursorPos].isSummary
+		if fi >= 0 {
+			currentFileIdx = fi
+		}
+	}
+
+	// From summary row, go to the last file's header
+	if onSummary {
+		targetFileIdx := len(m.files) - 1
+		for i, row := range rows {
+			if row.isHeader && row.fileIndex == targetFileIdx {
+				m.adjustScrollToRow(i)
+				return
+			}
+		}
+		return
+	}
+
+	// Find the header of the previous file
+	// We want the header of fileIndex = currentFileIdx - 1
+	targetFileIdx := currentFileIdx - 1
+	if targetFileIdx < 0 {
+		// Already at first file, go to its header
+		targetFileIdx = 0
+	}
+
+	for i, row := range rows {
+		if row.isHeader && row.fileIndex == targetFileIdx {
+			m.adjustScrollToRow(i)
+			return
+		}
+	}
 }

@@ -533,8 +533,9 @@ func (m Model) renderStatusBar() string {
 	styledLessIndicator := statusStyle.Render(" " + lessIndicator)
 
 	// Build right side: file info with icons and stats (normal styling, not reversed)
+	// Only show file info when cursor is on a file (not on summary row)
 	var fileInfo string
-	if info.TotalFiles > 0 {
+	if info.CurrentFile > 0 {
 		fileInfo = m.formatStatusFileInfo(info)
 	}
 

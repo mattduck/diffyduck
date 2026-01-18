@@ -94,16 +94,20 @@ func TestMinScroll_AllowsCursorOnFirstLine(t *testing.T) {
 }
 
 func TestGoToTop_PutsCursorOnFirstLine(t *testing.T) {
-	// Pressing 'g' should set scroll so cursor is on line 0 of content
+	// Pressing 'gg' should set scroll so cursor is on line 0 of content
 	m := makeTestModel(100)
 	m.height = 50 // cursor offset is 9
 	m.scroll = 50
 
+	// First 'g' enters pending state
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model := newM.(Model)
+	// Second 'g' completes the sequence
+	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model2 := newM2.(Model)
 
 	// scroll should be -9 so that cursor (at offset 9) points to line 0
-	assert.Equal(t, -9, model.scroll, "g should set scroll so cursor is on first line")
+	assert.Equal(t, -9, model2.scroll, "gg should set scroll so cursor is on first line")
 }
 
 func TestStartup_ScrollIsZero_NoBlankSpaceAtTop(t *testing.T) {
@@ -1115,11 +1119,14 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 
 		// Determine expected file based on cursor position
 		// Note: blank separator lines count as the file above
+		// Summary row (last line) has no file info
 		expectedFile := "alpha.go"
 		if cursorPos >= 12 && cursorPos < 24 { // Line 12 is beta header
 			expectedFile = "beta.go"
-		} else if cursorPos >= 24 { // Line 24 is gamma header
+		} else if cursorPos >= 24 && cursorPos < m.totalLines-1 { // Line 24 is gamma header
 			expectedFile = "gamma.go"
+		} else if cursorPos == m.totalLines-1 { // Summary row
+			expectedFile = ""
 		}
 
 		if cursorPos >= 0 && cursorPos < m.totalLines {

@@ -298,7 +298,7 @@ func TestSearch_PrevMatch_AtStart_NoWrap(t *testing.T) {
 }
 
 func TestSearch_NextMatch_AfterScrollToTop(t *testing.T) {
-	// User navigates to last match, then presses g to go to top, then n
+	// User navigates to last match, then presses gg to go to top, then n
 	// Should find first match from top, not stay at last match
 	m := makeSearchTestModel([]string{
 		"match one",   // row 1
@@ -313,9 +313,11 @@ func TestSearch_NextMatch_AfterScrollToTop(t *testing.T) {
 	m.scroll = 4           // scrolled to last match
 	m.lastSearchScroll = 4 // last search nav was at scroll 4
 
-	// Press g to go to top (now goes to minScroll)
+	// Press gg to go to top (now goes to minScroll)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model := newM.(Model)
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model = newM.(Model)
 	assert.Equal(t, m.minScroll(), model.scroll)
 
 	// Press n to go to next match - should find first match from top

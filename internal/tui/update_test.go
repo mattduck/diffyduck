@@ -137,15 +137,134 @@ func TestUpdate_HalfPageDown(t *testing.T) {
 	assert.Equal(t, 10, model.scroll) // height/2 = 20/2 = 10
 }
 
-func TestUpdate_GoToTop(t *testing.T) {
+func TestUpdate_GoToTop_gg(t *testing.T) {
 	m := makeTestModel(100)
 	m.scroll = 50
 
+	// First 'g' puts us in pending state
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model := newM.(Model)
 
-	// g now goes to minScroll so cursor is at first line
-	assert.Equal(t, m.minScroll(), model.scroll)
+	// Should not have moved yet
+	assert.Equal(t, 50, model.scroll, "first g should not scroll")
+	assert.Equal(t, "g", model.pendingKey, "should be in pending state")
+
+	// Second 'g' completes the sequence
+	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model2 := newM2.(Model)
+
+	assert.Equal(t, m.minScroll(), model2.scroll, "gg should go to top")
+	assert.Equal(t, "", model2.pendingKey, "pending state should be cleared")
+}
+
+func TestUpdate_PendingKey_CancelledByUnknown(t *testing.T) {
+	m := makeTestModel(100)
+	m.scroll = 50
+
+	// Press 'g' to enter pending state
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model := newM.(Model)
+	assert.Equal(t, "g", model.pendingKey)
+
+	// Press unknown key 'x' - should cancel pending state without action
+	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	model2 := newM2.(Model)
+
+	assert.Equal(t, 50, model2.scroll, "scroll should not change")
+	assert.Equal(t, "", model2.pendingKey, "pending state should be cleared")
+}
+
+func makeMultiFileTestModel() Model {
+	// Create 3 files with 5 lines each
+	makePairs := func(n int) []sidebyside.LinePair {
+		pairs := make([]sidebyside.LinePair, n)
+		for i := range pairs {
+			pairs[i] = sidebyside.LinePair{
+				Left:  sidebyside.Line{Num: i + 1, Content: "content"},
+				Right: sidebyside.Line{Num: i + 1, Content: "content"},
+			}
+		}
+		return pairs
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: makePairs(5)},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: makePairs(5)},
+		{OldPath: "a/third.go", NewPath: "b/third.go", Pairs: makePairs(5)},
+	})
+	m.width = 80
+	m.height = 40 // tall enough to see all content
+	return m
+}
+
+func sendKeys(m Model, keys ...string) Model {
+	for _, k := range keys {
+		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)})
+		m = newM.(Model)
+	}
+	return m
+}
+
+func TestUpdate_NextHeading_gj(t *testing.T) {
+	m := makeMultiFileTestModel()
+	// Start at top (first file header)
+	m = sendKeys(m, "g", "g")
+	assert.Equal(t, m.minScroll(), m.scroll, "should be at top")
+
+	// Get cursor position before - should be on first file header
+	info := m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile, "should start at first file")
+
+	// gj should move to next file header
+	m = sendKeys(m, "g", "j")
+	info = m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile, "gj should move to second file")
+
+	// gj again should move to third file
+	m = sendKeys(m, "g", "j")
+	info = m.StatusInfo()
+	assert.Equal(t, 3, info.CurrentFile, "gj should move to third file")
+
+	// gj at last file should go to summary row
+	m = sendKeys(m, "g", "j")
+	// Verify we're on the summary row by checking cursor position
+	rows := m.buildRows()
+	cursorPos := m.cursorLine()
+	assert.True(t, cursorPos >= 0 && cursorPos < len(rows), "cursor should be in valid range")
+	assert.True(t, rows[cursorPos].isSummary, "gj at last file should go to summary")
+
+	// gj at summary should stay there
+	m = sendKeys(m, "g", "j")
+	cursorPos = m.cursorLine()
+	assert.True(t, rows[cursorPos].isSummary, "gj at summary should stay")
+}
+
+func TestUpdate_PrevHeading_gk(t *testing.T) {
+	m := makeMultiFileTestModel()
+	// Go to summary row (bottom)
+	m = sendKeys(m, "G")
+	info := m.StatusInfo()
+	assert.Equal(t, 0, info.CurrentFile, "summary row should show no file")
+
+	// gk from summary should go to last file's header
+	m = sendKeys(m, "g", "k")
+	info = m.StatusInfo()
+	assert.Equal(t, 3, info.CurrentFile, "gk from summary should go to third file")
+
+	// gk should move to previous file header
+	m = sendKeys(m, "g", "k")
+	info = m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile, "gk should move to second file")
+
+	// gk again should move to first file
+	m = sendKeys(m, "g", "k")
+	info = m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile, "gk should move to first file")
+
+	// gk at first file should stay there
+	m = sendKeys(m, "g", "k")
+	info = m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile, "gk at first file should stay")
 }
 
 func TestUpdate_GoToBottom(t *testing.T) {
@@ -433,7 +552,7 @@ func TestUpdate_AllContentLoadedMsg(t *testing.T) {
 	assert.Equal(t, []string{"file2 new"}, model.files[1].NewContent)
 }
 
-func TestUpdate_ScrollPastEnd_ToShowLastFile(t *testing.T) {
+func TestUpdate_ScrollToEnd_SummaryHasNoFileInfo(t *testing.T) {
 	// Create two files with different amounts of content
 	pairs1 := make([]sidebyside.LinePair, 5)
 	pairs2 := make([]sidebyside.LinePair, 5)
@@ -457,20 +576,20 @@ func TestUpdate_ScrollPastEnd_ToShowLastFile(t *testing.T) {
 	m.width = 80
 	m.height = 10 // viewport height
 
-	// Total lines: 2 headers + 10 pairs + 1 blank line before second file = 13 lines
+	// Total lines: 2 headers + 10 pairs + 1 blank line + 1 summary = 14 lines
 	// With cursor-based scrolling:
 	// - height=10, contentHeight=9, cursorOffset=1
-	// - maxScroll = 13 - 1 - 1 = 11 (cursor at line 12, last content line)
+	// - maxScroll = 14 - 1 - 1 = 12 (cursor at line 13, the summary row)
 
 	// Go to bottom
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
-	// maxScroll allows cursor to reach last line
+	// maxScroll allows cursor to reach last line (summary row)
 	assert.Equal(t, m.maxScroll(), model.scroll, "should scroll to maxScroll")
 
-	// At this scroll position, the cursor is on the last line (second file's last pair)
+	// At this scroll position, the cursor is on the summary row which has no file info
 	info := model.StatusInfo()
-	assert.Equal(t, 2, info.CurrentFile, "should show second file when cursor is at end")
-	assert.Equal(t, "second.go", info.FileName)
+	assert.Equal(t, 0, info.CurrentFile, "summary row should have no file")
+	assert.Equal(t, "", info.FileName, "summary row should have no file name")
 }

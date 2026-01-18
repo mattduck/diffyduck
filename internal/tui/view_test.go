@@ -359,17 +359,20 @@ func TestStatusInfo_MultipleFiles(t *testing.T) {
 }
 
 func TestView_StatusBarContent(t *testing.T) {
+	// Create enough content that scrolling to end keeps cursor on file content, not summary
+	pairs := make([]sidebyside.LinePair, 20)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
+			Right: sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
+		}
+	}
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
 				NewPath: "b/foo.go",
-				Pairs: []sidebyside.LinePair{
-					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-					},
-				},
+				Pairs:   pairs,
 			},
 		},
 		width:  80,
@@ -377,16 +380,18 @@ func TestView_StatusBarContent(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	// Scroll to end so we see "END" in status bar
-	m.scroll = m.maxScroll()
+	// Position cursor on last file content line (not summary)
+	// totalLines = 1 header + 20 pairs + 1 summary = 22
+	// cursorOffset = (10-1)*20/100 = 1
+	// To put cursor on line 20 (last pair), scroll = 20 - cursorOffset = 19
+	m.scroll = 19
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 	lastLine := lines[len(lines)-1]
 
-	// Status bar should contain the file name and END (when scrolled to bottom)
+	// Status bar should contain the file name
 	assert.Contains(t, lastLine, "foo.go")
-	assert.Contains(t, lastLine, "END")
 }
 
 func TestStatusInfo_DeletedFile(t *testing.T) {
@@ -431,15 +436,16 @@ func TestStatusInfo_ScrollPastAllContent(t *testing.T) {
 		},
 		width:  80,
 		height: 10,
-		scroll: 100, // Way past the content (only 6 lines)
+		scroll: 100, // Way past the content (only 7 lines: 1 header + 5 pairs + 1 summary)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 	m.clampScroll() // This should clamp to maxScroll
 
 	info := m.StatusInfo()
-	assert.Equal(t, 1, info.CurrentFile)
-	assert.Equal(t, "test.go", info.FileName)
+	// When scrolled to the very end, cursor lands on summary row which has no file info
+	assert.Equal(t, 0, info.CurrentFile)
+	assert.Equal(t, "", info.FileName)
 	assert.True(t, info.AtEnd)
 }
 
@@ -564,8 +570,8 @@ func TestView_ScrolledToMax(t *testing.T) {
 		assert.Equal(t, "", lines[i], "line %d should be empty padding", i)
 	}
 
-	// Last line should be status bar
-	assert.Contains(t, lines[4], "foo.go")
+	// Last line should be status bar with END (no file name when cursor is on summary)
+	assert.NotContains(t, lines[4], "foo.go", "summary row should not show file name")
 	assert.Contains(t, lines[4], "END")
 }
 
@@ -1736,9 +1742,9 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	// Output should have exactly `height` lines (content + padding + status bar)
 	assert.Equal(t, 10, len(lines), "view should fill entire viewport height")
 
-	// Status bar should be the last line
+	// Status bar should be the last line (no file name when cursor is on summary)
 	lastLine := lines[len(lines)-1]
-	assert.Contains(t, lastLine, "foo.go")
+	assert.NotContains(t, lastLine, "foo.go", "summary row should not show file name")
 	assert.Contains(t, lastLine, "END")
 
 	// When scrolled to end with small content:
@@ -2824,6 +2830,8 @@ func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	// Position cursor on the file header (not summary)
+	m.scroll = m.minScroll()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")

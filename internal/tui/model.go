@@ -37,6 +37,9 @@ type Model struct {
 	currentMatch     int     // index of current match in matches slice
 	lastSearchScroll int     // scroll position when last search navigation occurred
 
+	// Multi-key sequence state
+	pendingKey string // first key of a multi-key sequence (e.g., "g" waiting for second key)
+
 	// Derived/cached
 	totalLines     int // total number of displayable lines across all files
 	maxLineNumSeen int // largest line number seen (for dynamic gutter width, only grows)
@@ -257,16 +260,8 @@ func (m Model) StatusInfo() StatusInfo {
 		info.FoldLevel = fp.FoldLevel
 		info.FileStatus = string(fileStatus(fp.OldPath, fp.NewPath))
 		info.Added, info.Removed = countFileStats(fp)
-	} else {
-		// Summary row or edge case - use last file info
-		info.CurrentFile, info.FileName = m.fileAtLine(cursorPos)
-		if len(m.files) > 0 {
-			lastFile := m.files[len(m.files)-1]
-			info.FoldLevel = lastFile.FoldLevel
-			info.FileStatus = string(fileStatus(lastFile.OldPath, lastFile.NewPath))
-			info.Added, info.Removed = countFileStats(lastFile)
-		}
 	}
+	// Summary row: leave file-specific fields at zero values (no file info shown)
 
 	return info
 }

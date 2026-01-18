@@ -32,7 +32,7 @@ func DefaultKeyMap() KeyMap {
 		PageDown:      []string{"pgdown", "ctrl+f", " ", "f"},
 		HalfUp:        []string{"ctrl+u", "u"},
 		HalfDown:      []string{"ctrl+d", "d"},
-		Top:           []string{"home", "g"},
+		Top:           []string{"home"},
 		Bottom:        []string{"end", "G"},
 		Left:          []string{"left", "h"},
 		Right:         []string{"right", "l"},
