@@ -7,23 +7,12 @@ import (
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
-// ContextRule defines how to categorize a node based on its context.
-// Used for ambiguous node types like "identifier" that could be
-// a function name, variable, type, etc. depending on parent context.
-type ContextRule struct {
-	NodeType   string   // The node type this rule applies to
-	ParentType string   // Required parent node type
-	Field      string   // Optional: the field name in the parent
-	Category   Category // Category to assign when rule matches
-}
-
 // LanguageConfig defines the tree-sitter configuration for a language.
 type LanguageConfig struct {
-	Name         string                       // Language name (e.g., "go", "javascript")
-	Extensions   []string                     // File extensions (e.g., ".go", ".js")
-	Language     func() *tree_sitter.Language // Returns the tree-sitter language
-	NodeTypes    map[string]Category          // Direct node type -> category mappings
-	ContextRules []ContextRule                // Context-dependent categorization rules
+	Name           string                       // Language name (e.g., "go", "python")
+	Extensions     []string                     // File extensions (e.g., ".go", ".py")
+	Language       func() *tree_sitter.Language // Returns the tree-sitter language
+	HighlightQuery string                       // The highlight query (.scm format)
 }
 
 // Registry holds all registered language configurations.
@@ -41,6 +30,7 @@ func NewRegistry() *Registry {
 
 	// Register built-in languages
 	r.Register(GoLanguage())
+	r.Register(PythonLanguage())
 
 	return r
 }
@@ -64,44 +54,102 @@ func (r *Registry) ForName(name string) *LanguageConfig {
 	return r.byName[name]
 }
 
-// Categorize determines the category for a node using the language config.
-// First checks direct NodeTypes mapping, then tries ContextRules.
-func (cfg *LanguageConfig) Categorize(node *tree_sitter.Node) Category {
-	nodeType := node.Kind()
+// captureToCategory maps standard tree-sitter capture names to our categories.
+// This follows the conventions used by nvim-treesitter and other editors.
+var captureToCategory = map[string]Category{
+	// Functions - standard queries use @function for both definitions and calls
+	"function":         CategoryFunction,
+	"function.builtin": CategoryFunction,
+	"function.method":  CategoryFunction,
+	"method":           CategoryFunction,
 
-	// First, try direct mapping
-	if cat, ok := cfg.NodeTypes[nodeType]; ok {
+	// Types
+	"type":            CategoryType,
+	"type.builtin":    CategoryType,
+	"type.definition": CategoryType,
+	"constructor":     CategoryType,
+
+	// Variables and properties
+	"variable":           CategoryVariable,
+	"variable.builtin":   CategoryVariable,
+	"variable.member":    CategoryField,
+	"variable.parameter": CategoryParameter,
+	"property":           CategoryField,
+	"field":              CategoryField,
+	"parameter":          CategoryParameter,
+
+	// Constants - includes true, false, nil, None, etc.
+	"constant":         CategoryConstant,
+	"constant.builtin": CategoryConstant,
+
+	// Keywords
+	"keyword":             CategoryKeyword,
+	"keyword.control":     CategoryKeyword,
+	"keyword.function":    CategoryKeyword,
+	"keyword.operator":    CategoryKeyword,
+	"keyword.return":      CategoryKeyword,
+	"keyword.conditional": CategoryKeyword,
+	"keyword.repeat":      CategoryKeyword,
+	"keyword.import":      CategoryKeyword,
+	"keyword.exception":   CategoryKeyword,
+
+	// Operators
+	"operator": CategoryOperator,
+
+	// Punctuation
+	"punctuation":           CategoryPunctuation,
+	"punctuation.bracket":   CategoryPunctuation,
+	"punctuation.delimiter": CategoryPunctuation,
+	"punctuation.special":   CategoryPunctuation,
+
+	// Strings
+	"string":         CategoryString,
+	"string.escape":  CategoryString,
+	"string.special": CategoryString,
+	"escape":         CategoryString,
+
+	// Numbers
+	"number":       CategoryNumber,
+	"number.float": CategoryNumber,
+	"float":        CategoryNumber,
+
+	// Comments
+	"comment":               CategoryComment,
+	"comment.line":          CategoryComment,
+	"comment.block":         CategoryComment,
+	"comment.documentation": CategoryDocComment,
+
+	// Attributes/decorators
+	"attribute": CategoryAttribute,
+	"decorator": CategoryAttribute,
+
+	// Namespaces
+	"namespace": CategoryNamespace,
+	"module":    CategoryNamespace,
+
+	// Tags (for struct tags, annotations, etc.)
+	"tag":   CategoryTag,
+	"label": CategoryTag,
+
+	// Embedded content
+	"embedded": CategoryNone,
+}
+
+// CategoryForCapture returns the category for a capture name.
+// It handles both simple names like "keyword" and hierarchical names like "keyword.control".
+func CategoryForCapture(name string) Category {
+	// Try exact match first
+	if cat, ok := captureToCategory[name]; ok {
 		return cat
 	}
 
-	// Then, try context rules
-	parent := node.Parent()
-	if parent == nil {
-		return CategoryNone
-	}
-
-	parentType := parent.Kind()
-	for _, rule := range cfg.ContextRules {
-		if rule.NodeType != nodeType {
-			continue
+	// Try prefix match (e.g., "keyword.something" → "keyword")
+	if idx := strings.LastIndex(name, "."); idx != -1 {
+		prefix := name[:idx]
+		if cat, ok := captureToCategory[prefix]; ok {
+			return cat
 		}
-		if rule.ParentType != parentType {
-			continue
-		}
-		if rule.Field != "" {
-			// Check if node is in the expected field
-			fieldNode := parent.ChildByFieldName(rule.Field)
-			if fieldNode == nil || !nodesEqual(fieldNode, node) {
-				continue
-			}
-		}
-		return rule.Category
 	}
 
 	return CategoryNone
-}
-
-// nodesEqual checks if two nodes represent the same syntax node.
-func nodesEqual(a, b *tree_sitter.Node) bool {
-	return a.StartByte() == b.StartByte() && a.EndByte() == b.EndByte()
 }

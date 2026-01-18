@@ -124,11 +124,10 @@ var (
 	if !categories[CategoryNumber] {
 		t.Error("Expected CategoryNumber")
 	}
-	if !categories[CategoryBoolean] {
-		t.Error("Expected CategoryBoolean")
-	}
-	if !categories[CategoryNil] {
-		t.Error("Expected CategoryNil")
+	// Standard tree-sitter queries use @constant.builtin for true, false, nil
+	// so they all map to CategoryConstant
+	if !categories[CategoryConstant] {
+		t.Error("Expected CategoryConstant (for true, false, nil)")
 	}
 }
 
@@ -235,7 +234,8 @@ func TestHighlighter_SupportsFile(t *testing.T) {
 		{"test.go", true},
 		{"main.go", true},
 		{"TEST.GO", true}, // case insensitive
-		{"test.py", false},
+		{"test.py", true},
+		{"test.pyi", true}, // Python stub files
 		{"test.js", false},
 		{"test", false},
 	}

@@ -12,9 +12,10 @@ type Highlighter struct {
 	theme    Theme
 	registry *Registry
 
-	// Cached parsers per language (parsers are not thread-safe)
+	// Cached parsers and queries per language (not thread-safe)
 	mu      sync.Mutex
 	parsers map[string]*tree_sitter.Parser
+	queries map[string]*tree_sitter.Query
 }
 
 // New creates a new Highlighter with the default theme.
@@ -23,6 +24,7 @@ func New() *Highlighter {
 		theme:    DefaultTheme(),
 		registry: NewRegistry(),
 		parsers:  make(map[string]*tree_sitter.Parser),
+		queries:  make(map[string]*tree_sitter.Query),
 	}
 }
 
@@ -32,6 +34,7 @@ func NewWithTheme(theme Theme) *Highlighter {
 		theme:    theme,
 		registry: NewRegistry(),
 		parsers:  make(map[string]*tree_sitter.Parser),
+		queries:  make(map[string]*tree_sitter.Query),
 	}
 }
 
@@ -48,8 +51,8 @@ func (h *Highlighter) Highlight(filename string, content []byte) ([]Span, error)
 		return nil, nil // Unknown language, no highlighting
 	}
 
-	parser := h.getParser(cfg)
-	if parser == nil {
+	parser, query := h.getParserAndQuery(cfg)
+	if parser == nil || query == nil {
 		return nil, nil
 	}
 
@@ -62,7 +65,7 @@ func (h *Highlighter) Highlight(filename string, content []byte) ([]Span, error)
 	}
 	defer tree.Close()
 
-	spans := h.walkTree(tree.RootNode(), cfg)
+	spans := h.runQuery(tree.RootNode(), query, content)
 
 	// Sort by start position
 	sort.Slice(spans, func(i, j int) bool {
@@ -72,59 +75,77 @@ func (h *Highlighter) Highlight(filename string, content []byte) ([]Span, error)
 	return spans, nil
 }
 
-// getParser returns a cached parser for the language config.
-func (h *Highlighter) getParser(cfg *LanguageConfig) *tree_sitter.Parser {
+// getParserAndQuery returns cached parser and query for the language config.
+func (h *Highlighter) getParserAndQuery(cfg *LanguageConfig) (*tree_sitter.Parser, *tree_sitter.Query) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if parser, ok := h.parsers[cfg.Name]; ok {
-		return parser
+	parser, parserOk := h.parsers[cfg.Name]
+	query, queryOk := h.queries[cfg.Name]
+
+	if parserOk && queryOk {
+		return parser, query
 	}
 
-	parser := tree_sitter.NewParser()
-	if err := parser.SetLanguage(cfg.Language()); err != nil {
-		parser.Close()
-		return nil
+	// Create parser if needed
+	if !parserOk {
+		parser = tree_sitter.NewParser()
+		lang := cfg.Language()
+		if err := parser.SetLanguage(lang); err != nil {
+			parser.Close()
+			return nil, nil
+		}
+		h.parsers[cfg.Name] = parser
+
+		// Create query (requires language)
+		var qErr *tree_sitter.QueryError
+		query, qErr = tree_sitter.NewQuery(lang, cfg.HighlightQuery)
+		if qErr != nil {
+			// Query compilation failed - log would be nice but just skip highlighting
+			return nil, nil
+		}
+		h.queries[cfg.Name] = query
 	}
-	h.parsers[cfg.Name] = parser
-	return parser
+
+	return parser, query
 }
 
-// walkTree recursively walks the syntax tree and collects spans.
-func (h *Highlighter) walkTree(node *tree_sitter.Node, cfg *LanguageConfig) []Span {
+// runQuery executes the highlight query and collects spans.
+func (h *Highlighter) runQuery(node *tree_sitter.Node, query *tree_sitter.Query, content []byte) []Span {
 	var spans []Span
 
-	cursor := node.Walk()
+	cursor := tree_sitter.NewQueryCursor()
 	defer cursor.Close()
 
-	h.walkCursor(cursor, cfg, &spans)
-	return spans
-}
+	captures := cursor.Captures(query, node, content)
+	captureNames := query.CaptureNames()
 
-// walkCursor is the recursive helper for tree walking.
-func (h *Highlighter) walkCursor(cursor *tree_sitter.TreeCursor, cfg *LanguageConfig, spans *[]Span) {
-	node := cursor.Node()
+	for {
+		match, captureIdx := captures.Next()
+		if match == nil {
+			break
+		}
 
-	// Get category for this node
-	cat := cfg.Categorize(node)
-	if cat != CategoryNone {
-		*spans = append(*spans, Span{
-			Start:    int(node.StartByte()),
-			End:      int(node.EndByte()),
+		// captureIdx is the index into match.Captures for the current capture
+		if captureIdx >= uint(len(match.Captures)) {
+			continue
+		}
+
+		capture := match.Captures[captureIdx]
+		captureName := captureNames[capture.Index]
+		cat := CategoryForCapture(captureName)
+		if cat == CategoryNone {
+			continue
+		}
+
+		spans = append(spans, Span{
+			Start:    int(capture.Node.StartByte()),
+			End:      int(capture.Node.EndByte()),
 			Category: cat,
 		})
 	}
 
-	// Visit children
-	if cursor.GotoFirstChild() {
-		for {
-			h.walkCursor(cursor, cfg, spans)
-			if !cursor.GotoNextSibling() {
-				break
-			}
-		}
-		cursor.GotoParent()
-	}
+	return spans
 }
 
 // Close releases all resources held by the highlighter.
@@ -135,7 +156,11 @@ func (h *Highlighter) Close() {
 	for _, parser := range h.parsers {
 		parser.Close()
 	}
+	for _, query := range h.queries {
+		query.Close()
+	}
 	h.parsers = nil
+	h.queries = nil
 }
 
 // SupportsFile returns true if the highlighter can highlight the given file.
