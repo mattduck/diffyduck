@@ -639,3 +639,46 @@ Changes to =internal/tui/update.go=:
 - *Mode changes*: Git shows mode changes (permissions) in its summary; we don't track these
 - *Summary row cursor highlight*: The =═══= prefix gets highlighted but the bullet doesn't; could highlight the whole prefix area consistently
 - *Alignment*: Summary row doesn't align with file headers' stats column; could pad to match =maxHeaderWidth= for visual consistency in folded view
+
+** UI Polish & Visual Hierarchy [DONE]
+
+Improvements to make file boundaries clearer and unify header styling.
+
+*** Top Bar & Divider
+
+- *Arrow indicator*: Top bar now shows =➤= arrow (like cursor indicator) instead of white background prefix
+- *Divider line*: Full-width =▔= (upper 1/8 block) divider below top bar in color 8 (dim gray)
+- *Status bar styling*: Bottom status bar uses bg=8, fg=0 (gray background, black text)
+- *Content height*: Now reserves 3 lines (top bar + divider + bottom bar) instead of 2
+
+*** Unified File Headers
+
+All fold levels now use the same header format with aligned stats:
+
+#+begin_example
+════ ◐ ~ filename.go | +5 -2 +++++-- ═══════════════════════════════
+════ ○ ~ other.go    | +3    +++     ═══════════════════════════════
+#+end_example
+
+- *Same format for all levels*: Folded, normal, and expanded headers look identical
+- *Aligned stats*: Filename padding ensures =|= separator aligns across all files
+- *Stats bar*: Colored =+N -M= counts followed by =+++--= proportional bar
+- *Trailing fill*: Remaining width filled with =═= characters
+- *Color 8 decoration*: Gutter (════) and trailing (═══...) use fg=8 (dim gray)
+
+*** File Separation
+
+- *Double blank lines*: 2 blank lines between files instead of 1 for clearer visual separation
+- *Double line character*: All headers use =═= (double line) for both gutter prefix and trailing fill
+
+*** Styles Added
+
+In =internal/tui/view.go=:
+- =headerLineStyle=: fg=8 for the =═= decoration characters in headers
+
+*** Future Improvements / Tidying
+
+- *Unused parameter*: =renderSummary= receives =maxHeaderWidth= but doesn't use it - could add padding for alignment with file headers, or remove the parameter
+- *Stats bar width calculation*: =statsBarDisplayWidth()= duplicates logic from =formatColoredStatsBar()= - could refactor to compute width and content together
+- *Test cleanup*: Many tests have hardcoded line indices that needed updating - could make tests more robust by searching for content patterns instead of relying on exact line positions
+- *Summary row stats alignment*: Summary row could show its stats aligned with file header stats columns

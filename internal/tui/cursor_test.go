@@ -909,12 +909,13 @@ func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Put cursor on second file's header (line 3)
-	m.scroll = 0 // cursor offset = 3, so cursor at line 3
+	// Put cursor on second file's header (line 4 with 2 blank lines between files)
+	// Layout: line 0=first header, line 1=first content, line 2=blank, line 3=blank, line 4=second header
+	m.scroll = 1 // cursor offset = 3, so cursor at line 4
 
-	assert.Equal(t, 3, m.cursorLine(), "cursor should start on second file header")
+	assert.Equal(t, 4, m.cursorLine(), "cursor should start on second file header")
 	rows := m.buildRows()
-	assert.True(t, rows[3].isHeader, "line 3 should be a header")
+	assert.True(t, rows[4].isHeader, "line 4 should be a header")
 
 	// Toggle all: Normal -> Expanded -> Folded
 	// After folding all, second file header should be at line 1 (since no blanks in Folded)
@@ -1117,12 +1118,12 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// File layout:
+	// File layout (2 blank lines between files):
 	// alpha.go: lines 0-10 (header + 10 pairs = 11 lines)
-	// blank:    line 11 (counts as alpha.go - file above)
-	// beta.go:  lines 12-22 (header + 10 pairs = 11 lines)
-	// blank:    line 23 (counts as beta.go - file above)
-	// gamma.go: lines 24-34 (header + 10 pairs = 11 lines)
+	// blank:    lines 11-12 (counts as alpha.go - file above)
+	// beta.go:  lines 13-23 (header + 10 pairs = 11 lines)
+	// blank:    lines 24-25 (counts as beta.go - file above)
+	// gamma.go: lines 26-36 (header + 10 pairs = 11 lines)
 
 	// Scroll through and verify status bar matches cursor position
 	for scroll := m.minScroll(); scroll <= m.maxScroll(); scroll++ {
@@ -1134,9 +1135,9 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 		// Note: blank separator lines count as the file above
 		// Summary row (last line) has no file info
 		expectedFile := "alpha.go"
-		if cursorPos >= 12 && cursorPos < 24 { // Line 12 is beta header
+		if cursorPos >= 13 && cursorPos < 26 { // Line 13 is beta header
 			expectedFile = "beta.go"
-		} else if cursorPos >= 24 && cursorPos < m.totalLines-1 { // Line 24 is gamma header
+		} else if cursorPos >= 26 && cursorPos < m.totalLines-1 { // Line 26 is gamma header
 			expectedFile = "gamma.go"
 		} else if cursorPos == m.totalLines-1 { // Summary row
 			expectedFile = ""

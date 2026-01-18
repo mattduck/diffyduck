@@ -503,10 +503,10 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{
 			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-10 (header + 10 pairs)
-			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 11 blank, lines 12-22
+			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // lines 11-12 blank, lines 13-23
 		},
 		width:  80,
-		height: 10, // contentHeight=9, cursorOffset=1
+		height: 10, // contentHeight=8, cursorOffset=1
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
@@ -518,14 +518,20 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=10 → cursor at line 11 (blank before second file) → first.go (blank belongs to file above)
+	// scroll=10 → cursor at line 11 (first blank before second file) → first.go (blank belongs to file above)
 	m.scroll = 10
 	info = m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=11 → cursor at line 12 (header of second file) → second.go
+	// scroll=11 → cursor at line 12 (second blank before second file) → first.go (blank belongs to file above)
 	m.scroll = 11
+	info = m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile)
+	assert.Equal(t, "first.go", info.FileName)
+
+	// scroll=12 → cursor at line 13 (header of second file) → second.go
+	m.scroll = 12
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile)
 	assert.Equal(t, "second.go", info.FileName)
@@ -825,16 +831,16 @@ func TestFoldLevelIcon(t *testing.T) {
 }
 
 func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
-	// Test that each fold level shows the correct icon and trailing line in the header
+	// Test that each fold level shows the correct icon in the header
+	// All levels now use the same format with trailing ═
 	tests := []struct {
-		name         string
-		level        sidebyside.FoldLevel
-		wantIcon     string
-		wantTrailing string // "" for none, "─" for single, "═" for double
+		name     string
+		level    sidebyside.FoldLevel
+		wantIcon string
 	}{
-		{"folded shows empty circle, no trailing", sidebyside.FoldFolded, "○", ""},
-		{"normal shows half circle, single line", sidebyside.FoldNormal, "◐", "─"},
-		{"expanded shows full circle, double line", sidebyside.FoldExpanded, "●", "═"},
+		{"folded shows empty circle", sidebyside.FoldFolded, "○"},
+		{"normal shows half circle", sidebyside.FoldNormal, "◐"},
+		{"expanded shows full circle", sidebyside.FoldExpanded, "●"},
 	}
 
 	for _, tt := range tests {
@@ -863,21 +869,11 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 			// lines[0] = top bar, lines[1] = divider, lines[2] = first content line (header)
 			headerLine := lines[2]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
-			// Header format is: ═══ <foldIcon> <statusIndicator> filename
+			// Header format is: ═══ <foldIcon> <statusIndicator> filename [stats] ═══
 			// For modified files (a/test.go -> b/test.go with same name), status is "~"
 			assert.Contains(t, headerLine, "═══ "+tt.wantIcon+" ~ test.go", "header format should be: ═══ <icon> <status> filename")
-
-			// Check trailing line character
-			if tt.wantTrailing == "" {
-				// Folded: should end with filename, no trailing line
-				assert.NotContains(t, headerLine, "─", "folded header should not have trailing line")
-				assert.True(t, strings.HasSuffix(strings.TrimSpace(headerLine), "test.go"),
-					"folded header should end with filename")
-			} else {
-				// Normal/Expanded: should have trailing line of correct type
-				assert.Contains(t, headerLine, " "+tt.wantTrailing,
-					"header should have trailing %s characters", tt.wantTrailing)
-			}
+			// All headers now have trailing ═
+			assert.Contains(t, headerLine, "═══", "header should have trailing ═ characters")
 		})
 	}
 }
@@ -912,12 +908,10 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 	assert.Contains(t, lines[2], "foo.go", "first content line should be the header")
 	assert.Contains(t, lines[2], "═══", "header should have the prefix")
 
-	// Header should NOT have trailing "=" characters after the filename
-	// The folded header format should be "═══ filename" without trailing "═"
-	// Check that the line doesn't end with many "═" (like the normal header does)
+	// All headers now have trailing ═ (unified format)
 	headerContent := strings.TrimRight(lines[2], " ")
-	assert.True(t, strings.HasSuffix(headerContent, "foo.go"),
-		"folded header should end with filename, got: %s", headerContent)
+	assert.True(t, strings.HasSuffix(headerContent, "═"),
+		"header should end with trailing ═, got: %s", headerContent)
 
 	// Line pairs should NOT be shown
 	assert.NotContains(t, output, "line content", "folded view should not show line pairs")
