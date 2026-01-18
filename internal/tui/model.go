@@ -40,6 +40,7 @@ type Model struct {
 	// Derived/cached
 	totalLines     int // total number of displayable lines across all files
 	maxLineNumSeen int // largest line number seen (for dynamic gutter width, only grows)
+	maxLessWidth   int // max width of less indicator (never shrinks to prevent jittering)
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
@@ -99,7 +100,7 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 }
 
 // calculateTotalLines counts total lines including file headers and hunk separators.
-// Also updates maxLineNumSeen based on visible line numbers.
+// Also updates maxLineNumSeen based on visible line numbers and maxLessWidth for status bar.
 func (m *Model) calculateTotalLines() {
 	rows := m.buildRows()
 	m.totalLines = len(rows)
@@ -110,6 +111,25 @@ func (m *Model) calculateTotalLines() {
 			m.updateMaxLineNum(row.pair.Left.Num)
 			m.updateMaxLineNum(row.pair.Right.Num)
 		}
+	}
+
+	// Update max less indicator width based on current total lines
+	// Format: "line N/TOTAL X%" or "line N/TOTAL (END)"
+	// Max width occurs at the end: "line TOTAL/TOTAL (END)"
+	m.updateMaxLessWidth()
+}
+
+// updateMaxLessWidth updates maxLessWidth if the current totalLines would require more width.
+// This is called from calculateTotalLines to ensure the less indicator never shrinks.
+func (m *Model) updateMaxLessWidth() {
+	if m.totalLines == 0 {
+		return
+	}
+	// Calculate width for worst case: "line TOTAL/TOTAL (END)"
+	maxIndicator := formatLessIndicator(m.totalLines, m.totalLines, 100, true)
+	width := displayWidth(maxIndicator)
+	if width > m.maxLessWidth {
+		m.maxLessWidth = width
 	}
 }
 
@@ -182,13 +202,17 @@ func (m *Model) clampScroll() {
 
 // StatusInfo contains information for the status bar.
 type StatusInfo struct {
-	CurrentFile int    // 1-based index of current file
-	TotalFiles  int    // total number of files
-	FileName    string // name of current file
-	CurrentLine int    // 1-based line position in viewport
-	TotalLines  int    // total lines in diff
-	Percentage  int    // 0-100 percentage through diff
-	AtEnd       bool   // true if scrolled to the end
+	CurrentFile int                  // 1-based index of current file
+	TotalFiles  int                  // total number of files
+	FileName    string               // name of current file
+	CurrentLine int                  // 1-based line position in viewport
+	TotalLines  int                  // total lines in diff
+	Percentage  int                  // 0-100 percentage through diff
+	AtEnd       bool                 // true if scrolled to the end
+	FoldLevel   sidebyside.FoldLevel // fold level of current file
+	FileStatus  string               // file status (added, deleted, renamed, modified)
+	Added       int                  // number of added lines in current file
+	Removed     int                  // number of removed lines in current file
 }
 
 // StatusInfo computes information for the status bar based on cursor position.
@@ -225,7 +249,24 @@ func (m Model) StatusInfo() StatusInfo {
 	}
 
 	// Find which file contains the cursor position
-	info.CurrentFile, info.FileName = m.fileAtLine(cursorPos)
+	fileIdx := m.currentFileIndex()
+	if fileIdx >= 0 && fileIdx < len(m.files) {
+		fp := m.files[fileIdx]
+		info.CurrentFile = fileIdx + 1
+		info.FileName = formatFilePath(fp.OldPath, fp.NewPath)
+		info.FoldLevel = fp.FoldLevel
+		info.FileStatus = string(fileStatus(fp.OldPath, fp.NewPath))
+		info.Added, info.Removed = countFileStats(fp)
+	} else {
+		// Summary row or edge case - use last file info
+		info.CurrentFile, info.FileName = m.fileAtLine(cursorPos)
+		if len(m.files) > 0 {
+			lastFile := m.files[len(m.files)-1]
+			info.FoldLevel = lastFile.FoldLevel
+			info.FileStatus = string(fileStatus(lastFile.OldPath, lastFile.NewPath))
+			info.Added, info.Removed = countFileStats(lastFile)
+		}
+	}
 
 	return info
 }

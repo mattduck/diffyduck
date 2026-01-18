@@ -511,49 +511,72 @@ func (m Model) renderStatusBar() string {
 
 	info := m.StatusInfo()
 
-	// Build left side: file name and file count
-	var left string
-	if info.TotalFiles > 0 {
-		left = fmt.Sprintf(" %s", info.FileName)
-		if info.TotalFiles > 1 {
-			left += fmt.Sprintf(" [%d/%d]", info.CurrentFile, info.TotalFiles)
-		}
+	// Build left side: less-style line indicator (with reverse styling)
+	lessIndicator := formatLessIndicator(info.CurrentLine, info.TotalLines, info.Percentage, info.AtEnd)
+
+	// Pad to max width to prevent shrinking (maxLessWidth is computed in calculateTotalLines)
+	lessWidth := displayWidth(lessIndicator)
+	if lessWidth < m.maxLessWidth {
+		lessIndicator += strings.Repeat(" ", m.maxLessWidth-lessWidth)
 	}
 
-	// Build right side: position info and search match count
-	var right string
+	// Apply reverse style only to the less indicator portion
+	styledLessIndicator := statusStyle.Render(" " + lessIndicator)
 
-	// Show search match info if there's an active query
+	// Build right side: file info with icons and stats (normal styling, not reversed)
+	var fileInfo string
+	if info.TotalFiles > 0 {
+		fileInfo = m.formatStatusFileInfo(info)
+	}
+
+	// When there's an active search query, show search info instead of file info
 	if m.searchQuery != "" {
 		if len(m.matches) == 0 {
-			right = "No matches "
+			fileInfo = "No matches"
 		} else {
-			right = fmt.Sprintf("%d/%d ", m.currentMatch+1, len(m.matches))
+			fileInfo = fmt.Sprintf("%d/%d", m.currentMatch+1, len(m.matches))
 		}
 	}
 
-	// Add position info
-	if info.AtEnd {
-		right += "END "
-	} else if info.CurrentLine == 1 && info.Percentage == 0 {
-		right += "TOP "
-	} else {
-		right += fmt.Sprintf("%d%% ", info.Percentage)
-	}
-
-	// Calculate padding to fill the width
-	leftWidth := displayWidth(left)
-	rightWidth := displayWidth(right)
-	padding := m.width - leftWidth - rightWidth
+	// Combine: reversed_less_indicator + space + file_info + padding
+	content := styledLessIndicator + " " + fileInfo
+	contentWidth := displayWidth(" "+lessIndicator) + 1 + displayWidth(fileInfo)
+	padding := m.width - contentWidth
 	if padding < 0 {
 		padding = 0
 	}
 
-	statusContent := left + strings.Repeat(" ", padding) + right
-	return statusStyle.Render(statusContent)
+	return content + strings.Repeat(" ", padding)
+}
+
+// formatStatusFileInfo formats the file info for the status bar.
+// Format: foldIcon statusIcon fileName +N -M
+func (m Model) formatStatusFileInfo(info StatusInfo) string {
+	// Get fold level icon
+	icon := foldLevelIcon(info.FoldLevel)
+
+	// Get status indicator
+	statusSymbol, statusStyle := fileStatusIndicator(FileStatus(info.FileStatus))
+	styledStatus := statusStyle.Render(statusSymbol)
+
+	// Format stats (only show if there are changes)
+	var stats string
+	if info.Added > 0 || info.Removed > 0 {
+		var parts []string
+		if info.Added > 0 {
+			parts = append(parts, addedStyle.Render(fmt.Sprintf("+%d", info.Added)))
+		}
+		if info.Removed > 0 {
+			parts = append(parts, removedStyle.Render(fmt.Sprintf("-%d", info.Removed)))
+		}
+		stats = " " + strings.Join(parts, " ")
+	}
+
+	return icon + " " + styledStatus + " " + info.FileName + stats
 }
 
 // renderSearchPrompt renders the status bar as a search input prompt.
+// Uses normal styling (not reversed) so the search input is visible.
 func (m Model) renderSearchPrompt() string {
 	// Show / for forward, ? for backward
 	prefix := "/"
@@ -570,8 +593,8 @@ func (m Model) renderSearchPrompt() string {
 		padding = 0
 	}
 
-	statusContent := left + strings.Repeat(" ", padding)
-	return statusStyle.Render(statusContent)
+	// No reverse styling for search prompt - just return plain text with padding
+	return left + strings.Repeat(" ", padding)
 }
 
 // hasMatchOnRow returns true if there are search matches on the given row and side.
@@ -789,6 +812,15 @@ func formatFileHeader(oldPath, newPath string) string {
 	return old + " → " + new
 }
 
+// formatLessIndicator formats the less-style line indicator.
+// Returns "line N/TOTAL X%" normally, or "line N/TOTAL (END)" when at end.
+func formatLessIndicator(line, total, percentage int, atEnd bool) string {
+	if atEnd {
+		return fmt.Sprintf("line %d/%d (END)", line, total)
+	}
+	return fmt.Sprintf("line %d/%d %d%%", line, total, percentage)
+}
+
 // foldLevelIcon returns the icon for a given fold level.
 // ○ = Folded (empty/minimal), ◐ = Normal (half), ● = Expanded (full)
 func foldLevelIcon(level sidebyside.FoldLevel) string {
@@ -841,9 +873,9 @@ func fileStatusIndicator(status FileStatus) (symbol string, style lipgloss.Style
 	case FileStatusDeleted:
 		return "-", removedStyle
 	case FileStatusRenamed:
-		return ">", lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+		return ">", lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 	default: // FileStatusModified
-		return "~", lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+		return "~", lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 	}
 }
 

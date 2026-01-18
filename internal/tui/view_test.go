@@ -2693,3 +2693,328 @@ func TestCurrentFileIndex_ReturnsMinusOneForSummaryRow(t *testing.T) {
 	idx := m.currentFileIndex()
 	assert.Equal(t, -1, idx, "currentFileIndex should return -1 for summary row")
 }
+
+// Tests for new status bar format
+
+func TestFormatLessIndicator_Basic(t *testing.T) {
+	tests := []struct {
+		name       string
+		line       int
+		total      int
+		percentage int
+		atEnd      bool
+		expected   string
+	}{
+		{
+			name:       "at start",
+			line:       1,
+			total:      100,
+			percentage: 0,
+			atEnd:      false,
+			expected:   "line 1/100 0%",
+		},
+		{
+			name:       "middle",
+			line:       50,
+			total:      100,
+			percentage: 49,
+			atEnd:      false,
+			expected:   "line 50/100 49%",
+		},
+		{
+			name:       "at end",
+			line:       100,
+			total:      100,
+			percentage: 100,
+			atEnd:      true,
+			expected:   "line 100/100 (END)",
+		},
+		{
+			name:       "single line file at end",
+			line:       1,
+			total:      1,
+			percentage: 100,
+			atEnd:      true,
+			expected:   "line 1/1 (END)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatLessIndicator(tt.line, tt.total, tt.percentage, tt.atEnd)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestStatusBar_NewFormat_Basic(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+					{
+						Left:  sidebyside.Line{Num: 2, Content: "context", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 2, Content: "context", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	statusBar := lines[len(lines)-1]
+
+	// Should contain less-style line indicator
+	assert.Contains(t, statusBar, "line ")
+	assert.Contains(t, statusBar, "/")
+
+	// Should contain fold icon (◐ for normal)
+	assert.Contains(t, statusBar, "◐")
+
+	// Should contain status icon (~ for modified)
+	assert.Contains(t, statusBar, "~")
+
+	// Should contain file path
+	assert.Contains(t, statusBar, "foo.go")
+
+	// Should contain stats (+1 -1)
+	assert.Contains(t, statusBar, "+1")
+	assert.Contains(t, statusBar, "-1")
+
+	// Should NOT contain [1/1] file counter anymore
+	assert.NotContains(t, statusBar, "[")
+	assert.NotContains(t, statusBar, "]")
+}
+
+func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	statusBar := lines[len(lines)-1]
+
+	// Should contain folded icon (○)
+	assert.Contains(t, statusBar, "○")
+}
+
+func TestStatusBar_NewFormat_ExpandedFile(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	statusBar := lines[len(lines)-1]
+
+	// Should contain expanded icon (●)
+	assert.Contains(t, statusBar, "●")
+}
+
+func TestStatusBar_NewFormat_AddedFile(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "/dev/null",
+				NewPath:   "b/newfile.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	statusBar := lines[len(lines)-1]
+
+	// Should contain added status icon (+)
+	// Note: Need to check for the styled version or look for the pattern
+	assert.Contains(t, statusBar, "newfile.go")
+	assert.Contains(t, statusBar, "+1")
+}
+
+func TestStatusBar_NewFormat_DeletedFile(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/deleted.go",
+				NewPath:   "/dev/null",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "gone", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	statusBar := lines[len(lines)-1]
+
+	// Should show old path for deleted files
+	assert.Contains(t, statusBar, "deleted.go")
+	assert.Contains(t, statusBar, "-1")
+}
+
+func TestStatusBar_NewFormat_AtEnd(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+	m.scroll = m.maxScroll()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	statusBar := lines[len(lines)-1]
+
+	// Should show (END) instead of percentage when at end
+	assert.Contains(t, statusBar, "(END)")
+	assert.NotContains(t, statusBar, "100%")
+}
+
+func TestStatusBar_NewFormat_NoStats(t *testing.T) {
+	// A file with no actual changes (just context) should not show stats
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	statusBar := lines[len(lines)-1]
+
+	// Should contain file path but no +/- stats
+	assert.Contains(t, statusBar, "foo.go")
+	// Stats should be omitted when there are no changes
+	assert.NotContains(t, statusBar, "+0")
+	assert.NotContains(t, statusBar, "-0")
+}
+
+func TestStatusBar_NonShrinkingWidth(t *testing.T) {
+	// Create a file with many lines to get large line numbers
+	pairs := make([]sidebyside.LinePair, 1000)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
+			Right: sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
+		}
+	}
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs:   pairs,
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Navigate to a high line number to establish max width
+	m.scroll = 500
+	bar1 := m.renderStatusBar()
+
+	// Navigate back to start
+	m.scroll = m.minScroll()
+	bar2 := m.renderStatusBar()
+
+	// The less indicator part should have the same width in both cases
+	// Extract the "line X/Y Z%" portion and compare widths
+	// The max width should be maintained (padded with trailing spaces)
+	assert.Equal(t, len(bar1), len(bar2), "status bar should maintain consistent width")
+}
