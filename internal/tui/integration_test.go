@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -11,6 +12,23 @@ import (
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
+
+// stripANSI removes ANSI escape codes from a string for position-based testing
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(s string) string {
+	return ansiRegex.ReplaceAllString(s, "")
+}
+
+// findRuneIndex returns the rune (character) position of substr in s, not byte position
+func findRuneIndex(s, substr string) int {
+	bytePos := strings.Index(s, substr)
+	if bytePos < 0 {
+		return -1
+	}
+	// Count runes up to bytePos
+	return len([]rune(s[:bytePos]))
+}
 
 // Uses the 'update' flag from view_test.go
 
@@ -52,7 +70,7 @@ index abc123..def456 100644
 		if i == 0 {
 			continue // skip header
 		}
-		pos := strings.Index(line, "│")
+		pos := findRuneIndex(stripANSI(line), "│")
 		if pos >= 0 {
 			separatorPositions = append(separatorPositions, pos)
 		}
@@ -117,7 +135,7 @@ index abc123..def456 100644
 		if i == 0 {
 			continue
 		}
-		pos := strings.Index(line, "│")
+		pos := findRuneIndex(stripANSI(line), "│")
 		if pos >= 0 {
 			separatorPositions = append(separatorPositions, pos)
 		}
@@ -174,7 +192,7 @@ index 0000000..abc1234
 		if i == 0 {
 			continue
 		}
-		pos := strings.Index(line, "│")
+		pos := findRuneIndex(stripANSI(line), "│")
 		if pos >= 0 {
 			separatorPositions = append(separatorPositions, pos)
 		}
@@ -233,7 +251,7 @@ func TestFullPipeline_TabsInContent(t *testing.T) {
 		if i == 0 {
 			continue
 		}
-		pos := strings.Index(line, "│")
+		pos := findRuneIndex(stripANSI(line), "│")
 		if pos >= 0 {
 			separatorPositions = append(separatorPositions, pos)
 		}

@@ -1429,10 +1429,16 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 			contentLine := lines[1]
 
 			// The line should contain the indicator followed by space then line number
-			// Format is: indicator + space + lineNum + space + content
-			// e.g., "+    1 test content" or "     1 test content"
-			assert.Contains(t, contentLine, tt.wantChar+"    1 test content",
-				"line should have %q indicator before line number", tt.wantChar)
+			// Format is: indicator + space + lineNum + space + [gutter] + content
+			// Added/removed lines have ░ gutter, context lines have spaces
+			// e.g., "+    1 ░ test content" or "     1   test content"
+			if tt.wantChar == "+" || tt.wantChar == "-" {
+				assert.Contains(t, contentLine, tt.wantChar+"    1 ░",
+					"line should have %q indicator before line number", tt.wantChar)
+			} else {
+				assert.Contains(t, contentLine, tt.wantChar+"    1  ",
+					"line should have %q indicator before line number", tt.wantChar)
+			}
 		})
 	}
 }
