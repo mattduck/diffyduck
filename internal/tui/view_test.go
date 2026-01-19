@@ -2897,9 +2897,8 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 	assert.Contains(t, topBar, "+1")
 	assert.Contains(t, topBar, "-1")
 
-	// Should NOT contain [1/1] file counter anymore
-	assert.NotContains(t, topBar, "[")
-	assert.NotContains(t, topBar, "]")
+	// Top bar should contain file counter [1/1]
+	assert.Contains(t, topBar, "[1/1]")
 }
 
 func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
@@ -3188,7 +3187,7 @@ func TestTopBar_LeftAligned(t *testing.T) {
 
 	// Top bar should be left-aligned (starts with content, not spaces)
 	assert.True(t, len(topBar) > 0, "top bar should not be empty")
-	// The fold icon should be near the start
+	// The fold icon should be near the start (after arrow)
 	idx := strings.Index(topBar, "◐")
 	assert.True(t, idx >= 0 && idx < 5, "fold icon should be near the start (left-aligned)")
 }

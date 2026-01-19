@@ -597,17 +597,46 @@ func (m Model) renderTopBar() string {
 		content = m.formatStatusFileInfo(info)
 	}
 
-	// Leading arrow indicator (matches cursor arrow in gutter)
-	prefix := cursorArrowStyle.Render("▶") + " "
+	// Calculate total stats for all files
+	totalAdded := 0
+	totalRemoved := 0
+	for _, fp := range m.files {
+		added, removed := countFileStats(fp)
+		totalAdded += added
+		totalRemoved += removed
+	}
 
-	// Pad to fill the width (accounting for prefix: arrow + space = 2)
-	contentWidth := displayWidth(content)
-	padding := m.width - contentWidth - 2
+	// Right-aligned section: [01/27] +123 -123
+	fileCounterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
+	counterText := fmt.Sprintf("[%0*d/%d]", totalWidth, info.CurrentFile, info.TotalFiles)
+
+	// Build right section with styling (only show stats if there are changes)
+	var rightText string
+	var rightSection string
+	if totalAdded > 0 || totalRemoved > 0 {
+		addedText := fmt.Sprintf("+%d", totalAdded)
+		removedText := fmt.Sprintf("-%d", totalRemoved)
+		rightText = counterText + " " + addedText + " " + removedText
+		rightSection = fileCounterStyle.Render(counterText) + " " + addedStyle.Render(addedText) + " " + removedStyle.Render(removedText)
+	} else {
+		rightText = counterText
+		rightSection = fileCounterStyle.Render(counterText)
+	}
+
+	// Calculate widths for padding
+	// prefix: "▶ " = 2 display width
+	prefixWidth := 2
+	contentWidth := lipgloss.Width(content) // handles ANSI codes
+	rightWidth := len(rightText)            // plain text, no ANSI
+	padding := m.width - prefixWidth - contentWidth - rightWidth
 	if padding < 0 {
 		padding = 0
 	}
 
-	topLine := prefix + content + strings.Repeat(" ", padding)
+	// Leading arrow indicator (matches cursor arrow in gutter)
+	prefix := cursorArrowStyle.Render("▶") + " "
+	topLine := prefix + content + strings.Repeat(" ", padding) + rightSection
 
 	// Divider line using upper 1/8 block (dim)
 	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
