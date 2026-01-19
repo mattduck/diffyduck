@@ -43,9 +43,20 @@ func Parse(input string) (*Diff, error) {
 
 		// Old file path
 		if m := oldFileRe.FindStringSubmatch(line); m != nil {
-			if currentFile != nil {
-				currentFile.OldPath = m[1]
+			// Support standard unified diff (no "diff --git" header)
+			// If we already have a file in progress, save it and start a new one
+			if currentFile != nil && currentFile.OldPath != "" {
+				// Save the last hunk of the previous file
+				if currentHunk != nil {
+					currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
+					currentHunk = nil
+				}
+				diff.Files = append(diff.Files, *currentFile)
+				currentFile = &File{}
+			} else if currentFile == nil {
+				currentFile = &File{}
 			}
+			currentFile.OldPath = m[1]
 			continue
 		}
 

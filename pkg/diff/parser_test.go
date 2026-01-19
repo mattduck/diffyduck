@@ -195,3 +195,76 @@ index abc123..def456 100644
 	assert.Equal(t, Removed, hunk.Lines[0].Type)
 	assert.Equal(t, "old", hunk.Lines[0].Content)
 }
+
+func TestParse_StandardUnifiedDiff_NoDiffGitHeader(t *testing.T) {
+	// Standard unified diff format (from diff -u) without "diff --git" header
+	input := `--- a/foo.go
++++ b/foo.go
+@@ -1,3 +1,4 @@
+ package main
++
+ func main() {
+ }
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.Equal(t, "a/foo.go", file.OldPath)
+	assert.Equal(t, "b/foo.go", file.NewPath)
+	require.Len(t, file.Hunks, 1)
+
+	hunk := file.Hunks[0]
+	assert.Equal(t, 1, hunk.OldStart)
+	assert.Equal(t, 3, hunk.OldCount)
+	assert.Equal(t, 1, hunk.NewStart)
+	assert.Equal(t, 4, hunk.NewCount)
+
+	require.Len(t, hunk.Lines, 4)
+	assert.Equal(t, Line{Type: Context, Content: "package main"}, hunk.Lines[0])
+	assert.Equal(t, Line{Type: Added, Content: ""}, hunk.Lines[1])
+}
+
+func TestParse_StandardUnifiedDiff_MultipleFiles(t *testing.T) {
+	// Multiple files in standard unified diff format
+	input := `--- a/foo.go
++++ b/foo.go
+@@ -1 +1 @@
+-old foo
++new foo
+--- a/bar.go
++++ b/bar.go
+@@ -1 +1 @@
+-old bar
++new bar
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 2)
+
+	assert.Equal(t, "a/foo.go", diff.Files[0].OldPath)
+	assert.Equal(t, "b/foo.go", diff.Files[0].NewPath)
+	assert.Equal(t, "a/bar.go", diff.Files[1].OldPath)
+	assert.Equal(t, "b/bar.go", diff.Files[1].NewPath)
+
+	require.Len(t, diff.Files[0].Hunks, 1)
+	require.Len(t, diff.Files[1].Hunks, 1)
+}
+
+func TestParse_StandardUnifiedDiff_FullPaths(t *testing.T) {
+	// Standard diff with full paths (no a/ b/ prefix)
+	input := `--- /Users/matt/project/foo.py
++++ /Users/matt/project/foo.py
+@@ -202 +202 @@
+-    old line
++    new line
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.Equal(t, "/Users/matt/project/foo.py", file.OldPath)
+	assert.Equal(t, "/Users/matt/project/foo.py", file.NewPath)
+}
