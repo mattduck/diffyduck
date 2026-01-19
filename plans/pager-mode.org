@@ -1,0 +1,235 @@
+* Pager Mode
+
+** Overview
+
+Add support for using diffyduck as a pager, reading unified diff input from stdin
+rather than executing git commands directly. This enables use as ~GIT_PAGER~ and
+for viewing diffs from other sources.
+
+** Goals
+
+- Primary: Support ~GIT_PAGER=diffyduck~ so git commands automatically use our viewer
+- Secondary: Support explicit piping like ~git diff | diffyduck~ or ~cat foo.patch | diffyduck~
+
+** Phases
+
+*** Phase 1: Basic Pager Mode (this document)
+
+- Read unified diff from stdin
+- Parse and display using existing infrastructure
+- Handle limitations gracefully (no full-file expand)
+- Add PAGER indicator in status bar
+
+*** Phase 2: Commit Metadata Parsing (follow-up)
+
+- Parse commit hash/message from ~git show~ output
+- Display commit info in a header section
+- Potentially enable expand if we can determine refs from parsed commit
+
+*** Phase 3: Streaming/Performance (follow-up, if needed)
+
+- Stream parsing for large diffs
+- Incremental rendering before full input received
+- Investigate if this is actually needed based on real-world usage
+
+** Invocation
+
+*** Auto-detection
+
+If stdin is not a TTY (i.e., piped input), automatically enter pager mode.
+
+#+begin_src go
+if !isatty.IsTerminal(os.Stdin.Fd()) {
+    return runPagerMode()
+}
+#+end_src
+
+*** Explicit Subcommand
+
+Also support explicit ~diffyduck pager~ subcommand for clarity.
+
+#+begin_src sh
+# Both should work:
+git diff | diffyduck
+git diff | diffyduck pager
+#+end_src
+
+*** GIT_PAGER Integration
+
+Users can set:
+
+#+begin_src sh
+export GIT_PAGER=diffyduck
+# or
+git config --global core.pager diffyduck
+#+end_src
+
+Then all git diff/show/log -p commands will use diffyduck automatically.
+
+** Input Handling
+
+*** ANSI Color Stripping
+
+Git output may contain ANSI escape codes if ~color.ui = always~ is set.
+We must strip these before parsing since we can't control how git is invoked
+when used as ~GIT_PAGER~.
+
+#+begin_src go
+// Strip ANSI escape sequences from input
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+input = ansiRegex.ReplaceAllString(input, "")
+#+end_src
+
+*** Supported Input Format
+
+Only standard unified diff format is supported:
+
+#+begin_src
+diff --git a/path b/path
+--- a/path
++++ b/path
+@@ -10,5 +10,6 @@
+ context
+-removed
++added
+#+end_src
+
+*** Unrecognized Content
+
+- Non-diff content (commit messages, --stat output, etc.) is ignored in Phase 1
+- Phase 2 will add support for parsing commit metadata
+- Completely unrecognizable input is silently ignored (parser extracts what it can)
+
+** Feature Limitations in Pager Mode
+
+*** Expand Levels
+
+| Level | Name | Pager Support | Notes |
+|-------+------+---------------+-------|
+| FoldFolded | Header only | Yes | Works normally |
+| FoldNormal | Hunk-based | Yes | Works normally |
+| FoldExpanded | Full file | No | Requires content fetcher |
+
+*** Modified Behavior
+
+- Tab cycles between FoldFolded and FoldNormal only (skips FoldExpanded)
+- Shift-Tab all-files toggle also limited to these two levels
+- Icon displays:
+  - FoldFolded: ○ (empty) - same as normal mode
+  - FoldNormal: ● (filled) - instead of ◐, to indicate "max expansion reached"
+
+*** Rationale for Icon Change
+
+Using the filled bullet (●) for FoldNormal in pager mode signals to the user
+that they cannot expand further. The half-filled (◐) would imply there's
+another level available.
+
+** Status Bar Indicator
+
+*** PAGER Indicator
+
+Display "PAGER" right-aligned in the status bar when in pager mode.
+
+#+begin_example
+═══ file.go ● +5 -3                     line 42/100 25%  PAGER
+#+end_example
+
+*** Implementation
+
+Add a ~pagerMode bool~ field to the model. In ~View()~, append the indicator:
+
+#+begin_src go
+if m.pagerMode {
+    statusRight = statusRight + "  PAGER"
+}
+#+end_src
+
+** Implementation Plan
+
+*** 1. Add pager mode detection in main.go
+
+- Check if stdin is a TTY
+- Add "pager" to subcommand parsing
+- Create ~runPagerMode()~ function
+
+*** 2. Read and strip stdin
+
+- Read all stdin to string
+- Strip ANSI escape codes
+- Pass to existing diff parser
+
+*** 3. Create pager-mode model
+
+- Set ~pagerMode = true~
+- Set ~fetcher = nil~ (no content fetching available)
+- Existing code should handle nil fetcher gracefully
+
+*** 4. Modify fold toggle behavior
+
+- In ~handleFoldToggle()~, check if pager mode
+- If pager mode and current level is FoldNormal, skip to FoldFolded (not FoldExpanded)
+- Similarly for ~handleFoldToggleAll()~
+
+*** 5. Modify fold level icon
+
+- ~foldLevelIcon()~ needs to know if pager mode
+- Return ● for FoldNormal when in pager mode
+
+*** 6. Add PAGER status bar indicator
+
+- Modify status bar rendering to show "PAGER" when ~m.pagerMode~
+
+** Testing Strategy
+
+*** Unit Tests
+
+1. Stdin detection (TTY vs pipe)
+2. ANSI stripping regex
+3. Fold toggle skips FoldExpanded in pager mode
+4. Fold icon shows ● for FoldNormal in pager mode
+5. Status bar shows PAGER indicator
+
+*** Integration Tests
+
+1. Pipe a diff file, verify it displays correctly
+2. Pipe colored output, verify colors are stripped
+3. Tab cycling only hits two levels
+4. Shift-Tab all-files with two levels
+
+*** Manual Testing
+
+1. ~git diff | diffyduck~
+2. ~GIT_PAGER=diffyduck git diff~
+3. ~cat some.patch | diffyduck pager~
+4. Large diff performance (if slow, triggers Phase 3)
+
+** Open Questions
+
+*** Q: What if stdin has both diff and non-diff content interleaved?
+
+A: Parser extracts diff portions, ignores the rest. Phase 2 may parse commit
+headers specifically.
+
+*** Q: Should we warn if input doesn't look like a diff at all?
+
+A: For Phase 1, show "No changes" like we do for empty diffs. Could add a
+"Input doesn't appear to be a unified diff" message later.
+
+*** Q: Performance threshold for Phase 3?
+
+A: If initial render takes >500ms for typical large diffs, consider streaming.
+Measure during manual testing before deciding.
+
+** File Changes Summary
+
+| File | Changes |
+|------+---------|
+| cmd/diffyduck/main.go | Add pager mode detection, stdin reading, ANSI stripping |
+| internal/tui/model.go | Add ~pagerMode~ field |
+| internal/tui/update.go | Modify fold toggle to skip FoldExpanded in pager mode |
+| internal/tui/view.go | Modify icon for pager mode, add PAGER indicator |
+
+** Dependencies
+
+- ~golang.org/x/term~ or ~github.com/mattn/go-isatty~ for TTY detection
+  (check if already in go.mod)
