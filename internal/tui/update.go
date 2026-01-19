@@ -12,9 +12,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case tea.WindowSizeMsg:
+		// Capture cursor identity before resize changes cursorOffset()
+		identity := m.getCursorRowIdentity()
+
 		m.width = msg.Width
 		m.height = msg.Height
-		m.clampScroll()
+
+		// Restore cursor to same row
+		newRowIdx := m.findRowOrNearestAbove(identity)
+		m.adjustScrollToRow(newRowIdx)
 		return m, nil
 
 	case FileContentLoadedMsg:
@@ -166,12 +172,16 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // cursorRowIdentity captures the "identity" of the row the cursor is on.
-// This is used to preserve scroll position across fold changes.
+// This is used to preserve scroll position across fold changes and resize.
 type cursorRowIdentity struct {
-	fileIndex   int
-	isHeader    bool
-	isBlank     bool
-	isSeparator bool
+	fileIndex      int
+	isHeader       bool
+	isHeaderSpacer bool
+	isBlank        bool
+	isSeparator    bool
+	isSummary      bool
+	// For blank rows, which blank row within the file's blank area (0-indexed)
+	blankIndex int
 	// For content rows, the line numbers to match
 	leftNum  int
 	rightNum int
@@ -194,13 +204,29 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 	}
 
 	row := rows[cursorPos]
+
+	// For blank rows, count which blank row this is within the file's blank area
+	blankIndex := 0
+	if row.isBlank {
+		for i := cursorPos - 1; i >= 0; i-- {
+			if rows[i].isBlank && rows[i].fileIndex == row.fileIndex {
+				blankIndex++
+			} else {
+				break
+			}
+		}
+	}
+
 	return cursorRowIdentity{
-		fileIndex:   row.fileIndex,
-		isHeader:    row.isHeader,
-		isBlank:     row.isBlank,
-		isSeparator: row.isSeparator,
-		leftNum:     row.pair.Left.Num,
-		rightNum:    row.pair.Right.Num,
+		fileIndex:      row.fileIndex,
+		isHeader:       row.isHeader,
+		isHeaderSpacer: row.isHeaderSpacer,
+		isBlank:        row.isBlank,
+		isSeparator:    row.isSeparator,
+		isSummary:      row.isSummary,
+		blankIndex:     blankIndex,
+		leftNum:        row.pair.Left.Num,
+		rightNum:       row.pair.Right.Num,
 	}
 }
 
@@ -212,10 +238,25 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 		return 0
 	}
 
+	// Track blanks seen per file for matching specific blank rows
+	blanksSeen := 0
+	lastFileIndex := -2 // Start with invalid value
+
 	// First, try to find an exact match
 	for i, row := range rows {
-		if m.rowMatchesIdentity(row, identity) {
+		// Reset blank counter when file changes
+		if row.fileIndex != lastFileIndex {
+			blanksSeen = 0
+			lastFileIndex = row.fileIndex
+		}
+
+		if m.rowMatchesIdentity(row, identity, blanksSeen) {
 			return i
+		}
+
+		// Count blanks after checking (so first blank has index 0)
+		if row.isBlank && row.fileIndex == identity.fileIndex {
+			blanksSeen++
 		}
 	}
 
@@ -235,8 +276,14 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 }
 
 // rowMatchesIdentity checks if a row matches the given identity.
-func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity) bool {
-	// File index must match
+// For blank rows, blanksSeen tracks how many blanks we've seen for this file.
+func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, blanksSeen int) bool {
+	// Summary row: only matches other summary rows
+	if identity.isSummary {
+		return row.isSummary
+	}
+
+	// File index must match for non-summary rows
 	if row.fileIndex != identity.fileIndex {
 		return false
 	}
@@ -245,8 +292,12 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity) bo
 	if identity.isHeader {
 		return row.isHeader
 	}
+	if identity.isHeaderSpacer {
+		return row.isHeaderSpacer
+	}
 	if identity.isBlank {
-		return row.isBlank
+		// Match the specific blank row by index
+		return row.isBlank && blanksSeen == identity.blankIndex
 	}
 	if identity.isSeparator {
 		return row.isSeparator

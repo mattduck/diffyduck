@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -326,26 +327,105 @@ func TestUpdate_Quit(t *testing.T) {
 
 func TestUpdate_WindowResize(t *testing.T) {
 	m := makeTestModel(50)
-	m.scroll = 40 // still valid after resize (max is 50)
+	m.scroll = 40
+
+	// Cursor row before resize
+	cursorRowBefore := m.cursorLine()
 
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	model := newM.(Model)
 
 	assert.Equal(t, 120, model.width)
 	assert.Equal(t, 40, model.height)
-	// scroll stays at 40 since max = 51 - 1 = 50
-	assert.Equal(t, 40, model.scroll)
+	// Cursor should stay on same row after resize
+	assert.Equal(t, cursorRowBefore, model.cursorLine())
 }
 
 func TestUpdate_WindowResize_SmallContent(t *testing.T) {
 	m := makeTestModel(10) // 11 lines total
 	m.scroll = 5
 
+	// Cursor row before resize
+	cursorRowBefore := m.cursorLine()
+
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	model := newM.(Model)
 
-	// scroll stays at 5, max = 11 - 1 = 10 (allows scrolling past content)
-	assert.Equal(t, 5, model.scroll)
+	// Cursor should stay on same row after resize
+	assert.Equal(t, cursorRowBefore, model.cursorLine())
+}
+
+func TestUpdate_WindowResize_PreservesCursorOnSummaryRow(t *testing.T) {
+	m := makeMultiFileTestModel()
+
+	// Navigate to summary row (last row)
+	rows := m.buildRows()
+	summaryIdx := len(rows) - 1
+	require.True(t, rows[summaryIdx].isSummary, "last row should be summary")
+
+	// Position cursor on summary row
+	m.adjustScrollToRow(summaryIdx)
+	require.Equal(t, summaryIdx, m.cursorLine(), "cursor should be on summary row")
+
+	// Resize terminal
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	model := newM.(Model)
+
+	// Cursor should still be on summary row after resize
+	assert.Equal(t, summaryIdx, model.cursorLine(), "cursor should stay on summary row after resize")
+}
+
+func TestUpdate_WindowResize_PreservesCursorOnInterFileBlank(t *testing.T) {
+	m := makeMultiFileTestModel()
+
+	// Find inter-file blank rows (between files)
+	rows := m.buildRows()
+	var blankIndices []int
+	for i, row := range rows {
+		if row.isBlank && !row.isHeaderSpacer {
+			blankIndices = append(blankIndices, i)
+		}
+	}
+	require.NotEmpty(t, blankIndices, "should have inter-file blank rows")
+
+	// Test with the last blank row (not the first one)
+	lastBlankIdx := blankIndices[len(blankIndices)-1]
+	m.adjustScrollToRow(lastBlankIdx)
+	require.Equal(t, lastBlankIdx, m.cursorLine(), "cursor should be on blank row")
+
+	// Resize terminal
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	model := newM.(Model)
+
+	// Cursor should stay on the same blank row after resize
+	assert.Equal(t, lastBlankIdx, model.cursorLine(), "cursor should stay on same blank row after resize")
+}
+
+func TestUpdate_WindowResize_PreservesCursorOnHeaderSpacer(t *testing.T) {
+	m := makeMultiFileTestModel()
+
+	// Find header spacer rows (blank line after header, before content)
+	rows := m.buildRows()
+	var spacerIndices []int
+	for i, row := range rows {
+		if row.isHeaderSpacer {
+			spacerIndices = append(spacerIndices, i)
+		}
+	}
+	require.NotEmpty(t, spacerIndices, "should have header spacer rows")
+
+	// Test with the second file's header spacer (not the first one)
+	require.True(t, len(spacerIndices) >= 2, "should have at least 2 header spacers")
+	spacerIdx := spacerIndices[1]
+	m.adjustScrollToRow(spacerIdx)
+	require.Equal(t, spacerIdx, m.cursorLine(), "cursor should be on header spacer")
+
+	// Resize terminal
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	model := newM.(Model)
+
+	// Cursor should stay on the same header spacer after resize
+	assert.Equal(t, spacerIdx, model.cursorLine(), "cursor should stay on same header spacer after resize")
 }
 
 func TestUpdate_ScrollRight(t *testing.T) {
