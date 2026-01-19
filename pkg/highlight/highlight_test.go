@@ -262,6 +262,57 @@ items:
 	}
 }
 
+func TestHighlighter_TOML(t *testing.T) {
+	h := New()
+	defer h.Close()
+
+	code := []byte(`[package]
+name = "my-app"
+version = "1.0.0"
+enabled = true
+count = 42
+
+# A comment
+[dependencies]
+foo = { version = "1.0" }
+`)
+
+	spans, err := h.Highlight("config.toml", code)
+	if err != nil {
+		t.Fatalf("Highlight failed: %v", err)
+	}
+
+	if len(spans) == 0 {
+		t.Fatal("Expected spans, got none")
+	}
+
+	// Check that we have some expected categories
+	categories := make(map[Category]bool)
+	for _, s := range spans {
+		categories[s.Category] = true
+	}
+
+	// Should have a string literal
+	if !categories[CategoryString] {
+		t.Error("Expected CategoryString in spans")
+	}
+
+	// Should have a number
+	if !categories[CategoryNumber] {
+		t.Error("Expected CategoryNumber in spans")
+	}
+
+	// Should have a boolean
+	if !categories[CategoryBoolean] {
+		t.Error("Expected CategoryBoolean in spans")
+	}
+
+	// Should have a comment
+	if !categories[CategoryComment] {
+		t.Error("Expected CategoryComment in spans")
+	}
+}
+
 func TestHighlighter_UnknownLanguage(t *testing.T) {
 	h := New()
 	defer h.Close()
@@ -293,6 +344,7 @@ func TestHighlighter_SupportsFile(t *testing.T) {
 		{"test.pyi", true},  // Python stub files
 		{"test.yaml", true}, // YAML
 		{"test.yml", true},  // YAML alternate extension
+		{"test.toml", true}, // TOML
 		{"test.js", false},
 		{"test", false},
 	}

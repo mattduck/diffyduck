@@ -32,6 +32,7 @@ func NewRegistry() *Registry {
 	r.Register(GoLanguage())
 	r.Register(PythonLanguage())
 	r.Register(YAMLLanguage())
+	r.Register(TOMLLanguage())
 
 	return r
 }

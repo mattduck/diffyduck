@@ -14,3 +14,6 @@ var pythonHighlightQuery string
 
 //go:embed queries/yaml-v0.7.2.scm
 var yamlHighlightQuery string
+
+//go:embed queries/toml-v0.7.0.scm
+var tomlHighlightQuery string
