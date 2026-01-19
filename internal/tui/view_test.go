@@ -729,10 +729,10 @@ func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 	assert.Contains(t, lines[0], "first.go")
 
 	// There should be a shaded separator line before the second file header
-	// Find the second file header (look for ════ prefix which indicates header)
+	// Find the second file header (look for ━━━━ prefix which indicates header)
 	secondHeaderIdx := -1
 	for i, line := range lines {
-		if strings.Contains(line, "second.go") && strings.Contains(line, "════") {
+		if strings.Contains(line, "second.go") && strings.Contains(line, "━━━━") {
 			secondHeaderIdx = i
 			break
 		}
@@ -774,7 +774,7 @@ func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 	// lines[1] = divider
 	// lines[2] = first content line (file header), not blank
 	assert.Contains(t, lines[2], "only.go")
-	assert.Contains(t, lines[2], "═══")
+	assert.Contains(t, lines[2], "━━━")
 }
 
 func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
@@ -854,7 +854,7 @@ func TestFoldLevelIcon_PagerMode(t *testing.T) {
 
 func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 	// Test that each fold level shows the correct icon in the header
-	// All levels now use the same format with trailing ═
+	// All levels now use the same format with trailing ━
 	tests := []struct {
 		name     string
 		level    sidebyside.FoldLevel
@@ -891,11 +891,11 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 			// lines[0] = top bar, lines[1] = divider, lines[2] = first content line (header)
 			headerLine := lines[2]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
-			// Header format is: ═══ <foldIcon> <statusIndicator> filename [stats] ═══
+			// Header format is: ━━━ <foldIcon> <statusIndicator> filename [stats] ━━━
 			// For modified files (a/test.go -> b/test.go with same name), status is "~"
-			assert.Contains(t, headerLine, "═══ "+tt.wantIcon+" ~ test.go", "header format should be: ═══ <icon> <status> filename")
-			// All headers now have trailing ═
-			assert.Contains(t, headerLine, "═══", "header should have trailing ═ characters")
+			assert.Contains(t, headerLine, "━━━ "+tt.wantIcon+" ~ test.go", "header format should be: ━━━ <icon> <status> filename")
+			// All headers now have trailing ━
+			assert.Contains(t, headerLine, "━━━", "header should have trailing ━ characters")
 		})
 	}
 }
@@ -928,7 +928,7 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 	// lines[0] = top bar, lines[1] = divider, lines[2] = first content line (header)
 	// Folded view should only show the header and then padding
 	assert.Contains(t, lines[2], "foo.go", "first content line should be the header")
-	assert.Contains(t, lines[2], "════", "header should have the gutter prefix")
+	assert.Contains(t, lines[2], "━━━━", "header should have the gutter prefix")
 
 	// Line pairs should NOT be shown
 	assert.NotContains(t, output, "line content", "folded view should not show line pairs")
@@ -975,10 +975,10 @@ func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
 	firstHeaderIdx := -1
 	secondHeaderIdx := -1
 	for i, line := range lines {
-		if strings.Contains(line, "first.go") && strings.Contains(line, "═══") {
+		if strings.Contains(line, "first.go") && strings.Contains(line, "━━━") {
 			firstHeaderIdx = i
 		}
-		if strings.Contains(line, "second.go") && strings.Contains(line, "═══") {
+		if strings.Contains(line, "second.go") && strings.Contains(line, "━━━") {
 			secondHeaderIdx = i
 		}
 	}
@@ -2386,9 +2386,9 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 			// Get the expected fold icon
 			foldIcon := m.foldLevelIcon(tt.foldLevel)
 
-			// Header format should be: ═══ <foldIcon> <statusIndicator> filename
-			// e.g., "═══ ○ + new.go" or "═══ ◐ ~ file.go"
-			expectedPattern := "═══ " + foldIcon + " " + tt.wantIndicator + " "
+			// Header format should be: ━━━ <foldIcon> <statusIndicator> filename
+			// e.g., "━━━ ○ + new.go" or "━━━ ◐ ~ file.go"
+			expectedPattern := "━━━ " + foldIcon + " " + tt.wantIndicator + " "
 			assert.Contains(t, header, expectedPattern,
 				"header should contain fold icon followed by status indicator: %s", expectedPattern)
 		})
@@ -2643,9 +2643,9 @@ func TestView_SummaryRowHasEqualsPrefix(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, summaryLine, "should find summary line")
-	// Summary format is now: "  ════ ●   ..." (space + space + equals gutter + icon)
-	// Should contain ═ characters for the gutter
-	assert.Contains(t, summaryLine, "═", "summary should contain ═ gutter characters")
+	// Summary format is now: "  ━━━━ ●   ..." (space + space + equals gutter + icon)
+	// Should contain ━ characters for the gutter
+	assert.Contains(t, summaryLine, "━", "summary should contain ━ gutter characters")
 }
 
 func TestView_SummaryRowIsSelectable(t *testing.T) {
@@ -3411,7 +3411,7 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 	var contentLine string
 	var summaryLine string
 	for _, line := range lines {
-		if strings.Contains(line, "test.go") && strings.Contains(line, "═") {
+		if strings.Contains(line, "test.go") && strings.Contains(line, "━") {
 			headerLine = line
 		}
 		if strings.Contains(line, "line content") {
@@ -3436,10 +3436,10 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 	headerPos := strings.Index(headerLine, "test.go")
 
 	// The header should account for the icon area, but gutter portion should align
-	// Header format: arrow/space + space + gutter(═══) + space + icon + status + filename
+	// Header format: arrow/space + space + gutter(━━━) + space + icon + status + filename
 	// Content format: indicator + space + lineNum + space + content
 
-	// Check that the gutter portion of header (═══) has the same width as lineNumWidth
+	// Check that the gutter portion of header (━━━) has the same width as lineNumWidth
 	// This test verifies the structural alignment concept
 	assert.True(t, contentPos > 0, "content should be found in content line")
 	assert.True(t, headerPos > 0, "test.go should be found in header line")
@@ -3476,16 +3476,16 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the file header line (contains test.go and ═ characters, not the top bar)
+	// Find the file header line (contains test.go and ━ characters, not the top bar)
 	var headerLine string
 	for _, line := range lines {
-		if strings.Contains(line, "test.go") && strings.Contains(line, "═") {
+		if strings.Contains(line, "test.go") && strings.Contains(line, "━") {
 			headerLine = line
 			break
 		}
 	}
 
-	require.NotEmpty(t, headerLine, "should find file header line with test.go and ═")
+	require.NotEmpty(t, headerLine, "should find file header line with test.go and ━")
 	// Header line should contain the arrow character when cursor is on it
 	assert.Contains(t, headerLine, "➤", "file header with cursor should have arrow indicator")
 }
@@ -3583,7 +3583,7 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 }
 
 func TestView_HeaderGutterWidthMatchesLineNumWidth(t *testing.T) {
-	// Test that file header gutter (═══ section) width matches the dynamic lineNumWidth
+	// Test that file header gutter (━━━ section) width matches the dynamic lineNumWidth
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
@@ -3614,7 +3614,7 @@ func TestView_HeaderGutterWidthMatchesLineNumWidth(t *testing.T) {
 	var headerLine string
 	var contentLine string
 	for _, line := range lines {
-		if strings.Contains(line, "test.go") && strings.Contains(line, "═") {
+		if strings.Contains(line, "test.go") && strings.Contains(line, "━") {
 			headerLine = line
 		}
 		if strings.Contains(line, "10000") {
@@ -3625,11 +3625,11 @@ func TestView_HeaderGutterWidthMatchesLineNumWidth(t *testing.T) {
 	require.NotEmpty(t, headerLine, "should find file header line")
 	require.NotEmpty(t, contentLine, "should find content line with line number")
 
-	// Count the consecutive ═ characters in the header (this is the gutter area)
+	// Count the consecutive ━ characters in the header (this is the gutter area)
 	equalsCount := 0
 	inEquals := false
 	for _, r := range headerLine {
-		if r == '═' {
+		if r == '━' {
 			inEquals = true
 			equalsCount++
 		} else if inEquals {
@@ -3638,7 +3638,7 @@ func TestView_HeaderGutterWidthMatchesLineNumWidth(t *testing.T) {
 	}
 
 	// The equals gutter should match lineNumWidth (5)
-	assert.Equal(t, 5, equalsCount, "header gutter width (═══) should match lineNumWidth")
+	assert.Equal(t, 5, equalsCount, "header gutter width (━━━) should match lineNumWidth")
 }
 
 func TestView_FileHeaderNoVerticalDivider(t *testing.T) {
@@ -3669,10 +3669,10 @@ func TestView_FileHeaderNoVerticalDivider(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the file header line (contains test.go and ═)
+	// Find the file header line (contains test.go and ━)
 	var headerLine string
 	for _, line := range lines {
-		if strings.Contains(line, "test.go") && strings.Contains(line, "═") {
+		if strings.Contains(line, "test.go") && strings.Contains(line, "━") {
 			headerLine = line
 			break
 		}

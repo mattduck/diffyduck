@@ -14,7 +14,7 @@ import (
 var (
 	// Styles for different line types
 	headerStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	headerLineStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // for ═ characters in headers
+	headerLineStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // for ━ characters in headers
 	hunkSeparatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	addedStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	removedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
@@ -87,7 +87,6 @@ type displayRow struct {
 	fileIndex      int // index of the file this row belongs to (-1 for summary row)
 	isHeader       bool
 	isSeparator    bool
-	isEndSeparator bool // end-of-file separator (double line style)
 	isBlank        bool
 	isHeaderSpacer bool // blank line after header (no shading, just empty)
 	isSummary      bool // summary row at the end showing total stats
@@ -504,8 +503,6 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxCountWidth, i, isCursorRow))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
-		} else if row.isEndSeparator {
-			visible = append(visible, m.renderEndSeparator(halfWidth, isCursorRow))
 		} else if row.isSummary {
 			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
 		} else {
@@ -541,33 +538,6 @@ func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
 
 	// Normal rendering: shading with │ in the middle
 	return interFileStyle.Render(leftShade) + " " + separator + " " + interFileStyle.Render(rightShade)
-}
-
-// renderEndSeparator renders a separator line at the end of a file (double line style).
-func (m Model) renderEndSeparator(halfWidth int, isCursorRow bool) string {
-	lineNumWidth := m.lineNumWidth()
-
-	// Content area width: halfWidth - indicator(1) - space(1) - gutter(lineNumWidth) - space(1)
-	contentWidth := halfWidth - lineNumWidth - 3
-	if contentWidth < 0 {
-		contentWidth = 0
-	}
-
-	if isCursorRow {
-		// Format: arrow + space + gutter(═══ with bg) + space + content(═══)
-		gutterEquals := cursorStyle.Render(strings.Repeat("═", lineNumWidth))
-		contentEquals := strings.Repeat("═", contentWidth)
-
-		separator := headerLineStyle.Render("╬")
-		return cursorArrowStyle.Render("➤") + " " + gutterEquals + headerLineStyle.Render(" "+contentEquals) +
-			" " + separator + " " +
-			cursorArrowStyle.Render("➤") + " " + gutterEquals + headerLineStyle.Render(" "+contentEquals)
-	}
-
-	// Normal rendering: full line of double equals with ═╬═ in the middle
-	leftEquals := strings.Repeat("═", halfWidth)
-	rightEquals := strings.Repeat("═", halfWidth)
-	return headerLineStyle.Render(leftEquals + "═╬═" + rightEquals)
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
@@ -1167,12 +1137,12 @@ func formatSummaryStats(files, added, removed int) string {
 }
 
 // renderSummary renders the summary row at the bottom of the diff view.
-// Format: "➤ ═══ ●   N files changed, N insertions(+), N deletions(-)" (when cursor)
+// Format: "➤ ━━━ ●   N files changed, N insertions(+), N deletions(-)" (when cursor)
 // Uses expanded icon (●) since there's no additional content to show.
 // Text is not bold, unlike file headers.
 func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidth int, isCursorRow bool) string {
 	lineNumWidth := m.lineNumWidth()
-	equalsGutter := strings.Repeat("═", lineNumWidth)
+	equalsGutter := strings.Repeat("━", lineNumWidth)
 	icon := m.foldLevelIcon(sidebyside.FoldExpanded) // Always use expanded icon
 	// Space where status indicator would be (empty for summary)
 	iconPart := " " + icon + "   " // icon + 3 spaces (status position + space)
@@ -1183,10 +1153,10 @@ func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidt
 	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 
 	if isCursorRow {
-		// Format: arrow + space + gutter(═══ with bg) + space + icon + summary
+		// Format: arrow + space + gutter(━━━ with bg) + space + icon + summary
 		return cursorArrowStyle.Render("➤") + " " + cursorStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
 	}
-	// Format: space + space + gutter(═══ dim) + space + icon + summary
+	// Format: space + space + gutter(━━━ dim) + space + icon + summary
 	return "  " + headerLineStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
 }
 
@@ -1202,10 +1172,10 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	styledStatus := statusStyle.Render(statusSymbol)
 
 	lineNumWidth := m.lineNumWidth()
-	// Gutter uses ═ repeated to match line number width
-	equalsGutter := strings.Repeat("═", lineNumWidth)
+	// Gutter uses ━ repeated to match line number width
+	equalsGutter := strings.Repeat("━", lineNumWidth)
 
-	// All headers use same format: gutter + icon + status + header + stats + trailing ═
+	// All headers use same format: gutter + icon + status + header + stats + trailing
 	const maxBarWidth = 24
 	statsBar := formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth)
 	statsBarWidth := statsBarDisplayWidth(added, removed, maxBarWidth, maxCountWidth)
@@ -1231,13 +1201,13 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	}
 
 	if isCursorRow {
-		// Format: arrow + space + gutter(═══ with bg) + space + icon + status + header + padding + stats + trailing
+		// Format: arrow + space + gutter(━━━ with bg) + space + icon + status + header + padding + stats + trailing
 		styledGutter := cursorStyle.Render(equalsGutter)
 		return cursorArrowStyle.Render("➤") + " " + styledGutter + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
 	}
 
 	// Normal rendering
-	// Format: space + space + gutter(═══) + space + icon + status + header + padding + stats + trailing
+	// Format: space + space + gutter(━━━) + space + icon + status + header + padding + stats + trailing
 	return "  " + headerLineStyle.Render(equalsGutter) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
 }
 
