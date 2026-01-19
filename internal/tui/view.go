@@ -916,16 +916,14 @@ func formatStatsBar(added, removed, maxWidth int) string {
 }
 
 func formatFileHeader(oldPath, newPath string) string {
-	if oldPath == newPath || oldPath == "/dev/null" {
-		return newPath
-	}
-	if newPath == "/dev/null" {
-		return oldPath + " (deleted)"
-	}
 	// Strip a/ and b/ prefixes if present
 	old := strings.TrimPrefix(oldPath, "a/")
 	new := strings.TrimPrefix(newPath, "b/")
-	if old == new {
+
+	if old == new || oldPath == "/dev/null" {
+		return new
+	}
+	if newPath == "/dev/null" {
 		return old
 	}
 	return old + " → " + new
