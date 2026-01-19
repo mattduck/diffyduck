@@ -606,37 +606,36 @@ func (m Model) renderTopBar() string {
 		totalRemoved += removed
 	}
 
-	// Right-aligned section: [01/27] +123 -123
+	// Left section: file counter [01/27]
 	fileCounterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
 	counterText := fmt.Sprintf("[%0*d/%d]", totalWidth, info.CurrentFile, info.TotalFiles)
+	fileCounter := fileCounterStyle.Render(counterText) + " "
+	counterDisplayWidth := len(counterText) + 1 // +1 for trailing space
 
-	// Build right section with styling (only show stats if there are changes)
+	// Right section: total stats +123 -123 (only if there are changes)
 	var rightText string
 	var rightSection string
 	if totalAdded > 0 || totalRemoved > 0 {
 		addedText := fmt.Sprintf("+%d", totalAdded)
 		removedText := fmt.Sprintf("-%d", totalRemoved)
-		rightText = counterText + " " + addedText + " " + removedText
-		rightSection = fileCounterStyle.Render(counterText) + " " + addedStyle.Render(addedText) + " " + removedStyle.Render(removedText)
-	} else {
-		rightText = counterText
-		rightSection = fileCounterStyle.Render(counterText)
+		rightText = addedText + " " + removedText
+		rightSection = addedStyle.Render(addedText) + " " + removedStyle.Render(removedText)
 	}
 
 	// Calculate widths for padding
-	// prefix: "▶ " = 2 display width
-	prefixWidth := 2
-	contentWidth := lipgloss.Width(content) // handles ANSI codes
-	rightWidth := len(rightText)            // plain text, no ANSI
-	padding := m.width - prefixWidth - contentWidth - rightWidth
+	// Layout: prefix + counter + content + padding + rightSection
+	prefixWidth := 2 // "▶ "
+	contentWidth := lipgloss.Width(content)
+	rightWidth := len(rightText)
+	padding := m.width - prefixWidth - counterDisplayWidth - contentWidth - rightWidth
 	if padding < 0 {
 		padding = 0
 	}
 
 	// Leading arrow indicator (matches cursor arrow in gutter)
 	prefix := cursorArrowStyle.Render("▶") + " "
-	topLine := prefix + content + strings.Repeat(" ", padding) + rightSection
+	topLine := prefix + fileCounter + content + strings.Repeat(" ", padding) + rightSection
 
 	// Divider line using upper 1/8 block (dim)
 	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))

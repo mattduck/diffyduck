@@ -3187,9 +3187,9 @@ func TestTopBar_LeftAligned(t *testing.T) {
 
 	// Top bar should be left-aligned (starts with content, not spaces)
 	assert.True(t, len(topBar) > 0, "top bar should not be empty")
-	// The fold icon should be near the start (after arrow)
+	// The fold icon should be near the start (after arrow and file counter [1/1])
 	idx := strings.Index(topBar, "◐")
-	assert.True(t, idx >= 0 && idx < 5, "fold icon should be near the start (left-aligned)")
+	assert.True(t, idx >= 0 && idx < 12, "fold icon should be near the start (left-aligned)")
 }
 
 func TestBottomBar_OnlyLessStyle(t *testing.T) {
