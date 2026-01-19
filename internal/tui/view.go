@@ -24,9 +24,9 @@ var (
 	emptyStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	statusStyle        = lipgloss.NewStyle().Background(lipgloss.Color("8")).Foreground(lipgloss.Color("0"))
 
-	// Inline diff highlight: underlined
-	inlineAddedStyle   = lipgloss.NewStyle().Underline(true)
-	inlineRemovedStyle = lipgloss.NewStyle().Underline(true)
+	// Inline diff highlight: underlined, bold, and colored to match the diff side
+	inlineAddedStyle   = lipgloss.NewStyle().Underline(true).Bold(true).Foreground(lipgloss.Color("10"))
+	inlineRemovedStyle = lipgloss.NewStyle().Underline(true).Bold(true).Foreground(lipgloss.Color("9"))
 
 	// Block-aligned indicator style (grey, used faint)
 	blockIndicatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
