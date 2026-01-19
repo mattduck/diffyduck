@@ -40,7 +40,7 @@ var (
 	cursorStyle = lipgloss.NewStyle().Background(lipgloss.Color("15")).Foreground(lipgloss.Color("0"))
 
 	// Cursor arrow style (fg=15, no background)
-	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow
 
 	// Inter-file area style (dim shading for blank lines between files)
 	interFileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
