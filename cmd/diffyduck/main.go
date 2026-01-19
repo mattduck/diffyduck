@@ -9,6 +9,7 @@ import (
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/git"
+	"github.com/user/diffyduck/pkg/pager"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -43,6 +44,9 @@ func parseArgs(args []string) parsedArgs {
 			result.gitArgs = args[1:]
 		case "show":
 			result.cmd = "show"
+			result.gitArgs = args[1:]
+		case "pager":
+			result.cmd = "pager"
 			result.gitArgs = args[1:]
 		}
 	}
@@ -114,8 +118,14 @@ func isPath(arg string) bool {
 }
 
 func run() error {
-	g := git.New()
 	args := parseArgs(os.Args[1:])
+
+	// Check for pager mode: explicit "pager" command or piped stdin
+	if args.cmd == "pager" || pager.IsStdinPipe() {
+		return runPagerMode()
+	}
+
+	g := git.New()
 
 	// Get diff from git
 	var output string
@@ -152,6 +162,39 @@ func run() error {
 
 	// Create and run the TUI
 	model := tui.New(files, tui.WithFetcher(fetcher))
+	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("TUI error: %w", err)
+	}
+
+	return nil
+}
+
+// runPagerMode handles pager mode where diff input comes from stdin.
+func runPagerMode() error {
+	// Read and strip ANSI codes from stdin
+	input, err := pager.ReadStdin()
+	if err != nil {
+		return fmt.Errorf("read stdin: %w", err)
+	}
+
+	// Parse the diff
+	d, err := diff.Parse(input)
+	if err != nil {
+		return fmt.Errorf("parse diff: %w", err)
+	}
+
+	if len(d.Files) == 0 {
+		fmt.Println("No changes")
+		return nil
+	}
+
+	// Transform to side-by-side format
+	files := sidebyside.TransformDiff(d)
+
+	// Create and run the TUI in pager mode (no fetcher available)
+	model := tui.New(files, tui.WithPagerMode())
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

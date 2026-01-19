@@ -13,12 +13,12 @@ for viewing diffs from other sources.
 
 ** Phases
 
-*** Phase 1: Basic Pager Mode (this document)
+*** Phase 1: Basic Pager Mode (this document) - COMPLETE
 
-- Read unified diff from stdin
-- Parse and display using existing infrastructure
-- Handle limitations gracefully (no full-file expand)
-- Add PAGER indicator in status bar
+- [X] Read unified diff from stdin
+- [X] Parse and display using existing infrastructure
+- [X] Handle limitations gracefully (no full-file expand)
+- [X] Add PAGER indicator in status bar
 
 *** Phase 2: Commit Metadata Parsing (follow-up)
 
@@ -222,14 +222,89 @@ Measure during manual testing before deciding.
 
 ** File Changes Summary
 
+*** New Files
+
+| File | Description |
+|------+-------------|
+| pkg/pager/strip.go | ANSI escape sequence stripping (~StripANSI~ function) |
+| pkg/pager/strip_test.go | 17 unit tests for ANSI stripping edge cases |
+| pkg/pager/stdin.go | ~IsStdinPipe()~ and ~ReadStdin()~ helpers |
+| pkg/pager/stdin_test.go | Stdin helper tests |
+| pkg/pager/integration_test.go | 4 integration tests (colored diff parsing) |
+
+*** Modified Files
+
 | File | Changes |
 |------+---------|
-| cmd/diffyduck/main.go | Add pager mode detection, stdin reading, ANSI stripping |
-| internal/tui/model.go | Add ~pagerMode~ field |
-| internal/tui/update.go | Modify fold toggle to skip FoldExpanded in pager mode |
-| internal/tui/view.go | Modify icon for pager mode, add PAGER indicator |
+| cmd/diffyduck/main.go | Pager mode detection, ~runPagerMode()~, "pager" subcommand |
+| internal/tui/model.go | Added ~pagerMode~ field, ~WithPagerMode()~ option |
+| internal/tui/update.go | Added ~nextFoldLevel()~ helper respecting pager mode |
+| internal/tui/view.go | ~foldLevelIcon()~ now method, PAGER indicator in status bar |
+| internal/tui/update_test.go | 5 new tests for pager mode fold behavior |
+| internal/tui/view_test.go | 3 new tests for pager mode icons and indicator |
 
 ** Dependencies
 
-- ~golang.org/x/term~ or ~github.com/mattn/go-isatty~ for TTY detection
-  (check if already in go.mod)
+- ~github.com/mattn/go-isatty~ for TTY detection (was indirect, now direct)
+
+** Implementation Status
+
+*** Phase 1 Complete
+
+All planned functionality implemented and tested:
+
+- [X] Auto-detect piped stdin
+- [X] Explicit ~diffyduck pager~ subcommand
+- [X] Strip ANSI color codes from input
+- [X] Fold toggle skips FoldExpanded (Normal ↔ Folded cycle)
+- [X] FoldNormal shows ● icon in pager mode
+- [X] PAGER indicator in status bar (right-aligned)
+
+*** Test Coverage
+
+- 17 ANSI stripping unit tests (various escape sequences, edge cases)
+- 4 integration tests (colored diff → parse → verify identical to plain)
+- 5 pager mode fold behavior tests
+- 3 pager mode UI tests (icons, indicator)
+
+** Possible Improvements / Follow-ups
+
+*** Immediate (could do now)
+
+1. *Better error message for non-diff input*: Currently shows "No changes" for
+   unparseable input. Could detect and show "Input doesn't appear to be a
+   unified diff" instead.
+
+2. *Help text update*: The ~--help~ output should mention pager mode and
+   GIT_PAGER usage.
+
+*** Phase 2 Items (commit metadata)
+
+1. *Parse commit headers*: When ~git show~ output is piped, the commit hash
+   and message appear before the diff. Could parse and display these.
+
+2. *Enable expand with parsed refs*: If we parse a commit hash, we could
+   potentially enable FoldExpanded by using that hash as the ref for fetching
+   full file content.
+
+3. *Support ~git log -p~ output*: Multiple commits with diffs interleaved.
+   Could show as separate sections.
+
+*** Phase 3 Items (performance)
+
+1. *Streaming input*: For very large diffs, consider parsing incrementally
+   to show content before stdin is fully read.
+
+2. *Lazy ANSI stripping*: Currently strips all ANSI codes upfront. Could
+   strip per-line during parsing if memory is a concern.
+
+*** Other Ideas
+
+1. *Detect diff format variants*: Support other diff formats beyond unified
+   (context diff, etc.) - low priority since unified is standard.
+
+2. *Pager mode indicator styling*: Could make "PAGER" dimmed or use a
+   different color to be less prominent.
+
+3. *Config option*: Allow users to set default behavior (always pager mode,
+   never auto-detect, etc.) via config file.

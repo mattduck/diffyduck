@@ -678,22 +678,31 @@ func (m Model) renderStatusBar() string {
 		}
 	}
 
-	// Combine: reversed_less_indicator + search_info + padding
+	// Pager mode indicator (right-aligned)
+	var pagerIndicator string
+	if m.pagerMode {
+		pagerIndicator = "PAGER"
+	}
+
+	// Combine: reversed_less_indicator + search_info + padding + pager_indicator
 	content := styledLessIndicator + searchInfo
 	contentWidth := displayWidth(" "+lessIndicator) + displayWidth(searchInfo)
-	padding := m.width - contentWidth
+	pagerWidth := displayWidth(pagerIndicator)
+
+	// Calculate padding between content and pager indicator
+	padding := m.width - contentWidth - pagerWidth
 	if padding < 0 {
 		padding = 0
 	}
 
-	return content + strings.Repeat(" ", padding)
+	return content + strings.Repeat(" ", padding) + pagerIndicator
 }
 
 // formatStatusFileInfo formats the file info for the status bar.
 // Format: foldIcon statusIcon fileName +N -M
 func (m Model) formatStatusFileInfo(info StatusInfo) string {
 	// Get fold level icon
-	icon := foldLevelIcon(info.FoldLevel)
+	icon := m.foldLevelIcon(info.FoldLevel)
 
 	// Get status indicator
 	statusSymbol, statusStyle := fileStatusIndicator(FileStatus(info.FileStatus))
@@ -963,13 +972,18 @@ func formatLessIndicator(line, total, percentage int, atEnd bool) string {
 
 // foldLevelIcon returns the icon for a given fold level.
 // ○ = Folded (empty/minimal), ◐ = Normal (half), ● = Expanded (full)
-func foldLevelIcon(level sidebyside.FoldLevel) string {
+// In pager mode, FoldNormal shows ● (filled) to indicate max expansion.
+func (m Model) foldLevelIcon(level sidebyside.FoldLevel) string {
 	switch level {
 	case sidebyside.FoldFolded:
 		return "○"
 	case sidebyside.FoldExpanded:
 		return "●"
 	default: // FoldNormal
+		if m.pagerMode {
+			// In pager mode, FoldNormal is max expansion (no FoldExpanded available)
+			return "●"
+		}
 		return "◐"
 	}
 }
@@ -1159,7 +1173,7 @@ func formatSummaryStats(files, added, removed int) string {
 func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidth int, isCursorRow bool) string {
 	lineNumWidth := m.lineNumWidth()
 	equalsGutter := strings.Repeat("═", lineNumWidth)
-	icon := foldLevelIcon(sidebyside.FoldExpanded) // Always use expanded icon
+	icon := m.foldLevelIcon(sidebyside.FoldExpanded) // Always use expanded icon
 	// Space where status indicator would be (empty for summary)
 	iconPart := " " + icon + "   " // icon + 3 spaces (status position + space)
 
@@ -1183,7 +1197,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	}
 
 	// Get fold level icon and file status indicator
-	icon := foldLevelIcon(foldLevel)
+	icon := m.foldLevelIcon(foldLevel)
 	statusSymbol, statusStyle := fileStatusIndicator(status)
 	styledStatus := statusStyle.Render(statusSymbol)
 

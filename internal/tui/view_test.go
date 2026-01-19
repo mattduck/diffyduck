@@ -813,6 +813,8 @@ func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
 }
 
 func TestFoldLevelIcon(t *testing.T) {
+	// Normal mode (non-pager)
+	m := Model{pagerMode: false}
 	tests := []struct {
 		level    sidebyside.FoldLevel
 		expected string
@@ -824,7 +826,27 @@ func TestFoldLevelIcon(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.level.String(), func(t *testing.T) {
-			icon := foldLevelIcon(tt.level)
+			icon := m.foldLevelIcon(tt.level)
+			assert.Equal(t, tt.expected, icon)
+		})
+	}
+}
+
+func TestFoldLevelIcon_PagerMode(t *testing.T) {
+	// Pager mode - FoldNormal shows filled (●) to indicate max expansion
+	m := Model{pagerMode: true}
+	tests := []struct {
+		level    sidebyside.FoldLevel
+		expected string
+	}{
+		{sidebyside.FoldFolded, "○"},
+		{sidebyside.FoldNormal, "●"}, // Filled in pager mode!
+		{sidebyside.FoldExpanded, "●"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.level.String()+"_pager", func(t *testing.T) {
+			icon := m.foldLevelIcon(tt.level)
 			assert.Equal(t, tt.expected, icon)
 		})
 	}
@@ -2362,7 +2384,7 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 			header := lines[2]
 
 			// Get the expected fold icon
-			foldIcon := foldLevelIcon(tt.foldLevel)
+			foldIcon := m.foldLevelIcon(tt.foldLevel)
 
 			// Header format should be: ═══ <foldIcon> <statusIndicator> filename
 			// e.g., "═══ ○ + new.go" or "═══ ◐ ~ file.go"
@@ -3782,4 +3804,62 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 
 	assert.Equal(t, spacerFirstArrow, contentFirstArrow, "first arrow visual position should match between spacer and content line")
 	assert.Equal(t, spacerSecondArrow, contentSecondArrow, "second arrow visual position (relative to first) should match between spacer and content line")
+}
+
+func TestStatusBar_PagerIndicator(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:     80,
+		height:    10,
+		keys:      DefaultKeyMap(),
+		pagerMode: true,
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	bottomBar := lines[len(lines)-1]
+
+	// Bottom bar should show PAGER indicator in pager mode
+	assert.Contains(t, bottomBar, "PAGER", "bottom bar should show PAGER indicator in pager mode")
+}
+
+func TestStatusBar_NoPagerIndicator_WhenNotPagerMode(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:     80,
+		height:    10,
+		keys:      DefaultKeyMap(),
+		pagerMode: false,
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	bottomBar := lines[len(lines)-1]
+
+	// Bottom bar should NOT show PAGER indicator when not in pager mode
+	assert.NotContains(t, bottomBar, "PAGER", "bottom bar should not show PAGER indicator when not in pager mode")
 }

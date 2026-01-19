@@ -629,3 +629,106 @@ func TestUpdate_ScrollToEnd_SummaryHasNoFileInfo(t *testing.T) {
 	assert.Equal(t, 0, info.CurrentFile, "summary row should have no file")
 	assert.Equal(t, "", info.FileName, "summary row should have no file name")
 }
+
+// Pager mode tests - fold toggle should skip FoldExpanded
+
+func TestUpdate_PagerMode_FoldToggle_SkipsExpanded(t *testing.T) {
+	m := makeTestModel(10)
+	m.pagerMode = true // Enable pager mode
+
+	// Initially at FoldNormal
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+
+	// Press Tab - should skip FoldExpanded and go to FoldFolded
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel,
+		"pager mode should skip FoldExpanded")
+
+	// Press Tab again - should go back to FoldNormal
+	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model2 := newM2.(Model)
+
+	assert.Equal(t, sidebyside.FoldNormal, model2.files[0].FoldLevel,
+		"pager mode should cycle back to FoldNormal")
+}
+
+func TestUpdate_PagerMode_FoldToggleAll_SkipsExpanded(t *testing.T) {
+	pairs1 := make([]sidebyside.LinePair, 5)
+	pairs2 := make([]sidebyside.LinePair, 5)
+	for i := range pairs1 {
+		pairs1[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+		}
+	}
+	for i := range pairs2 {
+		pairs2[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
+			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+		}
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2},
+	}, WithPagerMode())
+	m.width = 80
+	m.height = 20
+
+	// Both at FoldNormal initially
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldNormal, m.files[1].FoldLevel)
+
+	// Press Shift+Tab - should skip FoldExpanded and go to FoldFolded
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	model := newM.(Model)
+
+	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel,
+		"pager mode should skip FoldExpanded for all files")
+	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel,
+		"pager mode should skip FoldExpanded for all files")
+}
+
+func TestUpdate_PagerMode_NormalMode_DoesNotSkipExpanded(t *testing.T) {
+	// Verify normal (non-pager) mode still goes through FoldExpanded
+	m := makeTestModel(10)
+	// pagerMode is false by default
+
+	// Initially at FoldNormal
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+
+	// Press Tab - should go to FoldExpanded in normal mode
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel,
+		"normal mode should go to FoldExpanded")
+}
+
+func TestNextFoldLevel_PagerMode(t *testing.T) {
+	m := Model{pagerMode: true}
+
+	// Normal -> Folded (skip Expanded)
+	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevel(sidebyside.FoldNormal))
+
+	// Folded -> Normal
+	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevel(sidebyside.FoldFolded))
+
+	// Expanded -> Folded (same as normal, this level shouldn't be reached in pager mode)
+	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevel(sidebyside.FoldExpanded))
+}
+
+func TestNextFoldLevel_NormalMode(t *testing.T) {
+	m := Model{pagerMode: false}
+
+	// Normal -> Expanded
+	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevel(sidebyside.FoldNormal))
+
+	// Expanded -> Folded
+	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevel(sidebyside.FoldExpanded))
+
+	// Folded -> Normal
+	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevel(sidebyside.FoldFolded))
+}

@@ -13,6 +13,9 @@ type Model struct {
 	files   []sidebyside.FilePair
 	fetcher *content.Fetcher // for fetching full file contents (lazy)
 
+	// Pager mode
+	pagerMode bool // true when running as a pager (stdin input, no fetcher)
+
 	// Syntax highlighting
 	highlighter         *highlight.Highlighter
 	highlightSpans      map[int]*FileHighlight      // file index -> full content highlight spans
@@ -75,6 +78,14 @@ type Option func(*Model)
 func WithFetcher(f *content.Fetcher) Option {
 	return func(m *Model) {
 		m.fetcher = f
+	}
+}
+
+// WithPagerMode enables pager mode, which limits functionality since
+// full file content cannot be fetched from git.
+func WithPagerMode() Option {
+	return func(m *Model) {
+		m.pagerMode = true
 	}
 }
 

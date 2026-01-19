@@ -273,6 +273,19 @@ func (m *Model) adjustScrollToRow(rowIndex int) {
 	m.clampScroll()
 }
 
+// nextFoldLevel returns the next fold level, respecting pager mode.
+// In pager mode, FoldExpanded is skipped since full file content is unavailable.
+// Normal mode cycle: Normal -> Expanded -> Folded -> Normal
+// Pager mode cycle:  Normal -> Folded -> Normal
+func (m Model) nextFoldLevel(current sidebyside.FoldLevel) sidebyside.FoldLevel {
+	next := current.NextLevel()
+	if m.pagerMode && next == sidebyside.FoldExpanded {
+		// Skip FoldExpanded in pager mode
+		return next.NextLevel() // Returns FoldFolded
+	}
+	return next
+}
+
 // handleFoldToggle cycles the fold level of the current file.
 func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	fileIdx := m.currentFileIndex()
@@ -283,7 +296,7 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	// Capture cursor identity before fold change
 	identity := m.getCursorRowIdentity()
 
-	newLevel := m.files[fileIdx].FoldLevel.NextLevel()
+	newLevel := m.nextFoldLevel(m.files[fileIdx].FoldLevel)
 	m.files[fileIdx].FoldLevel = newLevel
 	m.calculateTotalLines()
 
@@ -324,8 +337,8 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 
 	var newLevel sidebyside.FoldLevel
 	if allSame {
-		// All same - advance to next level
-		newLevel = firstLevel.NextLevel()
+		// All same - advance to next level (respecting pager mode)
+		newLevel = m.nextFoldLevel(firstLevel)
 	} else {
 		// Different levels - collapse all to Folded
 		newLevel = sidebyside.FoldFolded
