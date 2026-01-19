@@ -459,17 +459,20 @@ func (m *Model) goToNextHeading() {
 	}
 }
 
-// goToPrevHeading moves the cursor to the previous file header.
+// goToPrevHeading moves the cursor to the current file's header if not already
+// on it, or to the previous file's header if already on the current header.
 func (m *Model) goToPrevHeading() {
 	rows := m.buildRows()
 	cursorPos := m.cursorLine()
 
-	// Find the current file index and whether we're on summary
+	// Find the current file index and whether we're on summary or header
 	currentFileIdx := 0
 	onSummary := false
+	onHeader := false
 	if cursorPos >= 0 && cursorPos < len(rows) {
 		fi := rows[cursorPos].fileIndex
 		onSummary = rows[cursorPos].isSummary
+		onHeader = rows[cursorPos].isHeader
 		if fi >= 0 {
 			currentFileIdx = fi
 		}
@@ -487,12 +490,22 @@ func (m *Model) goToPrevHeading() {
 		return
 	}
 
-	// Find the header of the previous file
-	// We want the header of fileIndex = currentFileIdx - 1
+	// If not on header, jump to current file's header first
+	if !onHeader {
+		for i, row := range rows {
+			if row.isHeader && row.fileIndex == currentFileIdx {
+				m.adjustScrollToRow(i)
+				return
+			}
+		}
+		return
+	}
+
+	// Already on header, find the header of the previous file
 	targetFileIdx := currentFileIdx - 1
 	if targetFileIdx < 0 {
-		// Already at first file, go to its header
-		targetFileIdx = 0
+		// Already at first file's header, stay there
+		return
 	}
 
 	for i, row := range rows {

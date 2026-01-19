@@ -267,6 +267,42 @@ func TestUpdate_PrevHeading_gk(t *testing.T) {
 	assert.Equal(t, 1, info.CurrentFile, "gk at first file should stay")
 }
 
+func TestUpdate_PrevHeading_gk_FromMiddleOfFile(t *testing.T) {
+	m := makeMultiFileTestModel()
+	// Go to top (first file header)
+	m = sendKeys(m, "g", "g")
+
+	// Move to second file header
+	m = sendKeys(m, "g", "j")
+	info := m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile, "should be on second file")
+
+	// Move down a few lines into the middle of the file content
+	m = sendKeys(m, "j", "j", "j")
+	info = m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile, "should still be in second file")
+
+	// Verify we're NOT on the header
+	rows := m.buildRows()
+	cursorPos := m.cursorLine()
+	assert.False(t, rows[cursorPos].isHeader, "should not be on header after moving down")
+
+	// gk should first jump to the CURRENT file's header (not the previous file)
+	m = sendKeys(m, "g", "k")
+	info = m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile, "gk from middle of file should stay in same file")
+
+	// Verify we're now on the header
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	assert.True(t, rows[cursorPos].isHeader, "gk from middle should jump to current file's header")
+
+	// Now gk again should go to the previous file
+	m = sendKeys(m, "g", "k")
+	info = m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile, "gk from header should go to previous file")
+}
+
 func TestUpdate_GoToBottom(t *testing.T) {
 	m := makeTestModel(100) // 100 pairs + 1 header = 101 lines
 	m.scroll = 0
