@@ -3708,3 +3708,78 @@ func TestView_HunkSeparatorCrossInMiddle(t *testing.T) {
 	assert.Contains(t, hunkLine, "░", "hunk separator should have shading")
 	assert.Contains(t, hunkLine, "┼", "hunk separator should have cross in middle")
 }
+
+func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
+	// Test that header spacer with cursor has same layout as content lines:
+	// - Gutter areas highlighted (white background)
+	// - Arrows positioned at start of each half (before the gutter)
+	// - Separator │ in the middle
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  100,
+		height: 15,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Position cursor on header spacer (row 1: header=0, spacer=1)
+	m.scroll = 1 - m.cursorOffset()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// The header spacer line is on the viewport line at cursorOffset position
+	// (skip top bar which is 2 lines)
+	spacerLine := lines[2+m.cursorOffset()]
+
+	// Header spacer with cursor should have TWO arrows (one per side)
+	arrowCount := strings.Count(spacerLine, "➤")
+	assert.Equal(t, 2, arrowCount, "header spacer with cursor should have two arrows (one per side)")
+
+	// Header spacer should NOT have a separator since it's above the content area
+	assert.NotContains(t, spacerLine, "│", "header spacer should not have separator (above content area)")
+
+	// Header spacer with cursor should have gutter highlighting (ANSI background color)
+	assert.Contains(t, spacerLine, "\x1b[", "header spacer with cursor should have ANSI styling for gutter")
+
+	// Now compare arrow positions with a content line
+	// Position cursor on content line (row 2: header=0, spacer=1, content=2)
+	m.scroll = 2 - m.cursorOffset()
+	output2 := m.View()
+	lines2 := strings.Split(output2, "\n")
+	contentLine := lines2[2+m.cursorOffset()]
+
+	// Content line should also have two arrows
+	contentArrowCount := strings.Count(contentLine, "➤")
+	assert.Equal(t, 2, contentArrowCount, "content line with cursor should have two arrows")
+
+	// Strip ANSI codes and compare visual rune positions (not byte positions)
+	strippedSpacer := stripANSI(spacerLine)
+	strippedContent := stripANSI(contentLine)
+
+	// Find the visual position of the second arrow (right side) in each line
+	// First arrow should be at position 0 for both
+	spacerFirstArrow := findRuneIndex(strippedSpacer, "➤")
+	spacerSecondArrow := findRuneIndex(strippedSpacer[spacerFirstArrow+1:], "➤")
+
+	contentFirstArrow := findRuneIndex(strippedContent, "➤")
+	contentSecondArrow := findRuneIndex(strippedContent[contentFirstArrow+1:], "➤")
+
+	assert.Equal(t, spacerFirstArrow, contentFirstArrow, "first arrow visual position should match between spacer and content line")
+	assert.Equal(t, spacerSecondArrow, contentSecondArrow, "second arrow visual position (relative to first) should match between spacer and content line")
+}

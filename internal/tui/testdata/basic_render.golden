@@ -1,7 +1,7 @@
 ➤ ◐ ~ foo.go +1 -1                                                              
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
   ════ ◐ ~ foo.go | +1 -1 +-                                                  
-➤                                      ➤
+➤                                        ➤                                     
      1   package main                  ┬      1   package main                 
 ~    2 ░ old line                    ░ │ ~    2 ░ new line                    ░
      3   func main() {}                ┴      3   func main() {}               

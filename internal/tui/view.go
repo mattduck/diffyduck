@@ -597,9 +597,24 @@ func (m Model) renderInterFileBlank() string {
 }
 
 // renderHeaderSpacerWithCursor renders a blank line after header with cursor indicator.
+// Matches the structure of renderBlankWithCursor but with empty content (no shading).
 func (m Model) renderHeaderSpacerWithCursor(halfWidth, lineNumWidth int) string {
-	// Just show cursor arrows on an otherwise empty line
-	return cursorArrowStyle.Render("➤") + strings.Repeat(" ", halfWidth-1) + " " + cursorArrowStyle.Render("➤")
+	// Highlight both gutter areas (left and right) with cursor style
+	leftGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+	rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+
+	// Content areas - empty spaces (no shading for header spacer)
+	contentWidth := halfWidth - lineNumWidth - 3
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+	leftContent := strings.Repeat(" ", contentWidth)
+	rightContent := strings.Repeat(" ", contentWidth)
+
+	// Format: arrow + space + gutter + space + content + (3 spaces for separator area) + arrow + space + gutter + space + content
+	// This matches the layout of content lines but without the │ since header spacer is above the separator area
+	return cursorArrowStyle.Render("➤") + " " + leftGutter + " " + leftContent + "   " +
+		cursorArrowStyle.Render("➤") + " " + rightGutter + " " + rightContent
 }
 
 // renderTopBar renders the top bar showing file info with a divider line below.
