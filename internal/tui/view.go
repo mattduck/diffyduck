@@ -18,6 +18,7 @@ var (
 	hunkSeparatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	addedStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	removedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	changedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // blue for modified lines with word diff
 	contextStyle       = lipgloss.NewStyle()
 	contextDimStyle    = lipgloss.NewStyle().Faint(true) // for context on old side
 	lineNumStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
@@ -1247,19 +1248,25 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, li
 	leftSyntax := m.getLineSpans(fileIndex, pair.Left.Num, true)
 	rightSyntax := m.getLineSpans(fileIndex, pair.Right.Num, false)
 
-	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, leftSyntax, rowIdx, 0, isCursorRow, leftIndicatorStart)
-	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rightSyntax, rowIdx, 1, isCursorRow, rightIndicatorStart)
+	// Use blue "changed" styling when we have word-level diff (both sides modified)
+	hasWordDiff := len(leftSpans) > 0
+
+	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, leftSyntax, rowIdx, 0, isCursorRow, leftIndicatorStart, hasWordDiff)
+	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rightSyntax, rowIdx, 1, isCursorRow, rightIndicatorStart, hasWordDiff)
 
 	separator := hunkSeparatorStyle.Render(separatorChar)
 	return left + " " + separator + " " + right
 }
 
-func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool, indicatorStart int) string {
-	// Diff indicator (+/-/space) before line number
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool, indicatorStart int, hasWordDiff bool) string {
+	// Diff indicator (+/-/~/space) before line number
 	// On cursor row, show arrowhead instead
+	// When hasWordDiff is true, use blue "~" instead of green/red +/-
 	var indicator string
 	if isCursorRow {
 		indicator = cursorArrowStyle.Render("➤")
+	} else if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
+		indicator = changedStyle.Render("~")
 	} else {
 		switch line.Type {
 		case sidebyside.Added:
@@ -1272,7 +1279,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	}
 
 	// Line number (fixed, not affected by horizontal scroll)
-	// Color matches the +/- indicator: green for added, red for removed, dim for context
+	// Color matches the +/- indicator: green for added, red for removed, blue for changed, dim for context
 	var numStr string
 	numContent := fmt.Sprintf("%*d", lineNumWidth, line.Num)
 	if line.Num == 0 {
@@ -1283,9 +1290,17 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	} else {
 		switch line.Type {
 		case sidebyside.Added:
-			numStr = addedStyle.Render(numContent)
+			if hasWordDiff {
+				numStr = changedStyle.Render(numContent)
+			} else {
+				numStr = addedStyle.Render(numContent)
+			}
 		case sidebyside.Removed:
-			numStr = removedStyle.Render(numContent)
+			if hasWordDiff {
+				numStr = changedStyle.Render(numContent)
+			} else {
+				numStr = removedStyle.Render(numContent)
+			}
 		default:
 			numStr = lineNumStyle.Render(numContent)
 		}
@@ -1316,7 +1331,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 		styledContent = contextDimStyle.Render(displayContent)
 	} else if len(inlineSpans) > 0 && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		// Apply inline diff highlighting (with search highlighting taking precedence)
-		styledContent = m.applyInlineSpans(expanded, visible, inlineSpans, line.Type, actualContentWidth, rowIdx, side)
+		styledContent = m.applyInlineSpans(expanded, visible, inlineSpans, line.Type, rowIdx, side)
 	} else if len(syntaxSpans) > 0 {
 		// Apply syntax highlighting as base, with search on top
 		styledContent = m.applySyntaxHighlight(line.Content, expanded, visible, syntaxSpans, rowIdx, side)
@@ -1337,7 +1352,8 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	}
 
 	// Wrap added/removed lines with gutter indicators
-	styledContent = m.applyColumnIndicators(styledContent, actualContentWidth, line.Type, indicatorStart)
+	// Use blue for changed lines (hasWordDiff), otherwise green/red
+	styledContent = m.applyColumnIndicators(styledContent, actualContentWidth, line.Type, indicatorStart, hasWordDiff)
 
 	return indicator + " " + numStr + " " + styledContent
 }
@@ -1345,11 +1361,11 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 // applyInlineSpans applies inline diff highlighting to visible content.
 // It maps spans from the full expanded string to the visible viewport slice.
 // Search highlighting takes precedence over inline diff highlighting.
-func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Span, lineType sidebyside.LineType, _ int, rowIdx, side int) string {
-	// Determine base and highlight styles
+func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Span, lineType sidebyside.LineType, rowIdx, side int) string {
 	// Base style is context (no color) since gutter shows +/- indicators
-	var highlightStyle lipgloss.Style
+	// Highlight style matches the line type (green for added, red for removed)
 	baseStyle := contextStyle
+	var highlightStyle lipgloss.Style
 	if lineType == sidebyside.Added {
 		highlightStyle = inlineAddedStyle
 	} else {
@@ -1834,7 +1850,7 @@ func computeIndicatorStarts(rows []displayRow) (leftStarts, rightStarts map[int]
 // - Added/removed: ░ + space + content + space + ░
 // - Context/empty: space + space + content + space + space
 // Also optionally inserts a block-aligned indicator for added/removed lines.
-func (m Model) applyColumnIndicators(styledContent string, contentWidth int, lineType sidebyside.LineType, indicatorStartAbs int) string {
+func (m Model) applyColumnIndicators(styledContent string, contentWidth int, lineType sidebyside.LineType, indicatorStartAbs int, hasWordDiff bool) string {
 	isAddedOrRemoved := lineType == sidebyside.Added || lineType == sidebyside.Removed
 
 	// For context/empty lines, just wrap with spaces to align with added/removed
@@ -1843,9 +1859,13 @@ func (m Model) applyColumnIndicators(styledContent string, contentWidth int, lin
 	}
 
 	// Get indicator styles for added/removed lines
-	// Start and end indicators: colored (green/red)
-	colorStyle := addedStyle // green
-	if lineType == sidebyside.Removed {
+	// Start and end indicators: blue for changed (word diff), green/red otherwise
+	var colorStyle lipgloss.Style
+	if hasWordDiff {
+		colorStyle = changedStyle // blue for modified lines with word diff
+	} else if lineType == sidebyside.Added {
+		colorStyle = addedStyle // green
+	} else {
 		colorStyle = removedStyle // red
 	}
 	startIndicator := colorStyle.Render("░")

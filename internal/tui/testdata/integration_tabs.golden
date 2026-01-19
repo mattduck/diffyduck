@@ -4,7 +4,7 @@
 
      1   package main                  ┬      1   package main                 
 ➤    2                                 │ ➤    2                                
--    3 ░     fmt.Println("old")      ░ │ +    3 ░     fmt.Println("new")      ░
+~    3 ░     fmt.Println("old")      ░ │ ~    3 ░     fmt.Println("new")      ░
                                        │ +    4 ░     fmt.Println("added")    ░
      4   }                             ┴      5   }                            
 ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
