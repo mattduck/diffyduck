@@ -36,11 +36,11 @@ var (
 	searchMatchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
 	searchCurrentMatchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("11"))
 
-	// Cursor highlight style (bg=15 bright white, fg=0 black) for gutter areas
-	cursorStyle = lipgloss.NewStyle().Background(lipgloss.Color("15")).Foreground(lipgloss.Color("0"))
+	// Cursor highlight style (bg=7 silver, fg=0 black) for gutter areas
+	cursorStyle = lipgloss.NewStyle().Background(lipgloss.Color("7")).Foreground(lipgloss.Color("0"))
 
-	// Cursor arrow style (fg=15, no background)
-	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow
+	// Cursor arrow style (fg=15 bright white, no background)
+	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 
 	// Inter-file area style (dim shading for blank lines between files)
 	interFileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
@@ -532,8 +532,8 @@ func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
 		gutterShade := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
 		contentShade := interFileStyle.Render(strings.Repeat("░", contentWidth))
 
-		return cursorArrowStyle.Render("➤") + interFileStyle.Render("░") + gutterShade + interFileStyle.Render("░") + contentShade + interFileStyle.Render("░") + separator + interFileStyle.Render("░") +
-			cursorArrowStyle.Render("➤") + interFileStyle.Render("░") + gutterShade + interFileStyle.Render("░") + contentShade
+		return cursorArrowStyle.Render("▶") + interFileStyle.Render("░") + gutterShade + interFileStyle.Render("░") + contentShade + interFileStyle.Render("░") + separator + interFileStyle.Render("░") +
+			cursorArrowStyle.Render("▶") + interFileStyle.Render("░") + gutterShade + interFileStyle.Render("░") + contentShade
 	}
 
 	// Normal rendering: shading with │ in the middle
@@ -556,8 +556,8 @@ func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
 
 	separator := interFileStyle.Render("░")
 	// Format: arrow + shade + gutter + shade + content
-	return cursorArrowStyle.Render("➤") + interFileStyle.Render("░") + leftGutter + interFileStyle.Render("░") + leftContent + interFileStyle.Render("░") + separator + interFileStyle.Render("░") +
-		cursorArrowStyle.Render("➤") + interFileStyle.Render("░") + rightGutter + interFileStyle.Render("░") + rightContent
+	return cursorArrowStyle.Render("▶") + interFileStyle.Render("░") + leftGutter + interFileStyle.Render("░") + leftContent + interFileStyle.Render("░") + separator + interFileStyle.Render("░") +
+		cursorArrowStyle.Render("▶") + interFileStyle.Render("░") + rightGutter + interFileStyle.Render("░") + rightContent
 }
 
 // renderInterFileBlank renders a blank line between files with light shading.
@@ -583,8 +583,8 @@ func (m Model) renderHeaderSpacerWithCursor(halfWidth, lineNumWidth int) string 
 
 	// Format: arrow + space + gutter + space + content + (3 spaces for separator area) + arrow + space + gutter + space + content
 	// This matches the layout of content lines but without the │ since header spacer is above the separator area
-	return cursorArrowStyle.Render("➤") + " " + leftGutter + " " + leftContent + "   " +
-		cursorArrowStyle.Render("➤") + " " + rightGutter + " " + rightContent
+	return cursorArrowStyle.Render("▶") + " " + leftGutter + " " + leftContent + "   " +
+		cursorArrowStyle.Render("▶") + " " + rightGutter + " " + rightContent
 }
 
 // renderTopBar renders the top bar showing file info with a divider line below.
@@ -598,7 +598,7 @@ func (m Model) renderTopBar() string {
 	}
 
 	// Leading arrow indicator (matches cursor arrow in gutter)
-	prefix := cursorArrowStyle.Render("➤") + " "
+	prefix := cursorArrowStyle.Render("▶") + " "
 
 	// Pad to fill the width (accounting for prefix: arrow + space = 2)
 	contentWidth := displayWidth(content)
@@ -1137,7 +1137,7 @@ func formatSummaryStats(files, added, removed int) string {
 }
 
 // renderSummary renders the summary row at the bottom of the diff view.
-// Format: "➤ ━━━ ●   N files changed, N insertions(+), N deletions(-)" (when cursor)
+// Format: "▶ ━━━ ●   N files changed, N insertions(+), N deletions(-)" (when cursor)
 // Uses expanded icon (●) since there's no additional content to show.
 // Text is not bold, unlike file headers.
 func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidth int, isCursorRow bool) string {
@@ -1154,7 +1154,7 @@ func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidt
 
 	if isCursorRow {
 		// Format: arrow + space + gutter(━━━ with bg) + space + icon + summary
-		return cursorArrowStyle.Render("➤") + " " + cursorStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
+		return cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
 	}
 	// Format: space + space + gutter(━━━ dim) + space + icon + summary
 	return "  " + headerLineStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
@@ -1203,7 +1203,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	if isCursorRow {
 		// Format: arrow + space + gutter(━━━ with bg) + space + icon + status + header + padding + stats + trailing
 		styledGutter := cursorStyle.Render(equalsGutter)
-		return cursorArrowStyle.Render("➤") + " " + styledGutter + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
+		return cursorArrowStyle.Render("▶") + " " + styledGutter + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
 	}
 
 	// Normal rendering
@@ -1263,7 +1263,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
 	var indicator string
 	if isCursorRow {
-		indicator = cursorArrowStyle.Render("➤")
+		indicator = cursorArrowStyle.Render("▶")
 	} else if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		indicator = changedStyle.Render("~")
 	} else {

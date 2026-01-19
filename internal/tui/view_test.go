@@ -3487,7 +3487,7 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 
 	require.NotEmpty(t, headerLine, "should find file header line with test.go and ━")
 	// Header line should contain the arrow character when cursor is on it
-	assert.Contains(t, headerLine, "➤", "file header with cursor should have arrow indicator")
+	assert.Contains(t, headerLine, "▶", "file header with cursor should have arrow indicator")
 }
 
 func TestView_CursorArrowOnSummaryRow(t *testing.T) {
@@ -3530,7 +3530,7 @@ func TestView_CursorArrowOnSummaryRow(t *testing.T) {
 	}
 
 	require.NotEmpty(t, summaryLine, "should find summary line")
-	assert.Contains(t, summaryLine, "➤", "summary row with cursor should have arrow indicator")
+	assert.Contains(t, summaryLine, "▶", "summary row with cursor should have arrow indicator")
 }
 
 func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
@@ -3579,7 +3579,7 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 	}
 
 	require.NotEmpty(t, hunkSepLine, "should find hunk separator line")
-	assert.Contains(t, hunkSepLine, "➤", "hunk separator with cursor should have arrow indicator")
+	assert.Contains(t, hunkSepLine, "▶", "hunk separator with cursor should have arrow indicator")
 }
 
 func TestView_HeaderGutterWidthMatchesLineNumWidth(t *testing.T) {
@@ -3770,7 +3770,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	spacerLine := lines[2+m.cursorOffset()]
 
 	// Header spacer with cursor should have TWO arrows (one per side)
-	arrowCount := strings.Count(spacerLine, "➤")
+	arrowCount := strings.Count(spacerLine, "▶")
 	assert.Equal(t, 2, arrowCount, "header spacer with cursor should have two arrows (one per side)")
 
 	// Header spacer should NOT have a separator since it's above the content area
@@ -3787,7 +3787,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	contentLine := lines2[2+m.cursorOffset()]
 
 	// Content line should also have two arrows
-	contentArrowCount := strings.Count(contentLine, "➤")
+	contentArrowCount := strings.Count(contentLine, "▶")
 	assert.Equal(t, 2, contentArrowCount, "content line with cursor should have two arrows")
 
 	// Strip ANSI codes and compare visual rune positions (not byte positions)
@@ -3796,11 +3796,11 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 
 	// Find the visual position of the second arrow (right side) in each line
 	// First arrow should be at position 0 for both
-	spacerFirstArrow := findRuneIndex(strippedSpacer, "➤")
-	spacerSecondArrow := findRuneIndex(strippedSpacer[spacerFirstArrow+1:], "➤")
+	spacerFirstArrow := findRuneIndex(strippedSpacer, "▶")
+	spacerSecondArrow := findRuneIndex(strippedSpacer[spacerFirstArrow+1:], "▶")
 
-	contentFirstArrow := findRuneIndex(strippedContent, "➤")
-	contentSecondArrow := findRuneIndex(strippedContent[contentFirstArrow+1:], "➤")
+	contentFirstArrow := findRuneIndex(strippedContent, "▶")
+	contentSecondArrow := findRuneIndex(strippedContent[contentFirstArrow+1:], "▶")
 
 	assert.Equal(t, spacerFirstArrow, contentFirstArrow, "first arrow visual position should match between spacer and content line")
 	assert.Equal(t, spacerSecondArrow, contentSecondArrow, "second arrow visual position (relative to first) should match between spacer and content line")

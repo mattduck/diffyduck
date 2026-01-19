@@ -270,10 +270,10 @@ func TestStatusInfo_CursorOnLastBlankLine_CountsAsLastFile(t *testing.T) {
 // Cursor Line Highlighting Tests
 // =============================================================================
 
-// ANSI escape sequences for cursor highlighting (bg=15, fg=0)
+// ANSI escape sequences for cursor highlighting (bg=7, fg=0)
 const (
-	// lipgloss combines fg and bg into single escape: \x1b[30;107m = fg black + bg bright white
-	ansiCursorStyle = "\x1b[30;107m"
+	// lipgloss combines fg and bg into single escape: \x1b[30;47m = fg black + bg silver
+	ansiCursorStyle = "\x1b[30;47m"
 	ansiReset       = "\x1b[0m"
 )
 
