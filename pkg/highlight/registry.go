@@ -58,18 +58,23 @@ func (r *Registry) ForName(name string) *LanguageConfig {
 
 // captureToCategory maps standard tree-sitter capture names to our categories.
 // This follows the conventions used by nvim-treesitter and other editors.
+// Hierarchical names (e.g., "keyword.type") fall back to their prefix ("keyword")
+// if not explicitly mapped - see CategoryForCapture.
 var captureToCategory = map[string]Category{
-	// Functions - standard queries use @function for both definitions and calls
-	"function":         CategoryFunction,
-	"function.builtin": CategoryFunction,
-	"function.method":  CategoryFunction,
-	"method":           CategoryFunction,
+	// Functions
+	"function":             CategoryFunction,
+	"function.builtin":     CategoryFunction,
+	"function.method":      CategoryFunction,
+	"function.call":        CategoryFunctionCall,
+	"function.method.call": CategoryFunctionCall,
+	"function.macro":       CategoryFunction,
+	"method":               CategoryFunction,
+	"constructor":          CategoryFunction,
 
 	// Types
 	"type":            CategoryType,
 	"type.builtin":    CategoryType,
 	"type.definition": CategoryType,
-	"constructor":     CategoryType,
 
 	// Variables and properties
 	"variable":           CategoryVariable,

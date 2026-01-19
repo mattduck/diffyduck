@@ -1,0 +1,41 @@
+# Sample YAML file for testing syntax highlighting
+---
+name: my-application
+version: 1.2.3
+enabled: true
+debug: false
+
+server:
+  host: localhost
+  port: 8080
+  timeout: 30
+
+database:
+  driver: postgres
+  connection:
+    host: "db.example.com"
+    port: 5432
+    username: admin
+    password: null
+
+features:
+  - authentication
+  - logging
+  - metrics
+
+limits:
+  max_connections: 100
+  rate_limit: 1000.5
+
+# Anchors and aliases
+defaults: &defaults
+  adapter: postgres
+  pool: 5
+
+development:
+  <<: *defaults
+  database: dev_db
+
+production:
+  <<: *defaults
+  database: prod_db

@@ -72,6 +72,9 @@ func (h *Highlighter) Highlight(filename string, content []byte) ([]Span, error)
 		return spans[i].Start < spans[j].Start
 	})
 
+	// Merge overlapping spans - later captures in the query override earlier ones
+	spans = MergeSpans(spans)
+
 	return spans, nil
 }
 
@@ -110,9 +113,18 @@ func (h *Highlighter) getParserAndQuery(cfg *LanguageConfig) (*tree_sitter.Parse
 	return parser, query
 }
 
+// spanWithOrder tracks capture order for stable sorting.
+// When multiple patterns match the same node (e.g., @variable and @function both
+// matching an identifier), we need "last match wins" semantics. Since sort.Slice
+// isn't stable, we track the order captures were produced and use it as a tiebreaker.
+type spanWithOrder struct {
+	Span
+	order int
+}
+
 // runQuery executes the highlight query and collects spans.
 func (h *Highlighter) runQuery(node *tree_sitter.Node, query *tree_sitter.Query, content []byte) []Span {
-	var spans []Span
+	var spansOrdered []spanWithOrder
 
 	cursor := tree_sitter.NewQueryCursor()
 	defer cursor.Close()
@@ -120,6 +132,7 @@ func (h *Highlighter) runQuery(node *tree_sitter.Node, query *tree_sitter.Query,
 	captures := cursor.Captures(query, node, content)
 	captureNames := query.CaptureNames()
 
+	order := 0
 	for {
 		match, captureIdx := captures.Next()
 		if match == nil {
@@ -138,11 +151,29 @@ func (h *Highlighter) runQuery(node *tree_sitter.Node, query *tree_sitter.Query,
 			continue
 		}
 
-		spans = append(spans, Span{
-			Start:    int(capture.Node.StartByte()),
-			End:      int(capture.Node.EndByte()),
-			Category: cat,
+		spansOrdered = append(spansOrdered, spanWithOrder{
+			Span: Span{
+				Start:    int(capture.Node.StartByte()),
+				End:      int(capture.Node.EndByte()),
+				Category: cat,
+			},
+			order: order,
 		})
+		order++
+	}
+
+	// Sort by start position, then by capture order (later captures come last)
+	sort.Slice(spansOrdered, func(i, j int) bool {
+		if spansOrdered[i].Start != spansOrdered[j].Start {
+			return spansOrdered[i].Start < spansOrdered[j].Start
+		}
+		return spansOrdered[i].order < spansOrdered[j].order
+	})
+
+	// Extract just the spans
+	spans := make([]Span, len(spansOrdered))
+	for i, s := range spansOrdered {
+		spans[i] = s.Span
 	}
 
 	return spans

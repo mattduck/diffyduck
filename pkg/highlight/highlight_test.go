@@ -151,13 +151,14 @@ func foo() {
 
 	commentCount := 0
 	for _, s := range spans {
-		if s.Category == CategoryComment {
+		// Count both regular comments and doc comments
+		if s.Category == CategoryComment || s.Category == CategoryDocComment {
 			commentCount++
 		}
 	}
 
 	if commentCount < 2 {
-		t.Errorf("Expected at least 2 comments, got %d", commentCount)
+		t.Errorf("Expected at least 2 comments (including doc comments), got %d", commentCount)
 	}
 }
 

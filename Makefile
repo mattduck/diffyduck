@@ -1,4 +1,4 @@
-.PHONY: build install test check fmt lint clean update-golden
+.PHONY: build install test check fmt lint clean update-golden fetch-queries
 
 # Build the binary
 build:
@@ -53,3 +53,14 @@ cover:
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
+
+# Fetch syntax highlighting queries from nvim-treesitter.
+# This downloads .scm query files for all supported languages.
+# WARNING: This overwrites local modifications! Check git diff after running
+# and re-apply any local changes (e.g., TOML section header styling).
+# See pkg/highlight/queries/fetch_queries.sh for details.
+fetch-queries:
+	./pkg/highlight/queries/fetch_queries.sh
+	@echo ""
+	@echo "Check 'git diff pkg/highlight/queries/' for changes."
+	@echo "Re-apply any local modifications marked with 'LOCAL MODIFICATION' comments."
