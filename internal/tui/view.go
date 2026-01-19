@@ -134,13 +134,6 @@ func (m Model) buildRows() []displayRow {
 			// Expanded: show full file content with diff highlighting
 			// If content not loaded yet, fall back to normal view
 			if fp.HasContent() {
-				// Add 2 blank lines before file headers (except the first)
-				// Blank lines belong to the file above, not below
-				if fileIdx > 0 {
-					rows = append(rows, displayRow{fileIndex: fileIdx - 1, isBlank: true})
-					rows = append(rows, displayRow{fileIndex: fileIdx - 1, isBlank: true})
-				}
-
 				// File header with stats
 				header := formatFileHeader(fp.OldPath, fp.NewPath)
 				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
@@ -151,19 +144,18 @@ func (m Model) buildRows() []displayRow {
 					expandedRows[i].fileIndex = fileIdx
 				}
 				rows = append(rows, expandedRows...)
+
+				// Add 4 blank lines after expanded content
+				// Blank lines belong to the file above, not below
+				for i := 0; i < 4; i++ {
+					rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
+				}
 				continue // Skip the normal view below
 			}
 			// Fall through to normal view if content not loaded
 			fallthrough
 
 		default: // FoldNormal
-			// Add 2 blank lines before file headers (except the first)
-			// Blank lines belong to the file above, not below
-			if fileIdx > 0 {
-				rows = append(rows, displayRow{fileIndex: fileIdx - 1, isBlank: true})
-				rows = append(rows, displayRow{fileIndex: fileIdx - 1, isBlank: true})
-			}
-
 			// File header with stats
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
 			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
@@ -185,6 +177,12 @@ func (m Model) buildRows() []displayRow {
 				if pair.Right.Num > 0 {
 					prevRight = pair.Right.Num
 				}
+			}
+
+			// Add 4 blank lines after normal content
+			// Blank lines belong to the file above, not below
+			for i := 0; i < 4; i++ {
+				rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
 			}
 		}
 	}

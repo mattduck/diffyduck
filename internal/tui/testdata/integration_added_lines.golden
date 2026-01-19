@@ -6,6 +6,10 @@
 ➤                                                │ ➤    7 ░     "github.com/mattn/go-runewidth"   ░
      7       "github.com/user/diffyduck/pkg/si   │      8       "github.com/user/diffyduck/pkg/si  
      8   )                                       │      9   )                                      
+
+
+
+
   ════ ●   1 file changed, 1 insertion(+)
 
 
@@ -13,8 +17,4 @@
 
 
 
-
-
-
-
- line 4/7 50%                                                                                       
+ line 4/11 30%                                                                                      

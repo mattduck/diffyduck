@@ -9,12 +9,12 @@
      3   func main() {                 │      6   func main() {                
 -    4 ░     fmt.Println("hello")    ░ │ +    7 ░     fmt.Println(os.Args)    ░
      5   }                             │      8   }                            
+
+
+
+
   ════ ●   1 file changed, 5 insertions(+), 2 deletions(-)
 
 
 
-
-
-
-
- line 4/10 33%                                                                  
+ line 4/14 23%                                                                  

@@ -131,7 +131,7 @@ func TestStartup_ScrollIsZero_NoBlankSpaceAtTop(t *testing.T) {
 func TestScrollDown_CanGoBeyondContent(t *testing.T) {
 	// Scrolling down should allow scroll to exceed totalLines
 	// so the cursor can reach the last line of content
-	m := makeTestModel(10) // 12 total lines (header + 10 pairs + summary)
+	m := makeTestModel(10) // 16 total lines (header + 10 pairs + 4 blank + summary)
 	m.height = 50          // cursor at line 9
 	m.scroll = 0
 
@@ -139,11 +139,11 @@ func TestScrollDown_CanGoBeyondContent(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
-	// Last content line is at index 11 (0-indexed) - the summary row
-	// Cursor is at offset 9, so scroll should be 11 - 9 = 2
-	// We want cursor (at scroll + cursorOffset) to be on line 11
-	// So scroll + 9 = 11, scroll = 2
-	assert.Equal(t, 2, model.scroll, "G should put cursor on last line")
+	// Last content line is at index 15 (0-indexed) - the summary row
+	// Cursor is at offset 9, so scroll should be 15 - 9 = 6
+	// We want cursor (at scroll + cursorOffset) to be on line 15
+	// So scroll + 9 = 15, scroll = 6
+	assert.Equal(t, 6, model.scroll, "G should put cursor on last line")
 }
 
 func TestMaxScroll_AllowsCursorOnLastLine(t *testing.T) {
@@ -202,13 +202,14 @@ func TestStatusInfo_UseCursorPosition_NotScrollPosition(t *testing.T) {
 	info := m.StatusInfo()
 	assert.Equal(t, "first.go", info.FileName, "cursor at line 9 should be in first file")
 
-	// At scroll 15, cursor is at line 24 (within second file)
-	// First file ends at line 20 (header + 20 pairs = 21 lines, indices 0-20)
-	// Line 21 is blank before second file, line 22 is second file header
-	// So cursor at line 24 should be in second file
-	m.scroll = 15
+	// At scroll 17, cursor is at line 26 (within second file)
+	// First file: header + 20 pairs = 21 lines (indices 0-20)
+	// Blank lines: 4 lines after first file (indices 21-24, belong to first file)
+	// Second file header: line 25
+	// So cursor at line 26 should be in second file
+	m.scroll = 17
 	info = m.StatusInfo()
-	assert.Equal(t, "second.go", info.FileName, "cursor at line 24 should be in second file")
+	assert.Equal(t, "second.go", info.FileName, "cursor at line 26 should be in second file")
 }
 
 func TestStatusInfo_CursorOnBlankLine_CountsAsFileAbove(t *testing.T) {
@@ -223,12 +224,12 @@ func TestStatusInfo_CursorOnBlankLine_CountsAsFileAbove(t *testing.T) {
 
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-5 (header + 5 pairs)
-			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 6 is blank, line 7 is header
+			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-5 (header + 5 pairs), then 4 blank lines (6-9)
+			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 10 is header
 		},
 		width:  80,
 		height: 10, // cursor offset = 1 (20% of 9)
-		scroll: 5,  // cursor at line 6 (blank line before second file)
+		scroll: 5,  // cursor at line 6 (first blank line after first file)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
@@ -870,11 +871,11 @@ func TestFoldToggleAll_PreservesScrollPosition(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Layout: 0=first header, 1=first diff, 2=blank, 3=second header, 4=second diff
-	// Put cursor on second file's diff line (line 4)
-	m.scroll = 1 // cursor at line 4
+	// Layout: 0=first header, 1=first diff, 2-5=blank (4 lines), 6=second header, 7=second diff
+	// Put cursor on second file's diff line (line 7)
+	m.scroll = 4 // cursor at line 7
 
-	assert.Equal(t, 4, m.cursorLine(), "cursor should start on second file's diff line")
+	assert.Equal(t, 7, m.cursorLine(), "cursor should start on second file's diff line")
 
 	// Shift+Tab: all files Normal -> Expanded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
@@ -909,13 +910,13 @@ func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Put cursor on second file's header (line 4 with 2 blank lines between files)
-	// Layout: line 0=first header, line 1=first content, line 2=blank, line 3=blank, line 4=second header
-	m.scroll = 1 // cursor offset = 3, so cursor at line 4
+	// Put cursor on second file's header (line 6 with 4 blank lines after first file)
+	// Layout: line 0=first header, line 1=first content, lines 2-5=blank, line 6=second header
+	m.scroll = 3 // cursor offset = 3, so cursor at line 6
 
-	assert.Equal(t, 4, m.cursorLine(), "cursor should start on second file header")
+	assert.Equal(t, 6, m.cursorLine(), "cursor should start on second file header")
 	rows := m.buildRows()
-	assert.True(t, rows[4].isHeader, "line 4 should be a header")
+	assert.True(t, rows[6].isHeader, "line 6 should be a header")
 
 	// Toggle all: Normal -> Expanded -> Folded
 	// After folding all, second file header should be at line 1 (since no blanks in Folded)
@@ -1118,12 +1119,13 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// File layout (2 blank lines between files):
+	// File layout (4 blank lines after each expanded/normal file, except last):
 	// alpha.go: lines 0-10 (header + 10 pairs = 11 lines)
-	// blank:    lines 11-12 (counts as alpha.go - file above)
-	// beta.go:  lines 13-23 (header + 10 pairs = 11 lines)
-	// blank:    lines 24-25 (counts as beta.go - file above)
-	// gamma.go: lines 26-36 (header + 10 pairs = 11 lines)
+	// blank:    lines 11-14 (4 lines, count as alpha.go - file above)
+	// beta.go:  lines 15-25 (header + 10 pairs = 11 lines)
+	// blank:    lines 26-29 (4 lines, count as beta.go - file above)
+	// gamma.go: lines 30-40 (header + 10 pairs = 11 lines)
+	// summary:  line 41
 
 	// Scroll through and verify status bar matches cursor position
 	for scroll := m.minScroll(); scroll <= m.maxScroll(); scroll++ {
@@ -1135,9 +1137,9 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 		// Note: blank separator lines count as the file above
 		// Summary row (last line) has no file info
 		expectedFile := "alpha.go"
-		if cursorPos >= 13 && cursorPos < 26 { // Line 13 is beta header
+		if cursorPos >= 15 && cursorPos < 30 { // Line 15 is beta header
 			expectedFile = "beta.go"
-		} else if cursorPos >= 26 && cursorPos < m.totalLines-1 { // Line 26 is gamma header
+		} else if cursorPos >= 30 && cursorPos < m.totalLines-1 { // Line 30 is gamma header
 			expectedFile = "gamma.go"
 		} else if cursorPos == m.totalLines-1 { // Summary row
 			expectedFile = ""

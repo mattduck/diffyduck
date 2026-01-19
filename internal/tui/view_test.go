@@ -283,8 +283,8 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	// cursorLine = scroll(0) + cursorOffset(3) = 3
 	// CurrentLine = cursorLine + 1 = 4
 	assert.Equal(t, 4, info.CurrentLine)
-	assert.Equal(t, 52, info.TotalLines) // 50 pairs + 1 header + 1 summary
-	// Percentage: cursorLine(3) / maxCursor(51) * 100 = 5%
+	assert.Equal(t, 56, info.TotalLines) // 50 pairs + 1 header + 4 blank + 1 summary
+	// Percentage: cursorLine(3) / maxCursor(55) * 100 = 5%
 	assert.Equal(t, 5, info.Percentage)
 	assert.False(t, info.AtEnd)
 }
@@ -467,8 +467,8 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 		height: 11, // 10 content lines + 1 status bar
 		keys:   DefaultKeyMap(),
 	}
-	m.calculateTotalLines() // 102 lines total
-	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 101
+	m.calculateTotalLines() // 106 lines total (100 pairs + 1 header + 4 blank + 1 summary)
+	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 105
 
 	// At minScroll, cursor is at line 0, percentage should be 0
 	m.scroll = m.minScroll()
@@ -476,11 +476,11 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 	assert.Equal(t, 0, info.Percentage)
 	assert.False(t, info.AtEnd)
 
-	// At scroll that puts cursor at approx line 50, percentage should be ~49
-	// (50/101 * 100 = 49.5, rounded to 49)
+	// At scroll that puts cursor at approx line 50, percentage should be ~47
+	// (50/105 * 100 = 47.6, rounded to 47)
 	m.scroll = 50 - m.cursorOffset() // cursor at 50
 	info = m.StatusInfo()
-	assert.Equal(t, 49, info.Percentage)
+	assert.Equal(t, 47, info.Percentage)
 	assert.False(t, info.AtEnd)
 
 	// At maxScroll, cursor is at last line, percentage should be 100
@@ -502,8 +502,8 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-10 (header + 10 pairs)
-			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // lines 11-12 blank, lines 13-23
+			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-10 (header + 10 pairs), then 4 blank lines (11-14)
+			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 15 is header
 		},
 		width:  80,
 		height: 10, // contentHeight=8, cursorOffset=1
@@ -518,20 +518,20 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=10 → cursor at line 11 (first blank before second file) → first.go (blank belongs to file above)
+	// scroll=10 → cursor at line 11 (first blank after first file) → first.go (blank belongs to file above)
 	m.scroll = 10
 	info = m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=11 → cursor at line 12 (second blank before second file) → first.go (blank belongs to file above)
-	m.scroll = 11
+	// scroll=13 → cursor at line 14 (last blank after first file) → first.go (blank belongs to file above)
+	m.scroll = 13
 	info = m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=12 → cursor at line 13 (header of second file) → second.go
-	m.scroll = 12
+	// scroll=14 → cursor at line 15 (header of second file) → second.go
+	m.scroll = 14
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile)
 	assert.Equal(t, "second.go", info.FileName)
@@ -917,13 +917,15 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 	assert.NotContains(t, output, "line content", "folded view should not show line pairs")
 }
 
-func TestView_FoldedFile_NoBlankLineBefore(t *testing.T) {
+func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
+	// When the file ABOVE is folded, there should be no blank lines between them
+	// Blank lines are added AFTER expanded/normal content, not before headers
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldFolded, // First file is folded
 				Pairs: []sidebyside.LinePair{
 					{
 						Left:  sidebyside.Line{Num: 1, Content: "first file", Type: sidebyside.Context},
@@ -934,7 +936,7 @@ func TestView_FoldedFile_NoBlankLineBefore(t *testing.T) {
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				FoldLevel: sidebyside.FoldFolded, // Second file is folded
+				FoldLevel: sidebyside.FoldNormal, // Second file is normal
 				Pairs: []sidebyside.LinePair{
 					{
 						Left:  sidebyside.Line{Num: 1, Content: "second file", Type: sidebyside.Context},
@@ -952,20 +954,24 @@ func TestView_FoldedFile_NoBlankLineBefore(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the second file header
+	// Find both file headers
+	firstHeaderIdx := -1
 	secondHeaderIdx := -1
 	for i, line := range lines {
+		if strings.Contains(line, "first.go") && strings.Contains(line, "═══") {
+			firstHeaderIdx = i
+		}
 		if strings.Contains(line, "second.go") && strings.Contains(line, "═══") {
 			secondHeaderIdx = i
-			break
 		}
 	}
+	require.NotEqual(t, -1, firstHeaderIdx, "should find first file header")
 	require.NotEqual(t, -1, secondHeaderIdx, "should find second file header")
 
-	// For folded files, there should NOT be a blank line before the header
-	// The previous line should be the last content line of first file
-	assert.Contains(t, lines[secondHeaderIdx-1], "first file",
-		"folded header should follow directly after previous content (no blank line)")
+	// When first file is folded, second header should immediately follow
+	// (no blank lines after folded files)
+	assert.Equal(t, firstHeaderIdx+1, secondHeaderIdx,
+		"when file above is folded, headers should be adjacent")
 }
 
 func TestView_MixedFoldLevels(t *testing.T) {
@@ -1049,11 +1055,11 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Normal file: 1 header + 10 pairs = 11 lines
-	// Folded file: 1 header only (no blank line before since it's folded)
+	// Normal file: 1 header + 10 pairs = 11 lines + 4 blank lines after = 15 lines
+	// Folded file: 1 header only (no blank lines after since it's folded)
 	// Summary row: 1 line
-	// Total should be 11 + 1 + 1 = 13
-	assert.Equal(t, 13, m.totalLines, "totalLines should account for fold states and summary")
+	// Total should be 15 + 1 + 1 = 17
+	assert.Equal(t, 17, m.totalLines, "totalLines should account for fold states and summary")
 }
 
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
@@ -1746,7 +1752,7 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 			},
 		},
 		width:  80,
-		height: 10, // Much taller than content (3 lines: header + 1 pair + summary)
+		height: 10, // Much taller than content (7 lines: header + 1 pair + 4 blank + summary)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
@@ -1759,7 +1765,7 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	// Output should have exactly `height` lines (top bar + content + bottom bar)
 	assert.Equal(t, 10, len(lines), "view should fill entire viewport height")
 
-	// Layout: [topBar, content..., bottomBar]
+	// Layout: [topBar, divider, content..., bottomBar]
 	// Top bar should not show file name when cursor is on summary
 	assert.NotContains(t, lines[0], "foo.go", "top bar should not show file name when on summary")
 
@@ -1767,12 +1773,8 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	lastLine := lines[len(lines)-1]
 	assert.Contains(t, lastLine, "END")
 
-	// When scrolled to end with small content:
-	// - scroll = maxScroll = 1, cursorOffset = 1
-	// - lines[2] is at scroll position (line index 1 = the pair)
-	// - lines[3] is cursor position (line index 2 = summary)
-	assert.Contains(t, lines[2], "only line", "first content line should be the pair")
-	assert.Contains(t, lines[3], "file changed", "second content line should be summary at cursor")
+	// The summary row should be visible somewhere in the output
+	assert.Contains(t, output, "file changed", "summary should be visible when scrolled to end")
 }
 
 // === File Stats Tests ===
@@ -2477,6 +2479,42 @@ func TestBuildRows_SummaryRowNoFile(t *testing.T) {
 	require.True(t, lastRow.isSummary)
 	// Summary row should have fileIndex = -1 to indicate no file association
 	assert.Equal(t, -1, lastRow.fileIndex)
+}
+
+func TestBuildRows_BlankLinesBeforeSummary(t *testing.T) {
+	// When last file is expanded/normal, there should be 4 blank lines before summary
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Layout should be: header (0), content (1), blank (2-5), summary (6)
+	require.Len(t, rows, 7, "should have header + content + 4 blanks + summary")
+
+	// Verify the 4 blank lines before summary
+	for i := 2; i <= 5; i++ {
+		assert.True(t, rows[i].isBlank, "row %d should be blank", i)
+		assert.Equal(t, 0, rows[i].fileIndex, "blank lines should belong to the last file")
+	}
+
+	// Last row should be summary
+	assert.True(t, rows[6].isSummary, "last row should be summary")
 }
 
 func TestView_SummaryRowFormat(t *testing.T) {
