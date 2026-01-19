@@ -40,6 +40,9 @@ var (
 
 	// Cursor arrow style (fg=15, no background)
 	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+
+	// Inter-file area style (dim shading for blank lines between files)
+	interFileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 )
 
 // View implements tea.Model.
@@ -83,8 +86,11 @@ type displayRow struct {
 	fileIndex      int // index of the file this row belongs to (-1 for summary row)
 	isHeader       bool
 	isSeparator    bool
+	isEndSeparator bool // end-of-file separator (double line style)
 	isBlank        bool
 	isSummary      bool // summary row at the end showing total stats
+	isFirstLine    bool // first line pair in a file (uses ┬ separator)
+	isLastLine     bool // last line pair in a file (uses ┴ separator)
 	header         string
 	foldLevel      sidebyside.FoldLevel // fold level for headers (used for icon and styling)
 	status         FileStatus           // file status (added, deleted, renamed, modified) for headers
@@ -142,6 +148,12 @@ func (m Model) buildRows() []displayRow {
 				expandedRows := m.buildExpandedRows(fp)
 				for i := range expandedRows {
 					expandedRows[i].fileIndex = fileIdx
+					if i == 0 {
+						expandedRows[i].isFirstLine = true
+					}
+					if i == len(expandedRows)-1 {
+						expandedRows[i].isLastLine = true
+					}
 				}
 				rows = append(rows, expandedRows...)
 
@@ -168,7 +180,14 @@ func (m Model) buildRows() []displayRow {
 					rows = append(rows, displayRow{fileIndex: fileIdx, isSeparator: true})
 				}
 
-				rows = append(rows, displayRow{fileIndex: fileIdx, pair: pair})
+				row := displayRow{fileIndex: fileIdx, pair: pair}
+				if i == 0 {
+					row.isFirstLine = true
+				}
+				if i == len(fp.Pairs)-1 {
+					row.isLastLine = true
+				}
+				rows = append(rows, row)
 
 				// Track previous line numbers (use non-zero values)
 				if pair.Left.Num > 0 {
@@ -465,18 +484,20 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			if isCursorRow {
 				visible = append(visible, m.renderBlankWithCursor(halfWidth, lineNumWidth))
 			} else {
-				visible = append(visible, "")
+				visible = append(visible, m.renderInterFileBlank())
 			}
 		} else if row.isHeader {
 			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxCountWidth, i, isCursorRow))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
+		} else if row.isEndSeparator {
+			visible = append(visible, m.renderEndSeparator(halfWidth, isCursorRow))
 		} else if row.isSummary {
 			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
 		} else {
 			leftStart := leftIndicatorStarts[i]
 			rightStart := rightIndicatorStarts[i]
-			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, halfWidth, lineNumWidth, i, isCursorRow, leftStart, rightStart))
+			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, halfWidth, lineNumWidth, i, isCursorRow, leftStart, rightStart, row.isFirstLine, row.isLastLine))
 		}
 	}
 
@@ -485,6 +506,31 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 // renderHunkSeparator renders a separator line between hunks.
 func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
+	// Fill with light shading, with cross where vertical divider meets horizontal
+	leftShade := strings.Repeat("░", halfWidth)
+	rightShade := strings.Repeat("░", halfWidth)
+	separator := hunkSeparatorStyle.Render("┼")
+
+	if isCursorRow {
+		// Cursor row: show arrows and highlight gutter area
+		lineNumWidth := m.lineNumWidth()
+		contentWidth := halfWidth - lineNumWidth - 3
+		if contentWidth < 0 {
+			contentWidth = 0
+		}
+		gutterShade := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+		contentShade := interFileStyle.Render(strings.Repeat("░", contentWidth))
+
+		return cursorArrowStyle.Render("➤") + interFileStyle.Render("░") + gutterShade + interFileStyle.Render("░") + contentShade + interFileStyle.Render("░") + separator + interFileStyle.Render("░") +
+			cursorArrowStyle.Render("➤") + interFileStyle.Render("░") + gutterShade + interFileStyle.Render("░") + contentShade
+	}
+
+	// Normal rendering: shading with │ in the middle
+	return interFileStyle.Render(leftShade) + " " + separator + " " + interFileStyle.Render(rightShade)
+}
+
+// renderEndSeparator renders a separator line at the end of a file (double line style).
+func (m Model) renderEndSeparator(halfWidth int, isCursorRow bool) string {
 	lineNumWidth := m.lineNumWidth()
 
 	// Content area width: halfWidth - indicator(1) - space(1) - gutter(lineNumWidth) - space(1)
@@ -494,40 +540,46 @@ func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
 	}
 
 	if isCursorRow {
-		// Format: arrow + space + gutter(dashes with bg) + space + content(dashes)
-		gutterDashes := cursorStyle.Render(strings.Repeat("─", lineNumWidth))
-		contentDashes := strings.Repeat("─", contentWidth)
+		// Format: arrow + space + gutter(═══ with bg) + space + content(═══)
+		gutterEquals := cursorStyle.Render(strings.Repeat("═", lineNumWidth))
+		contentEquals := strings.Repeat("═", contentWidth)
 
-		separator := hunkSeparatorStyle.Render("│")
-		return cursorArrowStyle.Render("➤") + " " + gutterDashes + hunkSeparatorStyle.Render(" "+contentDashes) +
+		separator := headerLineStyle.Render("╬")
+		return cursorArrowStyle.Render("➤") + " " + gutterEquals + headerLineStyle.Render(" "+contentEquals) +
 			" " + separator + " " +
-			cursorArrowStyle.Render("➤") + " " + gutterDashes + hunkSeparatorStyle.Render(" "+contentDashes)
+			cursorArrowStyle.Render("➤") + " " + gutterEquals + headerLineStyle.Render(" "+contentEquals)
 	}
 
-	// Normal rendering: full line of dashes with ─┼─ in the middle
-	leftDashes := strings.Repeat("─", halfWidth)
-	rightDashes := strings.Repeat("─", halfWidth)
-	return hunkSeparatorStyle.Render(leftDashes + "─┼─" + rightDashes)
+	// Normal rendering: full line of double equals with ═╬═ in the middle
+	leftEquals := strings.Repeat("═", halfWidth)
+	rightEquals := strings.Repeat("═", halfWidth)
+	return headerLineStyle.Render(leftEquals + "═╬═" + rightEquals)
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
 func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
 	// Highlight both gutter areas (left and right)
-	leftGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-	rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+	leftGutter := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	rightGutter := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
 
-	// Empty content areas (accounting for indicator + space + gutter + space)
+	// Content areas with light shading (accounting for indicator + space + gutter + space)
 	contentWidth := halfWidth - lineNumWidth - 3
 	if contentWidth < 0 {
 		contentWidth = 0
 	}
-	leftContent := strings.Repeat(" ", contentWidth)
-	rightContent := strings.Repeat(" ", contentWidth)
+	leftContent := interFileStyle.Render(strings.Repeat("░", contentWidth))
+	rightContent := interFileStyle.Render(strings.Repeat("░", contentWidth))
 
-	separator := hunkSeparatorStyle.Render("│")
-	// Format: arrow + space + gutter + space + content
-	return cursorArrowStyle.Render("➤") + " " + leftGutter + " " + leftContent + " " + separator + " " +
-		cursorArrowStyle.Render("➤") + " " + rightGutter + " " + rightContent
+	separator := interFileStyle.Render("░")
+	// Format: arrow + shade + gutter + shade + content
+	return cursorArrowStyle.Render("➤") + interFileStyle.Render("░") + leftGutter + interFileStyle.Render("░") + leftContent + interFileStyle.Render("░") + separator + interFileStyle.Render("░") +
+		cursorArrowStyle.Render("➤") + interFileStyle.Render("░") + rightGutter + interFileStyle.Render("░") + rightContent
+}
+
+// renderInterFileBlank renders a blank line between files with light shading.
+func (m Model) renderInterFileBlank() string {
+	// Fill the entire width with light shade characters
+	return interFileStyle.Render(strings.Repeat("░", m.width))
 }
 
 // renderTopBar renders the top bar showing file info with a divider line below.
@@ -1116,32 +1168,40 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 		padding = strings.Repeat(" ", maxHeaderWidth-headerTextWidth)
 	}
 
-	// Calculate trailing ═ to fill the width
-	// Format: prefix(2) + gutter + space + icon + space + status + space + header + padding + statsBar + space + trailing
+	// Calculate trailing spaces to fill the width
+	// Format: prefix(2) + gutter + space + icon + space + status + space + header + padding + statsBar + trailing
 	iconPartWidth := 1 + len(icon) + 1 + len(statusSymbol) + 1 // " icon status "
 	prefixWidth := 2 + lineNumWidth + iconPartWidth + headerTextWidth + len(padding) + statsBarWidth
-	trailing := m.width - prefixWidth - 1 // -1 for space before trailing
+	trailing := m.width - prefixWidth
 	if trailing < 0 {
 		trailing = 0
 	}
-	trailingLine := ""
+	trailingSpace := ""
 	if trailing > 0 {
-		trailingLine = " " + headerLineStyle.Render(strings.Repeat("═", trailing))
+		trailingSpace = strings.Repeat(" ", trailing)
 	}
 
 	if isCursorRow {
 		// Format: arrow + space + gutter(═══ with bg) + space + icon + status + header + padding + stats + trailing
 		styledGutter := cursorStyle.Render(equalsGutter)
-		return cursorArrowStyle.Render("➤") + " " + styledGutter + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingLine
+		return cursorArrowStyle.Render("➤") + " " + styledGutter + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
 	}
 
 	// Normal rendering
 	// Format: space + space + gutter(═══) + space + icon + status + header + padding + stats + trailing
-	return "  " + headerLineStyle.Render(equalsGutter) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingLine
+	return "  " + headerLineStyle.Render(equalsGutter) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, leftIndicatorStart, rightIndicatorStart int) string {
+func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, leftIndicatorStart, rightIndicatorStart int, isFirstLine, isLastLine bool) string {
 	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
+
+	// Choose separator based on position: ┬ for first line, ┴ for last line, │ for middle
+	separatorChar := "│"
+	if isFirstLine {
+		separatorChar = "┬"
+	} else if isLastLine {
+		separatorChar = "┴"
+	}
 
 	// Check if this is a modified pair where we should show inline diff
 	isModifiedPair := pair.Left.Type == sidebyside.Removed && pair.Right.Type == sidebyside.Added
@@ -1171,7 +1231,7 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, li
 	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, leftSyntax, rowIdx, 0, isCursorRow, leftIndicatorStart)
 	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rightSyntax, rowIdx, 1, isCursorRow, rightIndicatorStart)
 
-	separator := hunkSeparatorStyle.Render("│")
+	separator := hunkSeparatorStyle.Render(separatorChar)
 	return left + " " + separator + " " + right
 }
 

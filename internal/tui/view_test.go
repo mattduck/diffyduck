@@ -684,11 +684,11 @@ func TestView_HunkSeparator(t *testing.T) {
 
 	output := m.View()
 
-	// Should contain a separator line with box drawing dashes and a cross separator
-	// Format: space + space + gutter(─) + space + content(─) + space + ┼ + space + ...
+	// Should contain a separator line with shading and a cross separator
+	// Format: ░░░░ ┼ ░░░░
 	assert.Contains(t, output, "┼")
-	// Should have horizontal lines on both sides (gutter area)
-	assert.Contains(t, output, "────")
+	// Should have shading on both sides
+	assert.Contains(t, output, "░░░░")
 }
 
 func TestView_BlankLineBeforeFileHeader(t *testing.T) {
@@ -728,11 +728,11 @@ func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 	// First line should be the first file header (no blank before it)
 	assert.Contains(t, lines[0], "first.go")
 
-	// There should be a blank line before the second file header
-	// Find the second file header
+	// There should be a shaded separator line before the second file header
+	// Find the second file header (look for ════ prefix which indicates header)
 	secondHeaderIdx := -1
 	for i, line := range lines {
-		if strings.Contains(line, "second.go") && strings.Contains(line, "═══") {
+		if strings.Contains(line, "second.go") && strings.Contains(line, "════") {
 			secondHeaderIdx = i
 			break
 		}
@@ -740,9 +740,9 @@ func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 	require.NotEqual(t, -1, secondHeaderIdx, "should find second file header")
 	require.Greater(t, secondHeaderIdx, 1, "second header should not be at start")
 
-	// Line before second header should be blank
-	assert.Equal(t, "", strings.TrimSpace(lines[secondHeaderIdx-1]),
-		"should have blank line before second file header")
+	// Line before second header should be shaded (inter-file separator)
+	assert.Contains(t, lines[secondHeaderIdx-1], "░",
+		"should have shaded line before second file header")
 }
 
 func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
@@ -808,8 +808,8 @@ func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
 
 	output := m.View()
 
-	// Should NOT contain separator characters
-	assert.NotContains(t, output, "─┼─")
+	// Should NOT contain hunk separator cross (┼ only appears in hunk separators)
+	assert.NotContains(t, output, "┼")
 }
 
 func TestFoldLevelIcon(t *testing.T) {
@@ -906,12 +906,7 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 	// lines[0] = top bar, lines[1] = divider, lines[2] = first content line (header)
 	// Folded view should only show the header and then padding
 	assert.Contains(t, lines[2], "foo.go", "first content line should be the header")
-	assert.Contains(t, lines[2], "═══", "header should have the prefix")
-
-	// All headers now have trailing ═ (unified format)
-	headerContent := strings.TrimRight(lines[2], " ")
-	assert.True(t, strings.HasSuffix(headerContent, "═"),
-		"header should end with trailing ═, got: %s", headerContent)
+	assert.Contains(t, lines[2], "════", "header should have the gutter prefix")
 
 	// Line pairs should NOT be shown
 	assert.NotContains(t, output, "line content", "folded view should not show line pairs")
@@ -3549,10 +3544,10 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the hunk separator line (contains ─ characters, not the header)
+	// Find the hunk separator line (contains ┼ cross character, not the header)
 	var hunkSepLine string
 	for i, line := range lines {
-		if i > 0 && strings.Contains(line, "─") && !strings.Contains(line, "test.go") {
+		if i > 0 && strings.Contains(line, "┼") && !strings.Contains(line, "test.go") {
 			hunkSepLine = line
 			break
 		}
@@ -3706,6 +3701,7 @@ func TestView_HunkSeparatorCrossInMiddle(t *testing.T) {
 	}
 
 	require.NotEmpty(t, hunkLine, "should find hunk separator line")
-	// Should have the ─┼─ pattern (cross with dashes on both sides)
-	assert.Contains(t, hunkLine, "─┼─", "hunk separator should have ─┼─ pattern")
+	// Should have shading with ┼ in the middle
+	assert.Contains(t, hunkLine, "░", "hunk separator should have shading")
+	assert.Contains(t, hunkLine, "┼", "hunk separator should have cross in middle")
 }

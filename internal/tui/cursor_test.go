@@ -726,9 +726,9 @@ func TestFoldToggle_CursorOnBlankLine_StaysOnBlankLine(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	// Layout: line 0 = first header, line 1 = first diff, line 2 = blank, line 3 = second header, line 4 = second diff
+	// Layout: line 0 = first header, line 1 = first diff, lines 2-5 = blank, line 6 = second header
 	// Put cursor on blank line (line 2)
-	m.scroll = -1 // cursor at line 2 (blank separator)
+	m.scroll = -1 // cursor at line 2 (first blank line)
 
 	assert.Equal(t, 2, m.cursorLine(), "cursor should start on blank line")
 
@@ -1119,13 +1119,14 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// File layout (4 blank lines after each expanded/normal file, except last):
+	// File layout (4 blank lines after each file):
 	// alpha.go: lines 0-10 (header + 10 pairs = 11 lines)
 	// blank:    lines 11-14 (4 lines, count as alpha.go - file above)
 	// beta.go:  lines 15-25 (header + 10 pairs = 11 lines)
 	// blank:    lines 26-29 (4 lines, count as beta.go - file above)
 	// gamma.go: lines 30-40 (header + 10 pairs = 11 lines)
-	// summary:  line 41
+	// blank:    lines 41-44 (4 lines, count as gamma.go - file above)
+	// summary:  line 45
 
 	// Scroll through and verify status bar matches cursor position
 	for scroll := m.minScroll(); scroll <= m.maxScroll(); scroll++ {
@@ -1134,7 +1135,7 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 		info := m.StatusInfo()
 
 		// Determine expected file based on cursor position
-		// Note: blank separator lines count as the file above
+		// Note: blank lines count as the file above
 		// Summary row (last line) has no file info
 		expectedFile := "alpha.go"
 		if cursorPos >= 15 && cursorPos < 30 { // Line 15 is beta header
