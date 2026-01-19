@@ -88,6 +88,7 @@ type displayRow struct {
 	isSeparator    bool
 	isEndSeparator bool // end-of-file separator (double line style)
 	isBlank        bool
+	isHeaderSpacer bool // blank line after header (no shading, just empty)
 	isSummary      bool // summary row at the end showing total stats
 	isFirstLine    bool // first line pair in a file (uses ┬ separator)
 	isLastLine     bool // last line pair in a file (uses ┴ separator)
@@ -144,6 +145,9 @@ func (m Model) buildRows() []displayRow {
 				header := formatFileHeader(fp.OldPath, fp.NewPath)
 				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
 
+				// Blank line after header before content (no shading)
+				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true})
+
 				// Build expanded rows from full file content
 				expandedRows := m.buildExpandedRows(fp)
 				for i := range expandedRows {
@@ -171,6 +175,9 @@ func (m Model) buildRows() []displayRow {
 			// File header with stats
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
 			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
+
+			// Blank line after header before content (no shading)
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true})
 
 			// Line pairs with hunk separators
 			var prevLeft, prevRight int
@@ -480,7 +487,13 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		row := rows[i]
 		isCursorRow := len(visible) == cursorViewportRow
 
-		if row.isBlank {
+		if row.isHeaderSpacer {
+			if isCursorRow {
+				visible = append(visible, m.renderHeaderSpacerWithCursor(halfWidth, lineNumWidth))
+			} else {
+				visible = append(visible, "") // empty line, no shading
+			}
+		} else if row.isBlank {
 			if isCursorRow {
 				visible = append(visible, m.renderBlankWithCursor(halfWidth, lineNumWidth))
 			} else {
@@ -580,6 +593,12 @@ func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
 func (m Model) renderInterFileBlank() string {
 	// Fill the entire width with light shade characters
 	return interFileStyle.Render(strings.Repeat("░", m.width))
+}
+
+// renderHeaderSpacerWithCursor renders a blank line after header with cursor indicator.
+func (m Model) renderHeaderSpacerWithCursor(halfWidth, lineNumWidth int) string {
+	// Just show cursor arrows on an otherwise empty line
+	return cursorArrowStyle.Render("➤") + strings.Repeat(" ", halfWidth-1) + " " + cursorArrowStyle.Render("➤")
 }
 
 // renderTopBar renders the top bar showing file info with a divider line below.
@@ -1745,7 +1764,7 @@ func computeIndicatorStarts(rows []displayRow) (leftStarts, rightStarts map[int]
 	var leftBlockMaxStart int
 
 	for i, row := range rows {
-		if !row.isHeader && !row.isSeparator && !row.isBlank && !row.isSummary {
+		if !row.isHeader && !row.isSeparator && !row.isBlank && !row.isHeaderSpacer && !row.isSummary {
 			if row.pair.Left.Type == sidebyside.Removed {
 				leftBlockIndices = append(leftBlockIndices, i)
 				start := indicatorStartCol(row.pair.Left.Content)
@@ -1779,7 +1798,7 @@ func computeIndicatorStarts(rows []displayRow) (leftStarts, rightStarts map[int]
 	var rightBlockMaxStart int
 
 	for i, row := range rows {
-		if !row.isHeader && !row.isSeparator && !row.isBlank && !row.isSummary {
+		if !row.isHeader && !row.isSeparator && !row.isBlank && !row.isHeaderSpacer && !row.isSummary {
 			if row.pair.Right.Type == sidebyside.Added {
 				rightBlockIndices = append(rightBlockIndices, i)
 				start := indicatorStartCol(row.pair.Right.Content)

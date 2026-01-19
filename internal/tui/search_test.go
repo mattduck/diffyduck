@@ -31,8 +31,8 @@ func TestFindMatches_Simple(t *testing.T) {
 	matches := m.findMatches("hello")
 
 	assert.Len(t, matches, 2)
-	assert.Equal(t, 1, matches[0].Row) // row 1 (after header at row 0)
-	assert.Equal(t, 2, matches[1].Row)
+	assert.Equal(t, 2, matches[0].Row) // row 2 (after header at row 0, spacer at row 1)
+	assert.Equal(t, 3, matches[1].Row)
 }
 
 func TestFindMatches_CaseInsensitive(t *testing.T) {
@@ -59,7 +59,7 @@ func TestFindMatches_CaseSensitive(t *testing.T) {
 	matches := m.findMatches("Hello")
 
 	assert.Len(t, matches, 1)
-	assert.Equal(t, 1, matches[0].Row)
+	assert.Equal(t, 2, matches[0].Row) // row 2 (after header + spacer)
 }
 
 func TestFindMatches_NoMatches(t *testing.T) {
@@ -301,17 +301,17 @@ func TestSearch_NextMatch_AfterScrollToTop(t *testing.T) {
 	// User navigates to last match, then presses gg to go to top, then n
 	// Should find first match from top, not stay at last match
 	m := makeSearchTestModel([]string{
-		"match one",   // row 1
-		"line 2",      // row 2
-		"match two",   // row 3
-		"match three", // row 4
+		"match one",   // row 2 (after header + spacer)
+		"line 2",      // row 3
+		"match two",   // row 4
+		"match three", // row 5
 	})
 	m.searchQuery = "match"
 	m.searchForward = true
 	m.matches = m.findMatches("match")
-	m.currentMatch = 2     // at last match (row 4)
-	m.scroll = 4           // scrolled to last match
-	m.lastSearchScroll = 4 // last search nav was at scroll 4
+	m.currentMatch = 2     // at last match (row 5)
+	m.scroll = 5           // scrolled to last match
+	m.lastSearchScroll = 5 // last search nav was at scroll 5
 
 	// Press gg to go to top (now goes to minScroll)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
@@ -324,19 +324,19 @@ func TestSearch_NextMatch_AfterScrollToTop(t *testing.T) {
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model = newM.(Model)
 
-	// Should be at first match (row 1), not stuck at last match
+	// Should be at first match (row 2), not stuck at last match
 	assert.Equal(t, 0, model.currentMatch)
-	assert.Equal(t, 1, model.matches[model.currentMatch].Row)
+	assert.Equal(t, 2, model.matches[model.currentMatch].Row)
 }
 
 func TestSearch_PrevMatch_AfterScrollToBottom(t *testing.T) {
 	// User is at first match, presses G to go to bottom, then N
 	// Should find last match from bottom, not stay at first match
 	m := makeSearchTestModel([]string{
-		"match one",   // row 1
-		"line 2",      // row 2
-		"match two",   // row 3
-		"match three", // row 4
+		"match one",   // row 2 (after header + spacer)
+		"line 2",      // row 3
+		"match two",   // row 4
+		"match three", // row 5
 	})
 	m.height = 3 // small viewport so we can scroll
 	m.searchQuery = "match"
@@ -354,9 +354,9 @@ func TestSearch_PrevMatch_AfterScrollToBottom(t *testing.T) {
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
 	model = newM.(Model)
 
-	// Should be at last match (row 4), not stuck at first match
+	// Should be at last match (row 5), not stuck at first match
 	assert.Equal(t, 2, model.currentMatch)
-	assert.Equal(t, 4, model.matches[model.currentMatch].Row)
+	assert.Equal(t, 5, model.matches[model.currentMatch].Row)
 }
 
 func TestSearch_NextMatch_ScrollsToMatch(t *testing.T) {

@@ -1,9 +1,10 @@
 ➤ ◐ ~ example.go +5 -2                                                          
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
   ════ ◐ ~ example.go | +5 -2 +++++--                                         
+
      1   package main                  ┬      1   package main                 
--    2 ░ import "fmt"                ░ │ +    2 ░ import (                    ░
-➤                                      │ ➤    3 ░     "fmt"                   ░
+➤    2 ░ import "fmt"                ░ │ ➤    2 ░ import (                    ░
+                                       │ +    3 ░     "fmt"                   ░
                                        │ +    4 ░     "os"                    ░
                                        │ +    5 ░ )                           ░
      3   func main() {                 │      6   func main() {                
@@ -16,5 +17,4 @@
   ════ ●   1 file changed, 5 insertions(+), 2 deletions(-)
 
 
-
- line 4/14 23%                                                                  
+ line 4/15 21%                                                                  

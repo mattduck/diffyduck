@@ -1,9 +1,10 @@
 ➤ ◐ ~ internal/tui/view.go +1                                                                       
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
   ════ ◐ ~ internal/tui/view.go | +1 +                                                            
+
      5       "strings"                           ┬      5       "strings"                          
-     6       "github.com/charmbracelet/lipglos   │      6       "github.com/charmbracelet/lipglos  
-➤                                                │ ➤    7 ░     "github.com/mattn/go-runewidth"   ░
+➤    6       "github.com/charmbracelet/lipglos   │ ➤    6       "github.com/charmbracelet/lipglos  
+                                                 │ +    7 ░     "github.com/mattn/go-runewidth"   ░
      7       "github.com/user/diffyduck/pkg/si   │      8       "github.com/user/diffyduck/pkg/si  
      8   )                                       ┴      9   )                                      
 ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
@@ -16,5 +17,4 @@
 
 
 
-
- line 4/11 30%                                                                                      
+ line 4/12 27%                                                                                      

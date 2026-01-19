@@ -283,8 +283,8 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	// cursorLine = scroll(0) + cursorOffset(3) = 3
 	// CurrentLine = cursorLine + 1 = 4
 	assert.Equal(t, 4, info.CurrentLine)
-	assert.Equal(t, 56, info.TotalLines) // 50 pairs + 1 header + 4 blank + 1 summary
-	// Percentage: cursorLine(3) / maxCursor(55) * 100 = 5%
+	assert.Equal(t, 57, info.TotalLines) // 50 pairs + 1 header + 1 spacer + 4 blank + 1 summary
+	// Percentage: cursorLine(3) / maxCursor(56) * 100 = 5%
 	assert.Equal(t, 5, info.Percentage)
 	assert.False(t, info.AtEnd)
 }
@@ -502,8 +502,8 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-10 (header + 10 pairs), then 4 blank lines (11-14)
-			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 15 is header
+			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-11 (header + spacer + 10 pairs), then 4 blank lines (12-15)
+			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 16 is header
 		},
 		width:  80,
 		height: 10, // contentHeight=8, cursorOffset=1
@@ -512,26 +512,26 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	m.calculateTotalLines()
 
 	// With cursorOffset=1:
-	// scroll=9 → cursor at line 10 (last line of first file) → first.go
-	m.scroll = 9
+	// scroll=10 → cursor at line 11 (last line of first file) → first.go
+	m.scroll = 10
 	info := m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=10 → cursor at line 11 (first blank after first file) → first.go (blank belongs to file above)
-	m.scroll = 10
+	// scroll=11 → cursor at line 12 (first blank after first file) → first.go (blank belongs to file above)
+	m.scroll = 11
 	info = m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=13 → cursor at line 14 (last blank after first file) → first.go (blank belongs to file above)
-	m.scroll = 13
-	info = m.StatusInfo()
-	assert.Equal(t, 1, info.CurrentFile)
-	assert.Equal(t, "first.go", info.FileName)
-
-	// scroll=14 → cursor at line 15 (header of second file) → second.go
+	// scroll=14 → cursor at line 15 (last blank after first file) → first.go (blank belongs to file above)
 	m.scroll = 14
+	info = m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile)
+	assert.Equal(t, "first.go", info.FileName)
+
+	// scroll=15 → cursor at line 16 (header of second file) → second.go
+	m.scroll = 15
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile)
 	assert.Equal(t, "second.go", info.FileName)
@@ -717,7 +717,7 @@ func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 			},
 		},
 		width:  80,
-		height: 10,
+		height: 15, // Increased to ensure both files are visible (need room for header spacers)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
@@ -1050,11 +1050,11 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Normal file: 1 header + 10 pairs = 11 lines + 4 blank lines after = 15 lines
-	// Folded file: 1 header only (no blank lines after since it's folded)
+	// Normal file: 1 header + 1 spacer + 10 pairs = 12 lines + 4 blank lines after = 16 lines
+	// Folded file: 1 header only (no spacer, no blank lines after since it's folded)
 	// Summary row: 1 line
-	// Total should be 15 + 1 + 1 = 17
-	assert.Equal(t, 17, m.totalLines, "totalLines should account for fold states and summary")
+	// Total should be 16 + 1 + 1 = 18
+	assert.Equal(t, 18, m.totalLines, "totalLines should account for fold states and summary")
 }
 
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
@@ -1434,9 +1434,9 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 				keys:   DefaultKeyMap(),
 			}
 			m.calculateTotalLines()
-			// Position cursor on line 2 (row 2 = second content line) so we can test line 1's indicator
-			// cursorLine = scroll + cursorOffset, so scroll = row - cursorOffset = 2 - cursorOffset
-			m.scroll = 2 - m.cursorOffset()
+			// Position cursor on line 3 (row 3 = second content line, after header + spacer) so we can test line 1's indicator
+			// cursorLine = scroll + cursorOffset, so scroll = row - cursorOffset = 3 - cursorOffset
+			m.scroll = 3 - m.cursorOffset()
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
@@ -1599,11 +1599,11 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 	lines := strings.Split(output, "\n")
 
 	// Layout: [topBar, divider, content..., bottomBar]
-	// lines[0] = top bar, lines[1] = divider, lines[2] = header
-	// Content lines: lines[3] = 9999, lines[4] = 10000, lines[5] = 10001
-	line1 := lines[3]
-	line2 := lines[4]
-	line3 := lines[5]
+	// lines[0] = top bar, lines[1] = divider, lines[2] = header, lines[3] = header spacer
+	// Content lines: lines[4] = 9999, lines[5] = 10000, lines[6] = 10001
+	line1 := lines[4]
+	line2 := lines[5]
+	line3 := lines[6]
 
 	// All lines should have their content starting at the same display column position
 	// The gutter width should accommodate 5 digits for consistency
@@ -2499,17 +2499,20 @@ func TestBuildRows_BlankLinesBeforeSummary(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Layout should be: header (0), content (1), blank (2-5), summary (6)
-	require.Len(t, rows, 7, "should have header + content + 4 blanks + summary")
+	// Layout should be: header (0), header spacer (1), content (2), blank (3-6), summary (7)
+	require.Len(t, rows, 8, "should have header + spacer + content + 4 blanks + summary")
+
+	// Verify header spacer
+	assert.True(t, rows[1].isHeaderSpacer, "row 1 should be header spacer")
 
 	// Verify the 4 blank lines before summary
-	for i := 2; i <= 5; i++ {
+	for i := 3; i <= 6; i++ {
 		assert.True(t, rows[i].isBlank, "row %d should be blank", i)
 		assert.Equal(t, 0, rows[i].fileIndex, "blank lines should belong to the last file")
 	}
 
 	// Last row should be summary
-	assert.True(t, rows[6].isSummary, "last row should be summary")
+	assert.True(t, rows[7].isSummary, "last row should be summary")
 }
 
 func TestView_SummaryRowFormat(t *testing.T) {
@@ -3538,8 +3541,8 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	// Position cursor on hunk separator (row 2: header=0, line1=1, hunksep=2)
-	m.scroll = 2 - m.cursorOffset()
+	// Position cursor on hunk separator (row 3: header=0, spacer=1, line1=2, hunksep=3)
+	m.scroll = 3 - m.cursorOffset()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")

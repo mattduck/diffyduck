@@ -110,7 +110,7 @@ func (m *Model) calculateTotalLines() {
 
 	// Scan for max line numbers to ensure gutter width is adequate
 	for _, row := range rows {
-		if !row.isHeader && !row.isSeparator && !row.isBlank {
+		if !row.isHeader && !row.isSeparator && !row.isBlank && !row.isHeaderSpacer {
 			m.updateMaxLineNum(row.pair.Left.Num)
 			m.updateMaxLineNum(row.pair.Right.Num)
 		}
