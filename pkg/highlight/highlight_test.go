@@ -207,6 +207,61 @@ func foo(s MyStruct) MyStruct {
 	}
 }
 
+func TestHighlighter_YAML(t *testing.T) {
+	h := New()
+	defer h.Close()
+
+	code := []byte(`name: my-app
+version: 1.0
+enabled: true
+count: 42
+items:
+  - first
+  - second
+# A comment
+`)
+
+	spans, err := h.Highlight("config.yaml", code)
+	if err != nil {
+		t.Fatalf("Highlight failed: %v", err)
+	}
+
+	if len(spans) == 0 {
+		t.Fatal("Expected spans, got none")
+	}
+
+	// Check that we have some expected categories
+	categories := make(map[Category]bool)
+	for _, s := range spans {
+		categories[s.Category] = true
+	}
+
+	// Should have property (keys like "name:", "version:")
+	if !categories[CategoryField] {
+		t.Error("Expected CategoryField (property) in spans")
+	}
+
+	// Should have a string literal
+	if !categories[CategoryString] {
+		t.Error("Expected CategoryString in spans")
+	}
+
+	// Should have a number
+	if !categories[CategoryNumber] {
+		t.Error("Expected CategoryNumber in spans")
+	}
+
+	// Should have a boolean
+	if !categories[CategoryBoolean] {
+		t.Error("Expected CategoryBoolean in spans")
+	}
+
+	// Should have a comment
+	if !categories[CategoryComment] {
+		t.Error("Expected CategoryComment in spans")
+	}
+}
+
 func TestHighlighter_UnknownLanguage(t *testing.T) {
 	h := New()
 	defer h.Close()
@@ -235,7 +290,9 @@ func TestHighlighter_SupportsFile(t *testing.T) {
 		{"main.go", true},
 		{"TEST.GO", true}, // case insensitive
 		{"test.py", true},
-		{"test.pyi", true}, // Python stub files
+		{"test.pyi", true},  // Python stub files
+		{"test.yaml", true}, // YAML
+		{"test.yml", true},  // YAML alternate extension
 		{"test.js", false},
 		{"test", false},
 	}

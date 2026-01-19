@@ -31,6 +31,7 @@ func NewRegistry() *Registry {
 	// Register built-in languages
 	r.Register(GoLanguage())
 	r.Register(PythonLanguage())
+	r.Register(YAMLLanguage())
 
 	return r
 }
@@ -81,6 +82,7 @@ var captureToCategory = map[string]Category{
 	// Constants - includes true, false, nil, None, etc.
 	"constant":         CategoryConstant,
 	"constant.builtin": CategoryConstant,
+	"boolean":          CategoryBoolean,
 
 	// Keywords
 	"keyword":             CategoryKeyword,

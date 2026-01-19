@@ -11,3 +11,6 @@ var goHighlightQuery string
 
 //go:embed queries/python-v0.25.0.scm
 var pythonHighlightQuery string
+
+//go:embed queries/yaml-v0.7.2.scm
+var yamlHighlightQuery string
