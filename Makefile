@@ -54,13 +54,13 @@ cover:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
-# Fetch syntax highlighting queries from nvim-treesitter.
+# Fetch syntax highlighting queries from upstream tree-sitter grammar repos.
 # This downloads .scm query files for all supported languages.
-# WARNING: This overwrites local modifications! Check git diff after running
-# and re-apply any local changes (e.g., TOML section header styling).
+# NOTE: We use upstream repos, NOT nvim-treesitter (which has Lua-specific predicates).
+# WARNING: This overwrites local modifications! After running:
+#   1. Check 'git diff pkg/highlight/queries/' for changes
+#   2. Reorder patterns if needed (general before specific for "last match wins")
+#   3. Re-apply any LOCAL MODIFICATION sections
 # See pkg/highlight/queries/fetch_queries.sh for details.
 fetch-queries:
 	./pkg/highlight/queries/fetch_queries.sh
-	@echo ""
-	@echo "Check 'git diff pkg/highlight/queries/' for changes."
-	@echo "Re-apply any local modifications marked with 'LOCAL MODIFICATION' comments."

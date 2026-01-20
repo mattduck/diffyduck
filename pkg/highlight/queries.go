@@ -6,29 +6,29 @@ import _ "embed"
 //
 // IMPORTANT: Query source and precedence semantics
 //
-// There are two main sources for tree-sitter highlight queries:
+// We use queries from upstream tree-sitter grammar repositories:
+//   - github.com/tree-sitter/tree-sitter-go
+//   - github.com/tree-sitter/tree-sitter-python
+//   - github.com/tree-sitter-grammars/tree-sitter-yaml
+//   - github.com/tree-sitter-grammars/tree-sitter-toml
 //
-// 1. Upstream grammar repos (e.g., github.com/tree-sitter/tree-sitter-go)
-//    These queries are designed for the tree-sitter CLI which uses "first match wins"
-//    semantics - earlier patterns in the file take precedence.
+// We do NOT use nvim-treesitter queries because they include Neovim-specific
+// predicates like #lua-match? that don't work with the standard tree-sitter library.
 //
-// 2. nvim-treesitter (github.com/nvim-treesitter/nvim-treesitter/queries/{lang}/)
-//    These queries are forked from upstream but reordered for "last match wins"
-//    semantics - later patterns override earlier ones. This is what Neovim uses.
-//
-// Our highlighter uses "last match wins" (see MergeSpans in spans.go), so queries
-// must be ordered with general patterns first and specific patterns later:
+// Upstream queries use "first match wins" semantics, but our highlighter uses
+// "last match wins" (see MergeSpans in spans.go). This means queries may need
+// reordering: general patterns first, specific patterns later:
 //
 //   (identifier) @variable           ; general - matches all identifiers
 //   (function_declaration
 //     name: (identifier) @function)  ; specific - overrides @variable for func names
 //
-// We currently use nvim-treesitter's queries (or manually reorder upstream queries)
-// to match this expectation. When adding a new language:
+// When adding a new language:
 //
-// 1. Check nvim-treesitter first: queries/{lang}/highlights.scm
-// 2. If not available, use upstream and reorder: general patterns first, specific last
-// 3. Test that specific constructs (functions, types, etc.) aren't incorrectly
+// 1. Run ./queries/fetch_queries.sh to fetch from upstream
+// 2. Reorder if needed: general patterns first, specific last
+// 3. Mark any changes with "LOCAL MODIFICATION" comments
+// 4. Test that specific constructs (functions, types, etc.) aren't incorrectly
 //    highlighted as generic variables/strings
 //
 // Version compatibility: queries may need updates when grammar versions change,

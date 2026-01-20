@@ -314,6 +314,54 @@ foo = { version = "1.0" }
 	}
 }
 
+func TestHighlighter_Python(t *testing.T) {
+	h := New()
+	defer h.Close()
+
+	code := []byte(`def hello(name):
+    """Greet someone."""
+    print(f"Hello, {name}!")
+    return True
+
+x = 42
+`)
+
+	spans, err := h.Highlight("test.py", code)
+	if err != nil {
+		t.Fatalf("Highlight failed: %v", err)
+	}
+
+	if len(spans) == 0 {
+		t.Fatal("Expected spans, got none")
+	}
+
+	// Check that we have some expected categories
+	categories := make(map[Category]bool)
+	for _, s := range spans {
+		categories[s.Category] = true
+	}
+
+	// Should have a function definition
+	if !categories[CategoryFunction] {
+		t.Error("Expected CategoryFunction in spans")
+	}
+
+	// Should have a keyword (def, return)
+	if !categories[CategoryKeyword] {
+		t.Error("Expected CategoryKeyword in spans")
+	}
+
+	// Should have a string literal
+	if !categories[CategoryString] {
+		t.Error("Expected CategoryString in spans")
+	}
+
+	// Should have a number
+	if !categories[CategoryNumber] {
+		t.Error("Expected CategoryNumber in spans")
+	}
+}
+
 func TestHighlighter_UnknownLanguage(t *testing.T) {
 	h := New()
 	defer h.Close()

@@ -1,63 +1,56 @@
-; Source: nvim-treesitter @ master
-; URL: https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/master/queries/toml/highlights.scm
-; Grammar: tree-sitter-toml v0.7.0
+; Source: github.com/tree-sitter-grammars/tree-sitter-toml @ v0.7.0
+; Upstream: https://github.com/tree-sitter-grammars/tree-sitter-toml/blob/v0.7.0/queries/highlights.scm
 ;
-; This query uses "last match wins" semantics - general patterns should come
-; before specific patterns so that specific patterns override them.
-; See queries.go for more details.
+; IMPORTANT: Upstream queries use "first match wins" but our highlighter uses
+; "last match wins" (see MergeSpans). Queries may need reordering after fetching:
+; general patterns (like @variable) should come BEFORE specific patterns (like @function).
 ;
-; LOCAL MODIFICATION (re-apply after updating from nvim-treesitter):
-; nvim-treesitter captures all bare_key as @property, making section headers
-; like [server] and regular keys like "host = ..." the same color. We override
-; this to capture section headers as @type for visual distinction.
-; Original line was: (bare_key) @property
+; Check for LOCAL MODIFICATION comments below for any manual changes.
 
-; Keys in key-value pairs
+; Properties
+;-----------
+
+(bare_key) @type
+
+(quoted_key) @string
+
 (pair
-  (bare_key) @property)
+  (bare_key)) @property
 
-; Table/section headers - styled as @type to differentiate from regular keys
-(table
-  (bare_key) @type)
-(table
+(pair
   (dotted_key
-    (bare_key) @type))
+    (bare_key) @property))
 
-; Array table headers [[like.this]]
-(table_array_element
-  (bare_key) @type)
-(table_array_element
-  (dotted_key
-    (bare_key) @type))
-
-[
-  (string)
-  (quoted_key)
-] @string
+; Literals
+;---------
 
 (boolean) @boolean
 
-(comment) @comment @spell
+(comment) @comment
 
-(escape_sequence) @string.escape
-
-(integer) @number
-
-(float) @number.float
+(string) @string
 
 [
-  (local_date)
-  (local_date_time)
-  (local_time)
+  (integer)
+  (float)
+] @number
+
+[
   (offset_date_time)
+  (local_date_time)
+  (local_date)
+  (local_time)
 ] @string.special
 
-"=" @operator
+; Punctuation
+;------------
 
 [
   "."
   ","
 ] @punctuation.delimiter
+
+"=" @operator
 
 [
   "["
