@@ -2016,13 +2016,12 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 	lines := strings.Split(output, "\n")
 
 	// Layout: [topBar, divider, content..., bottomBar]
-	// Folded header should contain filename, stats counts, and +/- bar
+	// Folded header should contain filename and stats counts
 	header := lines[2]
 	assert.Contains(t, header, "main.go", "header should contain filename")
 	assert.Contains(t, header, "+3", "header should show addition count")
 	assert.Contains(t, header, "-2", "header should show deletion count")
-	assert.Contains(t, header, "+++", "header should show addition bar")
-	assert.Contains(t, header, "--", "header should show deletion bar")
+	assert.Contains(t, header, "▒", "header should have trailing shading")
 }
 
 func TestFileHeaderWithStats_Alignment(t *testing.T) {
@@ -2090,9 +2089,9 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 	assert.Equal(t, pos1, pos2, "-1 should be aligned across headers (addition column padded)")
 }
 
-func TestFileHeaderWithStats_BarAlignment(t *testing.T) {
-	// The +/- bar should start at the same column even when count widths differ
-	// e.g., "+100" vs "+5" should both have bars starting at same position
+func TestFileHeaderWithStats_ShadingAlignment(t *testing.T) {
+	// The trailing shading should start at the same column even when count widths differ
+	// e.g., "+100" vs "+5" should both have shading starting at same position
 	pairs100 := make([]sidebyside.LinePair, 100)
 	for i := range pairs100 {
 		pairs100[i] = sidebyside.LinePair{
@@ -2134,31 +2133,26 @@ func TestFileHeaderWithStats_BarAlignment(t *testing.T) {
 	lines := strings.Split(output, "\n")
 
 	// Layout: [topBar, divider, content..., bottomBar]
-	header1 := lines[2] // +100 -> bar has 24 chars (scaled)
-	header2 := lines[3] // +5 -> bar has 5 chars
+	header1 := lines[2] // +100
+	header2 := lines[3] // +5
 
-	// Find the display column position of the bar (consecutive + or - characters)
-	// The bar comes after the stats counts: +N -M then the bar +++---
-	// We look for where the repeated +/- begins (2+ consecutive same char)
-	findBarStart := func(s string) int {
+	// Find the display column position of the shading (▒ character)
+	findShadingStart := func(s string) int {
 		runes := []rune(s)
-		// Look for sequence of 2+ consecutive + or -
-		// The bar is distinguished from counts because it has consecutive identical characters
-		for i := 0; i < len(runes)-1; i++ {
-			ch := runes[i]
-			if (ch == '+' || ch == '-') && runes[i+1] == ch {
+		for i, ch := range runes {
+			if ch == '▒' {
 				return i
 			}
 		}
 		return -1
 	}
 
-	barPos1 := findBarStart(header1)
-	barPos2 := findBarStart(header2)
+	shadingPos1 := findShadingStart(header1)
+	shadingPos2 := findShadingStart(header2)
 
-	assert.NotEqual(t, -1, barPos1, "first header should have bar")
-	assert.NotEqual(t, -1, barPos2, "second header should have bar")
-	assert.Equal(t, barPos1, barPos2, "bar should start at same position across headers")
+	assert.NotEqual(t, -1, shadingPos1, "first header should have shading")
+	assert.NotEqual(t, -1, shadingPos2, "second header should have shading")
+	assert.Equal(t, shadingPos1, shadingPos2, "shading should start at same position across headers")
 }
 
 func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {

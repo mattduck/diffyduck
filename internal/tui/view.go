@@ -1072,11 +1072,10 @@ func statsCountWidth(added, removed, maxAddWidth int) int {
 	return width
 }
 
-// formatColoredStatsBar returns the stats display with colored +/- characters.
-// Returns empty string if no changes. Format: " +N -M +++---"
+// formatColoredStatsBar returns the stats display with colored +/- counts.
+// Returns empty string if no changes. Format: " +N -M"
 // maxAddWidth/maxRemWidth are used to pad columns so they align across files.
-// The bar is always padded to maxBarWidth for consistent shading start position.
-func formatColoredStatsBar(added, removed, maxBarWidth, maxAddWidth, maxRemWidth int) string {
+func formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth int) string {
 	if added == 0 && removed == 0 {
 		return ""
 	}
@@ -1109,48 +1108,17 @@ func formatColoredStatsBar(added, removed, maxBarWidth, maxAddWidth, maxRemWidth
 		parts = append(parts, strings.Repeat(" ", maxRemWidth))
 	}
 
-	// Calculate bar characters with scaling
-	// We derive minusChars from plusChars to ensure total is always exactly maxBarWidth
-	total := added + removed
-	plusChars := added
-	minusChars := removed
-
-	if total > maxBarWidth {
-		// Calculate plusChars proportionally, derive minusChars from remainder
-		plusChars = int(float64(added) / float64(total) * float64(maxBarWidth))
-		minusChars = maxBarWidth - plusChars
-
-		// Ensure minimum 1 char representation if changes exist
-		if added > 0 && plusChars == 0 {
-			plusChars = 1
-			minusChars = maxBarWidth - 1
-		}
-		if removed > 0 && minusChars == 0 {
-			minusChars = 1
-			plusChars = maxBarWidth - 1
-		}
-	}
-
-	// Build colored bar, padded to maxBarWidth for consistent shading start
-	barChars := plusChars + minusChars
-	barPadding := ""
-	if barChars < maxBarWidth {
-		barPadding = strings.Repeat(" ", maxBarWidth-barChars)
-	}
-	bar := addedStyle.Render(strings.Repeat("+", plusChars)) + removedStyle.Render(strings.Repeat("-", minusChars)) + barPadding
-	parts = append(parts, bar)
-
 	return " " + strings.Join(parts, " ")
 }
 
-// statsBarDisplayWidth returns the display width of the stats bar (without ANSI codes).
+// statsBarDisplayWidth returns the display width of the stats counts (without ANSI codes).
 // This matches formatColoredStatsBar's output width with fixed column widths.
-func statsBarDisplayWidth(added, removed, maxBarWidth, maxAddWidth, maxRemWidth int) int {
+func statsBarDisplayWidth(added, removed, maxAddWidth, maxRemWidth int) int {
 	if added == 0 && removed == 0 {
 		return 0
 	}
 
-	// Format: " +N__ -M__ +++---___" (with padding to fixed widths)
+	// Format: " +N__ -M__" (with padding to fixed widths)
 	// Leading space
 	width := 1
 
@@ -1162,12 +1130,6 @@ func statsBarDisplayWidth(added, removed, maxBarWidth, maxAddWidth, maxRemWidth 
 		width++ // space between +N and -M
 	}
 	width += maxRemWidth
-
-	// Space before bar
-	width += 1
-
-	// Bar always padded to maxBarWidth
-	width += maxBarWidth
 
 	return width
 }
@@ -1250,9 +1212,8 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	fileNumPadded := fileNum + strings.Repeat(" ", lineNumWidth-len(fileNum))
 
 	// All headers use same format: gutter + icon + status + header + stats + trailing
-	const maxBarWidth = 24
-	statsBar := formatColoredStatsBar(added, removed, maxBarWidth, maxAddWidth, maxRemWidth)
-	statsBarWidth := statsBarDisplayWidth(added, removed, maxBarWidth, maxAddWidth, maxRemWidth)
+	statsBar := formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth)
+	statsBarWidth := statsBarDisplayWidth(added, removed, maxAddWidth, maxRemWidth)
 
 	// Pad header to align stats across all files
 	headerTextWidth := displayWidth(header)
