@@ -1,0 +1,149 @@
+#+TITLE: Header Border Test Cases
+#+DATE: 2026-01-20
+
+* Overview
+
+The file header border system creates visual separation between files using a box-like structure:
+- Top border: horizontal line with right corner (┐)
+- Header: file info with vertical border on right (│) and shading
+- Bottom border: horizontal line with right corner (┘)
+
+Border visibility follows these rules:
+1. Folded files have no borders - headers stack tightly
+2. First file (when unfolded) always has visible borders
+3. Other files have visible borders only when previous file is also unfolded
+4. Trailing top border (belongs to file above) is visible only when next file is unfolded
+
+* Test Cases
+
+** Row Building (buildRows)
+
+*** Folded file produces only header row
+- Given: A file with FoldLevel = FoldFolded
+- Expected: Only one row (isHeader=true), no border rows
+
+*** First file unfolded has leading top border
+- Given: First file (fileIdx=0) with FoldLevel = FoldNormal or FoldExpanded
+- Expected: First row is isHeaderTopBorder with borderVisible=true
+
+*** Non-first file unfolded has no leading top border
+- Given: Second file with FoldLevel = FoldNormal
+- Expected: No isHeaderTopBorder row before the header (the border comes from file above)
+
+*** Trailing top border visibility - next file unfolded
+- Given: File N is unfolded, File N+1 is unfolded
+- Expected: File N's trailing isHeaderTopBorder has borderVisible=true
+
+*** Trailing top border visibility - next file folded
+- Given: File N is unfolded, File N+1 is folded
+- Expected: File N's trailing isHeaderTopBorder has borderVisible=false
+
+*** Trailing top border visibility - last file
+- Given: Last file is unfolded (no next file)
+- Expected: Trailing isHeaderTopBorder has borderVisible=false
+
+*** Header borderVisible - first file
+- Given: First file is unfolded
+- Expected: Header row has borderVisible=true
+
+*** Header borderVisible - previous file unfolded
+- Given: File N-1 is unfolded, File N is unfolded
+- Expected: File N's header has borderVisible=true
+
+*** Header borderVisible - previous file folded
+- Given: File N-1 is folded, File N is unfolded
+- Expected: File N's header has borderVisible=false
+
+*** Bottom border borderVisible matches header
+- Given: Any unfolded file
+- Expected: isHeaderSpacer has same borderVisible as the header
+
+** Rendering (renderHeaderTopBorder)
+
+*** Visible border uses headerLineStyle
+- Given: borderVisible=true
+- Expected: Border rendered with headerLineStyle (normal color)
+
+*** Hidden border uses fg=0
+- Given: borderVisible=false
+- Expected: Border rendered with Foreground(Color("0"))
+
+*** Cursor row highlighting
+- Given: isCursorRow=true
+- Expected: Arrow indicator and highlighted gutter area
+
+*** Border width matches headerBoxWidth
+- Given: headerBoxWidth=N
+- Expected: Total border width is 2 + N + 1 + 1 (prefix + content + gap + corner)
+
+** Rendering (renderHeaderBottomBorder)
+
+*** Visible border uses headerLineStyle
+- Given: borderVisible=true
+- Expected: Border rendered with headerLineStyle
+
+*** Hidden border uses fg=0
+- Given: borderVisible=false
+- Expected: Border rendered with Foreground(Color("0"))
+
+*** Uses ┘ corner character
+- Expected: Bottom border ends with ┘ not ┐
+
+** Rendering (renderHeader)
+
+*** Visible vertical border uses headerLineStyle
+- Given: borderVisible=true
+- Expected: │ character rendered with headerLineStyle
+
+*** Hidden vertical border uses fg=0
+- Given: borderVisible=false
+- Expected: │ character rendered with Foreground(Color("0"))
+
+*** Border position aligned with top/bottom borders
+- Expected: The │ appears at position 2 + headerBoxWidth + 1 (after content + gap)
+
+** Integration Tests
+
+*** All files folded - no borders visible
+- Given: 3 files, all FoldFolded
+- Expected: Only header rows, no border rows, headers stack with no gaps
+
+*** All files unfolded - all borders visible
+- Given: 3 files, all FoldNormal
+- Expected: All borders present and using normal color
+
+*** Mixed fold states - correct border visibility
+- Given: File 1 folded, File 2 unfolded, File 3 folded
+- Expected:
+  - File 1: just header
+  - File 2: header + bottom border + content + blanks + trailing border
+  - File 2's borders all have borderVisible=false (prev file folded)
+  - File 2's trailing border has borderVisible=false (next file folded)
+  - File 3: just header
+
+*** Expand file updates border visibility
+- Given: File 1 folded, File 2 folded
+- When: File 1 is expanded (Normal)
+- Expected: File 1 gets borders, trailing border has borderVisible=false
+- When: File 2 is also expanded
+- Expected: File 1's trailing border becomes borderVisible=true
+
+*** First file special case
+- Given: Single file, unfolded
+- Expected: Has top border before header with borderVisible=true
+
+** Golden File Tests
+
+Consider adding golden files for:
+- Single file folded view
+- Single file unfolded view
+- Multiple files all folded
+- Multiple files all unfolded
+- Mixed fold states
+
+* Implementation Notes
+
+- borderVisible field added to displayRow struct
+- prevFileUnfolded calculated by checking m.files[fileIdx-1].FoldLevel
+- nextFileUnfolded calculated by checking m.files[fileIdx+1].FoldLevel
+- First file (fileIdx==0) always has prevFileUnfolded=true

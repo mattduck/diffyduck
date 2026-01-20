@@ -283,8 +283,8 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	// cursorLine = scroll(0) + cursorOffset(3) = 3
 	// CurrentLine = cursorLine + 1 = 4
 	assert.Equal(t, 4, info.CurrentLine)
-	assert.Equal(t, 57, info.TotalLines) // 50 pairs + 1 header + 1 spacer + 4 blank + 1 summary
-	// Percentage: cursorLine(3) / maxCursor(56) * 100 = 5%
+	assert.Equal(t, 59, info.TotalLines) // 1 top border + 1 header + 1 bottom border + 50 pairs + 4 blank + 1 trailing border + 1 summary
+	// Percentage: cursorLine(3) / maxCursor(58) * 100 = 5%
 	assert.Equal(t, 5, info.Percentage)
 	assert.False(t, info.AtEnd)
 }
@@ -467,8 +467,8 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 		height: 11, // 10 content lines + 1 status bar
 		keys:   DefaultKeyMap(),
 	}
-	m.calculateTotalLines() // 106 lines total (100 pairs + 1 header + 4 blank + 1 summary)
-	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 105
+	m.calculateTotalLines() // 109 lines total (1 top + 1 header + 1 bottom + 100 pairs + 4 blank + 1 trailing + 1 summary)
+	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 108
 
 	// At minScroll, cursor is at line 0, percentage should be 0
 	m.scroll = m.minScroll()
@@ -476,11 +476,11 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 	assert.Equal(t, 0, info.Percentage)
 	assert.False(t, info.AtEnd)
 
-	// At scroll that puts cursor at approx line 50, percentage should be ~47
-	// (50/105 * 100 = 47.6, rounded to 47)
+	// At scroll that puts cursor at approx line 50, percentage should be ~46
+	// (50/108 * 100 = 46.3, rounded to 46)
 	m.scroll = 50 - m.cursorOffset() // cursor at 50
 	info = m.StatusInfo()
-	assert.Equal(t, 47, info.Percentage)
+	assert.Equal(t, 46, info.Percentage)
 	assert.False(t, info.AtEnd)
 
 	// At maxScroll, cursor is at last line, percentage should be 100
@@ -502,8 +502,8 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-11 (header + spacer + 10 pairs), then 4 blank lines (12-15)
-			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 16 is header
+			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-17 (top border + header + bottom + 10 pairs + 4 blank + trailing)
+			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 18 is header
 		},
 		width:  80,
 		height: 10, // contentHeight=8, cursorOffset=1
@@ -512,26 +512,26 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	m.calculateTotalLines()
 
 	// With cursorOffset=1:
-	// scroll=10 → cursor at line 11 (last line of first file) → first.go
-	m.scroll = 10
+	// scroll=11 → cursor at line 12 (last pair of first file) → first.go
+	m.scroll = 11
 	info := m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=11 → cursor at line 12 (first blank after first file) → first.go (blank belongs to file above)
-	m.scroll = 11
+	// scroll=12 → cursor at line 13 (first blank after first file) → first.go (blank belongs to file above)
+	m.scroll = 12
 	info = m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=14 → cursor at line 15 (last blank after first file) → first.go (blank belongs to file above)
-	m.scroll = 14
+	// scroll=16 → cursor at line 17 (trailing top border of first file) → first.go (belongs to file above)
+	m.scroll = 16
 	info = m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// scroll=15 → cursor at line 16 (header of second file) → second.go
-	m.scroll = 15
+	// scroll=17 → cursor at line 18 (header of second file) → second.go
+	m.scroll = 17
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile)
 	assert.Equal(t, "second.go", info.FileName)
@@ -728,7 +728,7 @@ func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 	// First line should be the first file header (no blank before it)
 	assert.Contains(t, lines[0], "first.go")
 
-	// There should be a shaded separator line before the second file header
+	// There should be a trailing top border before the second file header
 	// Find the second file header (contains filename and fold icon)
 	secondHeaderIdx := -1
 	for i, line := range lines {
@@ -740,13 +740,14 @@ func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 	require.NotEqual(t, -1, secondHeaderIdx, "should find second file header")
 	require.Greater(t, secondHeaderIdx, 1, "second header should not be at start")
 
-	// Line before second header should be shaded (inter-file separator)
-	assert.Contains(t, lines[secondHeaderIdx-1], "░",
-		"should have shaded line before second file header")
+	// Line before second header should be a border line (trailing top border from first file)
+	// This looks like ───────┐
+	assert.Contains(t, lines[secondHeaderIdx-1], "─",
+		"should have border line before second file header")
 }
 
 func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
-	// First file header should NOT have a blank line before it
+	// First file should start with top border (not blank) and then header
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
@@ -761,7 +762,7 @@ func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 			},
 		},
 		width:  80,
-		height: 10,
+		height: 15, // Increased to ensure header is visible
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
@@ -769,12 +770,21 @@ func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, divider, content..., bottomBar]
-	// lines[0] = top bar
-	// lines[1] = divider
-	// lines[2] = first content line (file header), not blank
-	assert.Contains(t, lines[2], "only.go")
-	assert.Contains(t, lines[2], "◐") // fold icon indicates header
+	// Find the file header line - it has fold icon (◐) and the │ border character
+	// (top bar also contains filename but no │)
+	headerIdx := -1
+	for i, line := range lines {
+		if strings.Contains(line, "only.go") && strings.Contains(line, "◐") && strings.Contains(line, "│") {
+			headerIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, headerIdx, "should find file header")
+	require.Greater(t, headerIdx, 0, "header should not be at first line")
+
+	// Line before header should be top border (not blank)
+	assert.Contains(t, lines[headerIdx-1], "─", "line before header should be top border")
+	assert.Contains(t, lines[headerIdx-1], "┐", "top border should have corner")
 }
 
 func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
@@ -888,8 +898,13 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 			lines := strings.Split(output, "\n")
 
 			// Layout: [topBar, divider, content..., bottomBar]
-			// lines[0] = top bar, lines[1] = divider, lines[2] = first content line (header)
-			headerLine := lines[2]
+			// For unfolded files (Normal/Expanded): lines[2] = top border, lines[3] = header
+			// For folded files: lines[2] = header (no borders)
+			headerIdx := 2
+			if tt.level != sidebyside.FoldFolded {
+				headerIdx = 3 // Skip the top border row
+			}
+			headerLine := lines[headerIdx]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
 			// Header format is: fileNum <foldIcon> <statusIndicator> filename [stats]
 			// For modified files (a/test.go -> b/test.go with same name), status is "~"
@@ -1028,7 +1043,7 @@ func TestView_MixedFoldLevels(t *testing.T) {
 			},
 		},
 		width:  80,
-		height: 15,
+		height: 20, // Increased to ensure third file content is visible
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
@@ -1071,11 +1086,11 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Normal file: 1 header + 1 spacer + 10 pairs = 12 lines + 4 blank lines after = 16 lines
-	// Folded file: 1 header only (no spacer, no blank lines after since it's folded)
+	// Normal file: 1 top border + 1 header + 1 bottom border + 10 pairs + 4 blank + 1 trailing border = 18 lines
+	// Folded file: 1 header only (no borders, no blank lines after since it's folded)
 	// Summary row: 1 line
-	// Total should be 16 + 1 + 1 = 18
-	assert.Equal(t, 18, m.totalLines, "totalLines should account for fold states and summary")
+	// Total should be 18 + 1 + 1 = 20
+	assert.Equal(t, 20, m.totalLines, "totalLines should account for fold states and summary")
 }
 
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
@@ -1455,9 +1470,10 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 				keys:   DefaultKeyMap(),
 			}
 			m.calculateTotalLines()
-			// Position cursor on line 3 (row 3 = second content line, after header + spacer) so we can test line 1's indicator
-			// cursorLine = scroll + cursorOffset, so scroll = row - cursorOffset = 3 - cursorOffset
-			m.scroll = 3 - m.cursorOffset()
+			// Position cursor on row 4 (second content line, after top border + header + bottom border + first content)
+			// so we can test line 1's indicator without cursor arrow
+			// cursorLine = scroll + cursorOffset, so scroll = row - cursorOffset = 4 - cursorOffset
+			m.scroll = 4 - m.cursorOffset()
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
@@ -1619,12 +1635,13 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, divider, content..., bottomBar]
-	// lines[0] = top bar, lines[1] = divider, lines[2] = header, lines[3] = header spacer
+	// Layout: [topBar, content..., bottomBar]
+	// lines[0] = top bar, lines[1] = top border, lines[2] = header, lines[3] = bottom border
 	// Content lines: lines[4] = 9999, lines[5] = 10000, lines[6] = 10001
-	line1 := lines[4]
-	line2 := lines[5]
-	line3 := lines[6]
+	// Note: With cursor offset, visible content starts at row 1, so add 1 to indices
+	line1 := lines[5]
+	line2 := lines[6]
+	line3 := lines[7]
 
 	// All lines should have their content starting at the same display column position
 	// The gutter width should accommodate 5 digits for consistency
@@ -2371,7 +2388,13 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 			output := m.View()
 			lines := strings.Split(output, "\n")
 			// Layout: [topBar, divider, content..., bottomBar]
-			header := lines[2]
+			// For unfolded files (Normal/Expanded): lines[2] = top border, lines[3] = header
+			// For folded files: lines[2] = header (no borders)
+			headerIdx := 2
+			if tt.foldLevel != sidebyside.FoldFolded {
+				headerIdx = 3 // Skip the top border row
+			}
+			header := lines[headerIdx]
 
 			// Get the expected fold icon
 			foldIcon := m.foldLevelIcon(tt.foldLevel)
@@ -2511,20 +2534,29 @@ func TestBuildRows_BlankLinesBeforeSummary(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Layout should be: header (0), header spacer (1), content (2), blank (3-6), summary (7)
-	require.Len(t, rows, 8, "should have header + spacer + content + 4 blanks + summary")
+	// Layout should be: top border (0), header (1), bottom border (2), content (3), blank (4-7), trailing top border (8), summary (9)
+	require.Len(t, rows, 10, "should have top border + header + bottom border + content + 4 blanks + trailing border + summary")
 
-	// Verify header spacer
-	assert.True(t, rows[1].isHeaderSpacer, "row 1 should be header spacer")
+	// Verify top border
+	assert.True(t, rows[0].isHeaderTopBorder, "row 0 should be top border")
 
-	// Verify the 4 blank lines before summary
-	for i := 3; i <= 6; i++ {
+	// Verify header
+	assert.True(t, rows[1].isHeader, "row 1 should be header")
+
+	// Verify bottom border (header spacer)
+	assert.True(t, rows[2].isHeaderSpacer, "row 2 should be header spacer/bottom border")
+
+	// Verify the 4 blank lines before trailing border
+	for i := 4; i <= 7; i++ {
 		assert.True(t, rows[i].isBlank, "row %d should be blank", i)
 		assert.Equal(t, 0, rows[i].fileIndex, "blank lines should belong to the last file")
 	}
 
+	// Verify trailing top border
+	assert.True(t, rows[8].isHeaderTopBorder, "row 8 should be trailing top border")
+
 	// Last row should be summary
-	assert.True(t, rows[7].isSummary, "last row should be summary")
+	assert.True(t, rows[9].isSummary, "last row should be summary")
 }
 
 func TestView_SummaryRowFormat(t *testing.T) {
@@ -3552,8 +3584,8 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	// Position cursor on hunk separator (row 3: header=0, spacer=1, line1=2, hunksep=3)
-	m.scroll = 3 - m.cursorOffset()
+	// Position cursor on hunk separator (row 4: top_border=0, header=1, bottom_border=2, line1=3, hunksep=4)
+	m.scroll = 4 - m.cursorOffset()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -3706,10 +3738,9 @@ func TestView_HunkSeparatorCrossInMiddle(t *testing.T) {
 }
 
 func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
-	// Test that header spacer with cursor has same layout as content lines:
-	// - Gutter areas highlighted (white background)
-	// - Arrows positioned at start of each half (before the gutter)
-	// - Separator │ in the middle
+	// Test that the bottom border with cursor has proper layout:
+	// - Single arrow at start
+	// - Horizontal line with ┘ corner
 	lipgloss.SetColorProfile(termenv.ANSI)
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
@@ -3733,51 +3764,54 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Position cursor on header spacer (row 1: header=0, spacer=1)
-	m.scroll = 1 - m.cursorOffset()
+	// Position cursor on bottom border (row 2: top_border=0, header=1, bottom_border=2)
+	m.scroll = 2 - m.cursorOffset()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// The header spacer line is on the viewport line at cursorOffset position
-	// (skip top bar which is 2 lines)
-	spacerLine := lines[2+m.cursorOffset()]
+	// Find the line with cursor arrow and ┘ corner (bottom border with cursor)
+	var borderLine string
+	for _, line := range lines {
+		if strings.Contains(line, "▶") && strings.Contains(line, "┘") {
+			borderLine = line
+			break
+		}
+	}
 
-	// Header spacer with cursor should have TWO arrows (one per side)
-	arrowCount := strings.Count(spacerLine, "▶")
-	assert.Equal(t, 2, arrowCount, "header spacer with cursor should have two arrows (one per side)")
+	require.NotEmpty(t, borderLine, "should find bottom border line with cursor")
 
-	// Header spacer should NOT have a separator since it's above the content area
-	assert.NotContains(t, spacerLine, "│", "header spacer should not have separator (above content area)")
+	// Bottom border with cursor should have ONE arrow
+	arrowCount := strings.Count(borderLine, "▶")
+	assert.Equal(t, 1, arrowCount, "bottom border with cursor should have one arrow")
 
-	// Header spacer with cursor should have gutter highlighting (ANSI background color)
-	assert.Contains(t, spacerLine, "\x1b[", "header spacer with cursor should have ANSI styling for gutter")
+	// Bottom border should have horizontal line
+	assert.Contains(t, borderLine, "─", "bottom border should have horizontal line")
 
-	// Now compare arrow positions with a content line
-	// Position cursor on content line (row 2: header=0, spacer=1, content=2)
-	m.scroll = 2 - m.cursorOffset()
+	// Test content line with cursor
+	// Position cursor on content line (row 3: top_border=0, header=1, bottom_border=2, content=3)
+	m.scroll = 3 - m.cursorOffset()
 	output2 := m.View()
 	lines2 := strings.Split(output2, "\n")
-	contentLine := lines2[2+m.cursorOffset()]
 
-	// Content line should also have two arrows
+	// Find the line with cursor arrows and content (not borders)
+	var contentLine string
+	for _, line := range lines2 {
+		if strings.Count(line, "▶") == 2 && strings.Contains(line, "content") {
+			contentLine = line
+			break
+		}
+	}
+
+	require.NotEmpty(t, contentLine, "should find content line with cursor")
+
+	// Content line should have two arrows (one per side)
 	contentArrowCount := strings.Count(contentLine, "▶")
 	assert.Equal(t, 2, contentArrowCount, "content line with cursor should have two arrows")
 
-	// Strip ANSI codes and compare visual rune positions (not byte positions)
-	strippedSpacer := stripANSI(spacerLine)
-	strippedContent := stripANSI(contentLine)
-
-	// Find the visual position of the second arrow (right side) in each line
-	// First arrow should be at position 0 for both
-	spacerFirstArrow := findRuneIndex(strippedSpacer, "▶")
-	spacerSecondArrow := findRuneIndex(strippedSpacer[spacerFirstArrow+1:], "▶")
-
-	contentFirstArrow := findRuneIndex(strippedContent, "▶")
-	contentSecondArrow := findRuneIndex(strippedContent[contentFirstArrow+1:], "▶")
-
-	assert.Equal(t, spacerFirstArrow, contentFirstArrow, "first arrow visual position should match between spacer and content line")
-	assert.Equal(t, spacerSecondArrow, contentSecondArrow, "second arrow visual position (relative to first) should match between spacer and content line")
+	// Content line should have a separator (│ or ┬ for first line or ┴ for last line)
+	hasSeparator := strings.Contains(contentLine, "│") || strings.Contains(contentLine, "┬") || strings.Contains(contentLine, "┴")
+	assert.True(t, hasSeparator, "content line should have center separator (│, ┬, or ┴)")
 }
 
 func TestStatusBar_PagerIndicator(t *testing.T) {
@@ -3836,4 +3870,836 @@ func TestStatusBar_NoPagerIndicator_WhenNotPagerMode(t *testing.T) {
 
 	// Bottom bar should NOT show PAGER indicator when not in pager mode
 	assert.NotContains(t, bottomBar, "PAGER", "bottom bar should not show PAGER indicator when not in pager mode")
+}
+
+// ============================================================================
+// Header Border Tests
+// ============================================================================
+
+// Test: Folded file produces only header row (no border rows)
+func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Should have: header + summary = 2 rows
+	// No top border, no bottom border, no content for folded files
+	require.Len(t, rows, 2, "folded file should only have header + summary")
+	assert.True(t, rows[0].isHeader, "first row should be header")
+	assert.False(t, rows[0].isHeaderTopBorder, "should not have top border")
+	assert.False(t, rows[0].isHeaderSpacer, "should not have bottom border")
+	assert.True(t, rows[1].isSummary, "second row should be summary")
+}
+
+// Test: First file unfolded has leading top border with borderVisible=true
+func TestBuildRows_FirstFileUnfoldedHasTopBorder(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// First row should be isHeaderTopBorder with borderVisible=true
+	require.True(t, len(rows) >= 1, "should have at least one row")
+	assert.True(t, rows[0].isHeaderTopBorder, "first row should be top border")
+	assert.True(t, rows[0].borderVisible, "first file's top border should be visible")
+}
+
+// Test: Non-first file unfolded has no leading top border (comes from file above)
+func TestBuildRows_NonFirstFileNoLeadingTopBorder(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find where second file starts (fileIndex == 1)
+	secondFileStart := -1
+	for i, row := range rows {
+		if row.fileIndex == 1 && (row.isHeader || row.isHeaderTopBorder) {
+			secondFileStart = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, secondFileStart, "should find second file start")
+
+	// The row at secondFileStart should be the header (not a top border)
+	// because the top border comes from file 0's trailing rows
+	assert.True(t, rows[secondFileStart].isHeader, "second file should start with header (top border comes from first file)")
+}
+
+// Test: Trailing top border visibility - next file unfolded
+func TestBuildRows_TrailingTopBorderVisibleWhenNextUnfolded(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldNormal, // Next file is unfolded
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find the trailing top border of file 0 (it's the last isHeaderTopBorder before file 1 starts)
+	var trailingBorder *displayRow
+	for i := range rows {
+		if rows[i].fileIndex == 0 && rows[i].isHeaderTopBorder {
+			// This could be the leading or trailing border
+			// The trailing one is after blank rows
+			if i > 0 && rows[i-1].isBlank {
+				trailingBorder = &rows[i]
+			}
+		}
+	}
+	require.NotNil(t, trailingBorder, "should find trailing top border of first file")
+	assert.True(t, trailingBorder.borderVisible, "trailing border should be visible when next file is unfolded")
+}
+
+// Test: Trailing top border visibility - next file folded
+func TestBuildRows_TrailingTopBorderHiddenWhenNextFolded(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldFolded, // Next file is folded
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find the trailing top border of file 0
+	var trailingBorder *displayRow
+	for i := range rows {
+		if rows[i].fileIndex == 0 && rows[i].isHeaderTopBorder {
+			if i > 0 && rows[i-1].isBlank {
+				trailingBorder = &rows[i]
+			}
+		}
+	}
+	require.NotNil(t, trailingBorder, "should find trailing top border of first file")
+	assert.False(t, trailingBorder.borderVisible, "trailing border should be hidden when next file is folded")
+}
+
+// Test: Trailing top border visibility - last file (no next file)
+func TestBuildRows_TrailingTopBorderHiddenForLastFile(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find the trailing top border (after the blank rows, before summary)
+	var trailingBorder *displayRow
+	for i := range rows {
+		if rows[i].fileIndex == 0 && rows[i].isHeaderTopBorder {
+			if i > 0 && rows[i-1].isBlank {
+				trailingBorder = &rows[i]
+			}
+		}
+	}
+	require.NotNil(t, trailingBorder, "should find trailing top border")
+	assert.False(t, trailingBorder.borderVisible, "trailing border should be hidden for last file (no next file)")
+}
+
+// Test: Header borderVisible - first file
+func TestBuildRows_HeaderBorderVisibleFirstFile(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find the header row
+	var headerRow *displayRow
+	for i := range rows {
+		if rows[i].isHeader {
+			headerRow = &rows[i]
+			break
+		}
+	}
+	require.NotNil(t, headerRow, "should find header row")
+	assert.True(t, headerRow.borderVisible, "first file's header should have borderVisible=true")
+}
+
+// Test: Header borderVisible - previous file unfolded
+func TestBuildRows_HeaderBorderVisibleWhenPrevUnfolded(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldNormal, // Previous file unfolded
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find the header row of file 1
+	var headerRow *displayRow
+	for i := range rows {
+		if rows[i].fileIndex == 1 && rows[i].isHeader {
+			headerRow = &rows[i]
+			break
+		}
+	}
+	require.NotNil(t, headerRow, "should find header row for file 1")
+	assert.True(t, headerRow.borderVisible, "header should have borderVisible=true when previous file is unfolded")
+}
+
+// Test: Header borderVisible - previous file folded
+func TestBuildRows_HeaderBorderHiddenWhenPrevFolded(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldFolded, // Previous file folded
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find the header row of file 1
+	var headerRow *displayRow
+	for i := range rows {
+		if rows[i].fileIndex == 1 && rows[i].isHeader {
+			headerRow = &rows[i]
+			break
+		}
+	}
+	require.NotNil(t, headerRow, "should find header row for file 1")
+	assert.False(t, headerRow.borderVisible, "header should have borderVisible=false when previous file is folded")
+}
+
+// Test: Bottom border borderVisible matches header
+func TestBuildRows_BottomBorderMatchesHeaderVisibility(t *testing.T) {
+	tests := []struct {
+		name          string
+		prevFoldLevel sidebyside.FoldLevel
+		expectVisible bool
+	}{
+		{
+			name:          "previous_unfolded",
+			prevFoldLevel: sidebyside.FoldNormal,
+			expectVisible: true,
+		},
+		{
+			name:          "previous_folded",
+			prevFoldLevel: sidebyside.FoldFolded,
+			expectVisible: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := Model{
+				files: []sidebyside.FilePair{
+					{
+						OldPath:   "a/one.go",
+						NewPath:   "b/one.go",
+						FoldLevel: tt.prevFoldLevel,
+						Pairs: []sidebyside.LinePair{
+							{
+								Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+								Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+							},
+						},
+					},
+					{
+						OldPath:   "a/two.go",
+						NewPath:   "b/two.go",
+						FoldLevel: sidebyside.FoldNormal,
+						Pairs: []sidebyside.LinePair{
+							{
+								Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+								Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+							},
+						},
+					},
+				},
+				width:  80,
+				height: 20,
+				keys:   DefaultKeyMap(),
+			}
+
+			rows := m.buildRows()
+
+			// Find header and bottom border for file 1
+			var headerRow, bottomBorderRow *displayRow
+			for i := range rows {
+				if rows[i].fileIndex == 1 {
+					if rows[i].isHeader {
+						headerRow = &rows[i]
+					}
+					if rows[i].isHeaderSpacer {
+						bottomBorderRow = &rows[i]
+					}
+				}
+			}
+			require.NotNil(t, headerRow, "should find header row")
+			require.NotNil(t, bottomBorderRow, "should find bottom border row")
+
+			assert.Equal(t, tt.expectVisible, headerRow.borderVisible, "header borderVisible should match expected")
+			assert.Equal(t, tt.expectVisible, bottomBorderRow.borderVisible, "bottom border borderVisible should match header")
+		})
+	}
+}
+
+// Test: renderHeaderTopBorder uses correct style based on borderVisible
+func TestRenderHeaderTopBorder_BorderVisibility(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	// Visible border
+	visibleOutput := m.renderHeaderTopBorder(30, true, FileStatusModified, false)
+	assert.Contains(t, visibleOutput, "─", "visible border should contain horizontal line")
+	assert.Contains(t, visibleOutput, "┐", "visible border should end with corner")
+
+	// Hidden border (still rendered, just different color)
+	hiddenOutput := m.renderHeaderTopBorder(30, false, FileStatusModified, false)
+	assert.Contains(t, hiddenOutput, "─", "hidden border should contain horizontal line")
+	assert.Contains(t, hiddenOutput, "┐", "hidden border should end with corner")
+}
+
+// Test: renderHeaderTopBorder cursor highlighting
+func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	// Cursor row should have arrow indicator
+	cursorOutput := m.renderHeaderTopBorder(30, true, FileStatusModified, true)
+	assert.Contains(t, cursorOutput, "▶", "cursor row should have arrow indicator")
+
+	// Non-cursor row should not have arrow
+	normalOutput := m.renderHeaderTopBorder(30, true, FileStatusModified, false)
+	assert.NotContains(t, normalOutput, "▶", "non-cursor row should not have arrow")
+}
+
+// Test: renderHeaderBottomBorder uses correct corner character
+func TestRenderHeaderBottomBorder_CorrectCorner(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	output := m.renderHeaderBottomBorder(30, true, FileStatusModified, false)
+	assert.Contains(t, output, "┘", "bottom border should end with ┘ corner")
+	assert.NotContains(t, output, "┐", "bottom border should not use ┐ corner")
+}
+
+// Test: renderHeaderBottomBorder border visibility styling
+func TestRenderHeaderBottomBorder_BorderVisibility(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	// Both visible and hidden borders should render (just with different colors)
+	visibleOutput := m.renderHeaderBottomBorder(30, true, FileStatusModified, false)
+	hiddenOutput := m.renderHeaderBottomBorder(30, false, FileStatusModified, false)
+
+	assert.Contains(t, visibleOutput, "─", "visible border should contain horizontal line")
+	assert.Contains(t, hiddenOutput, "─", "hidden border should contain horizontal line")
+}
+
+// Test: Integration - all files folded (no borders visible)
+func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/three.go",
+				NewPath:   "b/three.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Count row types
+	headerCount := 0
+	topBorderCount := 0
+	bottomBorderCount := 0
+
+	for _, row := range rows {
+		if row.isHeader {
+			headerCount++
+		}
+		if row.isHeaderTopBorder {
+			topBorderCount++
+		}
+		if row.isHeaderSpacer {
+			bottomBorderCount++
+		}
+	}
+
+	assert.Equal(t, 3, headerCount, "should have 3 header rows")
+	assert.Equal(t, 0, topBorderCount, "should have no top border rows when all folded")
+	assert.Equal(t, 0, bottomBorderCount, "should have no bottom border rows when all folded")
+}
+
+// Test: Integration - all files unfolded (all borders visible)
+func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/three.go",
+				NewPath:   "b/three.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 50,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Check that headers and their bottom borders have correct visibility
+	for _, row := range rows {
+		if row.isHeader && row.fileIndex >= 0 {
+			// All headers should have borderVisible=true since all files are unfolded
+			assert.True(t, row.borderVisible, "header for file %d should have borderVisible=true", row.fileIndex)
+		}
+		if row.isHeaderSpacer && row.fileIndex >= 0 {
+			// All bottom borders should have borderVisible=true
+			assert.True(t, row.borderVisible, "bottom border for file %d should have borderVisible=true", row.fileIndex)
+		}
+	}
+
+	// Check trailing top borders
+	// File 0 and 1's trailing borders should be visible (next file is unfolded)
+	// File 2's trailing border should be hidden (no next file)
+	trailingBorders := make(map[int]*displayRow)
+	for i := range rows {
+		if rows[i].isHeaderTopBorder && i > 0 && rows[i-1].isBlank {
+			trailingBorders[rows[i].fileIndex] = &rows[i]
+		}
+	}
+
+	if tb, ok := trailingBorders[0]; ok {
+		assert.True(t, tb.borderVisible, "file 0's trailing border should be visible (file 1 is unfolded)")
+	}
+	if tb, ok := trailingBorders[1]; ok {
+		assert.True(t, tb.borderVisible, "file 1's trailing border should be visible (file 2 is unfolded)")
+	}
+	if tb, ok := trailingBorders[2]; ok {
+		assert.False(t, tb.borderVisible, "file 2's trailing border should be hidden (no next file)")
+	}
+}
+
+// Test: Integration - mixed fold states
+func TestBuildRows_MixedFoldStates(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/one.go",
+				NewPath:   "b/one.go",
+				FoldLevel: sidebyside.FoldFolded, // File 0: folded
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/two.go",
+				NewPath:   "b/two.go",
+				FoldLevel: sidebyside.FoldNormal, // File 1: unfolded
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+			{
+				OldPath:   "a/three.go",
+				NewPath:   "b/three.go",
+				FoldLevel: sidebyside.FoldFolded, // File 2: folded
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 30,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// File 0: just header (folded)
+	file0Rows := filterRowsByFileIndex(rows, 0)
+	assert.Equal(t, 1, len(file0Rows), "file 0 should have only 1 row (header)")
+	assert.True(t, file0Rows[0].isHeader, "file 0's row should be header")
+
+	// File 1: has header, bottom border, content, blanks, trailing border
+	// But borders should have borderVisible=false (prev file folded)
+	var file1Header, file1BottomBorder, file1TrailingBorder *displayRow
+	for i := range rows {
+		if rows[i].fileIndex == 1 {
+			if rows[i].isHeader {
+				file1Header = &rows[i]
+			}
+			if rows[i].isHeaderSpacer {
+				file1BottomBorder = &rows[i]
+			}
+			if rows[i].isHeaderTopBorder && i > 0 && rows[i-1].isBlank {
+				file1TrailingBorder = &rows[i]
+			}
+		}
+	}
+
+	require.NotNil(t, file1Header, "file 1 should have header")
+	require.NotNil(t, file1BottomBorder, "file 1 should have bottom border")
+	require.NotNil(t, file1TrailingBorder, "file 1 should have trailing border")
+
+	assert.False(t, file1Header.borderVisible, "file 1's header border should be hidden (prev file folded)")
+	assert.False(t, file1BottomBorder.borderVisible, "file 1's bottom border should be hidden (prev file folded)")
+	assert.False(t, file1TrailingBorder.borderVisible, "file 1's trailing border should be hidden (next file folded)")
+
+	// File 2: just header (folded)
+	file2Rows := filterRowsByFileIndex(rows, 2)
+	assert.Equal(t, 1, len(file2Rows), "file 2 should have only 1 row (header)")
+	assert.True(t, file2Rows[0].isHeader, "file 2's row should be header")
+}
+
+// Helper function to filter rows by file index
+func filterRowsByFileIndex(rows []displayRow, fileIndex int) []displayRow {
+	var result []displayRow
+	for _, row := range rows {
+		if row.fileIndex == fileIndex {
+			result = append(result, row)
+		}
+	}
+	return result
+}
+
+// Test: Border width matches headerBoxWidth
+func TestRenderHeaderTopBorder_WidthAlignment(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/foo.go",
+				NewPath: "b/foo.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+
+	// Different header box widths
+	widths := []int{20, 30, 40, 50}
+
+	for _, w := range widths {
+		topBorder := m.renderHeaderTopBorder(w, true, FileStatusModified, false)
+		bottomBorder := m.renderHeaderBottomBorder(w, true, FileStatusModified, false)
+
+		// Both borders should have same display width
+		topWidth := displayWidth(topBorder)
+		bottomWidth := displayWidth(bottomBorder)
+
+		assert.Equal(t, topWidth, bottomWidth, "top and bottom border widths should match for headerBoxWidth=%d", w)
+	}
 }

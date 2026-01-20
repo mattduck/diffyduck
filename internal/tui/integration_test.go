@@ -63,14 +63,18 @@ index abc123..def456 100644
 
 	output := m.View()
 
-	// Check that all lines have the separator at the same position
+	// Check that all content lines have the separator at the same position
+	// Content lines are diff lines (with line numbers), not header/border lines
 	lines := strings.Split(output, "\n")
 	var separatorPositions []int
-	for i, line := range lines {
-		if i == 0 {
-			continue // skip header
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		// Skip lines that don't look like content lines (need to have digits for line numbers)
+		// Content lines have a pattern like "   5   content" on each side
+		if !regexp.MustCompile(`^\s*▶?\s*\d+`).MatchString(stripped) {
+			continue
 		}
-		pos := findRuneIndex(stripANSI(line), "│")
+		pos := findRuneIndex(stripped, "│")
 		if pos >= 0 {
 			separatorPositions = append(separatorPositions, pos)
 		}
@@ -131,11 +135,13 @@ index abc123..def456 100644
 	// Verify separator alignment
 	lines := strings.Split(output, "\n")
 	var separatorPositions []int
-	for i, line := range lines {
-		if i == 0 {
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		// Skip lines that don't look like content lines (need to have digits for line numbers)
+		if !regexp.MustCompile(`^\s*▶?\s*\d+`).MatchString(stripped) {
 			continue
 		}
-		pos := findRuneIndex(stripANSI(line), "│")
+		pos := findRuneIndex(stripped, "│")
 		if pos >= 0 {
 			separatorPositions = append(separatorPositions, pos)
 		}
@@ -188,11 +194,13 @@ index 0000000..abc1234
 	// All lines should have empty left side, content on right
 	lines := strings.Split(output, "\n")
 	var separatorPositions []int
-	for i, line := range lines {
-		if i == 0 {
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		// Skip lines that don't look like content lines (need to have digits for line numbers)
+		if !regexp.MustCompile(`^\s*▶?\s*\d+`).MatchString(stripped) {
 			continue
 		}
-		pos := findRuneIndex(stripANSI(line), "│")
+		pos := findRuneIndex(stripped, "│")
 		if pos >= 0 {
 			separatorPositions = append(separatorPositions, pos)
 		}
@@ -247,11 +255,13 @@ func TestFullPipeline_TabsInContent(t *testing.T) {
 	// Verify separator alignment
 	lines := strings.Split(output, "\n")
 	var separatorPositions []int
-	for i, line := range lines {
-		if i == 0 {
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		// Skip lines that don't look like content lines (need to have digits for line numbers)
+		if !regexp.MustCompile(`^\s*▶?\s*\d+`).MatchString(stripped) {
 			continue
 		}
-		pos := findRuneIndex(stripANSI(line), "│")
+		pos := findRuneIndex(stripped, "│")
 		if pos >= 0 {
 			separatorPositions = append(separatorPositions, pos)
 		}

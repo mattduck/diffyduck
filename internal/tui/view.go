@@ -84,24 +84,27 @@ func (m Model) View() string {
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
 type displayRow struct {
-	fileIndex      int // index of the file this row belongs to (-1 for summary row)
-	isHeader       bool
-	isSeparator    bool
-	isBlank        bool
-	isHeaderSpacer bool // blank line after header (no shading, just empty)
-	isSummary      bool // summary row at the end showing total stats
-	isFirstLine    bool // first line pair in a file (uses ┬ separator)
-	isLastLine     bool // last line pair in a file (uses ┴ separator)
-	header         string
-	foldLevel      sidebyside.FoldLevel // fold level for headers (used for icon and styling)
-	status         FileStatus           // file status (added, deleted, renamed, modified) for headers
-	pair           sidebyside.LinePair
-	added          int // number of added lines (for headers)
-	removed        int // number of removed lines (for headers)
-	maxHeaderWidth int // max header width across all files (for alignment in folded view)
-	maxAddWidth    int // max addition count width across all files (for column alignment)
-	maxRemWidth    int // max removal count width across all files (for column alignment)
-	maxCountWidth  int // max stats count width across all files (for bar alignment)
+	fileIndex         int // index of the file this row belongs to (-1 for summary row)
+	isHeader          bool
+	isSeparator       bool
+	isBlank           bool
+	isHeaderSpacer    bool // bottom border line after header
+	isHeaderTopBorder bool // top border line before header
+	borderVisible     bool // whether border should use normal color (true) or fg=0 (false)
+	isSummary         bool // summary row at the end showing total stats
+	isFirstLine       bool // first line pair in a file (uses ┬ separator)
+	isLastLine        bool // last line pair in a file (uses ┴ separator)
+	header            string
+	foldLevel         sidebyside.FoldLevel // fold level for headers (used for icon and styling)
+	status            FileStatus           // file status (added, deleted, renamed, modified) for headers
+	pair              sidebyside.LinePair
+	added             int // number of added lines (for headers)
+	removed           int // number of removed lines (for headers)
+	maxHeaderWidth    int // max header width across all files (for alignment in folded view)
+	maxAddWidth       int // max addition count width across all files (for column alignment)
+	maxRemWidth       int // max removal count width across all files (for column alignment)
+	maxCountWidth     int // max stats count width across all files (for bar alignment)
+	headerBoxWidth    int // width of the box around header content (for border alignment)
 	// Summary row fields
 	totalFiles   int // total number of files changed
 	totalAdded   int // total insertions across all files
@@ -133,27 +136,64 @@ func (m Model) buildRows() []displayRow {
 		}
 	}
 
+	// Calculate consistent header box width for borders
+	// Box contains: lineNumWidth + " ◐ ~ " (5 chars) + maxHeaderWidth + maxStatsBarWidth
+	lineNumWidth := m.lineNumWidth()
+	iconPartWidth := 5 // " ◐ ~ " = space + icon(1) + space + status(1) + space
+	maxStatsBarWidth := 0
+	if maxAddWidth > 0 || maxRemWidth > 0 {
+		maxStatsBarWidth = 1 + maxAddWidth // leading space + add column
+		if maxAddWidth > 0 {
+			maxStatsBarWidth++ // space between + and -
+		}
+		maxStatsBarWidth += maxRemWidth // removal column
+	}
+	headerBoxWidth := lineNumWidth + iconPartWidth + maxHeaderWidth + maxStatsBarWidth
+
 	for fileIdx, fp := range m.files {
 		// Count stats once per file for header display
 		added, removed := countFileStats(fp)
 		status := fileStatus(fp.OldPath, fp.NewPath)
 
+		// Check if this is the first file and if it's unfolded - needs a top border
+		isFirstFile := fileIdx == 0
+		isUnfolded := fp.FoldLevel != sidebyside.FoldFolded
+
+		// Check if previous file is unfolded (for header/bottom border visibility)
+		// First file counts as "previous unfolded" since there's nothing above
+		prevFileUnfolded := isFirstFile
+		if fileIdx > 0 {
+			prevFileUnfolded = m.files[fileIdx-1].FoldLevel != sidebyside.FoldFolded
+		}
+
+		// Check if next file exists and is unfolded (for trailing border visibility)
+		nextFileUnfolded := false
+		if fileIdx+1 < len(m.files) {
+			nextFileUnfolded = m.files[fileIdx+1].FoldLevel != sidebyside.FoldFolded
+		}
+
 		switch fp.FoldLevel {
 		case sidebyside.FoldFolded:
-			// Folded: just the header, no blank line before, no trailing "="
+			// Folded: just the header, no borders - files stack tightly together
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth)})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth})
 
 		case sidebyside.FoldExpanded:
 			// Expanded: show full file content with diff highlighting
 			// If content not loaded yet, fall back to normal view
 			if fp.HasContent() {
-				// File header with stats
-				header := formatFileHeader(fp.OldPath, fp.NewPath)
-				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth)})
+				// First file gets a top border before header (visible since no file above)
+				if isFirstFile && isUnfolded {
+					rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
+				}
 
-				// Blank line after header before content (no shading)
-				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true})
+				// File header with stats
+				// Border visible only if previous file is also unfolded (or this is first file)
+				header := formatFileHeader(fp.OldPath, fp.NewPath)
+				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+
+				// Bottom border of header box (visible only if previous file is also unfolded)
+				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 				// Build expanded rows from full file content
 				expandedRows := m.buildExpandedRows(fp)
@@ -169,22 +209,31 @@ func (m Model) buildRows() []displayRow {
 				rows = append(rows, expandedRows...)
 
 				// Add 4 blank lines after expanded content
-				// Blank lines belong to the file above, not below
 				for i := 0; i < 4; i++ {
 					rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
 				}
+
+				// Trailing top border (visually looks like top of next file, but belongs to this file)
+				// Only visible if next file is also unfolded
+				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
 				continue // Skip the normal view below
 			}
 			// Fall through to normal view if content not loaded
 			fallthrough
 
 		default: // FoldNormal
-			// File header with stats
-			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth)})
+			// First file gets a top border before header (visible since no file above)
+			if isFirstFile && isUnfolded {
+				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldNormal, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
+			}
 
-			// Blank line after header before content (no shading)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true})
+			// File header with stats
+			// Border visible only if previous file is also unfolded (or this is first file)
+			header := formatFileHeader(fp.OldPath, fp.NewPath)
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+
+			// Bottom border of header box (visible only if previous file is also unfolded)
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldNormal, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 			// Line pairs with hunk separators
 			var prevLeft, prevRight int
@@ -213,10 +262,13 @@ func (m Model) buildRows() []displayRow {
 			}
 
 			// Add 4 blank lines after normal content
-			// Blank lines belong to the file above, not below
 			for i := 0; i < 4; i++ {
 				rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
 			}
+
+			// Trailing top border (visually looks like top of next file, but belongs to this file)
+			// Only visible if next file is also unfolded
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldNormal, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
 		}
 	}
 
@@ -494,12 +546,10 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		row := rows[i]
 		isCursorRow := len(visible) == cursorViewportRow
 
-		if row.isHeaderSpacer {
-			if isCursorRow {
-				visible = append(visible, m.renderHeaderSpacerWithCursor(halfWidth, lineNumWidth))
-			} else {
-				visible = append(visible, "") // empty line, no shading
-			}
+		if row.isHeaderTopBorder {
+			visible = append(visible, m.renderHeaderTopBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow))
+		} else if row.isHeaderSpacer {
+			visible = append(visible, m.renderHeaderBottomBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow))
 		} else if row.isBlank {
 			if isCursorRow {
 				visible = append(visible, m.renderBlankWithCursor(halfWidth, lineNumWidth))
@@ -507,7 +557,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 				visible = append(visible, m.renderInterFileBlank())
 			}
 		} else if row.isHeader {
-			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.fileIndex, i, isCursorRow))
+			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.borderVisible, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
 		} else if row.isSummary {
@@ -573,25 +623,68 @@ func (m Model) renderInterFileBlank() string {
 	return interFileStyle.Render(strings.Repeat("░", m.width))
 }
 
-// renderHeaderSpacerWithCursor renders a blank line after header with cursor indicator.
-// Matches the structure of renderBlankWithCursor but with empty content (no shading).
-func (m Model) renderHeaderSpacerWithCursor(halfWidth, lineNumWidth int) string {
-	// Highlight both gutter areas (left and right) with cursor style
-	leftGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-	rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+// renderHeaderTopBorder renders the top border of the file header box.
+// Format: ─────────────────────┐ (horizontal lines on left, corner on right)
+func (m Model) renderHeaderTopBorder(headerBoxWidth int, borderVisible bool, status FileStatus, isCursorRow bool) string {
+	lineNumWidth := m.lineNumWidth()
+	_ = status // status not used for top border (no shading)
 
-	// Content areas - empty spaces (no shading for header spacer)
-	contentWidth := halfWidth - lineNumWidth - 3
-	if contentWidth < 0 {
-		contentWidth = 0
+	// Use darker color when border should not be visible (fg=0)
+	borderStyle := headerLineStyle
+	if !borderVisible {
+		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
 	}
-	leftContent := strings.Repeat(" ", contentWidth)
-	rightContent := strings.Repeat(" ", contentWidth)
 
-	// Format: arrow + space + gutter + space + content + (3 spaces for separator area) + arrow + space + gutter + space + content
-	// This matches the layout of content lines but without the │ since header spacer is above the separator area
-	return cursorArrowStyle.Render("▶") + " " + leftGutter + " " + leftContent + "   " +
-		cursorArrowStyle.Render("▶") + " " + rightGutter + " " + rightContent
+	innerWidth := headerBoxWidth
+	if innerWidth < 0 {
+		innerWidth = 0
+	}
+
+	if isCursorRow {
+		// Arrow at position 0, then ─ for position 1, then gutter area highlighted
+		// +1 at end for the space gap before the border corner
+		styledGutter := cursorStyle.Render(strings.Repeat("─", lineNumWidth))
+		restWidth := innerWidth - lineNumWidth + 1
+		if restWidth < 0 {
+			restWidth = 0
+		}
+		return cursorArrowStyle.Render("▶") + borderStyle.Render("─") + styledGutter + borderStyle.Render(strings.Repeat("─", restWidth)+"┐")
+	}
+
+	border := strings.Repeat("─", 2+innerWidth+1) // +1 for space gap before corner
+	return borderStyle.Render(border + "┐")
+}
+
+// renderHeaderBottomBorder renders the bottom border of the file header box.
+// Format: ─────────────────────┘ (horizontal lines on left, corner on right)
+func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, status FileStatus, isCursorRow bool) string {
+	lineNumWidth := m.lineNumWidth()
+	_ = status // status not used for bottom border
+
+	// Use darker color when border should not be visible (fg=0)
+	borderStyle := headerLineStyle
+	if !borderVisible {
+		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
+	}
+
+	innerWidth := headerBoxWidth
+	if innerWidth < 0 {
+		innerWidth = 0
+	}
+
+	if isCursorRow {
+		// Arrow at position 0, then ─ for position 1, then gutter area highlighted
+		// +1 at end for the space gap before the border corner
+		styledGutter := cursorStyle.Render(strings.Repeat("─", lineNumWidth))
+		restWidth := innerWidth - lineNumWidth + 1
+		if restWidth < 0 {
+			restWidth = 0
+		}
+		return cursorArrowStyle.Render("▶") + borderStyle.Render("─") + styledGutter + borderStyle.Render(strings.Repeat("─", restWidth)+"┘")
+	}
+
+	border := strings.Repeat("─", 2+innerWidth+1) // +1 for space gap before corner
+	return borderStyle.Render(border + "┘")
 }
 
 // renderTopBar renders the top bar showing file info with a divider line below.
@@ -1191,7 +1284,7 @@ func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidt
 	return "  " + headerLineStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
 }
 
-func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, status FileStatus, added, removed, maxHeaderWidth, maxAddWidth, maxRemWidth, fileIndex, rowIdx int, isCursorRow bool) string {
+func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borderVisible bool, status FileStatus, added, removed, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth, fileIndex, rowIdx int, isCursorRow bool) string {
 	// Apply search highlighting if there are matches
 	if m.searchQuery != "" {
 		header = m.applySearchHighlight(header, rowIdx, 0)
@@ -1211,41 +1304,52 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	fileNum := fmt.Sprintf("#%0*d", numDigits, fileIndex+1) // #01
 	fileNumPadded := fileNum + strings.Repeat(" ", lineNumWidth-len(fileNum))
 
-	// All headers use same format: gutter + icon + status + header + stats + trailing
+	// All headers use same format: gutter + icon + status + header + stats + │ + trailing
 	statsBar := formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth)
 	statsBarWidth := statsBarDisplayWidth(added, removed, maxAddWidth, maxRemWidth)
 
 	// Pad header to align stats across all files
 	headerTextWidth := displayWidth(header)
-	padding := ""
+	headerPadding := ""
 	if maxHeaderWidth > headerTextWidth {
-		padding = strings.Repeat(" ", maxHeaderWidth-headerTextWidth)
+		headerPadding = strings.Repeat(" ", maxHeaderWidth-headerTextWidth)
+	}
+
+	// Calculate content width and pad to match headerBoxWidth
+	iconPartWidth := 1 + len(icon) + 1 + len(statusSymbol) + 1 // " icon status "
+	contentWidth := lineNumWidth + iconPartWidth + headerTextWidth + len(headerPadding) + statsBarWidth
+	boxPadding := ""
+	if headerBoxWidth > contentWidth {
+		boxPadding = strings.Repeat(" ", headerBoxWidth-contentWidth)
 	}
 
 	// Calculate trailing fill to fill the width with status-colored shading
-	// Format: prefix(2) + gutter + space + icon + space + status + space + header + padding + statsBar + trailing
-	iconPartWidth := 1 + len(icon) + 1 + len(statusSymbol) + 1 // " icon status "
-	prefixWidth := 2 + lineNumWidth + iconPartWidth + headerTextWidth + len(padding) + statsBarWidth
+	// Format: prefix(2) + content(headerBoxWidth) + space(1) + │(1) + space + trailing
+	prefixWidth := 2 + headerBoxWidth + 1 + 1 // prefix + content + space + │
 	trailing := m.width - prefixWidth
-	if trailing < 0 {
+	if trailing < 1 {
 		trailing = 0
 	}
 	trailingFill := ""
-	if trailing > 1 {
-		trailingFill = " " + statusStyle.Render(strings.Repeat("▒", trailing-1))
-	} else if trailing == 1 {
-		trailingFill = " "
+	if trailing > 0 {
+		trailingFill = " " + statusStyle.Render(strings.Repeat("▒", trailing))
+	}
+
+	// Use darker color for border when not visible (file above is folded)
+	borderStyle := headerLineStyle
+	if !borderVisible {
+		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
 	}
 
 	if isCursorRow {
-		// Format: arrow + space + fileNum(with bg) + space + icon + status + header + padding + stats + trailing
+		// Format: arrow + space + fileNum(with bg) + space + icon + status + header + padding + stats + boxPadding + space + │ + trailing
 		styledFileNum := cursorStyle.Render(fileNumPadded)
-		return cursorArrowStyle.Render("▶") + " " + styledFileNum + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingFill
+		return cursorArrowStyle.Render("▶") + " " + styledFileNum + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 	}
 
 	// Normal rendering
-	// Format: space + space + fileNum + space + icon + status + header + padding + stats + trailing
-	return "  " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingFill
+	// Format: space + space + fileNum + space + icon + status + header + padding + stats + boxPadding + space + │ + trailing
+	return "  " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, leftIndicatorStart, rightIndicatorStart int, isFirstLine, isLastLine bool) string {
