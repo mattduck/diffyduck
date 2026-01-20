@@ -327,7 +327,7 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 }
 
 func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
-	// The fold icon (◐/○/●) should NOT be highlighted, only the "━━━ " prefix
+	// The fold icon (◐/○/●) should NOT be highlighted, only the file number prefix
 	withANSIColors(t, func() {
 		m := Model{
 			files: []sidebyside.FilePair{
@@ -355,10 +355,9 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 		headerLine := lines[3]
 
 		// The cursor style should end before the space and icon
-		// Pattern: [cursor style]━━━━[reset][header style] ◐ filename...
-		// Only the gutter (━'s) is highlighted, not the space or icon
-		// Gutter width is dynamic (minimum 4), so check for at least ━━━━
-		assert.Contains(t, headerLine, ansiCursorStyle+"━━━━", "gutter should be highlighted")
+		// Pattern: [cursor style]#1  [reset][header style] ◐ filename...
+		// Only the file number area is highlighted, not the space or icon
+		assert.Contains(t, headerLine, ansiCursorStyle+"#1", "file number should be highlighted")
 		assert.Contains(t, headerLine, ansiReset, "highlighted section should end with reset")
 	})
 }
@@ -392,10 +391,10 @@ func TestView_FileHeader_SpansFullWidth(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the header line (contains test.go and ━ or ─)
+	// Find the header line (contains test.go and fold icon)
 	var headerLine string
 	for _, line := range lines {
-		if strings.Contains(line, "test.go") && (strings.Contains(line, "━") || strings.Contains(line, "─")) {
+		if strings.Contains(line, "test.go") && strings.Contains(line, "◐") {
 			headerLine = line
 			break
 		}

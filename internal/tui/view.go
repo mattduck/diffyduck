@@ -500,7 +500,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 				visible = append(visible, m.renderInterFileBlank())
 			}
 		} else if row.isHeader {
-			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxCountWidth, i, isCursorRow))
+			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxCountWidth, row.fileIndex, i, isCursorRow))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
 		} else if row.isSummary {
@@ -606,8 +606,8 @@ func (m Model) renderTopBar() string {
 		totalRemoved += removed
 	}
 
-	// Left section: file counter [01/27]
-	fileCounterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	// Left section: file counter [01/27] - colored to match current file's status
+	_, fileCounterStyle := fileStatusIndicator(FileStatus(info.FileStatus))
 	totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
 	counterText := fmt.Sprintf("[%0*d/%d]", totalWidth, info.CurrentFile, info.TotalFiles)
 	fileCounter := fileCounterStyle.Render(counterText) + " "
@@ -1186,7 +1186,7 @@ func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidt
 	return "  " + headerLineStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
 }
 
-func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, status FileStatus, added, removed, maxHeaderWidth, maxCountWidth, rowIdx int, isCursorRow bool) string {
+func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, status FileStatus, added, removed, maxHeaderWidth, maxCountWidth, fileIndex, rowIdx int, isCursorRow bool) string {
 	// Apply search highlighting if there are matches
 	if m.searchQuery != "" {
 		header = m.applySearchHighlight(header, rowIdx, 0)
@@ -1198,8 +1198,13 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	styledStatus := statusStyle.Render(statusSymbol)
 
 	lineNumWidth := m.lineNumWidth()
-	// Gutter uses ━ repeated to match line number width
-	equalsGutter := strings.Repeat("━", lineNumWidth)
+
+	// File number with hash prefix and leading zeros, left-aligned with padding to match lineNumWidth
+	// Color matches the file status (green=added, red=deleted, blue=modified/renamed)
+	totalFiles := len(m.files)
+	numDigits := len(fmt.Sprintf("%d", totalFiles))
+	fileNum := fmt.Sprintf("#%0*d", numDigits, fileIndex+1) // #01
+	fileNumPadded := fileNum + strings.Repeat(" ", lineNumWidth-len(fileNum))
 
 	// All headers use same format: gutter + icon + status + header + stats + trailing
 	const maxBarWidth = 24
@@ -1227,14 +1232,14 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	}
 
 	if isCursorRow {
-		// Format: arrow + space + gutter(━━━ with bg) + space + icon + status + header + padding + stats + trailing
-		styledGutter := cursorStyle.Render(equalsGutter)
-		return cursorArrowStyle.Render("▶") + " " + styledGutter + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
+		// Format: arrow + space + fileNum(with bg) + space + icon + status + header + padding + stats + trailing
+		styledFileNum := cursorStyle.Render(fileNumPadded)
+		return cursorArrowStyle.Render("▶") + " " + styledFileNum + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
 	}
 
 	// Normal rendering
-	// Format: space + space + gutter(━━━) + space + icon + status + header + padding + stats + trailing
-	return "  " + headerLineStyle.Render(equalsGutter) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
+	// Format: space + space + fileNum + space + icon + status + header + padding + stats + trailing
+	return "  " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, leftIndicatorStart, rightIndicatorStart int, isFirstLine, isLastLine bool) string {
