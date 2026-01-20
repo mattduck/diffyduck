@@ -1,5 +1,5 @@
-; Source: github.com/tree-sitter-grammars/tree-sitter-markdown @ v0.5.2
-; Upstream: https://github.com/tree-sitter-grammars/tree-sitter-markdown/blob/v0.5.2/tree-sitter-markdown/queries/highlights.scm
+; Source: github.com/tree-sitter-grammars/tree-sitter-markdown @ split_parser branch
+; Upstream: https://github.com/tree-sitter-grammars/tree-sitter-markdown/blob/split_parser/tree-sitter-markdown/queries/highlights.scm
 ;
 ; IMPORTANT: Upstream queries use "first match wins" but our highlighter uses
 ; "last match wins" (see MergeSpans). Queries may need reordering after fetching:
@@ -7,6 +7,9 @@
 ;
 ; Check for LOCAL MODIFICATION comments below for any manual changes.
 
+; NOTE: The comment below is from the upstream repo's query file, not ours.
+; We fetch from tree-sitter-markdown, not nvim-treesitter, but upstream may
+; have originally adapted their query from nvim-treesitter.
 ;From nvim-treesitter/nvim-treesitter
 (atx_heading
   (inline) @text.title)
