@@ -2019,7 +2019,6 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 	// Folded header should contain filename, stats counts, and +/- bar
 	header := lines[2]
 	assert.Contains(t, header, "main.go", "header should contain filename")
-	assert.Contains(t, header, "|", "header should contain separator")
 	assert.Contains(t, header, "+3", "header should show addition count")
 	assert.Contains(t, header, "-2", "header should show deletion count")
 	assert.Contains(t, header, "+++", "header should show addition bar")
@@ -2027,7 +2026,8 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 }
 
 func TestFileHeaderWithStats_Alignment(t *testing.T) {
-	// Multiple folded files should have aligned | separators
+	// Multiple folded files should have aligned stats columns
+	// The addition column (+N) should be padded so that the removal column (-M) starts at the same position
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
@@ -2039,6 +2039,10 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 						Left:  sidebyside.Line{Type: sidebyside.Empty},
 						Right: sidebyside.Line{Num: 1, Content: "added", Type: sidebyside.Added},
 					},
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Type: sidebyside.Empty},
+					},
 				},
 			},
 			{
@@ -2046,6 +2050,7 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 				NewPath:   "b/much_longer_filename.go",
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
+					// 100 additions to make the count "+100" which is wider than "+1"
 					{
 						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
 						Right: sidebyside.Line{Type: sidebyside.Empty},
@@ -2057,22 +2062,32 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 		height: 10,
 		keys:   DefaultKeyMap(),
 	}
+	// Add more pairs to the second file to get +100
+	for i := 0; i < 100; i++ {
+		m.files[1].Pairs = append(m.files[1].Pairs, sidebyside.LinePair{
+			Left:  sidebyside.Line{Type: sidebyside.Empty},
+			Right: sidebyside.Line{Num: i + 2, Content: "added", Type: sidebyside.Added},
+		})
+	}
 	m.calculateTotalLines()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
 	// Layout: [topBar, divider, content..., bottomBar]
-	// Find display column position of | in each header (using rune position for multi-byte chars)
+	// Find display column position of - in the stats section of each header
 	header1 := lines[2]
 	header2 := lines[3] // second header is at lines[3] (folded files have no content between them)
 
-	pos1 := displayColumnOf(header1, "|")
-	pos2 := displayColumnOf(header2, "|")
+	// Find position of removal count (-N) in each header
+	// The first file has +1 -1, second has +100 -1
+	// The -1 should be aligned in both headers
+	pos1 := displayColumnOf(header1, "-1")
+	pos2 := displayColumnOf(header2, "-1")
 
-	assert.NotEqual(t, -1, pos1, "first header should contain |")
-	assert.NotEqual(t, -1, pos2, "second header should contain |")
-	assert.Equal(t, pos1, pos2, "| should be aligned across headers")
+	assert.NotEqual(t, -1, pos1, "first header should contain -1")
+	assert.NotEqual(t, -1, pos2, "second header should contain -1")
+	assert.Equal(t, pos1, pos2, "-1 should be aligned across headers (addition column padded)")
 }
 
 func TestFileHeaderWithStats_BarAlignment(t *testing.T) {
@@ -2123,35 +2138,17 @@ func TestFileHeaderWithStats_BarAlignment(t *testing.T) {
 	header2 := lines[3] // +5 -> bar has 5 chars
 
 	// Find the display column position of the bar (consecutive + or - characters)
-	// The bar starts after "| +NNN " - we look for where the repeated +/- begins
-	// Use rune-based indexing for proper handling of multi-byte characters
+	// The bar comes after the stats counts: +N -M then the bar +++---
+	// We look for where the repeated +/- begins (2+ consecutive same char)
 	findBarStart := func(s string) int {
 		runes := []rune(s)
-		// Find "| " in runes
-		pipeIdx := -1
-		for i := 0; i < len(runes)-1; i++ {
-			if runes[i] == '|' && runes[i+1] == ' ' {
-				pipeIdx = i
-				break
-			}
-		}
-		if pipeIdx == -1 {
-			return -1
-		}
-		// After "| ", we have count(s) then space then bar
 		// Look for sequence of 2+ consecutive + or -
-		afterPipe := runes[pipeIdx+2:]
-		for i := 0; i < len(afterPipe); i++ {
-			ch := afterPipe[i]
-			// Skip count portion: +N, -N, spaces
-			if ch == '+' || ch == '-' {
-				// Check if this is start of bar (followed by same char)
-				if i+1 < len(afterPipe) && afterPipe[i+1] == ch {
-					return pipeIdx + 2 + i
-				}
-				// Otherwise it's part of count, continue
+		// The bar is distinguished from counts because it has consecutive identical characters
+		for i := 0; i < len(runes)-1; i++ {
+			ch := runes[i]
+			if (ch == '+' || ch == '-') && runes[i+1] == ch {
+				return i
 			}
-			// Space continues count section
 		}
 		return -1
 	}

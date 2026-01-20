@@ -99,6 +99,8 @@ type displayRow struct {
 	added          int // number of added lines (for headers)
 	removed        int // number of removed lines (for headers)
 	maxHeaderWidth int // max header width across all files (for alignment in folded view)
+	maxAddWidth    int // max addition count width across all files (for column alignment)
+	maxRemWidth    int // max removal count width across all files (for column alignment)
 	maxCountWidth  int // max stats count width across all files (for bar alignment)
 	// Summary row fields
 	totalFiles   int // total number of files changed
@@ -110,9 +112,10 @@ type displayRow struct {
 func (m Model) buildRows() []displayRow {
 	var rows []displayRow
 
-	// Calculate max header width and max count width across all files for alignment
+	// Calculate max header width and max add/rem widths across all files for alignment
 	maxHeaderWidth := 0
-	maxCountWidth := 0
+	maxAddWidth := 0
+	maxRemWidth := 0
 	for _, fp := range m.files {
 		header := formatFileHeader(fp.OldPath, fp.NewPath)
 		w := displayWidth(header)
@@ -120,9 +123,13 @@ func (m Model) buildRows() []displayRow {
 			maxHeaderWidth = w
 		}
 		added, removed := countFileStats(fp)
-		cw := statsCountWidth(added, removed)
-		if cw > maxCountWidth {
-			maxCountWidth = cw
+		aw := statsAddWidth(added)
+		if aw > maxAddWidth {
+			maxAddWidth = aw
+		}
+		rw := statsRemWidth(removed)
+		if rw > maxRemWidth {
+			maxRemWidth = rw
 		}
 	}
 
@@ -135,7 +142,7 @@ func (m Model) buildRows() []displayRow {
 		case sidebyside.FoldFolded:
 			// Folded: just the header, no blank line before, no trailing "="
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth)})
 
 		case sidebyside.FoldExpanded:
 			// Expanded: show full file content with diff highlighting
@@ -143,7 +150,7 @@ func (m Model) buildRows() []displayRow {
 			if fp.HasContent() {
 				// File header with stats
 				header := formatFileHeader(fp.OldPath, fp.NewPath)
-				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
+				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth)})
 
 				// Blank line after header before content (no shading)
 				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true})
@@ -174,7 +181,7 @@ func (m Model) buildRows() []displayRow {
 		default: // FoldNormal
 			// File header with stats
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxCountWidth: maxCountWidth})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth)})
 
 			// Blank line after header before content (no shading)
 			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true})
@@ -500,7 +507,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 				visible = append(visible, m.renderInterFileBlank())
 			}
 		} else if row.isHeader {
-			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxCountWidth, row.fileIndex, i, isCursorRow))
+			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.fileIndex, i, isCursorRow))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
 		} else if row.isSummary {
@@ -1029,11 +1036,32 @@ func fileStatusIndicator(status FileStatus) (symbol string, style lipgloss.Style
 	}
 }
 
-// statsCountWidth returns the display width of the count portion "+N -M" (without bar).
-func statsCountWidth(added, removed int) int {
-	width := 0
+// statsAddWidth returns the display width of just the addition portion "+N".
+func statsAddWidth(added int) int {
 	if added > 0 {
-		width += len(fmt.Sprintf("+%d", added))
+		return len(fmt.Sprintf("+%d", added))
+	}
+	return 0
+}
+
+// statsRemWidth returns the display width of just the removal portion "-N".
+func statsRemWidth(removed int) int {
+	if removed > 0 {
+		return len(fmt.Sprintf("-%d", removed))
+	}
+	return 0
+}
+
+// statsCountWidth returns the display width of the count portion "+N -M" (without bar).
+func statsCountWidth(added, removed, maxAddWidth int) int {
+	width := 0
+	if added > 0 || maxAddWidth > 0 {
+		// Use the max add width for alignment
+		if maxAddWidth > 0 {
+			width += maxAddWidth
+		} else {
+			width += len(fmt.Sprintf("+%d", added))
+		}
 	}
 	if removed > 0 {
 		if width > 0 {
@@ -1045,32 +1073,41 @@ func statsCountWidth(added, removed int) int {
 }
 
 // formatColoredStatsBar returns the stats display with colored +/- characters.
-// Returns empty string if no changes. Format: " | +N -M +++---"
-// maxCountWidth is used to pad the count portion for alignment across files.
-func formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth int) string {
+// Returns empty string if no changes. Format: " +N -M +++---"
+// maxAddWidth/maxRemWidth are used to pad columns so they align across files.
+// The bar is always padded to maxBarWidth for consistent shading start position.
+func formatColoredStatsBar(added, removed, maxBarWidth, maxAddWidth, maxRemWidth int) string {
 	if added == 0 && removed == 0 {
 		return ""
 	}
 
 	var parts []string
-	parts = append(parts, "|")
 
-	// Build count string and pad for alignment
-	var countParts []string
+	// Build addition string with padding for alignment
 	if added > 0 {
-		countParts = append(countParts, addedStyle.Render(fmt.Sprintf("+%d", added)))
+		addStr := fmt.Sprintf("+%d", added)
+		currentAddWidth := len(addStr)
+		if maxAddWidth > currentAddWidth {
+			addStr += strings.Repeat(" ", maxAddWidth-currentAddWidth)
+		}
+		parts = append(parts, addedStyle.Render(addStr))
+	} else if maxAddWidth > 0 {
+		// No additions but need to reserve space for alignment
+		parts = append(parts, strings.Repeat(" ", maxAddWidth))
 	}
-	if removed > 0 {
-		countParts = append(countParts, removedStyle.Render(fmt.Sprintf("-%d", removed)))
-	}
-	countStr := strings.Join(countParts, " ")
 
-	// Pad to align bars
-	currentCountWidth := statsCountWidth(added, removed)
-	if maxCountWidth > currentCountWidth {
-		countStr += strings.Repeat(" ", maxCountWidth-currentCountWidth)
+	// Build removal string with padding for alignment
+	if removed > 0 {
+		remStr := fmt.Sprintf("-%d", removed)
+		currentRemWidth := len(remStr)
+		if maxRemWidth > currentRemWidth {
+			remStr += strings.Repeat(" ", maxRemWidth-currentRemWidth)
+		}
+		parts = append(parts, removedStyle.Render(remStr))
+	} else if maxRemWidth > 0 {
+		// No removals but need to reserve space for alignment
+		parts = append(parts, strings.Repeat(" ", maxRemWidth))
 	}
-	parts = append(parts, countStr)
 
 	// Calculate bar characters with scaling
 	// We derive minusChars from plusChars to ensure total is always exactly maxBarWidth
@@ -1094,37 +1131,43 @@ func formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth int) strin
 		}
 	}
 
-	// Build colored bar
-	bar := addedStyle.Render(strings.Repeat("+", plusChars)) + removedStyle.Render(strings.Repeat("-", minusChars))
+	// Build colored bar, padded to maxBarWidth for consistent shading start
+	barChars := plusChars + minusChars
+	barPadding := ""
+	if barChars < maxBarWidth {
+		barPadding = strings.Repeat(" ", maxBarWidth-barChars)
+	}
+	bar := addedStyle.Render(strings.Repeat("+", plusChars)) + removedStyle.Render(strings.Repeat("-", minusChars)) + barPadding
 	parts = append(parts, bar)
 
 	return " " + strings.Join(parts, " ")
 }
 
 // statsBarDisplayWidth returns the display width of the stats bar (without ANSI codes).
-// This matches formatColoredStatsBar's output width.
-func statsBarDisplayWidth(added, removed, maxBarWidth, maxCountWidth int) int {
+// This matches formatColoredStatsBar's output width with fixed column widths.
+func statsBarDisplayWidth(added, removed, maxBarWidth, maxAddWidth, maxRemWidth int) int {
 	if added == 0 && removed == 0 {
 		return 0
 	}
 
-	// Format: " | countStr barStr"
-	// Leading space + | + space + count + space + bar
-	width := 1 + 1 + 1 // " | "
+	// Format: " +N__ -M__ +++---___" (with padding to fixed widths)
+	// Leading space
+	width := 1
 
-	// Count width (padded to maxCountWidth)
-	width += maxCountWidth
+	// Addition column (always padded to maxAddWidth)
+	width += maxAddWidth
+
+	// Space before removal + removal column (always padded to maxRemWidth)
+	if maxAddWidth > 0 {
+		width++ // space between +N and -M
+	}
+	width += maxRemWidth
 
 	// Space before bar
 	width += 1
 
-	// Bar width (capped at maxBarWidth)
-	total := added + removed
-	if total > maxBarWidth {
-		width += maxBarWidth
-	} else {
-		width += total
-	}
+	// Bar always padded to maxBarWidth
+	width += maxBarWidth
 
 	return width
 }
@@ -1186,7 +1229,7 @@ func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidt
 	return "  " + headerLineStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
 }
 
-func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, status FileStatus, added, removed, maxHeaderWidth, maxCountWidth, fileIndex, rowIdx int, isCursorRow bool) string {
+func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, status FileStatus, added, removed, maxHeaderWidth, maxAddWidth, maxRemWidth, fileIndex, rowIdx int, isCursorRow bool) string {
 	// Apply search highlighting if there are matches
 	if m.searchQuery != "" {
 		header = m.applySearchHighlight(header, rowIdx, 0)
@@ -1208,17 +1251,17 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 
 	// All headers use same format: gutter + icon + status + header + stats + trailing
 	const maxBarWidth = 24
-	statsBar := formatColoredStatsBar(added, removed, maxBarWidth, maxCountWidth)
-	statsBarWidth := statsBarDisplayWidth(added, removed, maxBarWidth, maxCountWidth)
+	statsBar := formatColoredStatsBar(added, removed, maxBarWidth, maxAddWidth, maxRemWidth)
+	statsBarWidth := statsBarDisplayWidth(added, removed, maxBarWidth, maxAddWidth, maxRemWidth)
 
-	// Pad header to align | separator across all files
+	// Pad header to align stats across all files
 	headerTextWidth := displayWidth(header)
 	padding := ""
 	if maxHeaderWidth > headerTextWidth {
 		padding = strings.Repeat(" ", maxHeaderWidth-headerTextWidth)
 	}
 
-	// Calculate trailing spaces to fill the width
+	// Calculate trailing fill to fill the width with status-colored shading
 	// Format: prefix(2) + gutter + space + icon + space + status + space + header + padding + statsBar + trailing
 	iconPartWidth := 1 + len(icon) + 1 + len(statusSymbol) + 1 // " icon status "
 	prefixWidth := 2 + lineNumWidth + iconPartWidth + headerTextWidth + len(padding) + statsBarWidth
@@ -1226,20 +1269,22 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, statu
 	if trailing < 0 {
 		trailing = 0
 	}
-	trailingSpace := ""
-	if trailing > 0 {
-		trailingSpace = strings.Repeat(" ", trailing)
+	trailingFill := ""
+	if trailing > 1 {
+		trailingFill = " " + statusStyle.Render(strings.Repeat("▒", trailing-1))
+	} else if trailing == 1 {
+		trailingFill = " "
 	}
 
 	if isCursorRow {
 		// Format: arrow + space + fileNum(with bg) + space + icon + status + header + padding + stats + trailing
 		styledFileNum := cursorStyle.Render(fileNumPadded)
-		return cursorArrowStyle.Render("▶") + " " + styledFileNum + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
+		return cursorArrowStyle.Render("▶") + " " + styledFileNum + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingFill
 	}
 
 	// Normal rendering
 	// Format: space + space + fileNum + space + icon + status + header + padding + stats + trailing
-	return "  " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingSpace
+	return "  " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+padding) + statsBar + trailingFill
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, leftIndicatorStart, rightIndicatorStart int, isFirstLine, isLastLine bool) string {
