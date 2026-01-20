@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Sample XML file for syntax highlighting
+    This demonstrates various XML constructs
+-->
+
+<!DOCTYPE catalog SYSTEM "catalog.dtd">
+
+<!-- Root element with namespace -->
+<catalog xmlns="http://example.com/catalog"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns:dc="http://purl.org/dc/elements/1.1/"
+         xsi:schemaLocation="http://example.com/catalog catalog.xsd"
+         version="1.0">
+
+    <!-- Processing instruction -->
+    <?xml-stylesheet type="text/xsl" href="catalog.xsl"?>
+
+    <metadata>
+        <dc:title>Sample Catalog</dc:title>
+        <dc:creator>Example Author</dc:creator>
+        <dc:date>2024-01-20</dc:date>
+        <dc:description>A sample XML catalog for testing syntax highlighting</dc:description>
+    </metadata>
+
+    <categories>
+        <category id="cat-1" name="Books">
+            <description>Physical and digital books</description>
+        </category>
+        <category id="cat-2" name="Electronics">
+            <description>Electronic devices and accessories</description>
+        </category>
+        <category id="cat-3" name="Clothing">
+            <description>Apparel and fashion items</description>
+        </category>
+    </categories>
+
+    <products>
+        <!-- Product with attributes and nested elements -->
+        <product id="prod-001" category="cat-1" status="available">
+            <name>The Great Gatsby</name>
+            <author>F. Scott Fitzgerald</author>
+            <price currency="USD">12.99</price>
+            <quantity>150</quantity>
+            <tags>
+                <tag>classic</tag>
+                <tag>fiction</tag>
+                <tag>american-literature</tag>
+            </tags>
+            <description><![CDATA[
+                A story of the mysteriously wealthy Jay Gatsby
+                and his obsession with the beautiful Daisy Buchanan.
+                Features <em>special</em> content that needs CDATA.
+            ]]></description>
+        </product>
+
+        <product id="prod-002" category="cat-2" status="available">
+            <name>Wireless Headphones</name>
+            <brand>AudioTech</brand>
+            <price currency="USD">79.99</price>
+            <quantity>500</quantity>
+            <specifications>
+                <spec name="type">Over-ear</spec>
+                <spec name="connectivity">Bluetooth 5.0</spec>
+                <spec name="battery">30 hours</spec>
+                <spec name="weight">250g</spec>
+            </specifications>
+            <features>
+                <feature>Active Noise Cancellation</feature>
+                <feature>Built-in Microphone</feature>
+                <feature>Foldable Design</feature>
+            </features>
+        </product>
+
+        <product id="prod-003" category="cat-3" status="out-of-stock">
+            <name>Cotton T-Shirt</name>
+            <brand>ComfortWear</brand>
+            <price currency="USD">24.99</price>
+            <quantity>0</quantity>
+            <variants>
+                <variant size="S" color="white" sku="TS-S-WHT"/>
+                <variant size="M" color="white" sku="TS-M-WHT"/>
+                <variant size="L" color="white" sku="TS-L-WHT"/>
+                <variant size="S" color="black" sku="TS-S-BLK"/>
+                <variant size="M" color="black" sku="TS-M-BLK"/>
+                <variant size="L" color="black" sku="TS-L-BLK"/>
+            </variants>
+        </product>
+    </products>
+
+    <orders>
+        <order id="order-12345" date="2024-01-15T10:30:00Z">
+            <customer>
+                <name>John Doe</name>
+                <email>john.doe@example.com</email>
+                <address>
+                    <street>123 Main Street</street>
+                    <city>New York</city>
+                    <state>NY</state>
+                    <zip>10001</zip>
+                    <country>USA</country>
+                </address>
+            </customer>
+            <items>
+                <item product-id="prod-001" quantity="2">
+                    <unit-price>12.99</unit-price>
+                    <subtotal>25.98</subtotal>
+                </item>
+                <item product-id="prod-002" quantity="1">
+                    <unit-price>79.99</unit-price>
+                    <subtotal>79.99</subtotal>
+                </item>
+            </items>
+            <totals>
+                <subtotal>105.97</subtotal>
+                <tax rate="0.08">8.48</tax>
+                <shipping method="standard">5.99</shipping>
+                <total>120.44</total>
+            </totals>
+            <status>shipped</status>
+        </order>
+    </orders>
+
+    <!-- Entity reference examples -->
+    <notes>
+        <note>Special characters: &lt; &gt; &amp; &quot; &apos;</note>
+        <note>Copyright &#169; 2024</note>
+    </notes>
+
+</catalog>

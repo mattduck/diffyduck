@@ -1,0 +1,137 @@
+#+TITLE: Sample Org Mode File
+#+AUTHOR: Example Author
+#+DATE: 2024-01-20
+#+OPTIONS: toc:2 num:t
+
+* Introduction
+
+This is a sample Org mode file for testing syntax highlighting.
+Org mode is a powerful markup language used in Emacs.
+
+** Getting Started
+
+You can use /italic/, *bold*, _underline_, =verbatim=, ~code~, and +strikethrough+ text.
+
+** Features
+
+- Plain list item
+- Another item
+  - Nested item
+  - More nesting
+    - Even deeper
+- Back to top level
+
+*** Numbered Lists
+
+1. First item
+2. Second item
+   1. Sub-item A
+   2. Sub-item B
+3. Third item
+
+*** Checkbox Lists
+
+- [ ] Unchecked item
+- [X] Checked item
+- [-] Partially done
+
+* Code Blocks
+
+** Python Example
+
+#+BEGIN_SRC python
+def factorial(n):
+    """Calculate factorial recursively."""
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+print(factorial(5))  # Output: 120
+#+END_SRC
+
+** Shell Example
+
+#+BEGIN_SRC shell
+#!/bin/bash
+for i in {1..5}; do
+    echo "Iteration $i"
+done
+#+END_SRC
+
+** Inline Code
+
+You can run code inline like src_python{1 + 2} or src_elisp{(+ 1 2)}.
+
+* Tables
+
+| Name  | Age | City      |
+|-------+-----+-----------|
+| Alice |  30 | New York  |
+| Bob   |  25 | London    |
+| Carol |  35 | Tokyo     |
+|-------+-----+-----------|
+| Total |  90 |           |
+
+* Links
+
+- [[https://orgmode.org][Org Mode Website]]
+- [[file:other.org][Link to another file]]
+- [[#introduction][Internal link to Introduction]]
+
+* Quotes and Blocks
+
+#+BEGIN_QUOTE
+This is a quotation block.
+It can span multiple lines.
+#+END_QUOTE
+
+#+BEGIN_EXAMPLE
+This is an example block.
+Whitespace is preserved.
+#+END_EXAMPLE
+
+#+BEGIN_CENTER
+This text is centered.
+#+END_CENTER
+
+* TODO Items
+
+** TODO Write documentation
+   SCHEDULED: <2024-01-25 Thu>
+   :PROPERTIES:
+   :PRIORITY: A
+   :END:
+
+** DONE Complete the project
+   CLOSED: [2024-01-20 Sat 14:30]
+
+** WAITING Review feedback
+   DEADLINE: <2024-01-30 Tue>
+
+* Tags                                                              :sample:org:
+
+Content with tags appears here.
+
+** Project A                                                        :projectA:
+** Project B                                                        :projectB:
+
+* Properties
+
+:PROPERTIES:
+:CUSTOM_ID: properties-section
+:CREATED:  [2024-01-20 Sat]
+:END:
+
+* Footnotes
+
+This sentence has a footnote[fn:1].
+
+[fn:1] This is the footnote text.
+
+* Math
+
+LaTeX fragments: $E = mc^2$ and $\sum_{i=1}^{n} x_i$
+
+\begin{equation}
+\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}
+\end{equation}

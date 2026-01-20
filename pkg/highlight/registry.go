@@ -11,6 +11,7 @@ import (
 type LanguageConfig struct {
 	Name           string                       // Language name (e.g., "go", "python")
 	Extensions     []string                     // File extensions (e.g., ".go", ".py")
+	Filenames      []string                     // Exact filenames (e.g., "Makefile", "Dockerfile")
 	Language       func() *tree_sitter.Language // Returns the tree-sitter language
 	HighlightQuery string                       // The highlight query (.scm format)
 }
@@ -18,6 +19,7 @@ type LanguageConfig struct {
 // Registry holds all registered language configurations.
 type Registry struct {
 	byExtension map[string]*LanguageConfig
+	byFilename  map[string]*LanguageConfig
 	byName      map[string]*LanguageConfig
 }
 
@@ -25,14 +27,34 @@ type Registry struct {
 func NewRegistry() *Registry {
 	r := &Registry{
 		byExtension: make(map[string]*LanguageConfig),
+		byFilename:  make(map[string]*LanguageConfig),
 		byName:      make(map[string]*LanguageConfig),
 	}
 
-	// Register built-in languages
+	// Register built-in languages (alphabetical order)
+	r.Register(BashLanguage())
+	r.Register(CLanguage())
+	r.Register(CSSLanguage())
+	r.Register(DiffLanguage())
+	r.Register(DockerfileLanguage())
+	r.Register(ElispLanguage())
 	r.Register(GoLanguage())
+	r.Register(GraphQLLanguage())
+	r.Register(HTMLLanguage())
+	r.Register(INILanguage())
+	r.Register(JavaScriptLanguage())
+	r.Register(JSONLanguage())
+	r.Register(MakeLanguage())
+	r.Register(MarkdownLanguage())
+	r.Register(OrgLanguage())
+	r.Register(PHPLanguage())
 	r.Register(PythonLanguage())
-	r.Register(YAMLLanguage())
+	r.Register(RustLanguage())
+	r.Register(SQLLanguage())
 	r.Register(TOMLLanguage())
+	r.Register(TypeScriptLanguage())
+	r.Register(XMLLanguage())
+	r.Register(YAMLLanguage())
 
 	return r
 }
@@ -43,10 +65,19 @@ func (r *Registry) Register(cfg *LanguageConfig) {
 	for _, ext := range cfg.Extensions {
 		r.byExtension[ext] = cfg
 	}
+	for _, name := range cfg.Filenames {
+		r.byFilename[name] = cfg
+	}
 }
 
 // ForFile returns the language configuration for a filename, or nil if unknown.
 func (r *Registry) ForFile(filename string) *LanguageConfig {
+	// Check exact filename match first (e.g., "Makefile", "Dockerfile")
+	base := filepath.Base(filename)
+	if cfg := r.byFilename[base]; cfg != nil {
+		return cfg
+	}
+	// Fall back to extension match
 	ext := strings.ToLower(filepath.Ext(filename))
 	return r.byExtension[ext]
 }
@@ -56,10 +87,15 @@ func (r *Registry) ForName(name string) *LanguageConfig {
 	return r.byName[name]
 }
 
-// captureToCategory maps standard tree-sitter capture names to our categories.
-// This follows the conventions used by nvim-treesitter and other editors.
-// Hierarchical names (e.g., "keyword.type") fall back to their prefix ("keyword")
-// if not explicitly mapped - see CategoryForCapture.
+// captureToCategory maps tree-sitter capture names to our highlight categories.
+//
+// Most captures follow standard conventions (keyword, string, comment, etc.) used
+// by nvim-treesitter and other editors. Hierarchical names like "keyword.type"
+// fall back to their prefix ("keyword") if not explicitly mapped.
+//
+// Some grammars (notably org-mode) use non-standard capture names. Rather than
+// rewriting their queries, we add those custom names here. See the "Org-mode
+// specific captures" section below.
 var captureToCategory = map[string]Category{
 	// Functions
 	"function":             CategoryFunction,
@@ -141,6 +177,51 @@ var captureToCategory = map[string]Category{
 
 	// Embedded content
 	"embedded": CategoryNone,
+
+	// Org-mode specific captures (from tree-sitter-org)
+	"OrgStars1":               CategoryKeyword,
+	"OrgStars2":               CategoryKeyword,
+	"OrgStars3":               CategoryKeyword,
+	"OrgKeywordTodo":          CategoryConstant,
+	"OrgKeywordDone":          CategoryString,
+	"OrgPriority":             CategoryConstant,
+	"OrgPriorityCookie":       CategoryConstant,
+	"OrgTag":                  CategoryTag,
+	"OrgTagList":              CategoryTag,
+	"OrgPropertyDrawer":       CategoryComment,
+	"OrgPropertyName":         CategoryField,
+	"OrgPropertyValue":        CategoryString,
+	"OrgProperty":             CategoryComment,
+	"OrgTimestampInactive":    CategoryString,
+	"OrgTimestampActive":      CategoryString,
+	"OrgTimestampDay":         CategoryString,
+	"OrgTimestampDate":        CategoryString,
+	"OrgTimestampTime":        CategoryString,
+	"OrgTimestampRepeat":      CategoryConstant,
+	"OrgTimestampDelay":       CategoryConstant,
+	"OrgFootnoteLabel":        CategoryTag,
+	"OrgFootnoteDescription":  CategoryComment,
+	"OrgFootnoteDefinition":   CategoryComment,
+	"OrgDirectiveName":        CategoryKeyword,
+	"OrgDirectiveValue":       CategoryString,
+	"OrgDirective":            CategoryKeyword,
+	"OrgComment":              CategoryComment,
+	"OrgDrawerName":           CategoryKeyword,
+	"OrgDrawerContents":       CategoryComment,
+	"OrgDrawer":               CategoryComment,
+	"OrgBlockName":            CategoryKeyword,
+	"OrgBlockContents":        CategoryString,
+	"OrgBlock":                CategoryString,
+	"OrgDynamicBlockName":     CategoryKeyword,
+	"OrgDynamicBlockContents": CategoryComment,
+	"OrgDynamicBlock":         CategoryComment,
+	"OrgListBullet":           CategoryKeyword,
+	"OrgCheckbox":             CategoryKeyword,
+	"OrgCheckInProgress":      CategoryConstant,
+	"OrgCheckDone":            CategoryString,
+	"OrgTableHorizontalRuler": CategoryPunctuation,
+	"OrgCellFormula":          CategoryNumber,
+	"OrgCellNumber":           CategoryNumber,
 }
 
 // CategoryForCapture returns the category for a capture name.

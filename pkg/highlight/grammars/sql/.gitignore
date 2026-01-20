@@ -1,0 +1,5 @@
+# Parser files are too large to commit (~38MB)
+# Run `go generate ./pkg/highlight/grammars/...` to download them
+parser.inc
+scanner.inc
+tree_sitter/parser.h

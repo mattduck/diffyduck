@@ -394,7 +394,9 @@ func TestHighlighter_SupportsFile(t *testing.T) {
 		{"test.yaml", true}, // YAML
 		{"test.yml", true},  // YAML alternate extension
 		{"test.toml", true}, // TOML
-		{"test.js", false},
+		{"test.js", true},   // JavaScript
+		{"test.ts", true},   // TypeScript
+		{"test.tsx", true},  // TypeScript JSX
 		{"test", false},
 	}
 
@@ -512,6 +514,80 @@ func TestCategory_String(t *testing.T) {
 		got := tc.cat.String()
 		if got != tc.want {
 			t.Errorf("Category(%d).String() = %q, want %q", tc.cat, got, tc.want)
+		}
+	}
+}
+
+// TestAllLanguages verifies that all registered languages can be loaded and
+// used without panicking. This catches issues like invalid query syntax,
+// missing grammar bindings, or CGO linking problems.
+func TestAllLanguages(t *testing.T) {
+	// Sample code snippets for each language - just enough to exercise the parser
+	samples := map[string]struct {
+		filename string
+		code     string
+	}{
+		"bash":       {filename: "test.sh", code: "#!/bin/bash\necho \"hello\""},
+		"c":          {filename: "test.c", code: "int main() { return 0; }"},
+		"css":        {filename: "test.css", code: "body { color: red; }"},
+		"diff":       {filename: "test.diff", code: "--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new"},
+		"dockerfile": {filename: "Dockerfile", code: "FROM alpine\nRUN echo hello"},
+		"elisp":      {filename: "test.el", code: "(defun foo () (message \"hi\"))"},
+		"go":         {filename: "test.go", code: "package main\nfunc main() {}"},
+		"graphql":    {filename: "test.graphql", code: "type Query { hello: String }"},
+		"html":       {filename: "test.html", code: "<html><body>Hello</body></html>"},
+		"ini":        {filename: "test.ini", code: "[section]\nkey = value"},
+		"javascript": {filename: "test.js", code: "function foo() { return 42; }"},
+		"json":       {filename: "test.json", code: `{"key": "value", "num": 42}`},
+		"make":       {filename: "Makefile", code: "all:\n\techo hello"},
+		"markdown":   {filename: "test.md", code: "# Hello\n\nSome **bold** text."},
+		"org":        {filename: "test.org", code: "* Heading\n** Subheading\n- item"},
+		"php":        {filename: "test.php", code: "<?php\nfunction foo() { return 1; }"},
+		"python":     {filename: "test.py", code: "def foo():\n    return 42"},
+		"rust":       {filename: "test.rs", code: "fn main() { println!(\"hello\"); }"},
+		"sql":        {filename: "test.sql", code: "SELECT * FROM users WHERE id = 1;"},
+		"toml":       {filename: "test.toml", code: "[package]\nname = \"test\""},
+		"typescript": {filename: "test.ts", code: "function foo(): number { return 42; }"},
+		"xml":        {filename: "test.xml", code: "<?xml version=\"1.0\"?><root><item/></root>"},
+		"yaml":       {filename: "test.yaml", code: "name: test\nversion: 1.0"},
+	}
+
+	h := New()
+	defer h.Close()
+
+	for lang, sample := range samples {
+		t.Run(lang, func(t *testing.T) {
+			// This should not panic
+			spans, err := h.Highlight(sample.filename, []byte(sample.code))
+			if err != nil {
+				t.Errorf("Highlight(%s) failed: %v", lang, err)
+				return
+			}
+
+			// Should produce some spans (even if minimal)
+			// Some languages like diff might legitimately have few spans
+			if spans == nil {
+				t.Errorf("Highlight(%s) returned nil spans - language may not be registered", lang)
+			}
+		})
+	}
+}
+
+// TestAllLanguagesRegistered verifies that all expected languages are registered.
+func TestAllLanguagesRegistered(t *testing.T) {
+	expectedLanguages := []string{
+		"bash", "c", "css", "diff", "dockerfile", "elisp", "go", "graphql",
+		"html", "ini", "javascript", "json", "make", "markdown", "org",
+		"php", "python", "rust", "sql", "toml", "typescript", "xml", "yaml",
+	}
+
+	h := New()
+	defer h.Close()
+
+	for _, lang := range expectedLanguages {
+		cfg := h.registry.ForName(lang)
+		if cfg == nil {
+			t.Errorf("Language %q not registered", lang)
 		}
 	}
 }

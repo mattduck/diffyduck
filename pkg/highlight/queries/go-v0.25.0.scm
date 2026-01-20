@@ -1,17 +1,21 @@
 ; Source: github.com/tree-sitter/tree-sitter-go @ v0.25.0
 ; Upstream: https://github.com/tree-sitter/tree-sitter-go/blob/v0.25.0/queries/highlights.scm
 ;
-; LOCAL MODIFICATION: Reordered for "last match wins" semantics.
-; Our highlighter uses "last match wins" (see MergeSpans in spans.go), so general
-; patterns must come BEFORE specific patterns. Upstream uses "first match wins".
-; The identifiers section was moved before function calls/definitions.
+; IMPORTANT: Upstream queries use "first match wins" but our highlighter uses
+; "last match wins" (see MergeSpans). Queries may need reordering after fetching:
+; general patterns (like @variable) should come BEFORE specific patterns (like @function).
+;
+; Check for LOCAL MODIFICATION comments below for any manual changes.
 
-; Identifiers (general - will be overridden by more specific patterns below)
+; LOCAL MODIFICATION: Moved identifiers BEFORE function patterns for "last match wins"
+; Identifiers (general patterns first)
+
+(identifier) @variable
 (type_identifier) @type
 (field_identifier) @property
-(identifier) @variable
 
-; Function calls (specific - override @variable above)
+; Function calls (more specific, comes after general identifier)
+
 (call_expression
   function: (identifier) @function)
 
@@ -23,7 +27,8 @@
   function: (selector_expression
     field: (field_identifier) @function.method))
 
-; Function definitions (specific - override @variable above)
+; Function definitions
+
 (function_declaration
   name: (identifier) @function)
 
@@ -31,6 +36,7 @@
   name: (field_identifier) @function.method)
 
 ; Operators
+
 [
   "--"
   "-"
@@ -72,6 +78,7 @@
 ] @operator
 
 ; Keywords
+
 [
   "break"
   "case"
@@ -101,6 +108,7 @@
 ] @keyword
 
 ; Literals
+
 [
   (interpreted_string_literal)
   (raw_string_literal)

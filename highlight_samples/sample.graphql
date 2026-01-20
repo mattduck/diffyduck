@@ -1,0 +1,98 @@
+# Sample GraphQL schema for syntax highlighting
+
+"""
+User type representing a person in the system
+"""
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  age: Int
+  posts: [Post!]!
+  friends: [User!]
+  createdAt: DateTime!
+}
+
+"""
+Post type for blog posts
+"""
+type Post {
+  id: ID!
+  title: String!
+  content: String
+  author: User!
+  tags: [String!]
+  published: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime
+}
+
+# Custom scalar for dates
+scalar DateTime
+
+# Input types
+input CreateUserInput {
+  name: String!
+  email: String!
+  age: Int
+}
+
+input UpdateUserInput {
+  name: String
+  email: String
+  age: Int
+}
+
+input PostFilter {
+  authorId: ID
+  published: Boolean
+  tags: [String!]
+}
+
+# Enum for sorting
+enum SortOrder {
+  ASC
+  DESC
+}
+
+# Interface for timestamps
+interface Timestamped {
+  createdAt: DateTime!
+  updatedAt: DateTime
+}
+
+# Union type
+union SearchResult = User | Post
+
+# Query type
+type Query {
+  user(id: ID!): User
+  users(limit: Int = 10, offset: Int = 0): [User!]!
+  post(id: ID!): Post
+  posts(filter: PostFilter, sort: SortOrder): [Post!]!
+  search(query: String!): [SearchResult!]!
+}
+
+# Mutation type
+type Mutation {
+  createUser(input: CreateUserInput!): User!
+  updateUser(id: ID!, input: UpdateUserInput!): User
+  deleteUser(id: ID!): Boolean!
+  createPost(title: String!, content: String, authorId: ID!): Post!
+  publishPost(id: ID!): Post
+}
+
+# Subscription type
+type Subscription {
+  userCreated: User!
+  postPublished: Post!
+}
+
+# Directive definition
+directive @auth(requires: Role = USER) on FIELD_DEFINITION
+
+enum Role {
+  ADMIN
+  USER
+  GUEST
+}

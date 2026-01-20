@@ -1,0 +1,87 @@
+/* Sample C code for syntax highlighting */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_SIZE 100
+#define SQUARE(x) ((x) * (x))
+
+// Enum definition
+typedef enum {
+    STATUS_OK = 0,
+    STATUS_ERROR = 1,
+    STATUS_PENDING = 2
+} Status;
+
+// Struct definition
+typedef struct {
+    char name[MAX_SIZE];
+    int age;
+    float score;
+} Person;
+
+// Function prototype
+static int compare(const void *a, const void *b);
+
+// Global variable
+static const char *VERSION = "1.0.0";
+
+/**
+ * Main entry point
+ */
+int main(int argc, char *argv[]) {
+    // Local variables
+    int numbers[] = {5, 2, 8, 1, 9};
+    size_t len = sizeof(numbers) / sizeof(numbers[0]);
+
+    Person person = {
+        .name = "Alice",
+        .age = 30,
+        .score = 95.5f
+    };
+
+    // Pointer arithmetic
+    int *ptr = numbers;
+    for (size_t i = 0; i < len; i++) {
+        printf("Value: %d\n", *(ptr + i));
+    }
+
+    // Sorting
+    qsort(numbers, len, sizeof(int), compare);
+
+    // Conditionals
+    if (person.age >= 18 && person.score > 90.0f) {
+        printf("%s passed!\n", person.name);
+    } else if (person.age < 18) {
+        printf("Too young\n");
+    } else {
+        printf("Did not pass\n");
+    }
+
+    // Switch statement
+    Status status = STATUS_OK;
+    switch (status) {
+        case STATUS_OK:
+            printf("Success\n");
+            break;
+        case STATUS_ERROR:
+            printf("Error\n");
+            break;
+        default:
+            printf("Unknown\n");
+    }
+
+    // Dynamic memory
+    char *buffer = malloc(MAX_SIZE);
+    if (buffer != NULL) {
+        strcpy(buffer, "Hello, World!");
+        printf("%s\n", buffer);
+        free(buffer);
+    }
+
+    return 0;
+}
+
+static int compare(const void *a, const void *b) {
+    return (*(int *)a - *(int *)b);
+}

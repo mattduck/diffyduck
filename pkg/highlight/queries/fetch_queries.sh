@@ -19,46 +19,67 @@
 # After fetching, run tests to verify compatibility:
 #   go test ./pkg/highlight/...
 
-set -e
+# Don't exit on failure - we want to see all results
+# set -e
 
 cd "$(dirname "$0")"
 
-# Language configurations
-# Format: "output-name:go-mod-pattern:github-repo"
-# Note: Some grammars are under tree-sitter/, others under tree-sitter-grammars/
-LANGUAGES=(
-    "go:tree-sitter-go:tree-sitter/tree-sitter-go"
-    "python:tree-sitter-python:tree-sitter/tree-sitter-python"
-    "yaml:tree-sitter-yaml:tree-sitter-grammars/tree-sitter-yaml"
-    "toml:tree-sitter-toml:tree-sitter-grammars/tree-sitter-toml"
+# Languages with official Go bindings (version from go.mod)
+# Format: "output-name:github-repo:query-path" (query-path optional, defaults to queries/highlights.scm)
+# Version is extracted from go.mod using the full module path
+# Output files: <name>-v<version>.scm
+OFFICIAL_LANGUAGES=(
+    "bash:tree-sitter/tree-sitter-bash:"
+    "c:tree-sitter/tree-sitter-c:"
+    "css:tree-sitter/tree-sitter-css:"
+    "go:tree-sitter/tree-sitter-go:"
+    "html:tree-sitter/tree-sitter-html:"
+    "javascript:tree-sitter/tree-sitter-javascript:"
+    "json:tree-sitter/tree-sitter-json:"
+    "make:tree-sitter-grammars/tree-sitter-make:"
+    "php:tree-sitter/tree-sitter-php:"
+    "python:tree-sitter/tree-sitter-python:"
+    "rust:tree-sitter/tree-sitter-rust:"
+    "toml:tree-sitter-grammars/tree-sitter-toml:"
+    "typescript:tree-sitter/tree-sitter-typescript:"
+    "xml:tree-sitter-grammars/tree-sitter-xml:queries/xml/highlights.scm"
+    "yaml:tree-sitter-grammars/tree-sitter-yaml:"
+)
+
+# Languages with vendored C code in pkg/highlight/grammars/ (fixed branch reference)
+# Format: "output-name:branch:github-repo:query-path"
+# query-path is optional, defaults to "queries/highlights.scm"
+# Output files: <name>-vendored.scm
+VENDORED_LANGUAGES=(
+    "diff:main:the-mikedavis/tree-sitter-diff:"
+    "dockerfile:main:camdencheek/tree-sitter-dockerfile:"
+    "elisp:main:Wilfred/tree-sitter-elisp:"
+    "graphql:master:bkegley/tree-sitter-graphql:queries/graphql/highlights.scm"
+    "ini:master:justinmk/tree-sitter-ini:"
+    "markdown:split_parser:tree-sitter-grammars/tree-sitter-markdown:tree-sitter-markdown/queries/highlights.scm"
+    "org:main:milisims/tree-sitter-org:"
+    "sql:gh-pages:DerekStride/tree-sitter-sql:"
 )
 
 get_version() {
-    local pattern="$1"
+    local repo="$1"
     local gomod="../../../go.mod"
-    grep "${pattern}" "${gomod}" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1
+    # Match the full module path (github.com/org/repo) to avoid partial matches
+    grep "github.com/${repo} " "${gomod}" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1
 }
 
-echo "Fetching queries from upstream tree-sitter grammar repositories"
-echo ""
+fetch_query() {
+    local name="$1"
+    local version="$2"
+    local repo="$3"
+    local output="$4"
 
-for entry in "${LANGUAGES[@]}"; do
-    IFS=':' read -r name pattern repo <<< "${entry}"
-
-    version=$(get_version "${pattern}")
-    if [ -z "${version}" ]; then
-        echo "WARNING: Could not find version for ${pattern} in go.mod, skipping ${name}"
-        continue
-    fi
-
-    # Try to fetch from the tag matching our version, fall back to master
-    url="https://raw.githubusercontent.com/${repo}/refs/tags/${version}/queries/highlights.scm"
-    fallback_url="https://raw.githubusercontent.com/${repo}/master/queries/highlights.scm"
-    output="${name}-${version}.scm"
+    local url="https://raw.githubusercontent.com/${repo}/refs/tags/${version}/queries/highlights.scm"
+    local fallback_url="https://raw.githubusercontent.com/${repo}/${version}/queries/highlights.scm"
 
     echo "Fetching ${name} (${version}) from ${repo}..."
 
-    tmpfile=$(mktemp)
+    local tmpfile=$(mktemp)
     cat > "${tmpfile}" << EOF
 ; Source: github.com/${repo} @ ${version}
 ; Upstream: https://github.com/${repo}/blob/${version}/queries/highlights.scm
@@ -74,12 +95,100 @@ EOF
     if curl -sfL "${url}" >> "${tmpfile}" 2>/dev/null; then
         mv "${tmpfile}" "${output}"
         echo "  OK (from tag ${version})"
+        return 0
     elif curl -sfL "${fallback_url}" >> "${tmpfile}" 2>/dev/null; then
-        # Update header to note we used master
-        sed -i.bak "s/@ ${version}/@ master (tag ${version} not found)/" "${tmpfile}"
-        rm -f "${tmpfile}.bak"
         mv "${tmpfile}" "${output}"
-        echo "  OK (from master, tag ${version} not found)"
+        echo "  OK (from branch ${version})"
+        return 0
+    else
+        rm -f "${tmpfile}"
+        echo "  FAILED"
+        return 1
+    fi
+}
+
+echo "Fetching queries from upstream tree-sitter grammar repositories"
+echo ""
+
+echo "=== Official Go bindings (version from go.mod) ==="
+for entry in "${OFFICIAL_LANGUAGES[@]}"; do
+    IFS=':' read -r name repo query_path <<< "${entry}"
+
+    version=$(get_version "${repo}")
+    if [ -z "${version}" ]; then
+        echo "WARNING: Could not find version for ${repo} in go.mod, skipping ${name}"
+        continue
+    fi
+
+    # Default query path if not specified
+    if [ -z "${query_path}" ]; then
+        query_path="queries/highlights.scm"
+    fi
+
+    output="${name}-${version}.scm"
+
+    echo "Fetching ${name} (${version}) from ${repo}..."
+
+    # Try tag first, then branch
+    url="https://raw.githubusercontent.com/${repo}/refs/tags/${version}/${query_path}"
+    fallback_url="https://raw.githubusercontent.com/${repo}/${version}/${query_path}"
+
+    tmpfile=$(mktemp)
+    cat > "${tmpfile}" << EOF
+; Source: github.com/${repo} @ ${version}
+; Upstream: https://github.com/${repo}/blob/${version}/${query_path}
+;
+; IMPORTANT: Upstream queries use "first match wins" but our highlighter uses
+; "last match wins" (see MergeSpans). Queries may need reordering after fetching:
+; general patterns (like @variable) should come BEFORE specific patterns (like @function).
+;
+; Check for LOCAL MODIFICATION comments below for any manual changes.
+
+EOF
+
+    if curl -sfL "${url}" >> "${tmpfile}" 2>/dev/null; then
+        mv "${tmpfile}" "${output}"
+        echo "  OK (from tag ${version})"
+    elif curl -sfL "${fallback_url}" >> "${tmpfile}" 2>/dev/null; then
+        mv "${tmpfile}" "${output}"
+        echo "  OK (from branch ${version})"
+    else
+        rm -f "${tmpfile}"
+        echo "  FAILED"
+    fi
+done
+
+echo ""
+echo "=== Vendored languages (fixed branch) ==="
+for entry in "${VENDORED_LANGUAGES[@]}"; do
+    IFS=':' read -r name branch repo query_path <<< "${entry}"
+
+    # Default query path if not specified
+    if [ -z "${query_path}" ]; then
+        query_path="queries/highlights.scm"
+    fi
+
+    output="${name}-vendored.scm"
+
+    echo "Fetching ${name} (${branch}) from ${repo}..."
+
+    url="https://raw.githubusercontent.com/${repo}/${branch}/${query_path}"
+    tmpfile=$(mktemp)
+    cat > "${tmpfile}" << EOF
+; Source: github.com/${repo} @ ${branch}
+; Upstream: https://github.com/${repo}/blob/${branch}/${query_path}
+;
+; IMPORTANT: Upstream queries use "first match wins" but our highlighter uses
+; "last match wins" (see MergeSpans). Queries may need reordering after fetching:
+; general patterns (like @variable) should come BEFORE specific patterns (like @function).
+;
+; Check for LOCAL MODIFICATION comments below for any manual changes.
+
+EOF
+
+    if curl -sfL "${url}" >> "${tmpfile}" 2>/dev/null; then
+        mv "${tmpfile}" "${output}"
+        echo "  OK (from branch ${branch})"
     else
         rm -f "${tmpfile}"
         echo "  FAILED"

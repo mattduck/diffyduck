@@ -1,0 +1,57 @@
+{
+    "name": "sample-project",
+    "version": "1.0.0",
+    "description": "A sample JSON file for syntax highlighting",
+    "main": "index.js",
+    "private": true,
+    "scripts": {
+        "start": "node index.js",
+        "build": "npm run compile && npm run bundle",
+        "test": "jest --coverage",
+        "lint": "eslint src/"
+    },
+    "dependencies": {
+        "express": "^4.18.2",
+        "lodash": "^4.17.21"
+    },
+    "devDependencies": {
+        "jest": "^29.0.0",
+        "eslint": "^8.0.0"
+    },
+    "config": {
+        "port": 3000,
+        "debug": true,
+        "features": {
+            "auth": true,
+            "cache": false
+        }
+    },
+    "database": {
+        "host": "localhost",
+        "port": 5432,
+        "credentials": null
+    },
+    "users": [
+        {
+            "id": 1,
+            "name": "Alice",
+            "email": "alice@example.com",
+            "active": true
+        },
+        {
+            "id": 2,
+            "name": "Bob",
+            "email": "bob@example.com",
+            "active": false
+        }
+    ],
+    "tags": ["sample", "json", "highlighting"],
+    "metrics": {
+        "requests": 1000,
+        "latency": 45.67,
+        "errors": 0
+    },
+    "empty_object": {},
+    "empty_array": [],
+    "unicode": "Hello, 世界! 🌍"
+}
