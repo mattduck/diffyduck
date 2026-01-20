@@ -43,6 +43,9 @@ type Model struct {
 	// Multi-key sequence state
 	pendingKey string // first key of a multi-key sequence (e.g., "g" waiting for second key)
 
+	// Initial state tracking
+	initialFoldSet bool // true once initial fold levels have been determined
+
 	// Derived/cached
 	totalLines     int // total number of displayable lines across all files
 	maxLineNumSeen int // largest line number seen (for dynamic gutter width, only grows)
@@ -111,6 +114,54 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 	}
 
 	return m
+}
+
+// estimateNormalRows calculates how many rows would be displayed if all files
+// were at FoldNormal level. Used to determine initial fold state.
+func (m Model) estimateNormalRows() int {
+	total := 0
+	for i, fp := range m.files {
+		// Header structure: top border (first file only) + header + spacer + trailing border
+		if i == 0 {
+			total++ // top border for first file
+		}
+		total += 3 // header + spacer + trailing border
+
+		// Pairs plus hunk separators
+		total += len(fp.Pairs)
+		total += m.countHunkSeparators(fp)
+
+		// 4 blank lines after content
+		total += 4
+	}
+	// Summary row
+	if len(m.files) > 0 {
+		total++
+	}
+	return total
+}
+
+// countHunkSeparators counts the number of hunk boundaries in a file's pairs.
+func (m Model) countHunkSeparators(fp sidebyside.FilePair) int {
+	count := 0
+	var prevLeft, prevRight int
+	for i, pair := range fp.Pairs {
+		if i > 0 {
+			// Check for gap in line numbers (hunk boundary)
+			leftGap := prevLeft > 0 && pair.Left.Num > 0 && pair.Left.Num > prevLeft+1
+			rightGap := prevRight > 0 && pair.Right.Num > 0 && pair.Right.Num > prevRight+1
+			if leftGap || rightGap {
+				count++
+			}
+		}
+		if pair.Left.Num > 0 {
+			prevLeft = pair.Left.Num
+		}
+		if pair.Right.Num > 0 {
+			prevRight = pair.Right.Num
+		}
+	}
+	return count
 }
 
 // calculateTotalLines counts total lines including file headers and hunk separators.

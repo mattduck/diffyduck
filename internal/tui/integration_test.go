@@ -32,6 +32,13 @@ func findRuneIndex(s, substr string) int {
 
 // Uses the 'update' flag from view_test.go
 
+// unfoldAll sets all files to FoldNormal so tests see the expanded diff view.
+func unfoldAll(files []sidebyside.FilePair) {
+	for i := range files {
+		files[i].FoldLevel = sidebyside.FoldNormal
+	}
+}
+
 // TestFullPipeline_AddedLines tests the full pipeline with a diff containing added lines.
 // This reproduces the alignment bug where the │ separator doesn't align when
 // left side is empty (pure additions).
@@ -55,6 +62,7 @@ index abc123..def456 100644
 
 	// Transform
 	files := sidebyside.TransformDiff(d)
+	unfoldAll(files) // Tests expect normal (unfolded) view
 
 	// Create model and render
 	m := New(files)
@@ -125,6 +133,7 @@ index abc123..def456 100644
 	require.NoError(t, err)
 
 	files := sidebyside.TransformDiff(d)
+	unfoldAll(files) // Tests expect normal (unfolded) view
 
 	m := New(files)
 	m.width = 80
@@ -184,6 +193,7 @@ index 0000000..abc1234
 	require.NoError(t, err)
 
 	files := sidebyside.TransformDiff(d)
+	unfoldAll(files) // Tests expect normal (unfolded) view
 
 	m := New(files)
 	m.width = 80
@@ -245,6 +255,7 @@ func TestFullPipeline_TabsInContent(t *testing.T) {
 	require.NoError(t, err)
 
 	files := sidebyside.TransformDiff(d)
+	unfoldAll(files) // Tests expect normal (unfolded) view
 
 	m := New(files)
 	m.width = 80

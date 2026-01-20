@@ -18,6 +18,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
+		// Set initial fold levels on first window size message
+		if !m.initialFoldSet && len(m.files) > 0 {
+			m.initialFoldSet = true
+			// If only 1 file, or all content fits on screen, start unfolded
+			if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
+				for i := range m.files {
+					m.files[i].FoldLevel = sidebyside.FoldNormal
+				}
+			} else {
+				// Otherwise start folded
+				for i := range m.files {
+					m.files[i].FoldLevel = sidebyside.FoldFolded
+				}
+			}
+			m.calculateTotalLines()
+		}
+
 		// Restore cursor to same row
 		newRowIdx := m.findRowOrNearestAbove(identity)
 		m.adjustScrollToRow(newRowIdx)

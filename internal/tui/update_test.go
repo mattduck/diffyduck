@@ -194,7 +194,8 @@ func makeMultiFileTestModel() Model {
 		{OldPath: "a/third.go", NewPath: "b/third.go", Pairs: makePairs(5)},
 	})
 	m.width = 80
-	m.height = 40 // tall enough to see all content
+	m.height = 40           // tall enough to see all content
+	m.initialFoldSet = true // prevent WindowSizeMsg from changing fold levels
 	return m
 }
 
