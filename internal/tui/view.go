@@ -617,10 +617,9 @@ func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
 		cursorArrowStyle.Render("▶") + interFileStyle.Render("░") + rightGutter + interFileStyle.Render("░") + rightContent
 }
 
-// renderInterFileBlank renders a blank line between files with light shading.
+// renderInterFileBlank renders a blank line between files.
 func (m Model) renderInterFileBlank() string {
-	// Fill the entire width with light shade characters
-	return interFileStyle.Render(strings.Repeat("░", m.width))
+	return ""
 }
 
 // renderHeaderTopBorder renders the top border of the file header box.
