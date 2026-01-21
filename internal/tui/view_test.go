@@ -3432,7 +3432,8 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 	var contentLine string
 	var summaryLine string
 	for _, line := range lines {
-		if strings.Contains(line, "test.go") && strings.Contains(line, "◐") {
+		// FoldExpanded shows ● even when content is pending (falls through to normal rendering)
+		if strings.Contains(line, "test.go") && strings.Contains(line, "●") {
 			headerLine = line
 		}
 		if strings.Contains(line, "line content") {

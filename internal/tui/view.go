@@ -247,19 +247,19 @@ func (m Model) buildRows() []displayRow {
 			// Fall through to normal view if content not loaded
 			fallthrough
 
-		default: // FoldNormal
+		default: // FoldNormal (or FoldExpanded falling through while content loads)
 			// First file gets a top border before header (visible since no file above)
 			if isFirstFile && isUnfolded {
-				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldNormal, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
+				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
 			}
 
 			// File header with stats
 			// Border visible only if previous file is also unfolded (or this is first file)
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldNormal, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 			// Bottom border of header box (visible only if previous file is also unfolded)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldNormal, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 			// Line pairs with hunk separators
 			var prevLeft, prevRight int
@@ -313,7 +313,7 @@ func (m Model) buildRows() []displayRow {
 
 			// Trailing top border (visually looks like top of next file, but belongs to this file)
 			// Only visible if next file is also unfolded
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldNormal, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
 		}
 	}
 
