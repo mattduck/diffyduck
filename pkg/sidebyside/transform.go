@@ -97,6 +97,17 @@ func TransformFile(file diff.File) FilePair {
 		TotalRemoved: file.TotalRemoved,
 	}
 
+	// Set per-side truncation flags based on which sides exist
+	// If the diff was truncated, mark each side that exists as truncated
+	if file.Truncated {
+		if file.OldPath != "/dev/null" {
+			fp.OldTruncated = true
+		}
+		if file.NewPath != "/dev/null" {
+			fp.NewTruncated = true
+		}
+	}
+
 	for _, hunk := range file.Hunks {
 		fp.Pairs = append(fp.Pairs, TransformHunk(hunk)...)
 	}

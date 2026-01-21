@@ -65,9 +65,15 @@ type FilePair struct {
 	OldContent []string // full old file lines (nil until fetched)
 	NewContent []string // full new file lines (nil until fetched)
 
-	// Truncation
-	Truncated        bool // true if diff lines were truncated due to limit
-	ContentTruncated bool // true if fetched content was truncated due to limit
+	// Truncation from diff parsing
+	Truncated    bool // true if diff lines were truncated due to limit
+	OldTruncated bool // true if old (left) side was truncated
+	NewTruncated bool // true if new (right) side was truncated
+
+	// Truncation from content fetching (expanded view)
+	ContentTruncated    bool // true if fetched content was truncated due to limit (legacy, use per-side)
+	OldContentTruncated bool // true if old content was truncated when fetched
+	NewContentTruncated bool // true if new content was truncated when fetched
 
 	// Stats (accurate even if truncated)
 	TotalAdded   int // total added lines from diff

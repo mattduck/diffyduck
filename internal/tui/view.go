@@ -111,8 +111,10 @@ type displayRow struct {
 	totalAdded   int // total insertions across all files
 	totalRemoved int // total deletions across all files
 	// Truncation indicator fields
-	isTruncationIndicator bool // true if this row shows a truncation message
-	truncationMessage     string
+	isTruncationIndicator bool   // true if this row shows a truncation message
+	truncationMessage     string // message to display
+	truncateOld           bool   // show truncation on left (old) side
+	truncateNew           bool   // show truncation on right (new) side
 }
 
 // buildRows creates all displayable rows from the model data.
@@ -213,11 +215,22 @@ func (m Model) buildRows() []displayRow {
 				rows = append(rows, expandedRows...)
 
 				// Add file truncation indicator if this file was truncated
-				if fp.Truncated || fp.ContentTruncated {
+				if fp.Truncated || fp.ContentTruncated || fp.OldContentTruncated || fp.NewContentTruncated {
+					// Determine which sides to show truncation on
+					// For expanded view, use content truncation flags; fall back to diff truncation flags
+					oldTrunc := fp.OldContentTruncated || fp.OldTruncated
+					newTrunc := fp.NewContentTruncated || fp.NewTruncated
+					// Legacy: if only ContentTruncated is set (old code path), show on both sides
+					if fp.ContentTruncated && !fp.OldContentTruncated && !fp.NewContentTruncated {
+						oldTrunc = true
+						newTrunc = true
+					}
 					rows = append(rows, displayRow{
 						fileIndex:             fileIdx,
 						isTruncationIndicator: true,
 						truncationMessage:     "[truncated due to file size limit]",
+						truncateOld:           oldTrunc,
+						truncateNew:           newTrunc,
 					})
 				}
 
@@ -275,11 +288,21 @@ func (m Model) buildRows() []displayRow {
 			}
 
 			// Add file truncation indicator if this file was truncated
-			if fp.Truncated {
+			if fp.Truncated || fp.OldTruncated || fp.NewTruncated {
+				// Determine which sides to show truncation on
+				oldTrunc := fp.OldTruncated
+				newTrunc := fp.NewTruncated
+				// Legacy: if only Truncated is set (old code path), show on both sides
+				if fp.Truncated && !fp.OldTruncated && !fp.NewTruncated {
+					oldTrunc = true
+					newTrunc = true
+				}
 				rows = append(rows, displayRow{
 					fileIndex:             fileIdx,
 					isTruncationIndicator: true,
 					truncationMessage:     "[truncated due to file size limit]",
+					truncateOld:           oldTrunc,
+					truncateNew:           newTrunc,
 				})
 			}
 
@@ -594,7 +617,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.isSummary {
 			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
 		} else if row.isTruncationIndicator {
-			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow))
+			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew))
 		} else {
 			leftStart := leftIndicatorStarts[i]
 			rightStart := rightIndicatorStarts[i]
@@ -1306,8 +1329,16 @@ func formatSummaryStats(files, added, removed int) string {
 // Uses expanded icon (●) since there's no additional content to show.
 // Text is not bold, unlike file headers.
 // renderTruncationIndicator renders a row indicating content was truncated.
-func (m Model) renderTruncationIndicator(message string, isCursorRow bool) string {
+// Shows truncation on left side if truncateOld is true, right side if truncateNew is true.
+func (m Model) renderTruncationIndicator(message string, isCursorRow bool, truncateOld, truncateNew bool) string {
 	lineNumWidth := m.lineNumWidth()
+	halfWidth := m.width / 2
+
+	// Calculate content width (same as renderLinePair)
+	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
 
 	// Max 3 dots, right-aligned in gutter
 	numDots := 3
@@ -1316,16 +1347,63 @@ func (m Model) renderTruncationIndicator(message string, isCursorRow bool) strin
 	}
 	padding := strings.Repeat(" ", lineNumWidth-numDots)
 	dots := strings.Repeat("·", numDots)
+	blankGutter := strings.Repeat(" ", lineNumWidth)
 
-	// Style with fg=13
+	// Style with fg=13 (magenta)
 	truncStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
-	styledGutter := padding + truncStyle.Render(dots)
-	styledMsg := truncStyle.Render("   " + message)
 
-	if isCursorRow {
-		return cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + styledMsg
+	// Build left side
+	var left string
+	if truncateOld {
+		// Truncate message to fit content width
+		msgText := message
+		if len(msgText) > contentWidth-1 {
+			msgText = msgText[:contentWidth-1]
+		}
+		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
+
+		if isCursorRow {
+			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + truncStyle.Render(msgText) + msgPadding
+		} else {
+			left = "  " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
+		}
+	} else {
+		// Blank left side
+		blankContent := strings.Repeat(" ", contentWidth)
+		if isCursorRow {
+			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+		} else {
+			left = "  " + blankGutter + " " + blankContent
+		}
 	}
-	return "  " + styledGutter + styledMsg
+
+	// Build right side
+	var right string
+	if truncateNew {
+		// Truncate message to fit content width
+		msgText := message
+		if len(msgText) > contentWidth-1 {
+			msgText = msgText[:contentWidth-1]
+		}
+		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
+
+		if isCursorRow {
+			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + truncStyle.Render(msgText) + msgPadding
+		} else {
+			right = "  " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
+		}
+	} else {
+		// Blank right side
+		blankContent := strings.Repeat(" ", contentWidth)
+		if isCursorRow {
+			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+		} else {
+			right = "  " + blankGutter + " " + blankContent
+		}
+	}
+
+	separator := hunkSeparatorStyle.Render("│")
+	return left + " " + separator + " " + right
 }
 
 func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidth int, isCursorRow bool) string {

@@ -48,6 +48,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.files[msg.FileIndex].OldContent = msg.OldContent
 			m.files[msg.FileIndex].NewContent = msg.NewContent
 			m.files[msg.FileIndex].ContentTruncated = msg.ContentTruncated
+			m.files[msg.FileIndex].OldContentTruncated = msg.OldTruncated
+			m.files[msg.FileIndex].NewContentTruncated = msg.NewTruncated
 			m.calculateTotalLines()
 
 			// Preserve scroll position
@@ -79,6 +81,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.files[fc.FileIndex].OldContent = fc.OldContent
 					m.files[fc.FileIndex].NewContent = fc.NewContent
 					m.files[fc.FileIndex].ContentTruncated = fc.ContentTruncated
+					m.files[fc.FileIndex].OldContentTruncated = fc.OldTruncated
+					m.files[fc.FileIndex].NewContentTruncated = fc.NewTruncated
 				}
 			}
 			m.calculateTotalLines()

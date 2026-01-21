@@ -5,7 +5,9 @@ type FileContentLoadedMsg struct {
 	FileIndex        int
 	OldContent       []string
 	NewContent       []string
-	ContentTruncated bool // true if content was truncated due to limits
+	ContentTruncated bool // true if content was truncated due to limits (legacy, use per-side)
+	OldTruncated     bool // true if old content was truncated
+	NewTruncated     bool // true if new content was truncated
 	Err              error
 }
 
@@ -19,7 +21,9 @@ type FileContent struct {
 	FileIndex        int
 	OldContent       []string
 	NewContent       []string
-	ContentTruncated bool // true if content was truncated due to limits
+	ContentTruncated bool // true if content was truncated due to limits (legacy, use per-side)
+	OldTruncated     bool // true if old content was truncated
+	NewTruncated     bool // true if new content was truncated
 	Err              error
 }
 

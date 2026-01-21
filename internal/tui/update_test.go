@@ -636,6 +636,86 @@ func TestUpdate_FileContentLoadedMsg(t *testing.T) {
 	assert.Equal(t, []string{"new line 1", "new line 2", "new line 3"}, model.files[0].NewContent)
 }
 
+func TestUpdate_FileContentLoadedMsg_OldTruncatedOnly(t *testing.T) {
+	m := makeTestModel(10)
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
+
+	// Simulate receiving content where only old side was truncated
+	msg := FileContentLoadedMsg{
+		FileIndex:    0,
+		OldContent:   []string{"old line 1"},
+		NewContent:   []string{"new line 1"},
+		OldTruncated: true,
+		NewTruncated: false,
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	assert.True(t, model.files[0].OldContentTruncated, "OldContentTruncated should be true")
+	assert.False(t, model.files[0].NewContentTruncated, "NewContentTruncated should be false")
+}
+
+func TestUpdate_FileContentLoadedMsg_NewTruncatedOnly(t *testing.T) {
+	m := makeTestModel(10)
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
+
+	// Simulate receiving content where only new side was truncated
+	msg := FileContentLoadedMsg{
+		FileIndex:    0,
+		OldContent:   []string{"old line 1"},
+		NewContent:   []string{"new line 1"},
+		OldTruncated: false,
+		NewTruncated: true,
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	assert.False(t, model.files[0].OldContentTruncated, "OldContentTruncated should be false")
+	assert.True(t, model.files[0].NewContentTruncated, "NewContentTruncated should be true")
+}
+
+func TestUpdate_FileContentLoadedMsg_BothTruncated(t *testing.T) {
+	m := makeTestModel(10)
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
+
+	// Simulate receiving content where both sides were truncated
+	msg := FileContentLoadedMsg{
+		FileIndex:    0,
+		OldContent:   []string{"old line 1"},
+		NewContent:   []string{"new line 1"},
+		OldTruncated: true,
+		NewTruncated: true,
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	assert.True(t, model.files[0].OldContentTruncated, "OldContentTruncated should be true")
+	assert.True(t, model.files[0].NewContentTruncated, "NewContentTruncated should be true")
+}
+
+func TestUpdate_FileContentLoadedMsg_NeitherTruncated(t *testing.T) {
+	m := makeTestModel(10)
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
+
+	// Simulate receiving content where neither side was truncated
+	msg := FileContentLoadedMsg{
+		FileIndex:    0,
+		OldContent:   []string{"old line 1"},
+		NewContent:   []string{"new line 1"},
+		OldTruncated: false,
+		NewTruncated: false,
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	assert.False(t, model.files[0].OldContentTruncated, "OldContentTruncated should be false")
+	assert.False(t, model.files[0].NewContentTruncated, "NewContentTruncated should be false")
+}
+
 func TestUpdate_AllContentLoadedMsg(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 5)
 	for i := range pairs {
@@ -667,6 +747,42 @@ func TestUpdate_AllContentLoadedMsg(t *testing.T) {
 	assert.Equal(t, []string{"file1 new"}, model.files[0].NewContent)
 	assert.Equal(t, []string{"file2 old"}, model.files[1].OldContent)
 	assert.Equal(t, []string{"file2 new"}, model.files[1].NewContent)
+}
+
+func TestUpdate_AllContentLoadedMsg_PerSideTruncation(t *testing.T) {
+	pairs := make([]sidebyside.LinePair, 5)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Left:  sidebyside.Line{Num: i + 1, Content: "line"},
+			Right: sidebyside.Line{Num: i + 1, Content: "line"},
+		}
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs, FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs, FoldLevel: sidebyside.FoldExpanded},
+	})
+	m.width = 80
+	m.height = 20
+
+	// Simulate: first file has only old truncated, second file has only new truncated
+	msg := AllContentLoadedMsg{
+		Contents: []FileContent{
+			{FileIndex: 0, OldContent: []string{"file1 old"}, NewContent: []string{"file1 new"}, OldTruncated: true, NewTruncated: false},
+			{FileIndex: 1, OldContent: []string{"file2 old"}, NewContent: []string{"file2 new"}, OldTruncated: false, NewTruncated: true},
+		},
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	// First file: old truncated only
+	assert.True(t, model.files[0].OldContentTruncated, "file 0 OldContentTruncated should be true")
+	assert.False(t, model.files[0].NewContentTruncated, "file 0 NewContentTruncated should be false")
+
+	// Second file: new truncated only
+	assert.False(t, model.files[1].OldContentTruncated, "file 1 OldContentTruncated should be false")
+	assert.True(t, model.files[1].NewContentTruncated, "file 1 NewContentTruncated should be true")
 }
 
 func TestUpdate_ScrollToEnd_SummaryHasNoFileInfo(t *testing.T) {

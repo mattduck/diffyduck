@@ -24,14 +24,14 @@ func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 		newPath := stripPathPrefix(fp.NewPath)
 
 		var oldContent, newContent []string
-		var truncated bool
+		var oldTruncated, newTruncated bool
 
 		// Fetch old content (unless it's a new file)
 		if fp.OldPath != "/dev/null" {
 			lines, wasTruncated, err := fetcher.GetOldContentLines(oldPath)
 			if err == nil {
 				oldContent = lines
-				truncated = truncated || wasTruncated
+				oldTruncated = wasTruncated
 			}
 		}
 
@@ -40,7 +40,7 @@ func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 			lines, wasTruncated, err := fetcher.GetNewContentLines(newPath)
 			if err == nil {
 				newContent = lines
-				truncated = truncated || wasTruncated
+				newTruncated = wasTruncated
 			}
 		}
 
@@ -48,7 +48,9 @@ func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 			FileIndex:        fileIndex,
 			OldContent:       oldContent,
 			NewContent:       newContent,
-			ContentTruncated: truncated,
+			ContentTruncated: oldTruncated || newTruncated, // legacy field
+			OldTruncated:     oldTruncated,
+			NewTruncated:     newTruncated,
 		}
 	}
 }
@@ -79,14 +81,14 @@ func (m Model) FetchAllFileContent() tea.Cmd {
 				newPath := stripPathPrefix(fp.newPath)
 
 				var oldContent, newContent []string
-				var truncated bool
+				var oldTruncated, newTruncated bool
 
 				// Fetch old content (unless it's a new file)
 				if fp.oldPath != "/dev/null" {
 					lines, wasTruncated, err := fetcher.GetOldContentLines(oldPath)
 					if err == nil {
 						oldContent = lines
-						truncated = truncated || wasTruncated
+						oldTruncated = wasTruncated
 					}
 				}
 
@@ -95,7 +97,7 @@ func (m Model) FetchAllFileContent() tea.Cmd {
 					lines, wasTruncated, err := fetcher.GetNewContentLines(newPath)
 					if err == nil {
 						newContent = lines
-						truncated = truncated || wasTruncated
+						newTruncated = wasTruncated
 					}
 				}
 
@@ -103,7 +105,9 @@ func (m Model) FetchAllFileContent() tea.Cmd {
 					FileIndex:        idx,
 					OldContent:       oldContent,
 					NewContent:       newContent,
-					ContentTruncated: truncated,
+					ContentTruncated: oldTruncated || newTruncated, // legacy field
+					OldTruncated:     oldTruncated,
+					NewTruncated:     newTruncated,
 				}
 			}(i, filePairInfo{oldPath: fp.OldPath, newPath: fp.NewPath})
 		}
