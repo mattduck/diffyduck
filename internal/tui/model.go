@@ -366,8 +366,11 @@ func (m Model) StatusInfo() StatusInfo {
 // getBreadcrumbsForCursor returns formatted breadcrumbs for the cursor position.
 // fileIdx is 0-based, cursorPos is the display row index.
 func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
-	// Get the display row at cursor position
-	rows := m.buildRows()
+	// Get the display row at cursor position (use cache if valid)
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
 	if cursorPos < 0 || cursorPos >= len(rows) {
 		return ""
 	}

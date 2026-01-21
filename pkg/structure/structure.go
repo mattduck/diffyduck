@@ -25,10 +25,18 @@ func (m *Map) AtLine(line int) []Entry {
 		return nil
 	}
 
-	// Collect all entries that contain this line
+	// Binary search to find the first entry with StartLine > line.
+	// Since entries are sorted by StartLine, we only need to check entries
+	// before this index (entries after cannot contain our line).
+	upperBound := sort.Search(len(m.Entries), func(i int) bool {
+		return m.Entries[i].StartLine > line
+	})
+
+	// Collect entries that contain this line (only scan up to upperBound)
 	var containing []Entry
-	for _, e := range m.Entries {
-		if e.StartLine <= line && line <= e.EndLine {
+	for i := 0; i < upperBound; i++ {
+		e := m.Entries[i]
+		if line <= e.EndLine {
 			containing = append(containing, e)
 		}
 	}
