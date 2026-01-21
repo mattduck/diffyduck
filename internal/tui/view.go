@@ -30,9 +30,6 @@ var (
 	inlineAddedStyle   = lipgloss.NewStyle().Underline(true).Bold(true).Foreground(lipgloss.Color("10"))
 	inlineRemovedStyle = lipgloss.NewStyle().Underline(true).Bold(true).Foreground(lipgloss.Color("9"))
 
-	// Block-aligned indicator style (grey, used faint)
-	blockIndicatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-
 	// Search highlight styles (black text on yellow background)
 	searchMatchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
 	searchCurrentMatchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("11"))
@@ -570,9 +567,6 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	halfWidth := (m.width - 3) / 2 // -3 for the separator " │ "
 	lineNumWidth := m.lineNumWidth()
 
-	// Pre-compute block-aware indicator start positions
-	leftIndicatorStarts, rightIndicatorStarts := computeIndicatorStarts(rows)
-
 	// The cursor is at a fixed viewport position
 	cursorViewportRow := m.cursorOffset()
 
@@ -619,9 +613,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.isTruncationIndicator {
 			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew))
 		} else {
-			leftStart := leftIndicatorStarts[i]
-			rightStart := rightIndicatorStarts[i]
-			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, halfWidth, lineNumWidth, i, isCursorRow, leftStart, rightStart, row.isFirstLine, row.isLastLine))
+			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, halfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine))
 		}
 	}
 
@@ -1494,7 +1486,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	return "  " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, leftIndicatorStart, rightIndicatorStart int, isFirstLine, isLastLine bool) string {
+func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine bool) string {
 	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
 
 	// Choose separator based on position: ┬ for first line, ┴ for last line, │ for middle
@@ -1533,14 +1525,14 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, li
 	// Use blue "changed" styling when we have word-level diff (both sides modified)
 	hasWordDiff := len(leftSpans) > 0
 
-	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, leftSyntax, rowIdx, 0, isCursorRow, leftIndicatorStart, hasWordDiff)
-	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rightSyntax, rowIdx, 1, isCursorRow, rightIndicatorStart, hasWordDiff)
+	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, leftSyntax, rowIdx, 0, isCursorRow, hasWordDiff)
+	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rightSyntax, rowIdx, 1, isCursorRow, hasWordDiff)
 
 	separator := hunkSeparatorStyle.Render(separatorChar)
 	return left + " " + separator + " " + right
 }
 
-func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool, indicatorStart int, hasWordDiff bool) string {
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool, hasWordDiff bool) string {
 	// Diff indicator (+/-/~/space) before line number
 	// On cursor row, show arrowhead instead
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
@@ -1635,7 +1627,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 	// Wrap added/removed lines with gutter indicators
 	// Use blue for changed lines (hasWordDiff), otherwise green/red
-	styledContent = m.applyColumnIndicators(styledContent, actualContentWidth, line.Type, indicatorStart, hasWordDiff)
+	styledContent = m.applyColumnIndicators(styledContent, line.Type, hasWordDiff)
 
 	// Style truncation indicator with fg=13 if present
 	if strings.Contains(visible, diff.LineTruncationText) {
@@ -2028,117 +2020,10 @@ func horizontalSlice(s string, offset, width int) string {
 	return result.String()
 }
 
-// findLastNonWhitespaceCol returns the display column (0-indexed) after the
-// last non-whitespace character in a string. Returns 0 if string is empty or
-// all whitespace.
-func findLastNonWhitespaceCol(s string) int {
-	lastNonWsCol := 0
-	col := 0
-	for _, r := range s {
-		rw := runewidth.RuneWidth(r)
-		col += rw
-		if r != ' ' && r != '\t' {
-			lastNonWsCol = col
-		}
-	}
-	return lastNonWsCol
-}
-
-// indicatorStartCol calculates where the block-aligned indicator column should be.
-// Returns lastNonWhitespaceCol + 1, or -1 if the line is all whitespace.
-func indicatorStartCol(content string) int {
-	expanded := expandTabs(content)
-	lastNonWsCol := findLastNonWhitespaceCol(expanded)
-	if lastNonWsCol == 0 {
-		return -1 // all whitespace
-	}
-	return lastNonWsCol + 1
-}
-
-// computeIndicatorStarts calculates the block-aware indicator start positions.
-// Within consecutive runs of Added (right) or Removed (left) lines, all lines
-// in the block share the same start position (the max of the block).
-// Returns maps from row index to indicator start column for left and right sides.
-func computeIndicatorStarts(rows []displayRow) (leftStarts, rightStarts map[int]int) {
-	leftStarts = make(map[int]int)
-	rightStarts = make(map[int]int)
-
-	// Process left side (Removed lines)
-	var leftBlockIndices []int
-	var leftBlockMaxStart int
-
-	for i, row := range rows {
-		if !row.isHeader && !row.isSeparator && !row.isBlank && !row.isHeaderSpacer && !row.isSummary {
-			if row.pair.Left.Type == sidebyside.Removed {
-				leftBlockIndices = append(leftBlockIndices, i)
-				start := indicatorStartCol(row.pair.Left.Content)
-				if start > leftBlockMaxStart {
-					leftBlockMaxStart = start
-				}
-			} else {
-				// End of block - assign max to all in block
-				for _, idx := range leftBlockIndices {
-					leftStarts[idx] = leftBlockMaxStart
-				}
-				leftBlockIndices = nil
-				leftBlockMaxStart = 0
-			}
-		} else {
-			// Non-line-pair row breaks the block
-			for _, idx := range leftBlockIndices {
-				leftStarts[idx] = leftBlockMaxStart
-			}
-			leftBlockIndices = nil
-			leftBlockMaxStart = 0
-		}
-	}
-	// Handle final block
-	for _, idx := range leftBlockIndices {
-		leftStarts[idx] = leftBlockMaxStart
-	}
-
-	// Process right side (Added lines)
-	var rightBlockIndices []int
-	var rightBlockMaxStart int
-
-	for i, row := range rows {
-		if !row.isHeader && !row.isSeparator && !row.isBlank && !row.isHeaderSpacer && !row.isSummary {
-			if row.pair.Right.Type == sidebyside.Added {
-				rightBlockIndices = append(rightBlockIndices, i)
-				start := indicatorStartCol(row.pair.Right.Content)
-				if start > rightBlockMaxStart {
-					rightBlockMaxStart = start
-				}
-			} else {
-				// End of block - assign max to all in block
-				for _, idx := range rightBlockIndices {
-					rightStarts[idx] = rightBlockMaxStart
-				}
-				rightBlockIndices = nil
-				rightBlockMaxStart = 0
-			}
-		} else {
-			// Non-line-pair row breaks the block
-			for _, idx := range rightBlockIndices {
-				rightStarts[idx] = rightBlockMaxStart
-			}
-			rightBlockIndices = nil
-			rightBlockMaxStart = 0
-		}
-	}
-	// Handle final block
-	for _, idx := range rightBlockIndices {
-		rightStarts[idx] = rightBlockMaxStart
-	}
-
-	return leftStarts, rightStarts
-}
-
 // applyColumnIndicators wraps lines with gutter columns:
 // - Added/removed: ░ + space + content + space + ░
 // - Context/empty: space + space + content + space + space
-// Also optionally inserts a block-aligned indicator for added/removed lines.
-func (m Model) applyColumnIndicators(styledContent string, contentWidth int, lineType sidebyside.LineType, indicatorStartAbs int, hasWordDiff bool) string {
+func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.LineType, hasWordDiff bool) string {
 	isAddedOrRemoved := lineType == sidebyside.Added || lineType == sidebyside.Removed
 
 	// For context/empty lines, just wrap with spaces to align with added/removed
@@ -2158,60 +2043,6 @@ func (m Model) applyColumnIndicators(styledContent string, contentWidth int, lin
 	}
 	startIndicator := colorStyle.Render("░")
 	endIndicator := colorStyle.Render("░")
-	// Block-aligned indicator is faint grey
-	faintIndicator := blockIndicatorStyle.Faint(true).Render("░")
 
-	// Calculate block-aligned position in visible coordinates (relative to content area)
-	blockAlignedVisible := -1
-	if indicatorStartAbs > 0 {
-		blockAlignedAbs := indicatorStartAbs
-		// End position is relative to the reduced content area
-		endAbs := m.hscroll + contentWidth
-		// Only show if at least 20 chars from end
-		if endAbs-blockAlignedAbs >= 20 {
-			blockAlignedVisible = blockAlignedAbs - m.hscroll
-			// Must be within visible content area
-			if blockAlignedVisible < 0 || blockAlignedVisible >= contentWidth {
-				blockAlignedVisible = -1
-			}
-		}
-	}
-
-	// If we have a block-aligned indicator, insert it into the content
-	var contentWithBlockIndicator string
-	if blockAlignedVisible >= 0 {
-		// Replace the character at blockAlignedVisible with the indicator
-		var result strings.Builder
-		inEscape := false
-		visiblePos := 0
-
-		for _, r := range styledContent {
-			if inEscape {
-				result.WriteRune(r)
-				if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
-					inEscape = false
-				}
-				continue
-			}
-
-			if r == '\x1b' {
-				inEscape = true
-				result.WriteRune(r)
-				continue
-			}
-
-			if visiblePos == blockAlignedVisible {
-				result.WriteString(faintIndicator)
-			} else {
-				result.WriteRune(r)
-			}
-			visiblePos++
-		}
-		contentWithBlockIndicator = result.String()
-	} else {
-		contentWithBlockIndicator = styledContent
-	}
-
-	// Wrap with start and end indicators: ░ + space + content + space + ░
-	return startIndicator + " " + contentWithBlockIndicator + " " + endIndicator
+	return startIndicator + " " + styledContent + " " + endIndicator
 }
