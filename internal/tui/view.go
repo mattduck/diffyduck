@@ -1468,7 +1468,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	}
 	trailingFill := ""
 	if trailing > 0 {
-		trailingFill = " " + statusStyle.Render(strings.Repeat("▒", trailing))
+		trailingFill = statusStyle.Render(strings.Repeat("▒", trailing+1))
 	}
 
 	// Use darker color for border when not visible (file above is folded)
