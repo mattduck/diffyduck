@@ -212,7 +212,11 @@ type cursorRowIdentity struct {
 
 // getCursorRowIdentity returns the identity of the row at the cursor position.
 func (m Model) getCursorRowIdentity() cursorRowIdentity {
-	rows := m.buildRows()
+	// Use cached rows if valid, otherwise rebuild
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
 	cursorPos := m.cursorLine()
 
 	// Clamp to valid range
@@ -256,7 +260,11 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 // findRowOrNearestAbove finds the row matching identity, or the nearest header/separator above.
 // Returns the line index of the found row.
 func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
-	rows := m.buildRows()
+	// Use cached rows if valid, otherwise rebuild
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
 	if len(rows) == 0 {
 		return 0
 	}
@@ -456,8 +464,11 @@ func (m Model) currentFileIndex() int {
 		return -1
 	}
 
-	// Build rows to check if cursor is on summary row
-	rows := m.buildRows()
+	// Use cached rows if valid, otherwise rebuild
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
 	cursorLine := m.cursorLine()
 	if cursorLine >= 0 && cursorLine < len(rows) && rows[cursorLine].isSummary {
 		return -1 // Summary row has no associated file
@@ -516,7 +527,7 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // goToNextHeading moves the cursor to the next file header or summary row.
 func (m *Model) goToNextHeading() {
-	rows := m.buildRows()
+	rows := m.getRows()
 	cursorPos := m.cursorLine()
 
 	// Find the current file index and whether we're on summary
@@ -549,7 +560,7 @@ func (m *Model) goToNextHeading() {
 // goToPrevHeading moves the cursor to the current file's header if not already
 // on it, or to the previous file's header if already on the current header.
 func (m *Model) goToPrevHeading() {
-	rows := m.buildRows()
+	rows := m.getRows()
 	cursorPos := m.cursorLine()
 
 	// Find the current file index and whether we're on summary or header

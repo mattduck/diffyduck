@@ -52,8 +52,11 @@ func (m Model) View() string {
 
 	contentH := m.contentHeight()
 
-	// Build list of all displayable rows
-	rows := m.buildRows()
+	// Use cached rows if available, otherwise rebuild (cache should normally be valid)
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
 
 	// Apply scroll and viewport
 	visibleRows := m.getVisibleRows(rows, contentH)

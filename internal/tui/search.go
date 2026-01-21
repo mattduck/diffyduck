@@ -37,7 +37,11 @@ func (m Model) findMatches(query string) []Match {
 		searchQuery = strings.ToLower(query)
 	}
 
-	rows := m.buildRows()
+	// Use cached rows if valid, otherwise rebuild
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
 
 	for rowIdx, row := range rows {
 		if row.isHeader {

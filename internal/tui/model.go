@@ -51,6 +51,10 @@ type Model struct {
 	totalLines     int // total number of displayable lines across all files
 	maxLineNumSeen int // largest line number seen (for dynamic gutter width, only grows)
 	maxLessWidth   int // max width of less indicator (never shrinks to prevent jittering)
+
+	// Row cache - avoids rebuilding on every scroll
+	cachedRows     []displayRow // cached result of buildRows()
+	rowsCacheValid bool         // true if cachedRows is up to date
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
@@ -175,21 +179,8 @@ func (m Model) countHunkSeparators(fp sidebyside.FilePair) int {
 // calculateTotalLines counts total lines including file headers and hunk separators.
 // Also updates maxLineNumSeen based on visible line numbers and maxLessWidth for status bar.
 func (m *Model) calculateTotalLines() {
-	rows := m.buildRows()
-	m.totalLines = len(rows)
-
-	// Scan for max line numbers to ensure gutter width is adequate
-	for _, row := range rows {
-		if !row.isHeader && !row.isSeparator && !row.isBlank && !row.isHeaderSpacer {
-			m.updateMaxLineNum(row.pair.Left.Num)
-			m.updateMaxLineNum(row.pair.Right.Num)
-		}
-	}
-
-	// Update max less indicator width based on current total lines
-	// Format: "line N/TOTAL X%" or "line N/TOTAL (END)"
-	// Max width occurs at the end: "line TOTAL/TOTAL (END)"
-	m.updateMaxLessWidth()
+	// Rebuild the rows cache, which also updates totalLines, maxLineNumSeen, and maxLessWidth
+	m.rebuildRowsCache()
 }
 
 // updateMaxLessWidth updates maxLessWidth if the current totalLines would require more width.
@@ -353,8 +344,11 @@ func (m Model) fileAtLine(line int) (int, string) {
 		return len(m.files), formatFilePath(lastFile.OldPath, lastFile.NewPath)
 	}
 
-	// Build rows to understand the structure
-	rows := m.buildRows()
+	// Use cached rows if valid, otherwise rebuild
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
 	if line >= len(rows) {
 		// Shouldn't happen, but handle gracefully
 		lastFile := m.files[len(m.files)-1]
@@ -406,4 +400,36 @@ func (m Model) lineNumWidth() int {
 		n /= 10
 	}
 	return width
+}
+
+// invalidateRowsCache marks the row cache as needing rebuild.
+// Call this after any change that affects the row structure (fold changes, content load, etc).
+func (m *Model) invalidateRowsCache() {
+	m.rowsCacheValid = false
+}
+
+// rebuildRowsCache unconditionally rebuilds the cached rows.
+// This also updates totalLines and maxLineNumSeen.
+func (m *Model) rebuildRowsCache() {
+	// Pre-scan files to update maxLineNumSeen BEFORE building rows.
+	// This ensures lineNumWidth() returns the correct value during buildRows().
+	for _, fp := range m.files {
+		for _, pair := range fp.Pairs {
+			m.updateMaxLineNum(pair.Left.Num)
+			m.updateMaxLineNum(pair.Right.Num)
+		}
+	}
+
+	m.cachedRows = m.buildRows()
+	m.rowsCacheValid = true
+	m.totalLines = len(m.cachedRows)
+	m.updateMaxLessWidth()
+}
+
+// getRows returns the cached rows, rebuilding if necessary.
+func (m *Model) getRows() []displayRow {
+	if !m.rowsCacheValid {
+		m.rebuildRowsCache()
+	}
+	return m.cachedRows
 }
