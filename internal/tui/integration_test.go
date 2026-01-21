@@ -61,7 +61,7 @@ index abc123..def456 100644
 	require.NoError(t, err)
 
 	// Transform
-	files := sidebyside.TransformDiff(d)
+	files, _ := sidebyside.TransformDiff(d)
 	unfoldAll(files) // Tests expect normal (unfolded) view
 
 	// Create model and render
@@ -132,7 +132,7 @@ index abc123..def456 100644
 	d, err := diff.Parse(input)
 	require.NoError(t, err)
 
-	files := sidebyside.TransformDiff(d)
+	files, _ := sidebyside.TransformDiff(d)
 	unfoldAll(files) // Tests expect normal (unfolded) view
 
 	m := New(files)
@@ -192,7 +192,7 @@ index 0000000..abc1234
 	d, err := diff.Parse(input)
 	require.NoError(t, err)
 
-	files := sidebyside.TransformDiff(d)
+	files, _ := sidebyside.TransformDiff(d)
 	unfoldAll(files) // Tests expect normal (unfolded) view
 
 	m := New(files)
@@ -254,7 +254,7 @@ func TestFullPipeline_TabsInContent(t *testing.T) {
 	d, err := diff.Parse(input)
 	require.NoError(t, err)
 
-	files := sidebyside.TransformDiff(d)
+	files, _ := sidebyside.TransformDiff(d)
 	unfoldAll(files) // Tests expect normal (unfolded) view
 
 	m := New(files)

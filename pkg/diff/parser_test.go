@@ -1,6 +1,8 @@
 package diff
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -267,4 +269,212 @@ func TestParse_StandardUnifiedDiff_FullPaths(t *testing.T) {
 	file := diff.Files[0]
 	assert.Equal(t, "/Users/matt/project/foo.py", file.OldPath)
 	assert.Equal(t, "/Users/matt/project/foo.py", file.NewPath)
+}
+
+func TestParse_LongLineTruncation(t *testing.T) {
+	// Create a line that exceeds MaxLineLength
+	longContent := strings.Repeat("x", MaxLineLength+100)
+	expectedTruncated := strings.Repeat("x", MaxLineLength-len(LineTruncationText)) + LineTruncationText
+
+	input := `diff --git a/foo.go b/foo.go
+--- a/foo.go
++++ b/foo.go
+@@ -1,3 +1,3 @@
+ short line
+-` + longContent + `
++` + longContent + `
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+	require.Len(t, diff.Files[0].Hunks, 1)
+
+	hunk := diff.Files[0].Hunks[0]
+	require.Len(t, hunk.Lines, 3)
+
+	// First line should not be truncated (it's short)
+	assert.Equal(t, "short line", hunk.Lines[0].Content)
+	assert.Equal(t, Context, hunk.Lines[0].Type)
+
+	// Second line (removed) should be truncated
+	assert.Equal(t, expectedTruncated, hunk.Lines[1].Content)
+	assert.Equal(t, Removed, hunk.Lines[1].Type)
+	assert.Len(t, hunk.Lines[1].Content, MaxLineLength)
+
+	// Third line (added) should be truncated
+	assert.Equal(t, expectedTruncated, hunk.Lines[2].Content)
+	assert.Equal(t, Added, hunk.Lines[2].Type)
+	assert.Len(t, hunk.Lines[2].Content, MaxLineLength)
+}
+
+func TestParse_LineExactlyAtLimit(t *testing.T) {
+	// A line exactly at MaxLineLength should NOT be truncated
+	exactContent := strings.Repeat("y", MaxLineLength)
+
+	input := `diff --git a/foo.go b/foo.go
+--- a/foo.go
++++ b/foo.go
+@@ -1 +1 @@
+-` + exactContent + `
++short
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files[0].Hunks[0].Lines, 2)
+
+	// Line exactly at limit should be unchanged
+	assert.Equal(t, exactContent, diff.Files[0].Hunks[0].Lines[0].Content)
+	assert.Len(t, diff.Files[0].Hunks[0].Lines[0].Content, MaxLineLength)
+}
+
+func TestParse_FileLineCountTruncation(t *testing.T) {
+	// Build a diff with more lines than MaxLinesPerFile
+	var sb strings.Builder
+	sb.WriteString("diff --git a/large.go b/large.go\n")
+	sb.WriteString("--- a/large.go\n")
+	sb.WriteString("+++ b/large.go\n")
+	sb.WriteString("@@ -1,100000 +1,100000 @@\n")
+
+	// Add more lines than the limit
+	for i := 0; i < MaxLinesPerFile+500; i++ {
+		sb.WriteString("+line " + strconv.Itoa(i) + "\n")
+	}
+
+	diff, err := Parse(sb.String())
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.True(t, file.Truncated, "file should be marked as truncated")
+
+	// Count total lines across all hunks
+	totalLines := 0
+	for _, h := range file.Hunks {
+		totalLines += len(h.Lines)
+	}
+	assert.Equal(t, MaxLinesPerFile, totalLines, "should have exactly MaxLinesPerFile lines")
+}
+
+func TestParse_FileLineCountExactlyAtLimit(t *testing.T) {
+	// Build a diff with exactly MaxLinesPerFile lines
+	var sb strings.Builder
+	sb.WriteString("diff --git a/exact.go b/exact.go\n")
+	sb.WriteString("--- a/exact.go\n")
+	sb.WriteString("+++ b/exact.go\n")
+	sb.WriteString("@@ -1,10000 +1,10000 @@\n")
+
+	for i := 0; i < MaxLinesPerFile; i++ {
+		sb.WriteString("+line " + strconv.Itoa(i) + "\n")
+	}
+
+	diff, err := Parse(sb.String())
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.False(t, file.Truncated, "file at exact limit should NOT be marked as truncated")
+
+	totalLines := 0
+	for _, h := range file.Hunks {
+		totalLines += len(h.Lines)
+	}
+	assert.Equal(t, MaxLinesPerFile, totalLines)
+}
+
+func TestParse_MultipleFilesWithTruncation(t *testing.T) {
+	// First file has too many lines, second file is small
+	var sb strings.Builder
+
+	// Large file
+	sb.WriteString("diff --git a/large.go b/large.go\n")
+	sb.WriteString("--- a/large.go\n")
+	sb.WriteString("+++ b/large.go\n")
+	sb.WriteString("@@ -1,100000 +1,100000 @@\n")
+	for i := 0; i < MaxLinesPerFile+100; i++ {
+		sb.WriteString("+line " + strconv.Itoa(i) + "\n")
+	}
+
+	// Small file
+	sb.WriteString("diff --git a/small.go b/small.go\n")
+	sb.WriteString("--- a/small.go\n")
+	sb.WriteString("+++ b/small.go\n")
+	sb.WriteString("@@ -1 +1 @@\n")
+	sb.WriteString("-old\n")
+	sb.WriteString("+new\n")
+
+	diff, err := Parse(sb.String())
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 2)
+
+	// First file should be truncated
+	assert.True(t, diff.Files[0].Truncated)
+
+	// Second file should NOT be truncated (line count resets per file)
+	assert.False(t, diff.Files[1].Truncated)
+	assert.Len(t, diff.Files[1].Hunks[0].Lines, 2)
+}
+
+func TestParse_FileCountTruncation(t *testing.T) {
+	// Build a diff with more files than MaxFiles
+	var sb strings.Builder
+
+	extraFiles := 15
+	totalFiles := MaxFiles + extraFiles
+
+	for i := 0; i < totalFiles; i++ {
+		sb.WriteString("diff --git a/file" + strconv.Itoa(i) + ".go b/file" + strconv.Itoa(i) + ".go\n")
+		sb.WriteString("--- a/file" + strconv.Itoa(i) + ".go\n")
+		sb.WriteString("+++ b/file" + strconv.Itoa(i) + ".go\n")
+		sb.WriteString("@@ -1 +1 @@\n")
+		sb.WriteString("-old\n")
+		sb.WriteString("+new\n")
+	}
+
+	diff, err := Parse(sb.String())
+	require.NoError(t, err)
+
+	assert.Len(t, diff.Files, MaxFiles, "should have exactly MaxFiles files")
+	assert.Equal(t, extraFiles, diff.TruncatedFileCount, "should report correct truncated file count")
+}
+
+func TestParse_FileCountExactlyAtLimit(t *testing.T) {
+	// Build a diff with exactly MaxFiles files
+	var sb strings.Builder
+
+	for i := 0; i < MaxFiles; i++ {
+		sb.WriteString("diff --git a/file" + strconv.Itoa(i) + ".go b/file" + strconv.Itoa(i) + ".go\n")
+		sb.WriteString("--- a/file" + strconv.Itoa(i) + ".go\n")
+		sb.WriteString("+++ b/file" + strconv.Itoa(i) + ".go\n")
+		sb.WriteString("@@ -1 +1 @@\n")
+		sb.WriteString("-old\n")
+		sb.WriteString("+new\n")
+	}
+
+	diff, err := Parse(sb.String())
+	require.NoError(t, err)
+
+	assert.Len(t, diff.Files, MaxFiles)
+	assert.Equal(t, 0, diff.TruncatedFileCount, "should not truncate when exactly at limit")
+}
+
+func TestParse_FileCountTruncation_StandardUnifiedDiff(t *testing.T) {
+	// Test with standard unified diff format (no "diff --git" header)
+	var sb strings.Builder
+
+	extraFiles := 5
+	totalFiles := MaxFiles + extraFiles
+
+	for i := 0; i < totalFiles; i++ {
+		sb.WriteString("--- a/file" + strconv.Itoa(i) + ".go\n")
+		sb.WriteString("+++ b/file" + strconv.Itoa(i) + ".go\n")
+		sb.WriteString("@@ -1 +1 @@\n")
+		sb.WriteString("-old\n")
+		sb.WriteString("+new\n")
+	}
+
+	diff, err := Parse(sb.String())
+	require.NoError(t, err)
+
+	assert.Len(t, diff.Files, MaxFiles, "should have exactly MaxFiles files")
+	assert.Equal(t, extraFiles, diff.TruncatedFileCount, "should report correct truncated file count")
 }

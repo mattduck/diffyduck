@@ -155,13 +155,13 @@ func run() error {
 	}
 
 	// Transform to side-by-side format
-	files := sidebyside.TransformDiff(d)
+	files, truncatedFileCount := sidebyside.TransformDiff(d)
 
 	// Create content fetcher for lazy file loading
 	fetcher := content.NewFetcher(g, args.mode, args.ref1, args.ref2)
 
 	// Create and run the TUI
-	model := tui.New(files, tui.WithFetcher(fetcher))
+	model := tui.New(files, tui.WithFetcher(fetcher), tui.WithTruncatedFileCount(truncatedFileCount))
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
@@ -191,10 +191,10 @@ func runPagerMode() error {
 	}
 
 	// Transform to side-by-side format
-	files := sidebyside.TransformDiff(d)
+	files, truncatedFileCount := sidebyside.TransformDiff(d)
 
 	// Create and run the TUI in pager mode (no fetcher available)
-	model := tui.New(files, tui.WithPagerMode())
+	model := tui.New(files, tui.WithPagerMode(), tui.WithTruncatedFileCount(truncatedFileCount))
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

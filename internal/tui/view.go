@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
+	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/inlinediff"
 	"github.com/user/diffyduck/pkg/sidebyside"
@@ -109,6 +110,9 @@ type displayRow struct {
 	totalFiles   int // total number of files changed
 	totalAdded   int // total insertions across all files
 	totalRemoved int // total deletions across all files
+	// Truncation indicator fields
+	isTruncationIndicator bool // true if this row shows a truncation message
+	truncationMessage     string
 }
 
 // buildRows creates all displayable rows from the model data.
@@ -208,6 +212,15 @@ func (m Model) buildRows() []displayRow {
 				}
 				rows = append(rows, expandedRows...)
 
+				// Add file truncation indicator if this file was truncated
+				if fp.Truncated {
+					rows = append(rows, displayRow{
+						fileIndex:             fileIdx,
+						isTruncationIndicator: true,
+						truncationMessage:     "[truncated due to file size limit]",
+					})
+				}
+
 				// Add 4 blank lines after expanded content
 				for i := 0; i < 4; i++ {
 					rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
@@ -261,6 +274,15 @@ func (m Model) buildRows() []displayRow {
 				}
 			}
 
+			// Add file truncation indicator if this file was truncated
+			if fp.Truncated {
+				rows = append(rows, displayRow{
+					fileIndex:             fileIdx,
+					isTruncationIndicator: true,
+					truncationMessage:     "[truncated due to file size limit]",
+				})
+			}
+
 			// Add 4 blank lines after normal content
 			for i := 0; i < 4; i++ {
 				rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
@@ -270,6 +292,15 @@ func (m Model) buildRows() []displayRow {
 			// Only visible if next file is also unfolded
 			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldNormal, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
 		}
+	}
+
+	// Add truncation indicator if files were omitted
+	if m.truncatedFileCount > 0 {
+		rows = append(rows, displayRow{
+			fileIndex:             -1,
+			isTruncationIndicator: true,
+			truncationMessage:     fmt.Sprintf("[%d files truncated]", m.truncatedFileCount),
+		})
 	}
 
 	// Add summary row at the end
@@ -562,6 +593,8 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
 		} else if row.isSummary {
 			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
+		} else if row.isTruncationIndicator {
+			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow))
 		} else {
 			leftStart := leftIndicatorStarts[i]
 			rightStart := rightIndicatorStarts[i]
@@ -1263,6 +1296,29 @@ func formatSummaryStats(files, added, removed int) string {
 // Format: "▶ ━━━ ●   N files changed, N insertions(+), N deletions(-)" (when cursor)
 // Uses expanded icon (●) since there's no additional content to show.
 // Text is not bold, unlike file headers.
+// renderTruncationIndicator renders a row indicating content was truncated.
+func (m Model) renderTruncationIndicator(message string, isCursorRow bool) string {
+	lineNumWidth := m.lineNumWidth()
+
+	// Max 3 dots, right-aligned in gutter
+	numDots := 3
+	if numDots > lineNumWidth {
+		numDots = lineNumWidth
+	}
+	padding := strings.Repeat(" ", lineNumWidth-numDots)
+	dots := strings.Repeat("·", numDots)
+
+	// Style with fg=13
+	truncStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
+	styledGutter := padding + truncStyle.Render(dots)
+	styledMsg := truncStyle.Render("   " + message)
+
+	if isCursorRow {
+		return cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + styledMsg
+	}
+	return "  " + styledGutter + styledMsg
+}
+
 func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidth int, isCursorRow bool) string {
 	lineNumWidth := m.lineNumWidth()
 	equalsGutter := strings.Repeat("━", lineNumWidth)
@@ -1493,6 +1549,12 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	// Wrap added/removed lines with gutter indicators
 	// Use blue for changed lines (hasWordDiff), otherwise green/red
 	styledContent = m.applyColumnIndicators(styledContent, actualContentWidth, line.Type, indicatorStart, hasWordDiff)
+
+	// Style truncation indicator with fg=13 if present
+	if strings.Contains(visible, diff.LineTruncationText) {
+		truncStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
+		styledContent = strings.ReplaceAll(styledContent, diff.LineTruncationText, truncStyle.Render(diff.LineTruncationText))
+	}
 
 	return indicator + " " + numStr + " " + styledContent
 }

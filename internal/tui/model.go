@@ -10,8 +10,9 @@ import (
 // Model represents the application state.
 type Model struct {
 	// Data
-	files   []sidebyside.FilePair
-	fetcher *content.Fetcher // for fetching full file contents (lazy)
+	files              []sidebyside.FilePair
+	fetcher            *content.Fetcher // for fetching full file contents (lazy)
+	truncatedFileCount int              // number of files omitted due to limit
 
 	// Pager mode
 	pagerMode bool // true when running as a pager (stdin input, no fetcher)
@@ -89,6 +90,13 @@ func WithFetcher(f *content.Fetcher) Option {
 func WithPagerMode() Option {
 	return func(m *Model) {
 		m.pagerMode = true
+	}
+}
+
+// WithTruncatedFileCount sets the number of files that were truncated.
+func WithTruncatedFileCount(count int) Option {
+	return func(m *Model) {
+		m.truncatedFileCount = count
 	}
 }
 

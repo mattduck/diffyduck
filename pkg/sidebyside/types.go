@@ -64,6 +64,9 @@ type FilePair struct {
 	// Cached full file content (populated lazily when expanded)
 	OldContent []string // full old file lines (nil until fetched)
 	NewContent []string // full new file lines (nil until fetched)
+
+	// Truncation
+	Truncated bool // true if lines were truncated due to limit
 }
 
 // HasContent returns true if full file content has been loaded.

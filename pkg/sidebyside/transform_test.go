@@ -225,7 +225,7 @@ func TestTransformDiff(t *testing.T) {
 		},
 	}
 
-	fps := TransformDiff(d)
+	fps, _ := TransformDiff(d)
 
 	require.Len(t, fps, 2)
 	assert.Equal(t, "a/one.go", fps[0].OldPath)
