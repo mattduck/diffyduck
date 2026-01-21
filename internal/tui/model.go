@@ -4,8 +4,22 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/highlight"
+	"github.com/user/diffyduck/pkg/inlinediff"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
+
+// inlineDiffKey identifies a specific line pair for caching inline diffs.
+type inlineDiffKey struct {
+	fileIndex int
+	leftNum   int
+	rightNum  int
+}
+
+// inlineDiffResult stores cached inline diff spans for a line pair.
+type inlineDiffResult struct {
+	leftSpans  []inlinediff.Span
+	rightSpans []inlinediff.Span
+}
 
 // Model represents the application state.
 type Model struct {
@@ -55,6 +69,9 @@ type Model struct {
 	// Row cache - avoids rebuilding on every scroll
 	cachedRows     []displayRow // cached result of buildRows()
 	rowsCacheValid bool         // true if cachedRows is up to date
+
+	// Inline diff cache - avoids recomputing Myers diff on every render
+	inlineDiffCache map[inlineDiffKey]inlineDiffResult
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
@@ -113,6 +130,7 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 		highlighter:         highlight.New(),
 		highlightSpans:      make(map[int]*FileHighlight),
 		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
 	}
 	for _, opt := range opts {
 		opt(&m)

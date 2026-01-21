@@ -1505,20 +1505,7 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, li
 
 	var leftSpans, rightSpans []inlinediff.Span
 	if isModifiedPair {
-		// Expand tabs first since that's what we'll render
-		leftContent := expandTabs(pair.Left.Content)
-		rightContent := expandTabs(pair.Right.Content)
-
-		// Only do inline diff if lines are similar enough
-		if !inlinediff.ShouldSkipInlineDiff(leftContent, rightContent) {
-			leftSpans, rightSpans = inlinediff.Diff(leftContent, rightContent)
-
-			// Also skip if too much would be highlighted (not useful)
-			if inlinediff.ShouldSkipBasedOnSpans(leftSpans, len(leftContent)) ||
-				inlinediff.ShouldSkipBasedOnSpans(rightSpans, len(rightContent)) {
-				leftSpans, rightSpans = nil, nil
-			}
-		}
+		leftSpans, rightSpans = m.getInlineDiff(fileIndex, pair)
 	}
 
 	// Get syntax highlight spans for each side
@@ -2048,4 +2035,40 @@ func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.L
 	endIndicator := colorStyle.Render("░")
 
 	return startIndicator + " " + styledContent + " " + endIndicator
+}
+
+// getInlineDiff returns cached inline diff spans for a modified line pair,
+// computing and caching them if not already cached.
+func (m Model) getInlineDiff(fileIndex int, pair sidebyside.LinePair) ([]inlinediff.Span, []inlinediff.Span) {
+	cacheKey := inlineDiffKey{fileIndex: fileIndex, leftNum: pair.Left.Num, rightNum: pair.Right.Num}
+
+	// Check cache first (if cache exists)
+	if m.inlineDiffCache != nil {
+		if cached, ok := m.inlineDiffCache[cacheKey]; ok {
+			return cached.leftSpans, cached.rightSpans
+		}
+	}
+
+	// Compute inline diff
+	var leftSpans, rightSpans []inlinediff.Span
+	leftContent := expandTabs(pair.Left.Content)
+	rightContent := expandTabs(pair.Right.Content)
+
+	// Only do inline diff if lines are similar enough
+	if !inlinediff.ShouldSkipInlineDiff(leftContent, rightContent) {
+		leftSpans, rightSpans = inlinediff.Diff(leftContent, rightContent)
+
+		// Also skip if too much would be highlighted (not useful)
+		if inlinediff.ShouldSkipBasedOnSpans(leftSpans, len(leftContent)) ||
+			inlinediff.ShouldSkipBasedOnSpans(rightSpans, len(rightContent)) {
+			leftSpans, rightSpans = nil, nil
+		}
+	}
+
+	// Cache the result (even if nil - means we computed and found nothing useful)
+	if m.inlineDiffCache != nil {
+		m.inlineDiffCache[cacheKey] = inlineDiffResult{leftSpans: leftSpans, rightSpans: rightSpans}
+	}
+
+	return leftSpans, rightSpans
 }
