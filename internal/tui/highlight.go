@@ -6,10 +6,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 // RequestHighlight returns a command that parses syntax highlighting for a file.
 // This runs asynchronously to avoid blocking the UI.
+// Also extracts code structure for breadcrumbs.
 func (m Model) RequestHighlight(fileIndex int) tea.Cmd {
 	return func() tea.Msg {
 		if fileIndex < 0 || fileIndex >= len(m.files) {
@@ -30,26 +32,28 @@ func (m Model) RequestHighlight(fileIndex int) tea.Cmd {
 		}
 
 		var oldSpans, newSpans []highlight.Span
+		var newStructure *structure.Map
 
-		// Parse old content if available
+		// Parse old content if available (highlight only, no structure for breadcrumbs)
 		if len(fp.OldContent) > 0 {
 			content := []byte(strings.Join(fp.OldContent, "\n"))
-			spans, _ := m.highlighter.Highlight(filename, content)
-			oldSpans = spans
+			oldSpans, _ = m.highlighter.Highlight(filename, content)
 		}
 
-		// Parse new content if available
+		// Parse new content if available (with structure for breadcrumbs)
 		if len(fp.NewContent) > 0 {
 			content := []byte(strings.Join(fp.NewContent, "\n"))
-			spans, _ := m.highlighter.Highlight(filename, content)
+			spans, structMap, _ := m.highlighter.HighlightWithStructure(filename, content)
 			newSpans = spans
+			newStructure = structMap
 		}
 
 		// Convert to message format
 		msg := HighlightReadyMsg{
-			FileIndex: fileIndex,
-			OldSpans:  convertSpans(oldSpans),
-			NewSpans:  convertSpans(newSpans),
+			FileIndex:    fileIndex,
+			OldSpans:     convertSpans(oldSpans),
+			NewSpans:     convertSpans(newSpans),
+			NewStructure: convertStructure(newStructure),
 		}
 		return msg
 	}
@@ -66,6 +70,7 @@ func (m Model) RequestHighlightAll() tea.Cmd {
 
 // RequestHighlightFromPairs returns a command that parses syntax highlighting from Pairs content.
 // This is used for normal (non-expanded) view where full file content isn't available.
+// Also extracts code structure for breadcrumbs.
 func (m Model) RequestHighlightFromPairs(fileIndex int) tea.Cmd {
 	return func() tea.Msg {
 		if fileIndex < 0 || fileIndex >= len(m.files) {
@@ -92,6 +97,9 @@ func (m Model) RequestHighlightFromPairs(fileIndex int) tea.Cmd {
 		var oldSpans, newSpans []HighlightSpan
 
 		// Parse old content if we have any
+		// Note: We use Highlight() not HighlightWithStructure() because pairs-based
+		// structure has wrong line numbers (relative to concatenated content, not source).
+		// Structure extraction requires full file content for accurate line mapping.
 		if len(oldContent) > 0 {
 			spans, _ := m.highlighter.Highlight(filename, oldContent)
 			oldSpans = convertSpans(spans)
@@ -137,6 +145,7 @@ func (m Model) RequestHighlightFromPairsExcept(skip map[int]bool) tea.Cmd {
 
 // highlightPairsSync synchronously highlights a file's Pairs content.
 // This is used for the initial file to ensure first render has highlighting.
+// Also extracts code structure for breadcrumbs.
 func (m *Model) highlightPairsSync(fileIndex int) {
 	if fileIndex < 0 || fileIndex >= len(m.files) {
 		return
@@ -162,6 +171,9 @@ func (m *Model) highlightPairsSync(fileIndex int) {
 	var oldSpans, newSpans []highlight.Span
 
 	// Parse old content if we have any
+	// Note: We use Highlight() not HighlightWithStructure() because pairs-based
+	// structure has wrong line numbers (relative to concatenated content, not source).
+	// Structure extraction requires full file content for accurate line mapping.
 	if len(oldContent) > 0 {
 		oldSpans, _ = m.highlighter.Highlight(filename, oldContent)
 	}
@@ -171,7 +183,7 @@ func (m *Model) highlightPairsSync(fileIndex int) {
 		newSpans, _ = m.highlighter.Highlight(filename, newContent)
 	}
 
-	// Store directly
+	// Store directly (no structure for pairs-based - requires full content)
 	m.pairsHighlightSpans[fileIndex] = &PairsFileHighlight{
 		OldSpans:      oldSpans,
 		NewSpans:      newSpans,
@@ -230,15 +242,38 @@ func convertSpans(spans []highlight.Span) []HighlightSpan {
 	return result
 }
 
-// storeHighlightSpans stores the spans from a HighlightReadyMsg into the model.
+// convertStructure converts structure.Map to []StructureEntry (avoiding import in messages.go).
+func convertStructure(m *structure.Map) []StructureEntry {
+	if m == nil || len(m.Entries) == 0 {
+		return nil
+	}
+	result := make([]StructureEntry, len(m.Entries))
+	for i, e := range m.Entries {
+		result[i] = StructureEntry{
+			StartLine: e.StartLine,
+			EndLine:   e.EndLine,
+			Name:      e.Name,
+			Kind:      e.Kind,
+		}
+	}
+	return result
+}
+
+// storeHighlightSpans stores the spans and structure from a HighlightReadyMsg into the model.
 func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 	m.highlightSpans[msg.FileIndex] = &FileHighlight{
 		OldSpans: unconvertSpans(msg.OldSpans),
 		NewSpans: unconvertSpans(msg.NewSpans),
 	}
+	// Also store structure if available (new side only, for breadcrumbs)
+	if len(msg.NewStructure) > 0 {
+		m.structureMaps[msg.FileIndex] = &FileStructure{
+			NewStructure: unconvertStructure(msg.NewStructure),
+		}
+	}
 }
 
-// storePairsHighlightSpans stores the spans from a PairsHighlightReadyMsg into the model.
+// storePairsHighlightSpans stores the spans and structure from a PairsHighlightReadyMsg into the model.
 func (m *Model) storePairsHighlightSpans(msg PairsHighlightReadyMsg) {
 	m.pairsHighlightSpans[msg.FileIndex] = &PairsFileHighlight{
 		OldSpans:      unconvertSpans(msg.OldSpans),
@@ -248,6 +283,8 @@ func (m *Model) storePairsHighlightSpans(msg PairsHighlightReadyMsg) {
 		OldLineLens:   msg.OldLineLens,
 		NewLineLens:   msg.NewLineLens,
 	}
+	// Note: Pairs-based structure is not stored because line numbers would be
+	// relative to concatenated content, not source. Structure requires full content.
 }
 
 // unconvertSpans converts HighlightSpan back to highlight.Span.
@@ -264,6 +301,23 @@ func unconvertSpans(spans []HighlightSpan) []highlight.Span {
 		}
 	}
 	return result
+}
+
+// unconvertStructure converts []StructureEntry back to *structure.Map.
+func unconvertStructure(entries []StructureEntry) *structure.Map {
+	if len(entries) == 0 {
+		return nil
+	}
+	structEntries := make([]structure.Entry, len(entries))
+	for i, e := range entries {
+		structEntries[i] = structure.Entry{
+			StartLine: e.StartLine,
+			EndLine:   e.EndLine,
+			Name:      e.Name,
+			Kind:      e.Kind,
+		}
+	}
+	return structure.NewMap(structEntries)
 }
 
 // getLineSpans returns syntax highlight spans for a specific line in a file.

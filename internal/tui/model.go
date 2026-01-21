@@ -6,6 +6,7 @@ import (
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/inlinediff"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 // inlineDiffKey identifies a specific line pair for caching inline diffs.
@@ -35,6 +36,10 @@ type Model struct {
 	highlighter         *highlight.Highlighter
 	highlightSpans      map[int]*FileHighlight      // file index -> full content highlight spans
 	pairsHighlightSpans map[int]*PairsFileHighlight // file index -> pairs-based highlight spans
+
+	// Code structure for breadcrumbs
+	structureMaps      map[int]*FileStructure // file index -> full content structure
+	pairsStructureMaps map[int]*FileStructure // file index -> pairs-based structure
 
 	// Viewport state
 	scroll  int // vertical scroll offset (line index at top of viewport)
@@ -96,6 +101,13 @@ type PairsFileHighlight struct {
 	NewLineLens   map[int]int      // line number -> length of line content
 }
 
+// FileStructure stores code structure map for breadcrumb display.
+// Only new (right side) content structure is stored since breadcrumbs
+// show where you are in the current version of the file.
+type FileStructure struct {
+	NewStructure *structure.Map // structure for new content
+}
+
 // Option is a function that configures a Model.
 type Option func(*Model)
 
@@ -130,6 +142,8 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 		highlighter:         highlight.New(),
 		highlightSpans:      make(map[int]*FileHighlight),
 		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
 		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
 	}
 	for _, opt := range opts {
@@ -295,6 +309,7 @@ type StatusInfo struct {
 	FileStatus  string               // file status (added, deleted, renamed, modified)
 	Added       int                  // number of added lines in current file
 	Removed     int                  // number of removed lines in current file
+	Breadcrumbs string               // code structure breadcrumb (e.g., "type MyStruct > func myMethod")
 }
 
 // StatusInfo computes information for the status bar based on cursor position.
@@ -339,10 +354,85 @@ func (m Model) StatusInfo() StatusInfo {
 		info.FoldLevel = fp.FoldLevel
 		info.FileStatus = string(fileStatus(fp.OldPath, fp.NewPath))
 		info.Added, info.Removed = countFileStats(fp)
+
+		// Get breadcrumbs for current source line
+		info.Breadcrumbs = m.getBreadcrumbsForCursor(fileIdx, cursorPos)
 	}
 	// Summary row: leave file-specific fields at zero values (no file info shown)
 
 	return info
+}
+
+// getBreadcrumbsForCursor returns formatted breadcrumbs for the cursor position.
+// fileIdx is 0-based, cursorPos is the display row index.
+func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
+	// Get the display row at cursor position
+	rows := m.buildRows()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return ""
+	}
+
+	row := rows[cursorPos]
+
+	// Only show breadcrumbs for content rows (not headers, separators, etc.)
+	if row.isHeader || row.isSeparator || row.isBlank || row.isHeaderSpacer ||
+		row.isHeaderTopBorder || row.isSummary {
+		return ""
+	}
+
+	// Get source line number from the new (right) side only
+	// Don't show breadcrumbs for deleted lines to avoid confusion
+	if row.pair.Right.Num <= 0 {
+		return ""
+	}
+	sourceLine := row.pair.Right.Num
+
+	// Look up structure for this file (new side only)
+	entries := m.getStructureAtLine(fileIdx, sourceLine)
+	if len(entries) == 0 {
+		return ""
+	}
+
+	return formatBreadcrumbs(entries)
+}
+
+// getStructureAtLine returns structure entries containing the given line.
+// Only works when full file content has been loaded (expanded view).
+// Returns nil for files that only have pairs-based content.
+func (m Model) getStructureAtLine(fileIdx int, lineNum int) []structure.Entry {
+	// Only full-content structure is available - pairs-based structure can't be used
+	// because line numbers would be relative to concatenated hunk content, not source.
+	fs, ok := m.structureMaps[fileIdx]
+	if !ok || fs == nil || fs.NewStructure == nil {
+		return nil
+	}
+
+	return fs.NewStructure.AtLine(lineNum)
+}
+
+// formatBreadcrumbs formats structure entries as a breadcrumb string.
+// Entries are expected to be ordered from outermost to innermost.
+// Output format: "type MyStruct > func myMethod"
+func formatBreadcrumbs(entries []structure.Entry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+
+	var parts []string
+	for _, e := range entries {
+		part := e.Kind + " " + e.Name
+		parts = append(parts, part)
+	}
+
+	// Join with separator
+	result := ""
+	for i, part := range parts {
+		if i > 0 {
+			result += " > "
+		}
+		result += part
+	}
+	return result
 }
 
 // fileAtLine returns the file index (1-based) and filename at the given display line.

@@ -234,6 +234,10 @@ func (f *Fetcher) fetchNewLines(path string) ([]string, bool, error) {
 	case ModeDiffCached:
 		return f.fetchGitContentLines("", path)
 	case ModeDiffRefs:
+		// If ref2 is empty, this is "diff <ref>" which compares to working tree
+		if f.ref2 == "" {
+			return f.readWorkingTreeFileLines(path)
+		}
 		return f.fetchGitContentLines(f.ref2, path)
 	default:
 		return f.fetchGitContentLines("HEAD", path)
@@ -297,7 +301,10 @@ func (f *Fetcher) fetchNew(path string) (string, error) {
 		// New = index (staged content)
 		return f.git.GetFileContent("", path)
 	case ModeDiffRefs:
-		// New = second ref
+		// If ref2 is empty, this is "diff <ref>" which compares to working tree
+		if f.ref2 == "" {
+			return f.readWorkingTreeFile(path)
+		}
 		return f.git.GetFileContent(f.ref2, path)
 	default:
 		return f.git.GetFileContent("HEAD", path)

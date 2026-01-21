@@ -29,9 +29,10 @@ type FileContent struct {
 
 // HighlightReadyMsg is sent when syntax highlighting spans are ready for a file.
 type HighlightReadyMsg struct {
-	FileIndex int
-	OldSpans  []HighlightSpan // spans for old file content
-	NewSpans  []HighlightSpan // spans for new file content
+	FileIndex    int
+	OldSpans     []HighlightSpan  // spans for old file content
+	NewSpans     []HighlightSpan  // spans for new file content
+	NewStructure []StructureEntry // structure for new file content (for breadcrumbs)
 }
 
 // HighlightSpan represents a highlighted range with a category.
@@ -51,4 +52,13 @@ type PairsHighlightReadyMsg struct {
 	NewLineStarts map[int]int     // line number -> byte offset
 	OldLineLens   map[int]int     // line number -> line length
 	NewLineLens   map[int]int     // line number -> line length
+}
+
+// StructureEntry represents a structural code element for breadcrumbs.
+// This mirrors structure.Entry to avoid import in messages.
+type StructureEntry struct {
+	StartLine int    // 1-based line number
+	EndLine   int    // 1-based line number (inclusive)
+	Name      string // e.g., "MyStruct", "myMethod"
+	Kind      string // e.g., "type", "func"
 }

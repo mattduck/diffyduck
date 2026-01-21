@@ -5,12 +5,15 @@ import (
 	"sync"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 // Highlighter provides syntax highlighting for source code.
 type Highlighter struct {
-	theme    Theme
-	registry *Registry
+	theme     Theme
+	registry  *Registry
+	extractor *structure.Extractor
 
 	// Cached parsers and queries per language (not thread-safe)
 	mu      sync.Mutex
@@ -21,20 +24,22 @@ type Highlighter struct {
 // New creates a new Highlighter with the default theme.
 func New() *Highlighter {
 	return &Highlighter{
-		theme:    DefaultTheme(),
-		registry: NewRegistry(),
-		parsers:  make(map[string]*tree_sitter.Parser),
-		queries:  make(map[string]*tree_sitter.Query),
+		theme:     DefaultTheme(),
+		registry:  NewRegistry(),
+		extractor: structure.NewExtractor(),
+		parsers:   make(map[string]*tree_sitter.Parser),
+		queries:   make(map[string]*tree_sitter.Query),
 	}
 }
 
 // NewWithTheme creates a new Highlighter with a custom theme.
 func NewWithTheme(theme Theme) *Highlighter {
 	return &Highlighter{
-		theme:    theme,
-		registry: NewRegistry(),
-		parsers:  make(map[string]*tree_sitter.Parser),
-		queries:  make(map[string]*tree_sitter.Query),
+		theme:     theme,
+		registry:  NewRegistry(),
+		extractor: structure.NewExtractor(),
+		parsers:   make(map[string]*tree_sitter.Parser),
+		queries:   make(map[string]*tree_sitter.Query),
 	}
 }
 
@@ -76,6 +81,46 @@ func (h *Highlighter) Highlight(filename string, content []byte) ([]Span, error)
 	spans = MergeSpans(spans)
 
 	return spans, nil
+}
+
+// HighlightWithStructure returns both highlight spans and structure map for the given source code.
+// This parses the file once and extracts both, which is more efficient than calling
+// Highlight and structure extraction separately.
+// Returns (nil, nil, nil) if the language is not supported.
+func (h *Highlighter) HighlightWithStructure(filename string, content []byte) ([]Span, *structure.Map, error) {
+	cfg := h.registry.ForFile(filename)
+	if cfg == nil {
+		return nil, nil, nil // Unknown language
+	}
+
+	parser, query := h.getParserAndQuery(cfg)
+	if parser == nil || query == nil {
+		return nil, nil, nil
+	}
+
+	h.mu.Lock()
+	tree := parser.Parse(content, nil)
+	h.mu.Unlock()
+
+	if tree == nil {
+		return nil, nil, nil
+	}
+	defer tree.Close()
+
+	// Extract highlight spans
+	spans := h.runQuery(tree.RootNode(), query, content)
+	sort.Slice(spans, func(i, j int) bool {
+		return spans[i].Start < spans[j].Start
+	})
+	spans = MergeSpans(spans)
+
+	// Extract structure
+	var structMap *structure.Map
+	if h.extractor != nil {
+		structMap = h.extractor.Extract(tree, content, cfg.Name)
+	}
+
+	return spans, structMap, nil
 }
 
 // getParserAndQuery returns cached parser and query for the language config.

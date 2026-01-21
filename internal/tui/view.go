@@ -868,7 +868,14 @@ func (m Model) formatStatusFileInfo(info StatusInfo) string {
 		stats = " " + strings.Join(parts, " ")
 	}
 
-	return icon + " " + styledStatus + " " + info.FileName + stats
+	// Format breadcrumbs (dimmed, after stats)
+	var breadcrumbs string
+	if info.Breadcrumbs != "" {
+		breadcrumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		breadcrumbs = "  " + breadcrumbStyle.Render(info.Breadcrumbs)
+	}
+
+	return icon + " " + styledStatus + " " + info.FileName + stats + breadcrumbs
 }
 
 // renderSearchPrompt renders the status bar as a search input prompt.
