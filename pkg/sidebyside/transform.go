@@ -90,9 +90,11 @@ func alignChanges(removes, adds []diff.Line, oldNum, newNum *int) []LinePair {
 // TransformFile converts a file diff into a FilePair.
 func TransformFile(file diff.File) FilePair {
 	fp := FilePair{
-		OldPath:   file.OldPath,
-		NewPath:   file.NewPath,
-		Truncated: file.Truncated,
+		OldPath:      file.OldPath,
+		NewPath:      file.NewPath,
+		Truncated:    file.Truncated,
+		TotalAdded:   file.TotalAdded,
+		TotalRemoved: file.TotalRemoved,
 	}
 
 	for _, hunk := range file.Hunks {

@@ -1017,10 +1017,19 @@ func (m Model) applySearchHighlight(text string, rowIdx, side int) string {
 	return result.String()
 }
 
-// countFileStats counts the number of added and removed lines in a file.
+// countFileStats returns the number of added and removed lines in a file.
+// Uses pre-computed totals from diff parsing, which are accurate even when
+// the file was truncated due to size limits. Falls back to counting from
+// Pairs if totals aren't set (e.g., in tests).
 // TODO: Handle binary files and renames - they should display differently
 // (e.g., "Binary file changed" or show rename info without line stats).
 func countFileStats(fp sidebyside.FilePair) (added, removed int) {
+	// Use pre-computed totals if available
+	if fp.TotalAdded > 0 || fp.TotalRemoved > 0 {
+		return fp.TotalAdded, fp.TotalRemoved
+	}
+
+	// Fall back to counting from Pairs (for tests or edge cases)
 	for _, pair := range fp.Pairs {
 		if pair.Right.Type == sidebyside.Added {
 			added++

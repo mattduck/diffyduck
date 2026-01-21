@@ -109,12 +109,18 @@ func Parse(input string) (*Diff, error) {
 		}
 
 		// Diff content lines
-		if currentHunk != nil && len(line) > 0 {
+		if currentHunk != nil && currentFile != nil && len(line) > 0 {
+			// Always count added/removed lines for accurate stats
+			switch line[0] {
+			case '+':
+				currentFile.TotalAdded++
+			case '-':
+				currentFile.TotalRemoved++
+			}
+
 			// Check if we've hit the line limit for this file
 			if fileLineCount >= MaxLinesPerFile {
-				if currentFile != nil {
-					currentFile.Truncated = true
-				}
+				currentFile.Truncated = true
 				continue
 			}
 

@@ -414,6 +414,67 @@ func TestParse_MultipleFilesWithTruncation(t *testing.T) {
 	assert.Len(t, diff.Files[1].Hunks[0].Lines, 2)
 }
 
+func TestParse_TotalAddedRemovedAccurateWhenTruncated(t *testing.T) {
+	// Build a diff with more lines than MaxLinesPerFile
+	// TotalAdded and TotalRemoved should count ALL lines, not just stored ones
+	var sb strings.Builder
+	sb.WriteString("diff --git a/large.go b/large.go\n")
+	sb.WriteString("--- a/large.go\n")
+	sb.WriteString("+++ b/large.go\n")
+	sb.WriteString("@@ -1,15000 +1,15000 @@\n")
+
+	totalAdded := 12000
+	totalRemoved := 8000
+
+	// Add lines (more than MaxLinesPerFile total)
+	for i := 0; i < totalAdded; i++ {
+		sb.WriteString("+added line " + strconv.Itoa(i) + "\n")
+	}
+	for i := 0; i < totalRemoved; i++ {
+		sb.WriteString("-removed line " + strconv.Itoa(i) + "\n")
+	}
+
+	diff, err := Parse(sb.String())
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.True(t, file.Truncated, "file should be truncated")
+	assert.Equal(t, totalAdded, file.TotalAdded, "TotalAdded should count all added lines, not just stored ones")
+	assert.Equal(t, totalRemoved, file.TotalRemoved, "TotalRemoved should count all removed lines, not just stored ones")
+
+	// Verify stored lines are limited
+	storedLines := 0
+	for _, h := range file.Hunks {
+		storedLines += len(h.Lines)
+	}
+	assert.Equal(t, MaxLinesPerFile, storedLines, "stored lines should be limited to MaxLinesPerFile")
+}
+
+func TestParse_TotalAddedRemovedNormalCase(t *testing.T) {
+	// Small diff - TotalAdded/TotalRemoved should match stored line counts
+	input := `diff --git a/foo.go b/foo.go
+--- a/foo.go
++++ b/foo.go
+@@ -1,3 +1,4 @@
+ context
+-removed1
+-removed2
++added1
++added2
++added3
+ more context`
+
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.False(t, file.Truncated)
+	assert.Equal(t, 3, file.TotalAdded)
+	assert.Equal(t, 2, file.TotalRemoved)
+}
+
 func TestParse_FileCountTruncation(t *testing.T) {
 	// Build a diff with more files than MaxFiles
 	var sb strings.Builder

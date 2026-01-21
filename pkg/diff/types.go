@@ -35,10 +35,12 @@ type Hunk struct {
 
 // File represents a single file's diff.
 type File struct {
-	OldPath   string
-	NewPath   string
-	Hunks     []Hunk
-	Truncated bool // True if lines were truncated due to MaxLinesPerFile limit
+	OldPath      string
+	NewPath      string
+	Hunks        []Hunk
+	Truncated    bool // True if lines were truncated due to MaxLinesPerFile limit
+	TotalAdded   int  // Total added lines (accurate even if truncated)
+	TotalRemoved int  // Total removed lines (accurate even if truncated)
 }
 
 // Diff represents a complete diff, possibly spanning multiple files.

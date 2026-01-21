@@ -68,6 +68,10 @@ type FilePair struct {
 	// Truncation
 	Truncated        bool // true if diff lines were truncated due to limit
 	ContentTruncated bool // true if fetched content was truncated due to limit
+
+	// Stats (accurate even if truncated)
+	TotalAdded   int // total added lines from diff
+	TotalRemoved int // total removed lines from diff
 }
 
 // HasContent returns true if full file content has been loaded.
