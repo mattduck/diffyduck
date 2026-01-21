@@ -15,6 +15,7 @@ const (
 	LineTruncationText = "[...truncated]" // Suffix appended to truncated lines
 	MaxLinesPerFile    = 10000            // Maximum lines per file before truncation
 	MaxFiles           = 1000             // Maximum number of files before truncation
+	MaxContentBytes    = 1 * 1024 * 1024  // Maximum bytes to read when fetching file content (1MB)
 )
 
 // Line represents a single line in a diff hunk.

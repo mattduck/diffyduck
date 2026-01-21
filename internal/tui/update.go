@@ -47,6 +47,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.files[msg.FileIndex].OldContent = msg.OldContent
 			m.files[msg.FileIndex].NewContent = msg.NewContent
+			m.files[msg.FileIndex].ContentTruncated = msg.ContentTruncated
 			m.calculateTotalLines()
 
 			// Preserve scroll position
@@ -77,6 +78,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if fc.FileIndex >= 0 && fc.FileIndex < len(m.files) {
 					m.files[fc.FileIndex].OldContent = fc.OldContent
 					m.files[fc.FileIndex].NewContent = fc.NewContent
+					m.files[fc.FileIndex].ContentTruncated = fc.ContentTruncated
 				}
 			}
 			m.calculateTotalLines()

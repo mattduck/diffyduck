@@ -1,6 +1,7 @@
 package git
 
 import (
+	"io"
 	"os/exec"
 	"strings"
 )
@@ -92,6 +93,33 @@ func (g *RealGit) GetFileContent(ref, path string) (string, error) {
 	}
 
 	return string(out), nil
+}
+
+// GetFileContentReader returns a reader for streaming file content at a given ref.
+// The caller must close the returned ReadCloser when done.
+// The cleanup function must be called after closing the reader to wait for the git process.
+func (g *RealGit) GetFileContentReader(ref, path string) (io.ReadCloser, func() error, error) {
+	specifier := ref + ":" + path
+
+	cmd := exec.Command("git", "show", specifier)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+
+	cleanup := func() error {
+		return cmd.Wait()
+	}
+
+	return stdout, cleanup, nil
 }
 
 // GitError represents an error from a git command.

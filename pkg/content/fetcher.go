@@ -39,8 +39,19 @@ type Fetcher struct {
 	cache   map[string]string
 	cacheMu sync.RWMutex
 
+	// linesCache stores limited line content.
+	// Key format: "old:<path>" or "new:<path>"
+	linesCache   map[string]*linesResult
+	linesCacheMu sync.RWMutex
+
 	// onFetch is called when content is fetched (for testing).
 	onFetch func()
+}
+
+// linesResult holds the result of a limited lines fetch.
+type linesResult struct {
+	lines     []string
+	truncated bool
 }
 
 // NewFetcher creates a new content fetcher.
@@ -49,11 +60,12 @@ type Fetcher struct {
 // For ModeDiffUnstaged and ModeDiffCached, refs are ignored.
 func NewFetcher(g git.Git, mode Mode, ref1, ref2 string) *Fetcher {
 	return &Fetcher{
-		git:   g,
-		mode:  mode,
-		ref1:  ref1,
-		ref2:  ref2,
-		cache: make(map[string]string),
+		git:        g,
+		mode:       mode,
+		ref1:       ref1,
+		ref2:       ref2,
+		cache:      make(map[string]string),
+		linesCache: make(map[string]*linesResult),
 	}
 }
 
@@ -123,6 +135,135 @@ func (f *Fetcher) GetNewContent(path string) (string, error) {
 	f.cache[cacheKey] = content
 	f.cacheMu.Unlock()
 	return content, nil
+}
+
+// GetOldContentLines returns the old version of a file as lines with limits applied.
+// Returns lines, whether content was truncated, and any error.
+// Truncation occurs if byte limit, line limit, or line length limit is exceeded.
+func (f *Fetcher) GetOldContentLines(path string) ([]string, bool, error) {
+	cacheKey := "old:" + path
+
+	// Check cache with read lock
+	f.linesCacheMu.RLock()
+	if result, ok := f.linesCache[cacheKey]; ok {
+		f.linesCacheMu.RUnlock()
+		return result.lines, result.truncated, nil
+	}
+	f.linesCacheMu.RUnlock()
+
+	lines, truncated, err := f.fetchOldLines(path)
+	if err != nil {
+		if isFileNotFoundError(err) {
+			f.linesCacheMu.Lock()
+			f.linesCache[cacheKey] = &linesResult{lines: nil, truncated: false}
+			f.linesCacheMu.Unlock()
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	if f.onFetch != nil {
+		f.onFetch()
+	}
+
+	f.linesCacheMu.Lock()
+	f.linesCache[cacheKey] = &linesResult{lines: lines, truncated: truncated}
+	f.linesCacheMu.Unlock()
+	return lines, truncated, nil
+}
+
+// GetNewContentLines returns the new version of a file as lines with limits applied.
+// Returns lines, whether content was truncated, and any error.
+// Truncation occurs if byte limit, line limit, or line length limit is exceeded.
+func (f *Fetcher) GetNewContentLines(path string) ([]string, bool, error) {
+	cacheKey := "new:" + path
+
+	// Check cache with read lock
+	f.linesCacheMu.RLock()
+	if result, ok := f.linesCache[cacheKey]; ok {
+		f.linesCacheMu.RUnlock()
+		return result.lines, result.truncated, nil
+	}
+	f.linesCacheMu.RUnlock()
+
+	lines, truncated, err := f.fetchNewLines(path)
+	if err != nil {
+		if isFileNotFoundError(err) {
+			f.linesCacheMu.Lock()
+			f.linesCache[cacheKey] = &linesResult{lines: nil, truncated: false}
+			f.linesCacheMu.Unlock()
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	if f.onFetch != nil {
+		f.onFetch()
+	}
+
+	f.linesCacheMu.Lock()
+	f.linesCache[cacheKey] = &linesResult{lines: lines, truncated: truncated}
+	f.linesCacheMu.Unlock()
+	return lines, truncated, nil
+}
+
+func (f *Fetcher) fetchOldLines(path string) ([]string, bool, error) {
+	var ref string
+	switch f.mode {
+	case ModeShow:
+		ref = f.ref1 + "^"
+	case ModeDiffUnstaged:
+		ref = ""
+	case ModeDiffCached:
+		ref = "HEAD"
+	case ModeDiffRefs:
+		ref = f.ref1
+	default:
+		ref = "HEAD"
+	}
+	return f.fetchGitContentLines(ref, path)
+}
+
+func (f *Fetcher) fetchNewLines(path string) ([]string, bool, error) {
+	switch f.mode {
+	case ModeShow:
+		return f.fetchGitContentLines(f.ref1, path)
+	case ModeDiffUnstaged:
+		// Read from working tree
+		return f.readWorkingTreeFileLines(path)
+	case ModeDiffCached:
+		return f.fetchGitContentLines("", path)
+	case ModeDiffRefs:
+		return f.fetchGitContentLines(f.ref2, path)
+	default:
+		return f.fetchGitContentLines("HEAD", path)
+	}
+}
+
+func (f *Fetcher) fetchGitContentLines(ref, path string) ([]string, bool, error) {
+	reader, cleanup, err := f.git.GetFileContentReader(ref, path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer reader.Close()
+	defer cleanup()
+
+	return ReadLimitedLines(reader)
+}
+
+func (f *Fetcher) readWorkingTreeFileLines(path string) ([]string, bool, error) {
+	fullPath := path
+	if f.WorkDir != "" {
+		fullPath = filepath.Join(f.WorkDir, path)
+	}
+
+	file, err := os.Open(fullPath)
+	if err != nil {
+		return nil, false, err
+	}
+	defer file.Close()
+
+	return ReadLimitedLines(file)
 }
 
 func (f *Fetcher) fetchOld(path string) (string, error) {

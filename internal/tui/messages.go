@@ -2,10 +2,11 @@ package tui
 
 // FileContentLoadedMsg is sent when file content has been fetched for a single file.
 type FileContentLoadedMsg struct {
-	FileIndex  int
-	OldContent []string
-	NewContent []string
-	Err        error
+	FileIndex        int
+	OldContent       []string
+	NewContent       []string
+	ContentTruncated bool // true if content was truncated due to limits
+	Err              error
 }
 
 // AllContentLoadedMsg is sent when content for all files has been fetched.
@@ -15,10 +16,11 @@ type AllContentLoadedMsg struct {
 
 // FileContent holds the fetched content for a single file.
 type FileContent struct {
-	FileIndex  int
-	OldContent []string
-	NewContent []string
-	Err        error
+	FileIndex        int
+	OldContent       []string
+	NewContent       []string
+	ContentTruncated bool // true if content was truncated due to limits
+	Err              error
 }
 
 // HighlightReadyMsg is sent when syntax highlighting spans are ready for a file.

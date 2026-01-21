@@ -1,13 +1,13 @@
 package tui
 
 import (
-	"strings"
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // FetchFileContent returns a command that fetches content for one file.
+// Content is fetched with limits applied (max lines, max line length, max bytes).
 func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 	if m.fetcher == nil {
 		return nil
@@ -24,32 +24,37 @@ func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 		newPath := stripPathPrefix(fp.NewPath)
 
 		var oldContent, newContent []string
+		var truncated bool
 
 		// Fetch old content (unless it's a new file)
 		if fp.OldPath != "/dev/null" {
-			content, err := fetcher.GetOldContent(oldPath)
-			if err == nil && content != "" {
-				oldContent = strings.Split(content, "\n")
+			lines, wasTruncated, err := fetcher.GetOldContentLines(oldPath)
+			if err == nil {
+				oldContent = lines
+				truncated = truncated || wasTruncated
 			}
 		}
 
 		// Fetch new content (unless it's a deleted file)
 		if fp.NewPath != "/dev/null" {
-			content, err := fetcher.GetNewContent(newPath)
-			if err == nil && content != "" {
-				newContent = strings.Split(content, "\n")
+			lines, wasTruncated, err := fetcher.GetNewContentLines(newPath)
+			if err == nil {
+				newContent = lines
+				truncated = truncated || wasTruncated
 			}
 		}
 
 		return FileContentLoadedMsg{
-			FileIndex:  fileIndex,
-			OldContent: oldContent,
-			NewContent: newContent,
+			FileIndex:        fileIndex,
+			OldContent:       oldContent,
+			NewContent:       newContent,
+			ContentTruncated: truncated,
 		}
 	}
 }
 
 // FetchAllFileContent returns a command that fetches content for all files concurrently.
+// Content is fetched with limits applied (max lines, max line length, max bytes).
 func (m Model) FetchAllFileContent() tea.Cmd {
 	if m.fetcher == nil {
 		return nil
@@ -74,27 +79,31 @@ func (m Model) FetchAllFileContent() tea.Cmd {
 				newPath := stripPathPrefix(fp.newPath)
 
 				var oldContent, newContent []string
+				var truncated bool
 
 				// Fetch old content (unless it's a new file)
 				if fp.oldPath != "/dev/null" {
-					content, err := fetcher.GetOldContent(oldPath)
-					if err == nil && content != "" {
-						oldContent = strings.Split(content, "\n")
+					lines, wasTruncated, err := fetcher.GetOldContentLines(oldPath)
+					if err == nil {
+						oldContent = lines
+						truncated = truncated || wasTruncated
 					}
 				}
 
 				// Fetch new content (unless it's a deleted file)
 				if fp.newPath != "/dev/null" {
-					content, err := fetcher.GetNewContent(newPath)
-					if err == nil && content != "" {
-						newContent = strings.Split(content, "\n")
+					lines, wasTruncated, err := fetcher.GetNewContentLines(newPath)
+					if err == nil {
+						newContent = lines
+						truncated = truncated || wasTruncated
 					}
 				}
 
 				results[idx] = FileContent{
-					FileIndex:  idx,
-					OldContent: oldContent,
-					NewContent: newContent,
+					FileIndex:        idx,
+					OldContent:       oldContent,
+					NewContent:       newContent,
+					ContentTruncated: truncated,
 				}
 			}(i, filePairInfo{oldPath: fp.OldPath, newPath: fp.NewPath})
 		}

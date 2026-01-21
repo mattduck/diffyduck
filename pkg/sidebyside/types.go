@@ -66,7 +66,8 @@ type FilePair struct {
 	NewContent []string // full new file lines (nil until fetched)
 
 	// Truncation
-	Truncated bool // true if lines were truncated due to limit
+	Truncated        bool // true if diff lines were truncated due to limit
+	ContentTruncated bool // true if fetched content was truncated due to limit
 }
 
 // HasContent returns true if full file content has been loaded.

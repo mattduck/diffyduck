@@ -213,7 +213,7 @@ func (m Model) buildRows() []displayRow {
 				rows = append(rows, expandedRows...)
 
 				// Add file truncation indicator if this file was truncated
-				if fp.Truncated {
+				if fp.Truncated || fp.ContentTruncated {
 					rows = append(rows, displayRow{
 						fileIndex:             fileIdx,
 						isTruncationIndicator: true,

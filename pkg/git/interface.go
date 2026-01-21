@@ -1,5 +1,7 @@
 package git
 
+import "io"
+
 // Git provides an interface for git operations.
 // This allows mocking in tests.
 type Git interface {
@@ -15,4 +17,9 @@ type Git interface {
 	// The ref can be a commit, branch, tag, or empty string for the index.
 	// Uses git show <ref>:<path> internally.
 	GetFileContent(ref, path string) (string, error)
+
+	// GetFileContentReader returns a reader for streaming file content at a given ref.
+	// The caller must close the returned ReadCloser when done.
+	// The cleanup function must be called after closing the reader to wait for the git process.
+	GetFileContentReader(ref, path string) (io.ReadCloser, func() error, error)
 }
