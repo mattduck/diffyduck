@@ -3,14 +3,14 @@
 ────────────────────────────┐
   #1   ◐ ~ example.go +5 -2 │ ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
 ────────────────────────────┘
-▶    1   package main                  ┬ ▶    1   package main                 
-~    2 ░ import "fmt"                ░ │ ~    2 ░ import (                    ░
-                                       │ +    3 ░     "fmt"                   ░
-                                       │ +    4 ░     "os"                    ░
-                                       │ +    5 ░ )                           ░
-     3   func main() {                 │      6   func main() {                
-~    4 ░     fmt.Println("hello")    ░ │ ~    7 ░     fmt.Println(os.Args)    ░
-     5   }                             ┴      8   }                            
+▶    1   package main                  ╏ ▶    1   package main                 
+~    2 ░ import "fmt"                ░ ╏ ~    2 ░ import (                    ░
+                                       ╏ +    3 ░     "fmt"                   ░
+                                       ╏ +    4 ░     "os"                    ░
+                                       ╏ +    5 ░ )                           ░
+     3   func main() {                 ╏      6   func main() {                
+~    4 ░     fmt.Println("hello")    ░ ╏ ~    7 ░     fmt.Println(os.Args)    ░
+     5   }                             ╏      8   }                            
 
 
 

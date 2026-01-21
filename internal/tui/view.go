@@ -625,27 +625,26 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 // renderHunkSeparator renders a separator line between hunks.
 func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
-	// Fill with light shading, with cross where vertical divider meets horizontal
-	leftShade := strings.Repeat("░", halfWidth)
-	rightShade := strings.Repeat("░", halfWidth)
-	separator := hunkSeparatorStyle.Render("┼")
+	// Uniform shading (fg=8) across full width - breaks the vertical divider at chunk boundaries
+	shadeStyle := hunkSeparatorStyle
 
-	if isCursorRow {
-		// Cursor row: show arrows and highlight gutter area
-		lineNumWidth := m.lineNumWidth()
-		contentWidth := halfWidth - lineNumWidth - 3
-		if contentWidth < 0 {
-			contentWidth = 0
-		}
-		gutterShade := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
-		contentShade := interFileStyle.Render(strings.Repeat("░", contentWidth))
-
-		return cursorArrowStyle.Render("▶") + interFileStyle.Render("░") + gutterShade + interFileStyle.Render("░") + contentShade + interFileStyle.Render("░") + separator + interFileStyle.Render("░") +
-			cursorArrowStyle.Render("▶") + interFileStyle.Render("░") + gutterShade + interFileStyle.Render("░") + contentShade
+	if !isCursorRow {
+		return shadeStyle.Render(strings.Repeat("░", 2*halfWidth+3))
 	}
 
-	// Normal rendering: shading with │ in the middle
-	return interFileStyle.Render(leftShade) + " " + separator + " " + interFileStyle.Render(rightShade)
+	// Cursor row: arrows and highlighted line number areas
+	lineNumWidth := m.lineNumWidth()
+	lineNumShade := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	contentWidth := halfWidth - lineNumWidth - 4
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+	contentShade := shadeStyle.Render(strings.Repeat("░", contentWidth))
+
+	leftHalf := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + contentShade
+	rightHalf := contentShade + cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░")
+
+	return leftHalf + shadeStyle.Render("░░░") + rightHalf
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
@@ -1492,13 +1491,8 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine bool) string {
 	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
 
-	// Choose separator based on position: ┬ for first line, ┴ for last line, │ for middle
-	separatorChar := "│"
-	if isFirstLine {
-		separatorChar = "┬"
-	} else if isLastLine {
-		separatorChar = "┴"
-	}
+	// Vertical divider between left and right sides (heavy double dash, fg=8)
+	separatorChar := "╏"
 
 	// Check if this is a modified pair where we should show inline diff
 	isModifiedPair := pair.Left.Type == sidebyside.Removed && pair.Right.Type == sidebyside.Added

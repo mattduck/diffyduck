@@ -684,11 +684,11 @@ func TestView_HunkSeparator(t *testing.T) {
 
 	output := m.View()
 
-	// Should contain a separator line with shading and a cross separator
-	// Format: ░░░░ ┼ ░░░░
-	assert.Contains(t, output, "┼")
-	// Should have shading on both sides
+	// Should contain a separator line with continuous shading (no vertical divider)
+	// Format: ░░░░░░░░░░░░ (full width of shading)
 	assert.Contains(t, output, "░░░░")
+	// Should NOT contain cross separator (we use continuous shading instead)
+	assert.NotContains(t, output, "┼")
 }
 
 func TestView_BlankLineBeforeFileHeader(t *testing.T) {
@@ -3591,10 +3591,11 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the hunk separator line (contains ┼ cross character, not the header)
+	// Find the hunk separator line (full-width shaded line without line numbers, not the header)
+	// Hunk separators are filled with ░ and don't contain file names or line numbers
 	var hunkSepLine string
 	for i, line := range lines {
-		if i > 0 && strings.Contains(line, "┼") && !strings.Contains(line, "test.go") {
+		if i > 2 && strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "100") && !strings.Contains(line, "first") {
 			hunkSepLine = line
 			break
 		}
@@ -3690,9 +3691,9 @@ func TestView_FileHeaderNoVerticalDivider(t *testing.T) {
 	assert.NotContains(t, headerLine, "│", "file header should not have vertical divider")
 }
 
-func TestView_HunkSeparatorCrossInMiddle(t *testing.T) {
-	// Hunk separator (when cursor is NOT on it) should have ─┼─ pattern
-	// with the cross centered between left and right sides
+func TestView_HunkSeparatorNoCrossInMiddle(t *testing.T) {
+	// Hunk separator should NOT have a vertical divider (no ┼ cross)
+	// This creates visual separation between chunks
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
@@ -3723,19 +3724,19 @@ func TestView_HunkSeparatorCrossInMiddle(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the hunk separator line (contains ┼, not the header)
+	// Find the hunk separator line (full-width shaded line, not file header)
 	var hunkLine string
-	for _, line := range lines {
-		if strings.Contains(line, "┼") && !strings.Contains(line, "test.go") {
+	for i, line := range lines {
+		if i > 2 && strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "100") && !strings.Contains(line, "first") && !strings.Contains(line, "second") {
 			hunkLine = line
 			break
 		}
 	}
 
 	require.NotEmpty(t, hunkLine, "should find hunk separator line")
-	// Should have shading with ┼ in the middle
+	// Should have shading but NO cross character
 	assert.Contains(t, hunkLine, "░", "hunk separator should have shading")
-	assert.Contains(t, hunkLine, "┼", "hunk separator should have cross in middle")
+	assert.NotContains(t, hunkLine, "┼", "hunk separator should NOT have cross in middle")
 }
 
 func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
@@ -3810,9 +3811,9 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	contentArrowCount := strings.Count(contentLine, "▶")
 	assert.Equal(t, 2, contentArrowCount, "content line with cursor should have two arrows")
 
-	// Content line should have a separator (│ or ┬ for first line or ┴ for last line)
-	hasSeparator := strings.Contains(contentLine, "│") || strings.Contains(contentLine, "┬") || strings.Contains(contentLine, "┴")
-	assert.True(t, hasSeparator, "content line should have center separator (│, ┬, or ┴)")
+	// Content line should have a separator (╏ heavy double dash vertical)
+	hasSeparator := strings.Contains(contentLine, "╏")
+	assert.True(t, hasSeparator, "content line should have center separator (╏)")
 }
 
 func TestStatusBar_PagerIndicator(t *testing.T) {
