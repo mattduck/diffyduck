@@ -791,3 +791,292 @@ func TestPairsHighlighting_EmptyPairs(t *testing.T) {
 		t.Error("Expected nil spans for file with no pairs")
 	}
 }
+
+func TestStructureExtraction_ViewGoFile(t *testing.T) {
+	// Test structure extraction on actual view.go content
+	// This tests that both types and methods are extracted correctly
+	viewGoContent := `package tui
+
+import "strings"
+
+var headerStyle = lipgloss.NewStyle()
+
+// View implements tea.Model.
+func (m Model) View() string {
+	return ""
+}
+
+// displayRow represents one row in the view
+type displayRow struct {
+	fileIndex int
+	isHeader  bool
+}
+
+// buildRows creates all displayable rows from the model data.
+func (m Model) buildRows() []displayRow {
+	var rows []displayRow
+	return rows
+}
+
+func helperFunction() {
+	// standalone function
+}
+`
+	lines := strings.Split(viewGoContent, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/view.go",
+			NewPath:    "b/view.go",
+			FoldLevel:  sidebyside.FoldExpanded,
+			NewContent: lines,
+			OldContent: lines,
+			Pairs: []sidebyside.LinePair{
+				{
+					Left:  sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context},
+					Right: sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context},
+				},
+			},
+		},
+	}
+
+	m := New(files)
+	defer m.highlighter.Close()
+
+	cmd := m.RequestHighlight(0)
+	if cmd == nil {
+		t.Fatal("RequestHighlight returned nil")
+	}
+
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	if !ok {
+		t.Fatalf("Expected HighlightReadyMsg, got %T", msg)
+	}
+
+	if len(hlMsg.NewStructure) == 0 {
+		t.Fatal("No structure entries extracted")
+	}
+
+	m.storeHighlightSpans(hlMsg)
+
+	// Log all extracted entries
+	t.Log("Extracted structure entries:")
+	for _, e := range m.structureMaps[0].NewStructure.Entries {
+		t.Logf("  %s %s (lines %d-%d)", e.Kind, e.Name, e.StartLine, e.EndLine)
+	}
+
+	// Verify we found the type
+	entries8 := m.getStructureAtLine(0, 8)
+	t.Logf("Structure at line 8 (inside View method): %+v", entries8)
+
+	entries14 := m.getStructureAtLine(0, 14)
+	t.Logf("Structure at line 14 (inside displayRow): %+v", entries14)
+
+	entries20 := m.getStructureAtLine(0, 20)
+	t.Logf("Structure at line 20 (inside buildRows): %+v", entries20)
+
+	entries25 := m.getStructureAtLine(0, 25)
+	t.Logf("Structure at line 25 (inside helperFunction): %+v", entries25)
+
+	// Verify specific entries exist
+	if len(entries8) == 0 {
+		t.Error("Expected to find structure at line 8 (View method)")
+	}
+	if len(entries14) == 0 {
+		t.Error("Expected to find structure at line 14 (displayRow type)")
+	}
+	if len(entries20) == 0 {
+		t.Error("Expected to find structure at line 20 (buildRows method)")
+	}
+	if len(entries25) == 0 {
+		t.Error("Expected to find structure at line 25 (helperFunction)")
+	}
+}
+
+func TestStructureExtraction_LineTruncationBreaksSyntax(t *testing.T) {
+	// Test that line truncation (adding [...truncated]) breaks tree-sitter parsing.
+	// When a line is truncated mid-syntax, tree-sitter can't determine function boundaries.
+	//
+	// This simulates view.go where line 187 is a long rows = append(...) that gets
+	// truncated, breaking the syntax inside buildRows function.
+	contentWithTruncatedLine := `package main
+
+type MyType struct {
+	field int
+}
+
+func CompleteBeforeTruncation() {
+	x := 1
+}
+
+func FunctionWithTruncatedLine() {
+	// This line simulates a long line that gets truncated mid-syntax
+	rows = append(rows, SomeStruct{field1: val1, field2: val2, field3[...truncated]
+	y := 2
+}
+
+func FunctionAfterTruncation() {
+	z := 3
+}
+`
+	lines := strings.Split(contentWithTruncatedLine, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/test.go",
+			NewPath:    "b/test.go",
+			FoldLevel:  sidebyside.FoldExpanded,
+			NewContent: lines,
+			OldContent: lines,
+			Pairs: []sidebyside.LinePair{
+				{
+					Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+				},
+			},
+		},
+	}
+
+	m := New(files)
+	defer m.highlighter.Close()
+
+	cmd := m.RequestHighlight(0)
+	msg := cmd()
+	hlMsg := msg.(HighlightReadyMsg)
+	m.storeHighlightSpans(hlMsg)
+
+	// Log what was extracted
+	t.Log("Extracted entries (may be incomplete due to syntax errors):")
+	if m.structureMaps[0] != nil && m.structureMaps[0].NewStructure != nil {
+		for _, e := range m.structureMaps[0].NewStructure.Entries {
+			t.Logf("  %s %s (lines %d-%d)", e.Kind, e.Name, e.StartLine, e.EndLine)
+		}
+	}
+
+	// Check what was found
+	entriesType := m.getStructureAtLine(0, 4)
+	entriesComplete := m.getStructureAtLine(0, 8)
+	entriesTruncated := m.getStructureAtLine(0, 13)
+	entriesAfter := m.getStructureAtLine(0, 19)
+
+	t.Logf("Line 4 (MyType): %+v", entriesType)
+	t.Logf("Line 8 (CompleteBeforeTruncation): %+v", entriesComplete)
+	t.Logf("Line 13 (FunctionWithTruncatedLine): %+v", entriesTruncated)
+	t.Logf("Line 19 (FunctionAfterTruncation): %+v", entriesAfter)
+
+	// MyType should be found (before any truncation)
+	if len(entriesType) == 0 {
+		t.Error("Expected to find MyType at line 4")
+	}
+
+	// CompleteBeforeTruncation should be found
+	if len(entriesComplete) == 0 {
+		t.Error("Expected to find CompleteBeforeTruncation at line 8")
+	}
+
+	// These may or may not be found depending on tree-sitter error recovery
+	// The point is to see how truncation affects parsing
+	if len(entriesTruncated) == 0 {
+		t.Log("FunctionWithTruncatedLine NOT found - truncation broke parsing")
+	}
+	if len(entriesAfter) == 0 {
+		t.Log("FunctionAfterTruncation NOT found - truncation broke parsing of subsequent functions")
+	}
+}
+
+func TestStructureExtraction_TruncatedFile(t *testing.T) {
+	// Simulate a file that was truncated due to size limits.
+	// Tree-sitter should still parse the available content and extract
+	// structure for complete functions, even if the file ends mid-syntax.
+	//
+	// This simulates a file truncated at line 12 - the second function
+	// is incomplete (no closing brace), but the first function should
+	// still have valid structure extracted.
+	truncatedContent := []string{
+		"package main",
+		"",
+		"func CompleteFunction() {",
+		"	x := 1",
+		"	y := 2",
+		"}",
+		"",
+		"func IncompleteFunction() {",
+		"	a := 1",
+		"	b := 2",
+		"	// File truncated here - no closing brace",
+	}
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:             "a/large.go",
+			NewPath:             "b/large.go",
+			FoldLevel:           sidebyside.FoldExpanded,
+			NewContent:          truncatedContent,
+			OldContent:          truncatedContent,
+			NewContentTruncated: true, // Marked as truncated
+			Pairs: []sidebyside.LinePair{
+				{
+					Left:  sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
+					Right: sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
+				},
+			},
+		},
+	}
+
+	m := New(files)
+	defer m.highlighter.Close()
+
+	// Trigger full content highlighting (which extracts structure)
+	cmd := m.RequestHighlight(0)
+	if cmd == nil {
+		t.Fatal("RequestHighlight returned nil command")
+	}
+
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	if !ok {
+		t.Fatalf("Expected HighlightReadyMsg, got %T", msg)
+	}
+
+	// Structure should be extracted despite truncation
+	if len(hlMsg.NewStructure) == 0 {
+		t.Fatal("Expected structure entries to be extracted from truncated content")
+	}
+
+	// Store the structure
+	m.storeHighlightSpans(hlMsg)
+
+	// Verify structureMaps was populated
+	if m.structureMaps[0] == nil || m.structureMaps[0].NewStructure == nil {
+		t.Fatal("structureMaps should be populated for truncated file")
+	}
+
+	// Look up structure at line 4 (inside CompleteFunction)
+	entries := m.getStructureAtLine(0, 4)
+	if len(entries) == 0 {
+		t.Fatal("Should find structure entries at line 4 (inside CompleteFunction)")
+	}
+
+	// Verify we found CompleteFunction
+	found := false
+	for _, e := range entries {
+		if e.Name == "CompleteFunction" && e.Kind == "func" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected to find CompleteFunction at line 4, got: %+v", entries)
+	}
+
+	// Line 9 should be inside IncompleteFunction (even though it's truncated)
+	entries9 := m.getStructureAtLine(0, 9)
+	if len(entries9) == 0 {
+		t.Log("Note: IncompleteFunction not found at line 9 - tree-sitter may not have parsed incomplete function")
+	} else {
+		for _, e := range entries9 {
+			t.Logf("Found at line 9: %s %s (lines %d-%d)", e.Kind, e.Name, e.StartLine, e.EndLine)
+		}
+	}
+}

@@ -19,16 +19,34 @@ func TestReadLimitedLines_NormalContent(t *testing.T) {
 	assert.Equal(t, []string{"line1", "line2", "line3"}, lines)
 }
 
-func TestReadLimitedLines_LineLengthLimit(t *testing.T) {
-	// Create a line longer than MaxLineLength
+func TestReadLimitedLines_LongLinesNotTruncated(t *testing.T) {
+	// ReadLimitedLines no longer truncates long lines because:
+	// 1. The diff parser already handles line truncation for display
+	// 2. Truncating lines breaks syntax for tree-sitter parsing
 	longLine := strings.Repeat("x", diff.MaxLineLength+100)
 	content := longLine + "\nshort"
 	reader := strings.NewReader(content)
 
 	lines, truncated, err := ReadLimitedLines(reader)
 	require.NoError(t, err)
+	assert.False(t, truncated, "long lines should NOT trigger truncation flag")
+	assert.Len(t, lines, 2)
+
+	// Long line should NOT be truncated
+	assert.Len(t, lines[0], diff.MaxLineLength+100)
+	assert.False(t, strings.HasSuffix(lines[0], diff.LineTruncationText))
+}
+
+func TestReadLimitedLinesWithLimits_LineLengthLimit(t *testing.T) {
+	// When explicitly passing maxLineLen > 0, lines should be truncated
+	longLine := strings.Repeat("x", diff.MaxLineLength+100)
+	content := longLine + "\nshort"
+	reader := strings.NewReader(content)
+
+	lines, truncated, err := ReadLimitedLinesWithLimits(reader, diff.MaxLinesPerFile, diff.MaxLineLength, diff.MaxContentBytes)
+	require.NoError(t, err)
 	assert.True(t, truncated, "should be truncated due to long line")
-	assert.Len(t, lines, 2) // long line (truncated), short
+	assert.Len(t, lines, 2)
 
 	// First line should be truncated with suffix
 	assert.Len(t, lines[0], diff.MaxLineLength)
@@ -71,17 +89,20 @@ func TestReadLimitedLines_ByteLimit(t *testing.T) {
 }
 
 func TestReadLimitedLines_MinifiedJS(t *testing.T) {
-	// Simulate minified JS: one very long line
-	minifiedLine := strings.Repeat("var x=1;", 100000) // ~800KB single line
-	reader := strings.NewReader(minifiedLine)
+	// Simulate minified JS: multiple long lines
+	// Test that long lines are NOT truncated per-line (only by byte limit)
+	longLine := strings.Repeat("var x=1;", 1000) // ~8KB line, exceeds MaxLineLength (300) but not byte limit
+	content := longLine + "\n" + longLine + "\n" + longLine
+	reader := strings.NewReader(content)
 
-	// Use default limits
 	lines, truncated, err := ReadLimitedLines(reader)
 	require.NoError(t, err)
-	assert.True(t, truncated, "minified content should be truncated")
-	assert.Len(t, lines, 1, "should have exactly 1 line")
-	assert.Len(t, lines[0], diff.MaxLineLength, "line should be truncated to max length")
-	assert.True(t, strings.HasSuffix(lines[0], diff.LineTruncationText))
+	assert.False(t, truncated, "should NOT be truncated (under byte and line count limits)")
+	assert.Len(t, lines, 3)
+
+	// Lines should NOT be truncated at MaxLineLength
+	assert.Greater(t, len(lines[0]), diff.MaxLineLength, "line should NOT be truncated at MaxLineLength")
+	assert.False(t, strings.HasSuffix(lines[0], diff.LineTruncationText), "should NOT have truncation suffix")
 }
 
 func TestReadLimitedLines_ByteLimitStopsReading(t *testing.T) {

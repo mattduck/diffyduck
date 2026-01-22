@@ -115,6 +115,8 @@ type displayRow struct {
 	truncationMessage     string // message to display
 	truncateOld           bool   // show truncation on left (old) side
 	truncateNew           bool   // show truncation on right (new) side
+	// Hunk separator fields
+	chunkStartLine int // first line of the following chunk (new/right side), for breadcrumbs
 }
 
 // buildRows creates all displayable rows from the model data.
@@ -266,7 +268,9 @@ func (m Model) buildRows() []displayRow {
 			for i, pair := range fp.Pairs {
 				// Check for gap in line numbers (hunk boundary)
 				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Left.Num, pair.Right.Num) {
-					rows = append(rows, displayRow{fileIndex: fileIdx, isSeparator: true})
+					// Find first non-zero Right.Num in this chunk for breadcrumb lookup
+					chunkStartLine := findFirstRightLineNum(fp.Pairs, i)
+					rows = append(rows, displayRow{fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
 				}
 
 				row := displayRow{fileIndex: fileIdx, pair: pair}
@@ -562,6 +566,33 @@ func isHunkBoundary(prevLeft, prevRight, currLeft, currRight int) bool {
 	return false
 }
 
+// findFirstRightLineNum finds the first non-zero Right.Num starting at index start.
+// Used to find the line number for breadcrumb lookup when a chunk starts with deletions.
+func findFirstRightLineNum(pairs []sidebyside.LinePair, start int) int {
+	for i := start; i < len(pairs); i++ {
+		if pairs[i].Right.Num > 0 {
+			return pairs[i].Right.Num
+		}
+		// Stop at next hunk boundary to avoid crossing into another chunk
+		if i > start {
+			prevLeft := 0
+			prevRight := 0
+			if i > 0 {
+				if pairs[i-1].Left.Num > 0 {
+					prevLeft = pairs[i-1].Left.Num
+				}
+				if pairs[i-1].Right.Num > 0 {
+					prevRight = pairs[i-1].Right.Num
+				}
+			}
+			if isHunkBoundary(prevLeft, prevRight, pairs[i].Left.Num, pairs[i].Right.Num) {
+				break
+			}
+		}
+	}
+	return 0
+}
+
 // getVisibleRows returns the rendered rows visible in the current viewport.
 func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	var visible []string
@@ -610,7 +641,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.isHeader {
 			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.borderVisible, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow))
 		} else if row.isSeparator {
-			visible = append(visible, m.renderHunkSeparator(halfWidth, isCursorRow))
+			visible = append(visible, m.renderHunkSeparator(row, halfWidth, isCursorRow))
 		} else if row.isSummary {
 			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
 		} else if row.isTruncationIndicator {
@@ -624,15 +655,36 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 }
 
 // renderHunkSeparator renders a separator line between hunks.
-func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
-	// Uniform shading (fg=8) across full width - breaks the vertical divider at chunk boundaries
+// If structure data is available, shows breadcrumbs on the right side.
+func (m Model) renderHunkSeparator(row displayRow, halfWidth int, isCursorRow bool) string {
 	shadeStyle := hunkSeparatorStyle
 
-	if !isCursorRow {
-		return shadeStyle.Render(strings.Repeat("░", 2*halfWidth+3))
+	// Try to get breadcrumb for the chunk start line (new/right side only)
+	var breadcrumb string
+	if row.chunkStartLine > 0 {
+		entries := m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
+		breadcrumb = formatBreadcrumbs(entries)
 	}
 
-	// Cursor row: arrows and highlighted line number areas
+	// Build right half: breadcrumb (truncated) + ░ padding, or all ░
+	var rightHalf string
+	if breadcrumb != "" {
+		// Truncate if needed (no ellipsis, just cut)
+		breadcrumb = runewidth.Truncate(breadcrumb, halfWidth, "")
+		displayWidth := runewidth.StringWidth(breadcrumb)
+		padding := halfWidth - displayWidth
+		rightHalf = shadeStyle.Render(breadcrumb + strings.Repeat("░", padding))
+	} else {
+		rightHalf = shadeStyle.Render(strings.Repeat("░", halfWidth))
+	}
+
+	if !isCursorRow {
+		// Left half all shading
+		leftHalf := shadeStyle.Render(strings.Repeat("░", halfWidth))
+		return leftHalf + shadeStyle.Render("░░░") + rightHalf
+	}
+
+	// Cursor row: arrows and highlighted line number areas on left side only
 	lineNumWidth := m.lineNumWidth()
 	lineNumShade := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
 	contentWidth := halfWidth - lineNumWidth - 4
@@ -642,7 +694,6 @@ func (m Model) renderHunkSeparator(halfWidth int, isCursorRow bool) string {
 	contentShade := shadeStyle.Render(strings.Repeat("░", contentWidth))
 
 	leftHalf := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + contentShade
-	rightHalf := contentShade + cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░")
 
 	return leftHalf + shadeStyle.Render("░░░") + rightHalf
 }

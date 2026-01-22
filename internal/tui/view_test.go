@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 var update = flag.Bool("update", false, "update golden files")
@@ -3737,6 +3738,228 @@ func TestView_HunkSeparatorNoCrossInMiddle(t *testing.T) {
 	// Should have shading but NO cross character
 	assert.Contains(t, hunkLine, "░", "hunk separator should have shading")
 	assert.NotContains(t, hunkLine, "┼", "hunk separator should NOT have cross in middle")
+}
+
+func TestView_HunkSeparatorBreadcrumbs(t *testing.T) {
+	// Hunk separator should show breadcrumbs (function/type name) on the right side
+	// when structure data is available (file was expanded and parsed)
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldNormal, // Normal view (not expanded)
+				Pairs: []sidebyside.LinePair{
+					// First hunk: lines 1-3 (outside any function)
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 3, Content: "import \"fmt\"", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 3, Content: "import \"fmt\"", Type: sidebyside.Context},
+					},
+					// Gap - next hunk is inside func MyFunction (lines 10-50)
+					{
+						Left:  sidebyside.Line{Num: 15, Content: "    x := 1", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 15, Content: "    x := 1", Type: sidebyside.Context},
+					},
+					{
+						Left:  sidebyside.Line{Num: 16, Content: "    y := 2", Type: sidebyside.Removed},
+						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					},
+					{
+						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Right: sidebyside.Line{Num: 16, Content: "    y := 3", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		width:  100,
+		height: 20,
+		keys:   DefaultKeyMap(),
+		// Initialize the structureMaps - simulating that the file was previously expanded
+		structureMaps: map[int]*FileStructure{
+			0: {
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 10, EndLine: 50, Name: "MyFunction", Kind: "func"},
+				}),
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Find the hunk separator line
+	var hunkLine string
+	for _, line := range lines {
+		// Hunk separator has shading but no line numbers, no file name
+		if strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "package") {
+			// Check it's not a content line (doesn't have line numbers like "15" or "16")
+			if !strings.Contains(line, " 15 ") && !strings.Contains(line, " 16 ") && !strings.Contains(line, " 1 ") && !strings.Contains(line, " 2 ") && !strings.Contains(line, " 3 ") {
+				hunkLine = line
+				break
+			}
+		}
+	}
+
+	require.NotEmpty(t, hunkLine, "should find hunk separator line")
+	// The separator should contain the function name as a breadcrumb
+	assert.Contains(t, hunkLine, "func MyFunction", "hunk separator should show breadcrumb for the function containing the chunk start")
+}
+
+func TestView_HunkSeparatorBreadcrumbs_NoBreadcrumbWithoutStructure(t *testing.T) {
+	// When structure data is not available, hunk separator should just show shading
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+					},
+					// Gap
+					{
+						Left:  sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:         100,
+		height:        15,
+		keys:          DefaultKeyMap(),
+		structureMaps: make(map[int]*FileStructure), // Empty - no structure data
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Find the hunk separator line
+	var hunkLine string
+	for _, line := range lines {
+		if strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "line") {
+			if !strings.Contains(line, " 1 ") && !strings.Contains(line, " 100 ") {
+				hunkLine = line
+				break
+			}
+		}
+	}
+
+	require.NotEmpty(t, hunkLine, "should find hunk separator line")
+	// Without structure, should just be all shading
+	assert.NotContains(t, hunkLine, "func", "hunk separator without structure should not have breadcrumb")
+}
+
+func TestView_HunkSeparatorBreadcrumbs_RealHighlightFlow(t *testing.T) {
+	// Test the real flow: content is loaded, highlighting extracts structure,
+	// then shrinking to normal view should show breadcrumbs in hunk separators
+	goCode := `package main
+
+func MyFunction() {
+	x := 1
+	y := 2
+	z := 3
+}
+
+func AnotherFunction() {
+	a := 1
+}`
+	lines := strings.Split(goCode, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/test.go",
+			NewPath:   "b/test.go",
+			FoldLevel: sidebyside.FoldNormal, // Normal view
+			Pairs: []sidebyside.LinePair{
+				// First hunk: lines 1-2 (package declaration)
+				{
+					Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+				},
+				{
+					Left:  sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+					Right: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+				},
+				// Gap here - next hunk is inside MyFunction (line 4 = "x := 1")
+				{
+					Left:  sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
+					Right: sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
+				},
+				{
+					Left:  sidebyside.Line{Num: 5, Content: "	y := 2", Type: sidebyside.Removed},
+					Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+				},
+				{
+					Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					Right: sidebyside.Line{Num: 5, Content: "	y := 99", Type: sidebyside.Added},
+				},
+			},
+			// Full content is available (simulating file was expanded then shrunk)
+			NewContent: lines,
+			OldContent: lines,
+		},
+	}
+
+	m := New(files)
+	defer m.highlighter.Close()
+
+	// Simulate the highlight flow that happens when file is expanded
+	cmd := m.RequestHighlight(0)
+	require.NotNil(t, cmd, "RequestHighlight should return a command")
+
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	require.True(t, ok, "Expected HighlightReadyMsg, got %T", msg)
+
+	// Verify structure was extracted
+	require.NotEmpty(t, hlMsg.NewStructure, "NewStructure should be populated with Go functions")
+
+	// Store the highlight data (this is what Update does)
+	m.storeHighlightSpans(hlMsg)
+
+	// Verify structureMaps was populated
+	require.NotNil(t, m.structureMaps[0], "structureMaps should be populated for file 0")
+	require.NotNil(t, m.structureMaps[0].NewStructure, "NewStructure should be set")
+
+	// Verify we can look up structure at line 4 (inside MyFunction)
+	entries := m.getStructureAtLine(0, 4)
+	require.NotEmpty(t, entries, "Should find structure entries at line 4")
+	assert.Equal(t, "MyFunction", entries[0].Name, "Line 4 should be inside MyFunction")
+
+	// Now render and check the hunk separator
+	m.width = 100
+	m.height = 20
+	m.calculateTotalLines()
+
+	output := m.View()
+	outputLines := strings.Split(output, "\n")
+
+	// Find the hunk separator line (has ░ but no line numbers or content)
+	var hunkLine string
+	for _, line := range outputLines {
+		if strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "package") && !strings.Contains(line, "x :=") {
+			if !strings.Contains(line, " 1 ") && !strings.Contains(line, " 2 ") && !strings.Contains(line, " 4 ") && !strings.Contains(line, " 5 ") {
+				hunkLine = line
+				break
+			}
+		}
+	}
+
+	require.NotEmpty(t, hunkLine, "should find hunk separator line")
+	// The separator should contain the function name as a breadcrumb
+	assert.Contains(t, hunkLine, "func MyFunction", "hunk separator should show 'func MyFunction' breadcrumb")
 }
 
 func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {

@@ -11,16 +11,21 @@ import (
 // It stops reading when any of these limits is reached:
 // - MaxLinesPerFile (10000 lines)
 // - MaxContentBytes (1MB total bytes read)
-// - MaxLineLength is applied to each line (300 chars, truncated with suffix)
+//
+// Note: Per-line truncation is NOT applied here because:
+// 1. The diff parser already handles line truncation for diff display
+// 2. Truncating lines breaks syntax for tree-sitter parsing (structure/highlighting)
+// 3. The expanded view can handle line truncation at render time if needed
 //
 // Returns the lines, whether truncation occurred, and any error.
-// Truncation is true if we hit any limit (bytes, lines, or a line was truncated).
+// Truncation is true if we hit any limit (bytes or lines).
 func ReadLimitedLines(r io.Reader) ([]string, bool, error) {
-	return ReadLimitedLinesWithLimits(r, diff.MaxLinesPerFile, diff.MaxLineLength, diff.MaxContentBytes)
+	return ReadLimitedLinesWithLimits(r, diff.MaxLinesPerFile, 0, diff.MaxContentBytes)
 }
 
 // ReadLimitedLinesWithLimits reads lines with custom limits.
 // This is useful for testing with smaller limits.
+// Set maxLineLen to 0 to disable per-line truncation.
 func ReadLimitedLinesWithLimits(r io.Reader, maxLines, maxLineLen, maxBytes int) ([]string, bool, error) {
 	var lines []string
 	truncated := false
@@ -29,8 +34,7 @@ func ReadLimitedLinesWithLimits(r io.Reader, maxLines, maxLineLen, maxBytes int)
 	limitedReader := &limitedReader{r: r, remaining: maxBytes}
 	scanner := bufio.NewScanner(limitedReader)
 
-	// Set a large buffer for scanning (to handle long lines before truncation)
-	// We'll truncate after reading, but need to be able to read long lines first
+	// Set a large buffer for scanning (to handle long lines)
 	buf := make([]byte, 64*1024) // 64KB buffer
 	scanner.Buffer(buf, maxBytes)
 
@@ -42,8 +46,8 @@ func ReadLimitedLinesWithLimits(r io.Reader, maxLines, maxLineLen, maxBytes int)
 
 		line := scanner.Text()
 
-		// Truncate long lines
-		if len(line) > maxLineLen {
+		// Truncate long lines if maxLineLen is set
+		if maxLineLen > 0 && len(line) > maxLineLen {
 			cutoff := max(0, maxLineLen-len(diff.LineTruncationText))
 			line = line[:cutoff] + diff.LineTruncationText
 			truncated = true
