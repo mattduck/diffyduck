@@ -5523,3 +5523,106 @@ func TestBuildRows_TruncationIndicator_PagerMode_NotTruncated(t *testing.T) {
 		assert.False(t, row.isTruncationIndicator, "pager mode should have no truncation indicator when not truncated")
 	}
 }
+
+func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
+	// Test that cursor arrow positions on hunk separator match those on content lines.
+	// Both left and right arrows should appear at the same horizontal positions.
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Left:  sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+					},
+					// Gap creates hunk separator
+					{
+						Left:  sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
+						Right: sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:               80,
+		height:              15,
+		keys:                DefaultKeyMap(),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+	}
+	m.calculateTotalLines()
+
+	// Helper to find arrow display column positions in a string (accounting for ANSI codes)
+	findArrowDisplayPositions := func(s string) []int {
+		var positions []int
+		displayCol := 0
+		inEscape := false
+		for _, r := range s {
+			if r == '\x1b' {
+				inEscape = true
+				continue
+			}
+			if inEscape {
+				if r == 'm' {
+					inEscape = false
+				}
+				continue
+			}
+			if r == '▶' {
+				positions = append(positions, displayCol)
+			}
+			displayCol++
+		}
+		return positions
+	}
+
+	// Render with cursor on content line (line 100)
+	// Row layout: top_border=0, header=1, bottom_border=2, line1=3, hunksep=4, line100=5
+	m.scroll = 5 - m.cursorOffset()
+	contentOutput := m.View()
+	contentLines := strings.Split(contentOutput, "\n")
+
+	// Find the content line with cursor (has "100" line number and arrows)
+	var contentLineWithCursor string
+	for _, line := range contentLines {
+		if strings.Contains(line, "100") && strings.Contains(line, "▶") {
+			contentLineWithCursor = line
+			break
+		}
+	}
+	require.NotEmpty(t, contentLineWithCursor, "should find content line with cursor")
+	contentArrowPositions := findArrowDisplayPositions(contentLineWithCursor)
+	require.Len(t, contentArrowPositions, 2, "content line should have 2 arrows (left and right)")
+
+	// Now render with cursor on hunk separator
+	m.scroll = 4 - m.cursorOffset()
+	hunkOutput := m.View()
+	hunkLines := strings.Split(hunkOutput, "\n")
+
+	// Find the hunk separator line (all ░ shading, no line numbers, has arrows)
+	var hunkSepLine string
+	for i, line := range hunkLines {
+		// Skip header area, look for line that's mostly ░ and has arrows but no line content
+		if i > 3 && strings.Contains(line, "▶") && strings.Contains(line, "░") &&
+			!strings.Contains(line, "test.go") && !strings.Contains(line, "100") &&
+			!strings.Contains(line, "first") && !strings.Contains(line, "second") {
+			hunkSepLine = line
+			break
+		}
+	}
+	require.NotEmpty(t, hunkSepLine, "should find hunk separator line with cursor")
+	hunkArrowPositions := findArrowDisplayPositions(hunkSepLine)
+	require.Len(t, hunkArrowPositions, 2, "hunk separator should have 2 arrows (left and right)")
+
+	// The arrow positions should match between content line and hunk separator
+	assert.Equal(t, contentArrowPositions[0], hunkArrowPositions[0],
+		"left arrow position should match: content=%d, hunk=%d", contentArrowPositions[0], hunkArrowPositions[0])
+	assert.Equal(t, contentArrowPositions[1], hunkArrowPositions[1],
+		"right arrow position should match: content=%d, hunk=%d", contentArrowPositions[1], hunkArrowPositions[1])
+}

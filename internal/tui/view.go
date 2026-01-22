@@ -721,7 +721,7 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 		return leftHalf + shadeStyle.Render("░░░") + rightHalf
 	}
 
-	// Cursor row: arrows and highlighted line number areas on left side only
+	// Cursor row: arrows and highlighted line number areas on both sides
 	lineNumWidth := m.lineNumWidth()
 	lineNumShade := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
 
@@ -729,9 +729,17 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
-	leftContentShade := shadeStyle.Render(strings.Repeat("░", leftContentWidth))
+	rightContentWidth := rightHalfWidth - lineNumWidth - 4
+	if rightContentWidth < 0 {
+		rightContentWidth = 0
+	}
 
+	leftContentShade := shadeStyle.Render(strings.Repeat("░", leftContentWidth))
+	rightContentShade := shadeStyle.Render(strings.Repeat("░", rightContentWidth))
+
+	// Both sides have same layout: arrow + shade + lineNum + shade + content
 	leftHalf := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + leftContentShade
+	rightHalf = cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + rightContentShade
 
 	return leftHalf + shadeStyle.Render("░░░") + rightHalf
 }
