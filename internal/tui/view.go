@@ -622,9 +622,21 @@ func findFirstRightLineNum(pairs []sidebyside.LinePair, start int) int {
 func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	var visible []string
 
-	// Calculate column widths
-	halfWidth := (m.width - 3) / 2 // -3 for the separator " │ "
+	// Calculate column widths - asymmetric to give new side more room when old is narrow
+	defaultHalf := (m.width - 3) / 2 // -3 for the separator " │ "
 	lineNumWidth := m.lineNumWidth()
+
+	leftHalfWidth := defaultHalf
+	// Dynamic divider: use smaller left width if old content is narrower
+	if m.maxOldContentWidth > 0 {
+		// Layout: indicator(1) + space(1) + lineNum + space(1) + content + gutter(4)
+		minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxOldContentWidth + 4
+		if minLeftWidth < leftHalfWidth {
+			leftHalfWidth = minLeftWidth
+		}
+	}
+	// Right side gets whatever is left after left side and separator
+	rightHalfWidth := m.width - 3 - leftHalfWidth
 
 	// The cursor is at a fixed viewport position
 	cursorViewportRow := m.cursorOffset()
@@ -637,7 +649,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		for i := start; i < 0 && len(visible) < contentHeight; i++ {
 			isCursorRow := len(visible) == cursorViewportRow
 			if isCursorRow {
-				visible = append(visible, m.renderBlankWithCursor(halfWidth, lineNumWidth))
+				visible = append(visible, m.renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth))
 			} else {
 				visible = append(visible, "")
 			}
@@ -659,20 +671,20 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			visible = append(visible, m.renderHeaderBottomBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow))
 		} else if row.isBlank {
 			if isCursorRow {
-				visible = append(visible, m.renderBlankWithCursor(halfWidth, lineNumWidth))
+				visible = append(visible, m.renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth))
 			} else {
 				visible = append(visible, m.renderInterFileBlank())
 			}
 		} else if row.isHeader {
 			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.borderVisible, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow))
 		} else if row.isSeparator {
-			visible = append(visible, m.renderHunkSeparator(row, halfWidth, isCursorRow))
+			visible = append(visible, m.renderHunkSeparator(row, leftHalfWidth, rightHalfWidth, isCursorRow))
 		} else if row.isSummary {
 			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
 		} else if row.isTruncationIndicator {
 			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew))
 		} else {
-			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, halfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine))
+			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine))
 		}
 	}
 
@@ -681,7 +693,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 // renderHunkSeparator renders a separator line between hunks.
 // If structure data is available, shows breadcrumbs on the right side.
-func (m Model) renderHunkSeparator(row displayRow, halfWidth int, isCursorRow bool) string {
+func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth int, isCursorRow bool) string {
 	shadeStyle := hunkSeparatorStyle
 
 	// Try to get breadcrumb for the chunk start line (new/right side only)
@@ -695,47 +707,52 @@ func (m Model) renderHunkSeparator(row displayRow, halfWidth int, isCursorRow bo
 	var rightHalf string
 	if breadcrumb != "" {
 		// Truncate if needed (no ellipsis, just cut)
-		breadcrumb = runewidth.Truncate(breadcrumb, halfWidth, "")
+		breadcrumb = runewidth.Truncate(breadcrumb, rightHalfWidth, "")
 		displayWidth := runewidth.StringWidth(breadcrumb)
-		padding := halfWidth - displayWidth
+		padding := rightHalfWidth - displayWidth
 		rightHalf = shadeStyle.Render(breadcrumb + strings.Repeat("░", padding))
 	} else {
-		rightHalf = shadeStyle.Render(strings.Repeat("░", halfWidth))
+		rightHalf = shadeStyle.Render(strings.Repeat("░", rightHalfWidth))
 	}
 
 	if !isCursorRow {
 		// Left half all shading
-		leftHalf := shadeStyle.Render(strings.Repeat("░", halfWidth))
+		leftHalf := shadeStyle.Render(strings.Repeat("░", leftHalfWidth))
 		return leftHalf + shadeStyle.Render("░░░") + rightHalf
 	}
 
 	// Cursor row: arrows and highlighted line number areas on left side only
 	lineNumWidth := m.lineNumWidth()
 	lineNumShade := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
-	contentWidth := halfWidth - lineNumWidth - 4
-	if contentWidth < 0 {
-		contentWidth = 0
-	}
-	contentShade := shadeStyle.Render(strings.Repeat("░", contentWidth))
 
-	leftHalf := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + contentShade
+	leftContentWidth := leftHalfWidth - lineNumWidth - 4
+	if leftContentWidth < 0 {
+		leftContentWidth = 0
+	}
+	leftContentShade := shadeStyle.Render(strings.Repeat("░", leftContentWidth))
+
+	leftHalf := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + leftContentShade
 
 	return leftHalf + shadeStyle.Render("░░░") + rightHalf
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
-func (m Model) renderBlankWithCursor(halfWidth, lineNumWidth int) string {
+func (m Model) renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth int) string {
 	// Highlight both gutter areas (left and right)
 	leftGutter := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
 	rightGutter := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
 
 	// Content areas with light shading (accounting for indicator + space + gutter + space)
-	contentWidth := halfWidth - lineNumWidth - 3
-	if contentWidth < 0 {
-		contentWidth = 0
+	leftContentWidth := leftHalfWidth - lineNumWidth - 3
+	if leftContentWidth < 0 {
+		leftContentWidth = 0
 	}
-	leftContent := interFileStyle.Render(strings.Repeat("░", contentWidth))
-	rightContent := interFileStyle.Render(strings.Repeat("░", contentWidth))
+	rightContentWidth := rightHalfWidth - lineNumWidth - 3
+	if rightContentWidth < 0 {
+		rightContentWidth = 0
+	}
+	leftContent := interFileStyle.Render(strings.Repeat("░", leftContentWidth))
+	rightContent := interFileStyle.Render(strings.Repeat("░", rightContentWidth))
 
 	separator := interFileStyle.Render("░")
 	// Format: arrow + shade + gutter + shade + content
@@ -1571,8 +1588,9 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	return "  " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine bool) string {
-	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
+func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine bool) string {
+	leftContentWidth := leftHalfWidth - lineNumWidth - 3   // -3 for indicator, space after indicator, and space after line num
+	rightContentWidth := rightHalfWidth - lineNumWidth - 3 // same layout on right side
 
 	// Vertical divider between left and right sides (heavy double dash, fg=8)
 	separatorChar := "╏"
@@ -1592,8 +1610,8 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, halfWidth, li
 	// Use blue "changed" styling when we have word-level diff (both sides modified)
 	hasWordDiff := len(leftSpans) > 0
 
-	left := m.renderLineWithSpans(pair.Left, contentWidth, lineNumWidth, leftSpans, leftSyntax, rowIdx, 0, isCursorRow, hasWordDiff)
-	right := m.renderLineWithSpans(pair.Right, contentWidth, lineNumWidth, rightSpans, rightSyntax, rowIdx, 1, isCursorRow, hasWordDiff)
+	left := m.renderLineWithSpans(pair.Left, leftContentWidth, lineNumWidth, leftSpans, leftSyntax, rowIdx, 0, isCursorRow, hasWordDiff)
+	right := m.renderLineWithSpans(pair.Right, rightContentWidth, lineNumWidth, rightSpans, rightSyntax, rowIdx, 1, isCursorRow, hasWordDiff)
 
 	separator := hunkSeparatorStyle.Render(separatorChar)
 	return left + " " + separator + " " + right

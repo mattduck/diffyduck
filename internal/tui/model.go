@@ -67,9 +67,10 @@ type Model struct {
 	initialFoldSet bool // true once initial fold levels have been determined
 
 	// Derived/cached
-	totalLines     int // total number of displayable lines across all files
-	maxLineNumSeen int // largest line number seen (for dynamic gutter width, only grows)
-	maxLessWidth   int // max width of less indicator (never shrinks to prevent jittering)
+	totalLines         int // total number of displayable lines across all files
+	maxLineNumSeen     int // largest line number seen (for dynamic gutter width, only grows)
+	maxLessWidth       int // max width of less indicator (never shrinks to prevent jittering)
+	maxOldContentWidth int // max display width of old-side content (only grows, for dynamic divider)
 
 	// Row cache - avoids rebuilding on every scroll
 	cachedRows     []displayRow // cached result of buildRows()
@@ -513,6 +514,36 @@ func (m Model) lineNumWidth() int {
 	return width
 }
 
+// updateMaxOldContentWidth scans visible content to update maxOldContentWidth.
+// Only grows, never shrinks (prevents jitter when divider position changes).
+func (m *Model) updateMaxOldContentWidth() {
+	for _, fp := range m.files {
+		if fp.FoldLevel == sidebyside.FoldFolded {
+			continue // no content visible when folded
+		}
+
+		if fp.FoldLevel == sidebyside.FoldExpanded && fp.OldContent != nil {
+			// Expanded: measure full old content
+			for _, line := range fp.OldContent {
+				w := displayWidth(expandTabs(line))
+				if w > m.maxOldContentWidth {
+					m.maxOldContentWidth = w
+				}
+			}
+		} else {
+			// Normal: measure pairs
+			for _, pair := range fp.Pairs {
+				if pair.Left.Content != "" {
+					w := displayWidth(expandTabs(pair.Left.Content))
+					if w > m.maxOldContentWidth {
+						m.maxOldContentWidth = w
+					}
+				}
+			}
+		}
+	}
+}
+
 // invalidateRowsCache marks the row cache as needing rebuild.
 // Call this after any change that affects the row structure (fold changes, content load, etc).
 func (m *Model) invalidateRowsCache() {
@@ -520,7 +551,7 @@ func (m *Model) invalidateRowsCache() {
 }
 
 // rebuildRowsCache unconditionally rebuilds the cached rows.
-// This also updates totalLines and maxLineNumSeen.
+// This also updates totalLines, maxLineNumSeen, and maxOldContentWidth.
 func (m *Model) rebuildRowsCache() {
 	// Pre-scan files to update maxLineNumSeen BEFORE building rows.
 	// This ensures lineNumWidth() returns the correct value during buildRows().
@@ -530,6 +561,10 @@ func (m *Model) rebuildRowsCache() {
 			m.updateMaxLineNum(pair.Right.Num)
 		}
 	}
+
+	// Update maxOldContentWidth (only grows, never shrinks to prevent jitter).
+	// This enables dynamic divider positioning.
+	m.updateMaxOldContentWidth()
 
 	m.cachedRows = m.buildRows()
 	m.rowsCacheValid = true
