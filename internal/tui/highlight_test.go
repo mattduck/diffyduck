@@ -1182,3 +1182,87 @@ def decorated_function():
 		t.Error("Expected to find 'def standalone_function'")
 	}
 }
+
+func TestStructureExtraction_PythonDecoratedClassWithMethods(t *testing.T) {
+	// Test that methods inside decorated classes are detected
+	pythonContent := `@dataclass
+class MyDataClass:
+    value: int = 0
+
+    def get_value(self):
+        return self.value
+
+    @property
+    def doubled(self):
+        return self.value * 2
+`
+	lines := strings.Split(pythonContent, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/test.py",
+			NewPath:    "b/test.py",
+			FoldLevel:  sidebyside.FoldExpanded,
+			NewContent: lines,
+			OldContent: lines,
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "@dataclass", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "@dataclass", Type: sidebyside.Context},
+				},
+			},
+		},
+	}
+
+	m := New(files)
+	defer m.highlighter.Close()
+
+	cmd := m.RequestHighlight(0)
+	if cmd == nil {
+		t.Fatal("RequestHighlight returned nil")
+	}
+
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	if !ok {
+		t.Fatalf("Expected HighlightReadyMsg, got %T", msg)
+	}
+
+	if len(hlMsg.NewStructure) == 0 {
+		t.Fatal("No structure entries extracted from Python file")
+	}
+
+	m.storeHighlightSpans(hlMsg)
+
+	// Log all extracted entries
+	t.Log("Extracted Python structure entries:")
+	for _, e := range m.structureMaps[0].NewStructure.Entries {
+		t.Logf("  %s %s (lines %d-%d)", e.Kind, e.Name, e.StartLine, e.EndLine)
+	}
+
+	// Verify we found the decorated class
+	foundClass := false
+	foundGetValue := false
+	foundDoubled := false
+	for _, e := range m.structureMaps[0].NewStructure.Entries {
+		if e.Kind == "class" && e.Name == "MyDataClass" {
+			foundClass = true
+		}
+		if e.Kind == "def" && e.Name == "get_value" {
+			foundGetValue = true
+		}
+		if e.Kind == "def" && e.Name == "doubled" {
+			foundDoubled = true
+		}
+	}
+
+	if !foundClass {
+		t.Error("Expected to find 'class MyDataClass' (decorated class)")
+	}
+	if !foundGetValue {
+		t.Error("Expected to find 'def get_value' (method inside decorated class)")
+	}
+	if !foundDoubled {
+		t.Error("Expected to find 'def doubled' (decorated method inside decorated class)")
+	}
+}

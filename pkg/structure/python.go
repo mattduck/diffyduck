@@ -53,13 +53,27 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 					})
 				}
 			}
+			// Recurse into the definition to find nested structures (e.g., methods in decorated classes)
+			p.walkNode(defNode, content, entries)
 		}
-		// Don't recurse into decorated_definition children to avoid double-counting
+		// Don't recurse into other children (decorators) to avoid issues
 		return
 	}
 
 	// Check if this is a structural node type
 	if kind, ok := pythonStructuralTypes[nodeType]; ok {
+		// Skip if parent is decorated_definition (already handled above)
+		parent := node.Parent()
+		if parent != nil && parent.Kind() == "decorated_definition" {
+			// Still recurse into children (e.g., methods in a decorated class)
+			childCount := node.ChildCount()
+			for i := uint(0); i < uint(childCount); i++ {
+				child := node.Child(i)
+				p.walkNode(child, content, entries)
+			}
+			return
+		}
+
 		name := p.extractName(node, content)
 		if name != "" {
 			startPos := node.StartPosition()
