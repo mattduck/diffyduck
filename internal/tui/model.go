@@ -12,14 +12,14 @@ import (
 // inlineDiffKey identifies a specific line pair for caching inline diffs.
 type inlineDiffKey struct {
 	fileIndex int
-	leftNum   int
-	rightNum  int
+	oldNum    int
+	newNum    int
 }
 
 // inlineDiffResult stores cached inline diff spans for a line pair.
 type inlineDiffResult struct {
-	leftSpans  []inlinediff.Span
-	rightSpans []inlinediff.Span
+	oldSpans []inlinediff.Span
+	newSpans []inlinediff.Span
 }
 
 // Model represents the application state.
@@ -70,7 +70,7 @@ type Model struct {
 	totalLines         int // total number of displayable lines across all files
 	maxLineNumSeen     int // largest line number seen (for dynamic gutter width, only grows)
 	maxLessWidth       int // max width of less indicator (never shrinks to prevent jittering)
-	maxOldContentWidth int // max display width of old-side content (only grows, for dynamic divider)
+	maxNewContentWidth int // max display width of new-side content (left side, only grows, for dynamic divider)
 
 	// Row cache - avoids rebuilding on every scroll
 	cachedRows     []displayRow // cached result of buildRows()
@@ -189,21 +189,21 @@ func (m Model) estimateNormalRows() int {
 // countHunkSeparators counts the number of hunk boundaries in a file's pairs.
 func (m Model) countHunkSeparators(fp sidebyside.FilePair) int {
 	count := 0
-	var prevLeft, prevRight int
+	var prevOld, prevNew int
 	for i, pair := range fp.Pairs {
 		if i > 0 {
 			// Check for gap in line numbers (hunk boundary)
-			leftGap := prevLeft > 0 && pair.Left.Num > 0 && pair.Left.Num > prevLeft+1
-			rightGap := prevRight > 0 && pair.Right.Num > 0 && pair.Right.Num > prevRight+1
-			if leftGap || rightGap {
+			oldGap := prevOld > 0 && pair.Old.Num > 0 && pair.Old.Num > prevOld+1
+			newGap := prevNew > 0 && pair.New.Num > 0 && pair.New.Num > prevNew+1
+			if oldGap || newGap {
 				count++
 			}
 		}
-		if pair.Left.Num > 0 {
-			prevLeft = pair.Left.Num
+		if pair.Old.Num > 0 {
+			prevOld = pair.Old.Num
 		}
-		if pair.Right.Num > 0 {
-			prevRight = pair.Right.Num
+		if pair.New.Num > 0 {
+			prevNew = pair.New.Num
 		}
 	}
 	return count
@@ -384,12 +384,12 @@ func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
 		return ""
 	}
 
-	// Get source line number from the new (right) side only
+	// Get source line number from the new side only
 	// Don't show breadcrumbs for deleted lines to avoid confusion
-	if row.pair.Right.Num <= 0 {
+	if row.pair.New.Num <= 0 {
 		return ""
 	}
-	sourceLine := row.pair.Right.Num
+	sourceLine := row.pair.New.Num
 
 	// Look up structure for this file (new side only)
 	entries := m.getStructureAtLine(fileIdx, sourceLine)
@@ -514,29 +514,30 @@ func (m Model) lineNumWidth() int {
 	return width
 }
 
-// updateMaxOldContentWidth scans visible content to update maxOldContentWidth.
+// updateMaxNewContentWidth scans visible content to update maxNewContentWidth.
 // Only grows, never shrinks (prevents jitter when divider position changes).
-func (m *Model) updateMaxOldContentWidth() {
+// Measures new-side content (displayed on the left).
+func (m *Model) updateMaxNewContentWidth() {
 	for _, fp := range m.files {
 		if fp.FoldLevel == sidebyside.FoldFolded {
 			continue // no content visible when folded
 		}
 
-		if fp.FoldLevel == sidebyside.FoldExpanded && fp.OldContent != nil {
-			// Expanded: measure full old content
-			for _, line := range fp.OldContent {
+		if fp.FoldLevel == sidebyside.FoldExpanded && fp.NewContent != nil {
+			// Expanded: measure full new content
+			for _, line := range fp.NewContent {
 				w := displayWidth(expandTabs(line))
-				if w > m.maxOldContentWidth {
-					m.maxOldContentWidth = w
+				if w > m.maxNewContentWidth {
+					m.maxNewContentWidth = w
 				}
 			}
 		} else {
 			// Normal: measure pairs
 			for _, pair := range fp.Pairs {
-				if pair.Left.Content != "" {
-					w := displayWidth(expandTabs(pair.Left.Content))
-					if w > m.maxOldContentWidth {
-						m.maxOldContentWidth = w
+				if pair.New.Content != "" {
+					w := displayWidth(expandTabs(pair.New.Content))
+					if w > m.maxNewContentWidth {
+						m.maxNewContentWidth = w
 					}
 				}
 			}
@@ -551,20 +552,20 @@ func (m *Model) invalidateRowsCache() {
 }
 
 // rebuildRowsCache unconditionally rebuilds the cached rows.
-// This also updates totalLines, maxLineNumSeen, and maxOldContentWidth.
+// This also updates totalLines, maxLineNumSeen, and maxNewContentWidth.
 func (m *Model) rebuildRowsCache() {
 	// Pre-scan files to update maxLineNumSeen BEFORE building rows.
 	// This ensures lineNumWidth() returns the correct value during buildRows().
 	for _, fp := range m.files {
 		for _, pair := range fp.Pairs {
-			m.updateMaxLineNum(pair.Left.Num)
-			m.updateMaxLineNum(pair.Right.Num)
+			m.updateMaxLineNum(pair.Old.Num)
+			m.updateMaxLineNum(pair.New.Num)
 		}
 	}
 
-	// Update maxOldContentWidth (only grows, never shrinks to prevent jitter).
+	// Update maxNewContentWidth (only grows, never shrinks to prevent jitter).
 	// This enables dynamic divider positioning.
-	m.updateMaxOldContentWidth()
+	m.updateMaxNewContentWidth()
 
 	m.cachedRows = m.buildRows()
 	m.rowsCacheValid = true

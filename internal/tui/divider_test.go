@@ -7,7 +7,7 @@ import (
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
-func TestUpdateMaxOldContentWidth_Basic(t *testing.T) {
+func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 	tests := []struct {
 		name     string
 		files    []sidebyside.FilePair
@@ -19,9 +19,9 @@ func TestUpdateMaxOldContentWidth_Basic(t *testing.T) {
 				{
 					FoldLevel: sidebyside.FoldNormal,
 					Pairs: []sidebyside.LinePair{
-						{Left: sidebyside.Line{Content: "short"}},
-						{Left: sidebyside.Line{Content: "longer line"}},
-						{Left: sidebyside.Line{Content: "med"}},
+						{New: sidebyside.Line{Content: "short"}},
+						{New: sidebyside.Line{Content: "longer line"}},
+						{New: sidebyside.Line{Content: "med"}},
 					},
 				},
 			},
@@ -33,33 +33,33 @@ func TestUpdateMaxOldContentWidth_Basic(t *testing.T) {
 				{
 					FoldLevel: sidebyside.FoldFolded,
 					Pairs: []sidebyside.LinePair{
-						{Left: sidebyside.Line{Content: "this should be ignored because file is folded"}},
+						{New: sidebyside.Line{Content: "this should be ignored because file is folded"}},
 					},
 				},
 			},
 			expected: 0, // folded files are skipped
 		},
 		{
-			name: "expanded uses OldContent",
+			name: "expanded uses NewContent",
 			files: []sidebyside.FilePair{
 				{
 					FoldLevel:  sidebyside.FoldExpanded,
-					OldContent: []string{"short", "this is the longest old line", "med"},
+					NewContent: []string{"short", "this is the longest new line", "med"},
 					Pairs: []sidebyside.LinePair{
-						{Left: sidebyside.Line{Content: "pairs ignored when expanded"}},
+						{New: sidebyside.Line{Content: "pairs ignored when expanded"}},
 					},
 				},
 			},
-			expected: 28, // "this is the longest old line" = 28 chars
+			expected: 28, // "this is the longest new line" = 28 chars
 		},
 		{
-			name: "expanded without OldContent falls back to pairs",
+			name: "expanded without NewContent falls back to pairs",
 			files: []sidebyside.FilePair{
 				{
 					FoldLevel:  sidebyside.FoldExpanded,
-					OldContent: nil, // not loaded yet
+					NewContent: nil, // not loaded yet
 					Pairs: []sidebyside.LinePair{
-						{Left: sidebyside.Line{Content: "fallback to pairs"}},
+						{New: sidebyside.Line{Content: "fallback to pairs"}},
 					},
 				},
 			},
@@ -71,7 +71,7 @@ func TestUpdateMaxOldContentWidth_Basic(t *testing.T) {
 				{
 					FoldLevel: sidebyside.FoldNormal,
 					Pairs: []sidebyside.LinePair{
-						{Left: sidebyside.Line{Content: "\tfoo"}}, // expands to "    foo" = 7 chars
+						{New: sidebyside.Line{Content: "\tfoo"}}, // expands to "    foo" = 7 chars
 					},
 				},
 			},
@@ -83,26 +83,26 @@ func TestUpdateMaxOldContentWidth_Basic(t *testing.T) {
 				{
 					FoldLevel: sidebyside.FoldNormal,
 					Pairs: []sidebyside.LinePair{
-						{Left: sidebyside.Line{Content: "short"}},
+						{New: sidebyside.Line{Content: "short"}},
 					},
 				},
 				{
 					FoldLevel: sidebyside.FoldNormal,
 					Pairs: []sidebyside.LinePair{
-						{Left: sidebyside.Line{Content: "this is longer"}},
+						{New: sidebyside.Line{Content: "this is longer"}},
 					},
 				},
 			},
 			expected: 14, // "this is longer" = 14 chars
 		},
 		{
-			name: "empty left content ignored",
+			name: "empty new content ignored",
 			files: []sidebyside.FilePair{
 				{
 					FoldLevel: sidebyside.FoldNormal,
 					Pairs: []sidebyside.LinePair{
-						{Left: sidebyside.Line{Content: ""}},     // empty - added line
-						{Left: sidebyside.Line{Content: "real"}}, // this is the max
+						{New: sidebyside.Line{Content: ""}},     // empty - removed line
+						{New: sidebyside.Line{Content: "real"}}, // this is the max
 					},
 				},
 			},
@@ -114,60 +114,60 @@ func TestUpdateMaxOldContentWidth_Basic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := Model{
 				files:              tt.files,
-				maxOldContentWidth: 0,
+				maxNewContentWidth: 0,
 			}
-			m.updateMaxOldContentWidth()
-			assert.Equal(t, tt.expected, m.maxOldContentWidth)
+			m.updateMaxNewContentWidth()
+			assert.Equal(t, tt.expected, m.maxNewContentWidth)
 		})
 	}
 }
 
-func TestMaxOldContentWidth_OnlyGrows(t *testing.T) {
+func TestMaxNewContentWidth_OnlyGrows(t *testing.T) {
 	// Start with a file that has wide content
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
-					{Left: sidebyside.Line{Content: "this is a fairly long line of content"}},
+					{New: sidebyside.Line{Content: "this is a fairly long line of content"}},
 				},
 			},
 		},
-		maxOldContentWidth: 0,
+		maxNewContentWidth: 0,
 	}
 
-	m.updateMaxOldContentWidth()
-	initialWidth := m.maxOldContentWidth
+	m.updateMaxNewContentWidth()
+	initialWidth := m.maxNewContentWidth
 	assert.Equal(t, 37, initialWidth) // "this is a fairly long line of content"
 
 	// Fold the file - width should NOT shrink
 	m.files[0].FoldLevel = sidebyside.FoldFolded
-	m.updateMaxOldContentWidth()
-	assert.Equal(t, initialWidth, m.maxOldContentWidth, "width should not shrink when file is folded")
+	m.updateMaxNewContentWidth()
+	assert.Equal(t, initialWidth, m.maxNewContentWidth, "width should not shrink when file is folded")
 
 	// Add a file with shorter content - width should NOT shrink
 	m.files = append(m.files, sidebyside.FilePair{
 		FoldLevel: sidebyside.FoldNormal,
 		Pairs: []sidebyside.LinePair{
-			{Left: sidebyside.Line{Content: "short"}},
+			{New: sidebyside.Line{Content: "short"}},
 		},
 	})
-	m.updateMaxOldContentWidth()
-	assert.Equal(t, initialWidth, m.maxOldContentWidth, "width should not shrink when new file has shorter content")
+	m.updateMaxNewContentWidth()
+	assert.Equal(t, initialWidth, m.maxNewContentWidth, "width should not shrink when new file has shorter content")
 
 	// Add a file with longer content - width SHOULD grow
 	m.files = append(m.files, sidebyside.FilePair{
 		FoldLevel: sidebyside.FoldNormal,
 		Pairs: []sidebyside.LinePair{
-			{Left: sidebyside.Line{Content: "this is an even longer line that exceeds the previous maximum width"}},
+			{New: sidebyside.Line{Content: "this is an even longer line that exceeds the previous maximum width"}},
 		},
 	})
-	m.updateMaxOldContentWidth()
-	assert.Equal(t, 67, m.maxOldContentWidth, "width should grow when new file has longer content")
+	m.updateMaxNewContentWidth()
+	assert.Equal(t, 67, m.maxNewContentWidth, "width should grow when new file has longer content")
 }
 
 func TestDynamicDivider_AsymmetricWidths(t *testing.T) {
-	// Create a model with narrow old content
+	// Create a model with narrow new content (new is now on left side)
 	m := Model{
 		width:  80, // terminal width
 		height: 24,
@@ -176,31 +176,31 @@ func TestDynamicDivider_AsymmetricWidths(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "this is a much longer replacement line on the right side", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "this is a much longer line on the old side that goes to the right", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Added},
 					},
 				},
 			},
 		},
-		maxOldContentWidth:  0,
+		maxNewContentWidth:  0,
 		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
 		highlightSpans:      make(map[int]*FileHighlight),
 		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
 	}
 
 	// Calculate widths
-	m.updateMaxOldContentWidth()
+	m.updateMaxNewContentWidth()
 	m.rebuildRowsCache()
 
-	// Verify maxOldContentWidth is set correctly
-	assert.Equal(t, 5, m.maxOldContentWidth) // "short" = 5 chars
+	// Verify maxNewContentWidth is set correctly
+	assert.Equal(t, 5, m.maxNewContentWidth) // "short" = 5 chars
 
 	// Calculate what the widths should be
 	defaultHalf := (m.width - 3) / 2 // 38
 	lineNumWidth := m.lineNumWidth() // 4
 
 	// minLeftWidth = indicator(1) + space(1) + lineNum(4) + space(1) + content(5) + gutter(4) = 16
-	minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxOldContentWidth + 4
+	minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxNewContentWidth + 4
 	assert.Equal(t, 16, minLeftWidth)
 
 	// Left should be minLeftWidth since it's less than defaultHalf
@@ -212,7 +212,7 @@ func TestDynamicDivider_AsymmetricWidths(t *testing.T) {
 }
 
 func TestDynamicDivider_WideContentStaysAt50Percent(t *testing.T) {
-	// Create a model with wide old content (wider than 50%)
+	// Create a model with wide new content (wider than 50%)
 	m := Model{
 		width:  80,
 		height: 24,
@@ -221,28 +221,28 @@ func TestDynamicDivider_WideContentStaysAt50Percent(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "this is a very long line that exceeds half the terminal width easily", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "this is a very long line that exceeds half the terminal width easily", Type: sidebyside.Added},
 					},
 				},
 			},
 		},
-		maxOldContentWidth:  0,
+		maxNewContentWidth:  0,
 		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
 		highlightSpans:      make(map[int]*FileHighlight),
 		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
 	}
 
-	m.updateMaxOldContentWidth()
+	m.updateMaxNewContentWidth()
 
-	// The old content is 68 chars, which with overhead would exceed 50%
-	assert.Equal(t, 68, m.maxOldContentWidth)
+	// The new content is 68 chars, which with overhead would exceed 50%
+	assert.Equal(t, 68, m.maxNewContentWidth)
 
 	defaultHalf := (m.width - 3) / 2 // 38
 	lineNumWidth := m.lineNumWidth() // 4
 
 	// minLeftWidth would be: 1 + 1 + 4 + 1 + 68 + 4 = 79, which exceeds defaultHalf (38)
-	minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxOldContentWidth + 4
+	minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxNewContentWidth + 4
 	assert.Greater(t, minLeftWidth, defaultHalf, "calculated min width exceeds 50%")
 
 	// So the actual left width should cap at defaultHalf (50%)

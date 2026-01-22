@@ -16,8 +16,8 @@ func TestSyntaxHighlighting_SpansGenerated(t *testing.T) {
 			NewPath: "b/test.go",
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 				},
 			},
 			FoldLevel:  sidebyside.FoldExpanded,
@@ -119,8 +119,8 @@ func TestSyntaxHighlighting_RenderedOutput(t *testing.T) {
 			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 				},
 			},
 			OldContent: []string{"package main"},
@@ -161,8 +161,8 @@ func TestSyntaxHighlighting_RenderedOutput(t *testing.T) {
 		if i > 3 {
 			break
 		}
-		t.Logf("Row %d: isHeader=%v isSeparator=%v isBlank=%v fileIndex=%d left.Num=%d right.Num=%d",
-			i, row.isHeader, row.isSeparator, row.isBlank, row.fileIndex, row.pair.Left.Num, row.pair.Right.Num)
+		t.Logf("Row %d: isHeader=%v isSeparator=%v isBlank=%v fileIndex=%d old.Num=%d new.Num=%d",
+			i, row.isHeader, row.isSeparator, row.isBlank, row.fileIndex, row.pair.Old.Num, row.pair.New.Num)
 	}
 
 	// Test applySyntaxHighlight directly to verify it works
@@ -204,8 +204,8 @@ func TestSyntaxHighlighting_FullFlow(t *testing.T) {
 			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
 				},
 			},
 			// Content will be "loaded" via message
@@ -283,8 +283,8 @@ func TestSyntaxHighlighting_NormalViewFromPairs(t *testing.T) {
 			FoldLevel: sidebyside.FoldNormal, // Normal view
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 				},
 			},
 			// OldContent and NewContent are nil (not loaded)
@@ -323,8 +323,8 @@ func TestSyntaxHighlighting_FullContentRequestNoSpans(t *testing.T) {
 			FoldLevel: sidebyside.FoldNormal,
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 				},
 			},
 			// OldContent and NewContent are nil (not loaded)
@@ -349,16 +349,16 @@ func TestSyntaxHighlighting_FullContentRequestNoSpans(t *testing.T) {
 func TestBuildContentFromPairs(t *testing.T) {
 	pairs := []sidebyside.LinePair{
 		{
-			Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 		},
 		{
-			Left:  sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
 		},
 		{
-			Left:  sidebyside.Line{Num: 3, Content: "func main() {", Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: 3, Content: "func main() {", Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: 3, Content: "func main() {", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 3, Content: "func main() {", Type: sidebyside.Context},
 		},
 	}
 
@@ -398,12 +398,12 @@ func TestBuildContentFromPairs_SkipsEmptyLineNumbers(t *testing.T) {
 	// Test that lines with Num=0 (empty placeholder lines) are skipped
 	pairs := []sidebyside.LinePair{
 		{
-			Left:  sidebyside.Line{Num: 1, Content: "old line", Type: sidebyside.Removed},
-			Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}, // empty on right
+			Old: sidebyside.Line{Num: 1, Content: "old line", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}, // empty on right
 		},
 		{
-			Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}, // empty on left
-			Right: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
+			Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}, // empty on left
+			New: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
 		},
 	}
 
@@ -440,22 +440,22 @@ func TestBuildContentFromPairs_NonContiguousLines(t *testing.T) {
 	pairs := []sidebyside.LinePair{
 		// First hunk: lines 5-7
 		{
-			Left:  sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
 		},
 		{
-			Left:  sidebyside.Line{Num: 6, Content: "line six", Type: sidebyside.Removed},
-			Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+			Old: sidebyside.Line{Num: 6, Content: "line six", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 		},
 		{
-			Left:  sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: 6, Content: "line seven", Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 6, Content: "line seven", Type: sidebyside.Context},
 		},
 		// Gap here (lines 8-19 not in diff)
 		// Second hunk: lines 20-21
 		{
-			Left:  sidebyside.Line{Num: 20, Content: "line twenty", Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: 19, Content: "line twenty", Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: 20, Content: "line twenty", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 19, Content: "line twenty", Type: sidebyside.Context},
 		},
 	}
 
@@ -495,12 +495,12 @@ func TestRequestHighlightFromPairs(t *testing.T) {
 			FoldLevel: sidebyside.FoldNormal,
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
 				},
 				{
-					Left:  sidebyside.Line{Num: 2, Content: `	return "hello"`, Type: sidebyside.Removed},
-					Right: sidebyside.Line{Num: 2, Content: `	return "world"`, Type: sidebyside.Added},
+					Old: sidebyside.Line{Num: 2, Content: `	return "hello"`, Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 2, Content: `	return "world"`, Type: sidebyside.Added},
 				},
 			},
 		},
@@ -557,12 +557,12 @@ func TestPairsHighlighting_StorageAndRetrieval(t *testing.T) {
 			FoldLevel: sidebyside.FoldNormal,
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 10, Content: "package main", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 10, Content: "package main", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 10, Content: "package main", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 10, Content: "package main", Type: sidebyside.Context},
 				},
 				{
-					Left:  sidebyside.Line{Num: 11, Content: "func test() {}", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 11, Content: "func test() {}", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 11, Content: "func test() {}", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 11, Content: "func test() {}", Type: sidebyside.Context},
 				},
 			},
 		},
@@ -622,8 +622,8 @@ func TestFullContentSpansTakePriority(t *testing.T) {
 			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 				},
 			},
 			OldContent: []string{"package main", "// comment"},
@@ -677,8 +677,8 @@ func TestPairsHighlighting_MultipleFiles(t *testing.T) {
 			NewPath: "b/first.go",
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package first", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package first", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package first", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package first", Type: sidebyside.Context},
 				},
 			},
 		},
@@ -687,8 +687,8 @@ func TestPairsHighlighting_MultipleFiles(t *testing.T) {
 			NewPath: "b/second.go",
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package second", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package second", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package second", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package second", Type: sidebyside.Context},
 				},
 			},
 		},
@@ -697,8 +697,8 @@ func TestPairsHighlighting_MultipleFiles(t *testing.T) {
 			NewPath: "b/third.go",
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package third", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package third", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package third", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package third", Type: sidebyside.Context},
 				},
 			},
 		},
@@ -751,8 +751,8 @@ func TestPairsHighlighting_UnsupportedFileType(t *testing.T) {
 			NewPath: "b/data.txt",
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "some text", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "some text", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "some text", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "some text", Type: sidebyside.Context},
 				},
 			},
 		},
@@ -833,8 +833,8 @@ func helperFunction() {
 			OldContent: lines,
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context},
 				},
 			},
 		},
@@ -931,8 +931,8 @@ func FunctionAfterTruncation() {
 			OldContent: lines,
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 				},
 			},
 		},
@@ -1017,8 +1017,8 @@ func TestStructureExtraction_TruncatedFile(t *testing.T) {
 			NewContentTruncated: true, // Marked as truncated
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
 				},
 			},
 		},
@@ -1110,8 +1110,8 @@ def decorated_function():
 			OldContent: lines,
 			Pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "import os", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "import os", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "import os", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "import os", Type: sidebyside.Context},
 				},
 			},
 		},

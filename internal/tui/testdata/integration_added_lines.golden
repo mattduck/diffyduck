@@ -5,9 +5,9 @@
 ────────────────────────────────────┘
 ▶    5       "strings"                           ╏ ▶    5       "strings"                           
      6       "github.com/charmbracelet/lipglos   ╏      6       "github.com/charmbracelet/lipgloss  
-                                                 ╏ +    7 ░     "github.com/mattn/go-runewidth"    ░
-     7       "github.com/user/diffyduck/pkg/si   ╏      8       "github.com/user/diffyduck/pkg/sid  
-     8   )                                       ╏      9   )                                       
++    7 ░     "github.com/mattn/go-runewidth"   ░ ╏                                                  
+     8       "github.com/user/diffyduck/pkg/si   ╏      7       "github.com/user/diffyduck/pkg/sid  
+     9   )                                       ╏      8   )                                       
 
 
 

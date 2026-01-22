@@ -23,13 +23,13 @@ func TestTransformHunk_ContextOnly(t *testing.T) {
 	require.Len(t, pairs, 2)
 
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 1, Content: "line one", Type: Context},
-		Right: Line{Num: 1, Content: "line one", Type: Context},
+		Old: Line{Num: 1, Content: "line one", Type: Context},
+		New: Line{Num: 1, Content: "line one", Type: Context},
 	}, pairs[0])
 
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 2, Content: "line two", Type: Context},
-		Right: Line{Num: 2, Content: "line two", Type: Context},
+		Old: Line{Num: 2, Content: "line two", Type: Context},
+		New: Line{Num: 2, Content: "line two", Type: Context},
 	}, pairs[1])
 }
 
@@ -49,18 +49,18 @@ func TestTransformHunk_AddedLine(t *testing.T) {
 	require.Len(t, pairs, 3)
 
 	// Context line
-	assert.Equal(t, 1, pairs[0].Left.Num)
-	assert.Equal(t, 1, pairs[0].Right.Num)
+	assert.Equal(t, 1, pairs[0].Old.Num)
+	assert.Equal(t, 1, pairs[0].New.Num)
 
 	// Added line: empty left, content right
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 0, Content: "", Type: Empty},
-		Right: Line{Num: 2, Content: "new line", Type: Added},
+		Old: Line{Num: 0, Content: "", Type: Empty},
+		New: Line{Num: 2, Content: "new line", Type: Added},
 	}, pairs[1])
 
 	// Context line: left stays at 2, right moves to 3
-	assert.Equal(t, 2, pairs[2].Left.Num)
-	assert.Equal(t, 3, pairs[2].Right.Num)
+	assert.Equal(t, 2, pairs[2].Old.Num)
+	assert.Equal(t, 3, pairs[2].New.Num)
 }
 
 func TestTransformHunk_RemovedLine(t *testing.T) {
@@ -80,13 +80,13 @@ func TestTransformHunk_RemovedLine(t *testing.T) {
 
 	// Removed line: content left, empty right
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 2, Content: "old line", Type: Removed},
-		Right: Line{Num: 0, Content: "", Type: Empty},
+		Old: Line{Num: 2, Content: "old line", Type: Removed},
+		New: Line{Num: 0, Content: "", Type: Empty},
 	}, pairs[1])
 
 	// Context after: left at 3, right at 2
-	assert.Equal(t, 3, pairs[2].Left.Num)
-	assert.Equal(t, 2, pairs[2].Right.Num)
+	assert.Equal(t, 3, pairs[2].Old.Num)
+	assert.Equal(t, 2, pairs[2].New.Num)
 }
 
 func TestTransformHunk_ModifiedLine(t *testing.T) {
@@ -105,8 +105,8 @@ func TestTransformHunk_ModifiedLine(t *testing.T) {
 	// Should align the remove and add on the same row
 	require.Len(t, pairs, 1)
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 1, Content: "old version", Type: Removed},
-		Right: Line{Num: 1, Content: "new version", Type: Added},
+		Old: Line{Num: 1, Content: "old version", Type: Removed},
+		New: Line{Num: 1, Content: "new version", Type: Added},
 	}, pairs[0])
 }
 
@@ -129,18 +129,18 @@ func TestTransformHunk_MultipleModifications(t *testing.T) {
 	require.Len(t, pairs, 3)
 
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 1, Content: "old1", Type: Removed},
-		Right: Line{Num: 1, Content: "new1", Type: Added},
+		Old: Line{Num: 1, Content: "old1", Type: Removed},
+		New: Line{Num: 1, Content: "new1", Type: Added},
 	}, pairs[0])
 
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 2, Content: "old2", Type: Removed},
-		Right: Line{Num: 2, Content: "new2", Type: Added},
+		Old: Line{Num: 2, Content: "old2", Type: Removed},
+		New: Line{Num: 2, Content: "new2", Type: Added},
 	}, pairs[1])
 
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 0, Content: "", Type: Empty},
-		Right: Line{Num: 3, Content: "new3", Type: Added},
+		Old: Line{Num: 0, Content: "", Type: Empty},
+		New: Line{Num: 3, Content: "new3", Type: Added},
 	}, pairs[2])
 }
 
@@ -161,18 +161,18 @@ func TestTransformHunk_MoreRemovesThanAdds(t *testing.T) {
 	require.Len(t, pairs, 3)
 
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 1, Content: "old1", Type: Removed},
-		Right: Line{Num: 1, Content: "new1", Type: Added},
+		Old: Line{Num: 1, Content: "old1", Type: Removed},
+		New: Line{Num: 1, Content: "new1", Type: Added},
 	}, pairs[0])
 
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 2, Content: "old2", Type: Removed},
-		Right: Line{Num: 0, Content: "", Type: Empty},
+		Old: Line{Num: 2, Content: "old2", Type: Removed},
+		New: Line{Num: 0, Content: "", Type: Empty},
 	}, pairs[1])
 
 	assert.Equal(t, LinePair{
-		Left:  Line{Num: 3, Content: "old3", Type: Removed},
-		Right: Line{Num: 0, Content: "", Type: Empty},
+		Old: Line{Num: 3, Content: "old3", Type: Removed},
+		New: Line{Num: 0, Content: "", Type: Empty},
 	}, pairs[2])
 }
 

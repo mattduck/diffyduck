@@ -47,9 +47,10 @@ type Line struct {
 }
 
 // LinePair represents a row in the side-by-side view.
+// Old contains the original content, New contains the modified content.
 type LinePair struct {
-	Left  Line
-	Right Line
+	Old Line
+	New Line
 }
 
 // FilePair represents all the line pairs for a single file's diff.

@@ -16,8 +16,8 @@ func TransformHunk(hunk diff.Hunk) []LinePair {
 		switch line.Type {
 		case diff.Context:
 			pairs = append(pairs, LinePair{
-				Left:  Line{Num: oldNum, Content: line.Content, Type: Context},
-				Right: Line{Num: newNum, Content: line.Content, Type: Context},
+				Old: Line{Num: oldNum, Content: line.Content, Type: Context},
+				New: Line{Num: newNum, Content: line.Content, Type: Context},
 			})
 			oldNum++
 			newNum++
@@ -44,8 +44,8 @@ func TransformHunk(hunk diff.Hunk) []LinePair {
 		case diff.Added:
 			// Added without preceding remove
 			pairs = append(pairs, LinePair{
-				Left:  Line{Num: 0, Content: "", Type: Empty},
-				Right: Line{Num: newNum, Content: line.Content, Type: Added},
+				Old: Line{Num: 0, Content: "", Type: Empty},
+				New: Line{Num: newNum, Content: line.Content, Type: Added},
 			})
 			newNum++
 			i++
@@ -68,17 +68,17 @@ func alignChanges(removes, adds []diff.Line, oldNum, newNum *int) []LinePair {
 		pair := LinePair{}
 
 		if j < len(removes) {
-			pair.Left = Line{Num: *oldNum, Content: removes[j].Content, Type: Removed}
+			pair.Old = Line{Num: *oldNum, Content: removes[j].Content, Type: Removed}
 			*oldNum++
 		} else {
-			pair.Left = Line{Num: 0, Content: "", Type: Empty}
+			pair.Old = Line{Num: 0, Content: "", Type: Empty}
 		}
 
 		if j < len(adds) {
-			pair.Right = Line{Num: *newNum, Content: adds[j].Content, Type: Added}
+			pair.New = Line{Num: *newNum, Content: adds[j].Content, Type: Added}
 			*newNum++
 		} else {
-			pair.Right = Line{Num: 0, Content: "", Type: Empty}
+			pair.New = Line{Num: 0, Content: "", Type: Empty}
 		}
 
 		pairs = append(pairs, pair)

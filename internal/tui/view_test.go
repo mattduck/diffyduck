@@ -30,16 +30,16 @@ func TestView_BasicRender(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "old line", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 2, Content: "new line", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 2, Content: "old line", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 2, Content: "new line", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 3, Content: "func main() {}", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 3, Content: "func main() {}", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 3, Content: "func main() {}", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 3, Content: "func main() {}", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -69,8 +69,8 @@ func TestView_WithScroll(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 20)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "line content", Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: i + 1, Content: "line content", Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: i + 1, Content: "line content", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: i + 1, Content: "line content", Type: sidebyside.Context},
 		}
 	}
 
@@ -108,13 +108,13 @@ func TestView_AddedAndRemovedLines(t *testing.T) {
 				Pairs: []sidebyside.LinePair{
 					// Pure addition (empty left)
 					{
-						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 1, Content: "added line", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 1, Content: "added line", Type: sidebyside.Added},
 					},
 					// Pure removal (empty right)
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "removed line", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "removed line", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -147,8 +147,8 @@ func TestView_MultipleFiles(t *testing.T) {
 				NewPath: "b/one.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "file one", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "file one", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "file one", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "file one", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -157,8 +157,8 @@ func TestView_MultipleFiles(t *testing.T) {
 				NewPath: "b/two.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "file two", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "file two", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "file two", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "file two", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -219,16 +219,16 @@ func TestView_HorizontalScroll(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "this is a much longer line that will be truncated without scroll", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 2, Content: "this is a much longer line that will be truncated without scroll", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 2, Content: "this is a much longer line that will be truncated without scroll", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 2, Content: "this is a much longer line that will be truncated without scroll", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 3, Content: "0123456789abcdefghij", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 3, Content: "0123456789abcdefghij", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 3, Content: "0123456789abcdefghij", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 3, Content: "0123456789abcdefghij", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -259,8 +259,8 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 50)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
-			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+			Old: sidebyside.Line{Num: i + 1, Content: "content"},
+			New: sidebyside.Line{Num: i + 1, Content: "content"},
 		}
 	}
 
@@ -294,8 +294,8 @@ func TestStatusInfo_AtEnd(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 10)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
-			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+			Old: sidebyside.Line{Num: i + 1, Content: "content"},
+			New: sidebyside.Line{Num: i + 1, Content: "content"},
 		}
 	}
 
@@ -323,14 +323,14 @@ func TestStatusInfo_MultipleFiles(t *testing.T) {
 	pairs2 := make([]sidebyside.LinePair, 20)
 	for i := range pairs1 {
 		pairs1[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file1"},
+			New: sidebyside.Line{Num: i + 1, Content: "file1"},
 		}
 	}
 	for i := range pairs2 {
 		pairs2[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file2"},
+			New: sidebyside.Line{Num: i + 1, Content: "file2"},
 		}
 	}
 
@@ -364,8 +364,8 @@ func TestView_StatusBarContent(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 20)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
 		}
 	}
 	m := Model{
@@ -404,8 +404,8 @@ func TestStatusInfo_DeletedFile(t *testing.T) {
 				NewPath: "/dev/null",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "deleted"},
-						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "deleted"},
+						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -426,8 +426,8 @@ func TestStatusInfo_ScrollPastAllContent(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 5)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "line"},
-			Right: sidebyside.Line{Num: i + 1, Content: "line"},
+			Old: sidebyside.Line{Num: i + 1, Content: "line"},
+			New: sidebyside.Line{Num: i + 1, Content: "line"},
 		}
 	}
 
@@ -455,8 +455,8 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 100)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "line"},
-			Right: sidebyside.Line{Num: i + 1, Content: "line"},
+			Old: sidebyside.Line{Num: i + 1, Content: "line"},
+			New: sidebyside.Line{Num: i + 1, Content: "line"},
 		}
 	}
 
@@ -496,8 +496,8 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 10)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
-			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+			Old: sidebyside.Line{Num: i + 1, Content: "content"},
+			New: sidebyside.Line{Num: i + 1, Content: "content"},
 		}
 	}
 
@@ -547,12 +547,12 @@ func TestView_ScrolledToMax(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "last", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 2, Content: "last", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 2, Content: "last", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "last", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -594,8 +594,8 @@ func TestView_InlineDiffRendering(t *testing.T) {
 				Pairs: []sidebyside.LinePair{
 					{
 						// This is a modified pair - should trigger inline diff
-						Left:  sidebyside.Line{Num: 1, Content: "fmt.Println(x)", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "fmt.Println(y)", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "fmt.Println(x)", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "fmt.Println(y)", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -625,8 +625,8 @@ func TestView_InlineDiffSkippedForDissimilar(t *testing.T) {
 				Pairs: []sidebyside.LinePair{
 					{
 						// Completely different lines - should skip inline diff
-						Left:  sidebyside.Line{Num: 1, Content: "abcdefghijklmnop", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "1234567890123456", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "abcdefghijklmnop", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "1234567890123456", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -654,25 +654,25 @@ func TestView_HunkSeparator(t *testing.T) {
 				Pairs: []sidebyside.LinePair{
 					// First hunk: lines 1-3
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
 					},
 					// Gap here - next hunk starts at line 100
 					{
-						Left:  sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 101, Content: "line hundred one", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 101, Content: "line hundred one", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 101, Content: "line hundred one", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 101, Content: "line hundred one", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -701,8 +701,8 @@ func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 				NewPath: "b/first.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -711,8 +711,8 @@ func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 				NewPath: "b/second.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -756,8 +756,8 @@ func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 				NewPath: "b/only.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -797,16 +797,16 @@ func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "line two", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 3, Content: "line three", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -884,7 +884,7 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 						OldPath:    "a/test.go",
 						NewPath:    "b/test.go",
 						FoldLevel:  tt.level,
-						Pairs:      []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1}, Right: sidebyside.Line{Num: 1}}},
+						Pairs:      []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}}},
 						OldContent: []string{"line"}, // For expanded mode
 						NewContent: []string{"line"},
 					},
@@ -924,8 +924,8 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -960,8 +960,8 @@ func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded, // First file is folded
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "first file", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "first file", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "first file", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "first file", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -971,8 +971,8 @@ func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal, // Second file is normal
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "second file", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "second file", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "second file", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "second file", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1015,8 +1015,8 @@ func TestView_MixedFoldLevels(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "normal file content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "normal file content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "normal file content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "normal file content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1026,8 +1026,8 @@ func TestView_MixedFoldLevels(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "folded file content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "folded file content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "folded file content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "folded file content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1037,8 +1037,8 @@ func TestView_MixedFoldLevels(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "another file content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "another file content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "another file content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "another file content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1105,16 +1105,16 @@ func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
 				// Original diff pairs (just lines 5-7 with a change at line 6)
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 6, Content: "old line six", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 6, Content: "new line six", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 6, Content: "old line six", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 6, Content: "new line six", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
 					},
 				},
 				// Full file content (10 lines each)
@@ -1164,8 +1164,8 @@ func TestView_ExpandedFile_NoContent_FallsBackToNormal(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 5, Content: "diff context", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 5, Content: "diff context", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 5, Content: "diff context", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 5, Content: "diff context", Type: sidebyside.Context},
 					},
 				},
 				// No OldContent/NewContent loaded yet
@@ -1193,8 +1193,8 @@ func TestView_ExpandedFile_DeletedFile(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "deleted line", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "deleted line", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 					},
 				},
 				OldContent: []string{"deleted line", "another deleted"},
@@ -1224,8 +1224,8 @@ func TestView_ExpandedFile_NewFile(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
 					},
 				},
 				OldContent: nil, // No old content (new file)
@@ -1273,16 +1273,16 @@ func TestView_ExpandedFile_AlignmentWithAddedLines(t *testing.T) {
 				// Diff pairs showing the insertion
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 3, Content: "INSERTED", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 3, Content: "INSERTED", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 3, Content: "line3", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 4, Content: "line3", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 3, Content: "line3", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 4, Content: "line3", Type: sidebyside.Context},
 					},
 				},
 				OldContent: []string{"line1", "line2", "line3", "line4", "line5"},
@@ -1301,7 +1301,7 @@ func TestView_ExpandedFile_AlignmentWithAddedLines(t *testing.T) {
 	// Find the row that has old line 3
 	var oldLine3Row *displayRow
 	for i := range rows {
-		if rows[i].pair.Left.Num == 3 {
+		if rows[i].pair.Old.Num == 3 {
 			oldLine3Row = &rows[i]
 			break
 		}
@@ -1313,10 +1313,10 @@ func TestView_ExpandedFile_AlignmentWithAddedLines(t *testing.T) {
 
 	// Old line 3 should be paired with new line 4 (both have content "line3")
 	// NOT with new line 3 (which is "INSERTED")
-	assert.Equal(t, "line3", oldLine3Row.pair.Left.Content, "left side should be line3")
-	assert.Equal(t, "line3", oldLine3Row.pair.Right.Content,
+	assert.Equal(t, "line3", oldLine3Row.pair.Old.Content, "left side should be line3")
+	assert.Equal(t, "line3", oldLine3Row.pair.New.Content,
 		"right side should also be line3 (new line 4), not INSERTED")
-	assert.Equal(t, 4, oldLine3Row.pair.Right.Num,
+	assert.Equal(t, 4, oldLine3Row.pair.New.Num,
 		"right side line number should be 4 (after the insertion)")
 }
 
@@ -1342,16 +1342,16 @@ func TestView_ExpandedFile_AlignmentWithRemovedLines(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 3, Content: "REMOVED", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 3, Content: "REMOVED", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 					},
 					{
-						Left:  sidebyside.Line{Num: 4, Content: "line3", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 3, Content: "line3", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 4, Content: "line3", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 3, Content: "line3", Type: sidebyside.Context},
 					},
 				},
 				OldContent: []string{"line1", "line2", "REMOVED", "line3", "line4"},
@@ -1369,7 +1369,7 @@ func TestView_ExpandedFile_AlignmentWithRemovedLines(t *testing.T) {
 	// Find the row that has new line 3
 	var newLine3Row *displayRow
 	for i := range rows {
-		if rows[i].pair.Right.Num == 3 && rows[i].pair.Right.Content == "line3" {
+		if rows[i].pair.New.Num == 3 && rows[i].pair.New.Content == "line3" {
 			newLine3Row = &rows[i]
 			break
 		}
@@ -1380,10 +1380,10 @@ func TestView_ExpandedFile_AlignmentWithRemovedLines(t *testing.T) {
 	}
 
 	// New line 3 (content "line3") should be paired with old line 4 (same content)
-	assert.Equal(t, "line3", newLine3Row.pair.Right.Content, "right side should be line3")
-	assert.Equal(t, "line3", newLine3Row.pair.Left.Content,
+	assert.Equal(t, "line3", newLine3Row.pair.New.Content, "right side should be line3")
+	assert.Equal(t, "line3", newLine3Row.pair.Old.Content,
 		"left side should also be line3 (old line 4), not REMOVED")
-	assert.Equal(t, 4, newLine3Row.pair.Left.Num,
+	assert.Equal(t, 4, newLine3Row.pair.Old.Num,
 		"left side line number should be 4 (after the removed line)")
 }
 
@@ -1396,20 +1396,20 @@ func TestView_GutterIndicators(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "context line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "context line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "context line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "context line", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "removed line", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 2, Content: "added line", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 2, Content: "removed line", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 2, Content: "added line", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 3, Content: "pure add", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 3, Content: "pure add", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 3, Content: "pure remove", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 3, Content: "pure remove", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -1456,12 +1456,12 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 						NewPath: "b/test.go",
 						Pairs: []sidebyside.LinePair{
 							{
-								Left:  sidebyside.Line{Num: 1, Content: "test content", Type: tt.lineType},
-								Right: sidebyside.Line{Num: 1, Content: "test content", Type: tt.lineType},
+								Old: sidebyside.Line{Num: 1, Content: "test content", Type: tt.lineType},
+								New: sidebyside.Line{Num: 1, Content: "test content", Type: tt.lineType},
 							},
 							{
-								Left:  sidebyside.Line{Num: 2, Content: "another line", Type: sidebyside.Context},
-								Right: sidebyside.Line{Num: 2, Content: "another line", Type: sidebyside.Context},
+								Old: sidebyside.Line{Num: 2, Content: "another line", Type: sidebyside.Context},
+								New: sidebyside.Line{Num: 2, Content: "another line", Type: sidebyside.Context},
 							},
 						},
 					},
@@ -1533,13 +1533,13 @@ func TestView_LineNumberColorMatchesIndicator(t *testing.T) {
 						Pairs: []sidebyside.LinePair{
 							// First line (cursor will be here)
 							{
-								Left:  sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
-								Right: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+								Old: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+								New: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
 							},
 							// Second line (the one we're testing, cursor not here)
 							{
-								Left:  sidebyside.Line{Num: 2, Content: "content", Type: tt.lineType},
-								Right: sidebyside.Line{Num: 2, Content: "content", Type: tt.lineType},
+								Old: sidebyside.Line{Num: 2, Content: "content", Type: tt.lineType},
+								New: sidebyside.Line{Num: 2, Content: "content", Type: tt.lineType},
 							},
 						},
 					},
@@ -1569,16 +1569,16 @@ func TestView_LargeLineNumbers(t *testing.T) {
 				NewPath: "b/large.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 9999, Content: "line 9999", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 9999, Content: "line 9999", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 9999, Content: "line 9999", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 9999, Content: "line 9999", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 10000, Content: "line 10000", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 10000, Content: "line 10000 modified", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 10000, Content: "line 10000", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 10000, Content: "line 10000 modified", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 10001, Content: "line 10001", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 10001, Content: "line 10001", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 10001, Content: "line 10001", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 10001, Content: "line 10001", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1613,16 +1613,16 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 				NewPath: "b/large.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 9999, Content: "line before", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 9999, Content: "line before", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 9999, Content: "line before", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 9999, Content: "line before", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 10000, Content: "ten thousand", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 10000, Content: "ten thousand", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 10000, Content: "ten thousand", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 10000, Content: "ten thousand", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 10001, Content: "line after", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 10001, Content: "line after", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 10001, Content: "line after", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 10001, Content: "line after", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1674,8 +1674,8 @@ func TestView_LineNumberTruncation(t *testing.T) {
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1706,8 +1706,8 @@ func TestView_GutterWidthNotShrinkOnFold(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "small file", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "small file", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "small file", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "small file", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1717,8 +1717,8 @@ func TestView_GutterWidthNotShrinkOnFold(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 10000, Content: "large file", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 10000, Content: "large file", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 10000, Content: "large file", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 10000, Content: "large file", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1779,8 +1779,8 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "only line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "only line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "only line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "only line", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -1830,8 +1830,8 @@ func TestCountFileStats(t *testing.T) {
 			name: "only context lines",
 			pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
 				},
 			},
 			wantAdded:   0,
@@ -1841,12 +1841,12 @@ func TestCountFileStats(t *testing.T) {
 			name: "pure additions",
 			pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Type: sidebyside.Empty},
-					Right: sidebyside.Line{Num: 1, Content: "new 1", Type: sidebyside.Added},
+					Old: sidebyside.Line{Type: sidebyside.Empty},
+					New: sidebyside.Line{Num: 1, Content: "new 1", Type: sidebyside.Added},
 				},
 				{
-					Left:  sidebyside.Line{Type: sidebyside.Empty},
-					Right: sidebyside.Line{Num: 2, Content: "new 2", Type: sidebyside.Added},
+					Old: sidebyside.Line{Type: sidebyside.Empty},
+					New: sidebyside.Line{Num: 2, Content: "new 2", Type: sidebyside.Added},
 				},
 			},
 			wantAdded:   2,
@@ -1856,16 +1856,16 @@ func TestCountFileStats(t *testing.T) {
 			name: "pure deletions",
 			pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "old 1", Type: sidebyside.Removed},
-					Right: sidebyside.Line{Type: sidebyside.Empty},
+					Old: sidebyside.Line{Num: 1, Content: "old 1", Type: sidebyside.Removed},
+					New: sidebyside.Line{Type: sidebyside.Empty},
 				},
 				{
-					Left:  sidebyside.Line{Num: 2, Content: "old 2", Type: sidebyside.Removed},
-					Right: sidebyside.Line{Type: sidebyside.Empty},
+					Old: sidebyside.Line{Num: 2, Content: "old 2", Type: sidebyside.Removed},
+					New: sidebyside.Line{Type: sidebyside.Empty},
 				},
 				{
-					Left:  sidebyside.Line{Num: 3, Content: "old 3", Type: sidebyside.Removed},
-					Right: sidebyside.Line{Type: sidebyside.Empty},
+					Old: sidebyside.Line{Num: 3, Content: "old 3", Type: sidebyside.Removed},
+					New: sidebyside.Line{Type: sidebyside.Empty},
 				},
 			},
 			wantAdded:   0,
@@ -1875,16 +1875,16 @@ func TestCountFileStats(t *testing.T) {
 			name: "mixed changes",
 			pairs: []sidebyside.LinePair{
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
 				},
 				{
-					Left:  sidebyside.Line{Num: 2, Content: "old", Type: sidebyside.Removed},
-					Right: sidebyside.Line{Num: 2, Content: "new", Type: sidebyside.Added},
+					Old: sidebyside.Line{Num: 2, Content: "old", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 2, Content: "new", Type: sidebyside.Added},
 				},
 				{
-					Left:  sidebyside.Line{Type: sidebyside.Empty},
-					Right: sidebyside.Line{Num: 3, Content: "added", Type: sidebyside.Added},
+					Old: sidebyside.Line{Type: sidebyside.Empty},
+					New: sidebyside.Line{Num: 3, Content: "added", Type: sidebyside.Added},
 				},
 			},
 			wantAdded:   2,
@@ -1979,8 +1979,8 @@ func TestFileHeaderWithStats_FoldedOnly(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal, // Normal view - no stats
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old1", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new1", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old1", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new1", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -2010,16 +2010,16 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 				Pairs: []sidebyside.LinePair{
 					// 3 additions, 2 deletions
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old1", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new1", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old1", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new1", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "old2", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 2, Content: "new2", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 2, Content: "old2", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 2, Content: "new2", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 3, Content: "new3", Type: sidebyside.Added},
+						Old: sidebyside.Line{Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 3, Content: "new3", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -2053,12 +2053,12 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 1, Content: "added", Type: sidebyside.Added},
+						Old: sidebyside.Line{Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 1, Content: "added", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -2069,8 +2069,8 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 				Pairs: []sidebyside.LinePair{
 					// 100 additions to make the count "+100" which is wider than "+1"
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -2082,8 +2082,8 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 	// Add more pairs to the second file to get +100
 	for i := 0; i < 100; i++ {
 		m.files[1].Pairs = append(m.files[1].Pairs, sidebyside.LinePair{
-			Left:  sidebyside.Line{Type: sidebyside.Empty},
-			Right: sidebyside.Line{Num: i + 2, Content: "added", Type: sidebyside.Added},
+			Old: sidebyside.Line{Type: sidebyside.Empty},
+			New: sidebyside.Line{Num: i + 2, Content: "added", Type: sidebyside.Added},
 		})
 	}
 	m.calculateTotalLines()
@@ -2113,16 +2113,16 @@ func TestFileHeaderWithStats_ShadingAlignment(t *testing.T) {
 	pairs100 := make([]sidebyside.LinePair, 100)
 	for i := range pairs100 {
 		pairs100[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Type: sidebyside.Empty},
-			Right: sidebyside.Line{Num: i + 1, Content: "added", Type: sidebyside.Added},
+			Old: sidebyside.Line{Type: sidebyside.Empty},
+			New: sidebyside.Line{Num: i + 1, Content: "added", Type: sidebyside.Added},
 		}
 	}
 
 	pairs5 := make([]sidebyside.LinePair, 5)
 	for i := range pairs5 {
 		pairs5[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Type: sidebyside.Empty},
-			Right: sidebyside.Line{Num: i + 1, Content: "added", Type: sidebyside.Added},
+			Old: sidebyside.Line{Type: sidebyside.Empty},
+			New: sidebyside.Line{Num: i + 1, Content: "added", Type: sidebyside.Added},
 		}
 	}
 
@@ -2182,12 +2182,12 @@ func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Added},
+						Old: sidebyside.Line{Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Added},
+						Old: sidebyside.Line{Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -2217,16 +2217,16 @@ func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Removed},
+						New: sidebyside.Line{Type: sidebyside.Empty},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Removed},
+						New: sidebyside.Line{Type: sidebyside.Empty},
 					},
 					{
-						Left:  sidebyside.Line{Num: 3, Content: "line3", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 3, Content: "line3", Type: sidebyside.Removed},
+						New: sidebyside.Line{Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -2375,7 +2375,7 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 						OldPath:    tt.oldPath,
 						NewPath:    tt.newPath,
 						FoldLevel:  tt.foldLevel,
-						Pairs:      []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1}, Right: sidebyside.Line{Num: 1}}},
+						Pairs:      []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}}},
 						OldContent: []string{"line"},
 						NewContent: []string{"line"},
 					},
@@ -2420,8 +2420,8 @@ func TestBuildRows_IncludesSummaryRow(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -2448,12 +2448,12 @@ func TestBuildRows_SummaryRowHasCorrectStats(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 2, Content: "added", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 2, Content: "added", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -2463,8 +2463,8 @@ func TestBuildRows_SummaryRowHasCorrectStats(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "deleted", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "deleted", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -2493,8 +2493,8 @@ func TestBuildRows_SummaryRowNoFile(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -2522,8 +2522,8 @@ func TestBuildRows_BlankLinesBeforeSummary(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -2569,8 +2569,8 @@ func TestView_SummaryRowFormat(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -2598,12 +2598,12 @@ func TestView_SummaryRowPluralFormat(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 2, Content: "added", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 2, Content: "added", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -2613,8 +2613,8 @@ func TestView_SummaryRowPluralFormat(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -2642,8 +2642,8 @@ func TestView_SummaryRowHasEqualsPrefix(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -2680,8 +2680,8 @@ func TestView_SummaryRowIsSelectable(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -2720,8 +2720,8 @@ func TestView_SummaryRowAppearsInAllModes(t *testing.T) {
 						NewContent: []string{"line1"},
 						Pairs: []sidebyside.LinePair{
 							{
-								Left:  sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
-								Right: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+								Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+								New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
 							},
 						},
 					},
@@ -2800,8 +2800,8 @@ func TestCurrentFileIndex_ReturnsMinusOneForSummaryRow(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -2882,12 +2882,12 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "context", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 2, Content: "context", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 2, Content: "context", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "context", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -2933,8 +2933,8 @@ func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -2964,8 +2964,8 @@ func TestStatusBar_NewFormat_ExpandedFile(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -2993,8 +2993,8 @@ func TestStatusBar_NewFormat_AddedFile(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -3023,8 +3023,8 @@ func TestStatusBar_NewFormat_DeletedFile(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "gone", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "gone", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -3053,8 +3053,8 @@ func TestStatusBar_NewFormat_AtEnd(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3085,8 +3085,8 @@ func TestStatusBar_NewFormat_NoStats(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3113,8 +3113,8 @@ func TestStatusBar_NonShrinkingWidth(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 1000)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Context},
 		}
 	}
 
@@ -3159,8 +3159,8 @@ func TestTopBar_ContainsFileInfo(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -3192,8 +3192,8 @@ func TestTopBar_LeftAligned(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3224,8 +3224,8 @@ func TestBottomBar_OnlyLessStyle(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -3258,8 +3258,8 @@ func TestView_Layout_TopBarFirst_BottomBarLast(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3316,8 +3316,8 @@ func TestTopBar_SearchMode_StillShowsFileInfo(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3345,8 +3345,8 @@ func TestBottomBar_SearchMode_ShowsSearchPrompt(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3376,8 +3376,8 @@ func TestTopBar_NoFileInfo_WhenOnSummary(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3410,8 +3410,8 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 100, Content: "line content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 100, Content: "line content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 100, Content: "line content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 100, Content: "line content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3481,8 +3481,8 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3526,8 +3526,8 @@ func TestView_CursorArrowOnSummaryRow(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded, // Fold so summary is closer
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3570,13 +3570,13 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "first hunk", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "first hunk", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "first hunk", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "first hunk", Type: sidebyside.Context},
 					},
 					// Gap in line numbers creates a hunk separator
 					{
-						Left:  sidebyside.Line{Num: 100, Content: "second hunk", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 100, Content: "second hunk", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 100, Content: "second hunk", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 100, Content: "second hunk", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3616,8 +3616,8 @@ func TestView_HeaderFileNumWidthMatchesLineNumWidth(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3661,8 +3661,8 @@ func TestView_FileHeaderNoVerticalDivider(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3703,13 +3703,13 @@ func TestView_HunkSeparatorNoCrossInMiddle(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
 					},
 					// Gap creates hunk separator
 					{
-						Left:  sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3752,29 +3752,29 @@ func TestView_HunkSeparatorBreadcrumbs(t *testing.T) {
 				Pairs: []sidebyside.LinePair{
 					// First hunk: lines 1-3 (outside any function)
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 3, Content: "import \"fmt\"", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 3, Content: "import \"fmt\"", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 3, Content: "import \"fmt\"", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 3, Content: "import \"fmt\"", Type: sidebyside.Context},
 					},
 					// Gap - next hunk is inside func MyFunction (lines 10-50)
 					{
-						Left:  sidebyside.Line{Num: 15, Content: "    x := 1", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 15, Content: "    x := 1", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 15, Content: "    x := 1", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 15, Content: "    x := 1", Type: sidebyside.Context},
 					},
 					{
-						Left:  sidebyside.Line{Num: 16, Content: "    y := 2", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 16, Content: "    y := 2", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 					},
 					{
-						Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 16, Content: "    y := 3", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 16, Content: "    y := 3", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -3824,13 +3824,13 @@ func TestView_HunkSeparatorBreadcrumbs_NoBreadcrumbWithoutStructure(t *testing.T
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
 					},
 					// Gap
 					{
-						Left:  sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -3885,25 +3885,25 @@ func AnotherFunction() {
 			Pairs: []sidebyside.LinePair{
 				// First hunk: lines 1-2 (package declaration)
 				{
-					Left:  sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 				},
 				{
-					Left:  sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
 				},
 				// Gap here - next hunk is inside MyFunction (line 4 = "x := 1")
 				{
-					Left:  sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
-					Right: sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 4, Content: "	x := 1", Type: sidebyside.Context},
 				},
 				{
-					Left:  sidebyside.Line{Num: 5, Content: "	y := 2", Type: sidebyside.Removed},
-					Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					Old: sidebyside.Line{Num: 5, Content: "	y := 2", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 				},
 				{
-					Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-					Right: sidebyside.Line{Num: 5, Content: "	y := 99", Type: sidebyside.Added},
+					Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+					New: sidebyside.Line{Num: 5, Content: "	y := 99", Type: sidebyside.Added},
 				},
 			},
 			// Full content is available (simulating file was expanded then shrunk)
@@ -3977,8 +3977,8 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4047,8 +4047,8 @@ func TestStatusBar_PagerIndicator(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4076,8 +4076,8 @@ func TestStatusBar_NoPagerIndicator_WhenNotPagerMode(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4111,8 +4111,8 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -4143,8 +4143,8 @@ func TestBuildRows_FirstFileUnfoldedHasTopBorder(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4172,8 +4172,8 @@ func TestBuildRows_NonFirstFileNoLeadingTopBorder(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4183,8 +4183,8 @@ func TestBuildRows_NonFirstFileNoLeadingTopBorder(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4221,8 +4221,8 @@ func TestBuildRows_TrailingTopBorderVisibleWhenNextUnfolded(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4232,8 +4232,8 @@ func TestBuildRows_TrailingTopBorderVisibleWhenNextUnfolded(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal, // Next file is unfolded
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4270,8 +4270,8 @@ func TestBuildRows_TrailingTopBorderHiddenWhenNextFolded(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4281,8 +4281,8 @@ func TestBuildRows_TrailingTopBorderHiddenWhenNextFolded(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded, // Next file is folded
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4317,8 +4317,8 @@ func TestBuildRows_TrailingTopBorderHiddenForLastFile(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4353,8 +4353,8 @@ func TestBuildRows_HeaderBorderVisibleFirstFile(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4388,8 +4388,8 @@ func TestBuildRows_HeaderBorderVisibleWhenPrevUnfolded(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal, // Previous file unfolded
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4399,8 +4399,8 @@ func TestBuildRows_HeaderBorderVisibleWhenPrevUnfolded(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4434,8 +4434,8 @@ func TestBuildRows_HeaderBorderHiddenWhenPrevFolded(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded, // Previous file folded
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4445,8 +4445,8 @@ func TestBuildRows_HeaderBorderHiddenWhenPrevFolded(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4499,8 +4499,8 @@ func TestBuildRows_BottomBorderMatchesHeaderVisibility(t *testing.T) {
 						FoldLevel: tt.prevFoldLevel,
 						Pairs: []sidebyside.LinePair{
 							{
-								Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-								Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+								Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+								New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 							},
 						},
 					},
@@ -4510,8 +4510,8 @@ func TestBuildRows_BottomBorderMatchesHeaderVisibility(t *testing.T) {
 						FoldLevel: sidebyside.FoldNormal,
 						Pairs: []sidebyside.LinePair{
 							{
-								Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-								Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+								Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+								New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 							},
 						},
 					},
@@ -4553,8 +4553,8 @@ func TestRenderHeaderTopBorder_BorderVisibility(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4584,8 +4584,8 @@ func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4613,8 +4613,8 @@ func TestRenderHeaderBottomBorder_CorrectCorner(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4638,8 +4638,8 @@ func TestRenderHeaderBottomBorder_BorderVisibility(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4667,8 +4667,8 @@ func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4678,8 +4678,8 @@ func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4689,8 +4689,8 @@ func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4734,8 +4734,8 @@ func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4745,8 +4745,8 @@ func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4756,8 +4756,8 @@ func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4812,8 +4812,8 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded, // File 0: folded
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4823,8 +4823,8 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal, // File 1: unfolded
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4834,8 +4834,8 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 				FoldLevel: sidebyside.FoldFolded, // File 2: folded
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4903,8 +4903,8 @@ func TestRenderHeaderTopBorder_WidthAlignment(t *testing.T) {
 				NewPath: "b/foo.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -4950,8 +4950,8 @@ func TestBuildRows_TruncationIndicator_OldSideOnly(t *testing.T) {
 				NewTruncated: false,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old content", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "old content", Type: sidebyside.Removed},
+						New: sidebyside.Line{Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -4991,8 +4991,8 @@ func TestBuildRows_TruncationIndicator_NewSideOnly(t *testing.T) {
 				NewTruncated: true,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 1, Content: "new content", Type: sidebyside.Added},
+						Old: sidebyside.Line{Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 1, Content: "new content", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -5032,8 +5032,8 @@ func TestBuildRows_TruncationIndicator_BothSides(t *testing.T) {
 				NewTruncated: true,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -5073,8 +5073,8 @@ func TestBuildRows_TruncationIndicator_NotTruncated(t *testing.T) {
 				NewTruncated: false,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -5182,8 +5182,8 @@ func TestBuildRows_TruncationIndicator_NewFile(t *testing.T) {
 				NewTruncated: true,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 1, Content: "new content", Type: sidebyside.Added},
+						Old: sidebyside.Line{Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 1, Content: "new content", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -5222,8 +5222,8 @@ func TestBuildRows_TruncationIndicator_DeletedFile(t *testing.T) {
 				NewTruncated: false, // Can't truncate non-existent new file
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old content", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "old content", Type: sidebyside.Removed},
+						New: sidebyside.Line{Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -5258,8 +5258,8 @@ func TestRenderTruncationIndicator_LeftSideOnly(t *testing.T) {
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -5299,8 +5299,8 @@ func TestRenderTruncationIndicator_RightSideOnly(t *testing.T) {
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -5336,8 +5336,8 @@ func TestRenderTruncationIndicator_BothSides(t *testing.T) {
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -5381,8 +5381,8 @@ func TestBuildRows_TruncationIndicator_PagerMode_OldSideOnly(t *testing.T) {
 				NewTruncated: false,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Type: sidebyside.Empty},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Type: sidebyside.Empty},
 					},
 				},
 			},
@@ -5422,8 +5422,8 @@ func TestBuildRows_TruncationIndicator_PagerMode_NewSideOnly(t *testing.T) {
 				NewTruncated: true,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Type: sidebyside.Empty},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Type: sidebyside.Empty},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -5463,8 +5463,8 @@ func TestBuildRows_TruncationIndicator_PagerMode_BothSides(t *testing.T) {
 				NewTruncated: true,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 					},
 				},
 			},
@@ -5504,8 +5504,8 @@ func TestBuildRows_TruncationIndicator_PagerMode_NotTruncated(t *testing.T) {
 				NewTruncated: false,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -5538,13 +5538,13 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
 					},
 					// Gap creates hunk separator
 					{
-						Left:  sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 100, Content: "second", Type: sidebyside.Context},
 					},
 				},
 			},

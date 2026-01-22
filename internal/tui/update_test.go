@@ -14,8 +14,8 @@ func makeTestModel(numLines int) Model {
 	pairs := make([]sidebyside.LinePair, numLines)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "left"},
-			Right: sidebyside.Line{Num: i + 1, Content: "right"},
+			Old: sidebyside.Line{Num: i + 1, Content: "left"},
+			New: sidebyside.Line{Num: i + 1, Content: "right"},
 		}
 	}
 
@@ -181,8 +181,8 @@ func makeMultiFileTestModel() Model {
 		pairs := make([]sidebyside.LinePair, n)
 		for i := range pairs {
 			pairs[i] = sidebyside.LinePair{
-				Left:  sidebyside.Line{Num: i + 1, Content: "content"},
-				Right: sidebyside.Line{Num: i + 1, Content: "content"},
+				Old: sidebyside.Line{Num: i + 1, Content: "content"},
+				New: sidebyside.Line{Num: i + 1, Content: "content"},
 			}
 		}
 		return pairs
@@ -520,14 +520,14 @@ func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
 	pairs2 := make([]sidebyside.LinePair, 5)
 	for i := range pairs1 {
 		pairs1[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file1"},
+			New: sidebyside.Line{Num: i + 1, Content: "file1"},
 		}
 	}
 	for i := range pairs2 {
 		pairs2[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file2"},
+			New: sidebyside.Line{Num: i + 1, Content: "file2"},
 		}
 	}
 
@@ -588,14 +588,14 @@ func TestUpdate_FoldToggleAll_DifferentLevels(t *testing.T) {
 	pairs2 := make([]sidebyside.LinePair, 5)
 	for i := range pairs1 {
 		pairs1[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file1"},
+			New: sidebyside.Line{Num: i + 1, Content: "file1"},
 		}
 	}
 	for i := range pairs2 {
 		pairs2[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file2"},
+			New: sidebyside.Line{Num: i + 1, Content: "file2"},
 		}
 	}
 
@@ -720,8 +720,8 @@ func TestUpdate_AllContentLoadedMsg(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 5)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "line"},
-			Right: sidebyside.Line{Num: i + 1, Content: "line"},
+			Old: sidebyside.Line{Num: i + 1, Content: "line"},
+			New: sidebyside.Line{Num: i + 1, Content: "line"},
 		}
 	}
 
@@ -753,8 +753,8 @@ func TestUpdate_AllContentLoadedMsg_PerSideTruncation(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 5)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "line"},
-			Right: sidebyside.Line{Num: i + 1, Content: "line"},
+			Old: sidebyside.Line{Num: i + 1, Content: "line"},
+			New: sidebyside.Line{Num: i + 1, Content: "line"},
 		}
 	}
 
@@ -791,14 +791,14 @@ func TestUpdate_ScrollToEnd_SummaryHasNoFileInfo(t *testing.T) {
 	pairs2 := make([]sidebyside.LinePair, 5)
 	for i := range pairs1 {
 		pairs1[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file1"},
+			New: sidebyside.Line{Num: i + 1, Content: "file1"},
 		}
 	}
 	for i := range pairs2 {
 		pairs2[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file2"},
+			New: sidebyside.Line{Num: i + 1, Content: "file2"},
 		}
 	}
 
@@ -856,14 +856,14 @@ func TestUpdate_PagerMode_FoldToggleAll_SkipsExpanded(t *testing.T) {
 	pairs2 := make([]sidebyside.LinePair, 5)
 	for i := range pairs1 {
 		pairs1[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file1"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file1"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file1"},
+			New: sidebyside.Line{Num: i + 1, Content: "file1"},
 		}
 	}
 	for i := range pairs2 {
 		pairs2[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "file2"},
-			Right: sidebyside.Line{Num: i + 1, Content: "file2"},
+			Old: sidebyside.Line{Num: i + 1, Content: "file2"},
+			New: sidebyside.Line{Num: i + 1, Content: "file2"},
 		}
 	}
 

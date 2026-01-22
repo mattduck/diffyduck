@@ -203,8 +203,8 @@ type cursorRowIdentity struct {
 	// For blank rows, which blank row within the file's blank area (0-indexed)
 	blankIndex int
 	// For content rows, the line numbers to match
-	leftNum  int
-	rightNum int
+	oldNum int
+	newNum int
 }
 
 // getCursorRowIdentity returns the identity of the row at the cursor position.
@@ -245,8 +245,8 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 		kind:       row.kind,
 		fileIndex:  row.fileIndex,
 		blankIndex: blankIndex,
-		leftNum:    row.pair.Left.Num,
-		rightNum:   row.pair.Right.Num,
+		oldNum:     row.pair.Old.Num,
+		newNum:     row.pair.New.Num,
 	}
 }
 
@@ -333,10 +333,10 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 		if row.kind != RowKindContent {
 			return false
 		}
-		if identity.leftNum > 0 && row.pair.Left.Num == identity.leftNum {
+		if identity.oldNum > 0 && row.pair.Old.Num == identity.oldNum {
 			return true
 		}
-		if identity.rightNum > 0 && row.pair.Right.Num == identity.rightNum {
+		if identity.newNum > 0 && row.pair.New.Num == identity.newNum {
 			return true
 		}
 		// If both are 0, no match (can't identify the row)

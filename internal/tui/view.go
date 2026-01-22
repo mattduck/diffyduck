@@ -289,9 +289,9 @@ func (m Model) buildRows() []displayRow {
 			var prevLeft, prevRight int
 			for i, pair := range fp.Pairs {
 				// Check for gap in line numbers (hunk boundary)
-				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Left.Num, pair.Right.Num) {
-					// Find first non-zero Right.Num in this chunk for breadcrumb lookup
-					chunkStartLine := findFirstRightLineNum(fp.Pairs, i)
+				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
+					// Find first non-zero New.Num in this chunk for breadcrumb lookup
+					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
 					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
 				}
 
@@ -305,11 +305,11 @@ func (m Model) buildRows() []displayRow {
 				rows = append(rows, row)
 
 				// Track previous line numbers (use non-zero values)
-				if pair.Left.Num > 0 {
-					prevLeft = pair.Left.Num
+				if pair.Old.Num > 0 {
+					prevLeft = pair.Old.Num
 				}
-				if pair.Right.Num > 0 {
-					prevRight = pair.Right.Num
+				if pair.New.Num > 0 {
+					prevRight = pair.New.Num
 				}
 			}
 
@@ -400,19 +400,19 @@ func (m Model) buildExpandedRows(fp sidebyside.FilePair) []displayRow {
 
 // buildExpandedRowsDeletedFile handles the case where the file was deleted.
 func (m Model) buildExpandedRowsDeletedFile(fp sidebyside.FilePair) []displayRow {
-	leftTypes := buildLineTypeMap(fp.Pairs, true)
+	oldTypes := buildLineTypeMap(fp.Pairs, true)
 	var rows []displayRow
 
 	for i, content := range fp.OldContent {
 		lineNum := i + 1
 		lineType := sidebyside.Context
-		if t, ok := leftTypes[lineNum]; ok {
+		if t, ok := oldTypes[lineNum]; ok {
 			lineType = t
 		}
 		rows = append(rows, displayRow{
 			pair: sidebyside.LinePair{
-				Left:  sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
-				Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+				Old: sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
+				New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 			},
 		})
 	}
@@ -421,19 +421,19 @@ func (m Model) buildExpandedRowsDeletedFile(fp sidebyside.FilePair) []displayRow
 
 // buildExpandedRowsNewFile handles the case where the file is new.
 func (m Model) buildExpandedRowsNewFile(fp sidebyside.FilePair) []displayRow {
-	rightTypes := buildLineTypeMap(fp.Pairs, false)
+	newTypes := buildLineTypeMap(fp.Pairs, false)
 	var rows []displayRow
 
 	for i, content := range fp.NewContent {
 		lineNum := i + 1
 		lineType := sidebyside.Context
-		if t, ok := rightTypes[lineNum]; ok {
+		if t, ok := newTypes[lineNum]; ok {
 			lineType = t
 		}
 		rows = append(rows, displayRow{
 			pair: sidebyside.LinePair{
-				Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-				Right: sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
+				Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+				New: sidebyside.Line{Num: lineNum, Content: content, Type: lineType},
 			},
 		})
 	}
@@ -441,16 +441,16 @@ func (m Model) buildExpandedRowsNewFile(fp sidebyside.FilePair) []displayRow {
 }
 
 // buildLineTypeMap extracts line types from Pairs for one side.
-func buildLineTypeMap(pairs []sidebyside.LinePair, leftSide bool) map[int]sidebyside.LineType {
+func buildLineTypeMap(pairs []sidebyside.LinePair, oldSide bool) map[int]sidebyside.LineType {
 	types := make(map[int]sidebyside.LineType)
 	for _, pair := range pairs {
-		if leftSide {
-			if pair.Left.Num > 0 {
-				types[pair.Left.Num] = pair.Left.Type
+		if oldSide {
+			if pair.Old.Num > 0 {
+				types[pair.Old.Num] = pair.Old.Type
 			}
 		} else {
-			if pair.Right.Num > 0 {
-				types[pair.Right.Num] = pair.Right.Type
+			if pair.New.Num > 0 {
+				types[pair.New.Num] = pair.New.Type
 			}
 		}
 	}
@@ -467,32 +467,32 @@ func (m Model) buildExpandedRowsWithAlignment(fp sidebyside.FilePair) []displayR
 	for _, pair := range fp.Pairs {
 		// Fill context lines before this pair
 		// These are lines that exist in both files but weren't in the diff context
-		oldTarget := pair.Left.Num - 1  // 0-based target for old (or -1 if empty)
-		newTarget := pair.Right.Num - 1 // 0-based target for new (or -1 if empty)
+		oldTarget := pair.Old.Num - 1 // 0-based target for old (or -1 if empty)
+		newTarget := pair.New.Num - 1 // 0-based target for new (or -1 if empty)
 
-		if pair.Left.Num == 0 {
+		if pair.Old.Num == 0 {
 			// Added line - old side is empty, fill new context up to this line
 			for newIdx < newTarget {
 				// Find corresponding old line (context lines match 1:1 before additions)
 				if oldIdx < len(fp.OldContent) {
 					rows = append(rows, displayRow{
 						pair: sidebyside.LinePair{
-							Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
-							Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+							Old: sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+							New: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
 						},
 					})
 					oldIdx++
 				}
 				newIdx++
 			}
-		} else if pair.Right.Num == 0 {
+		} else if pair.New.Num == 0 {
 			// Removed line - new side is empty, fill old context up to this line
 			for oldIdx < oldTarget {
 				if newIdx < len(fp.NewContent) {
 					rows = append(rows, displayRow{
 						pair: sidebyside.LinePair{
-							Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
-							Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+							Old: sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+							New: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
 						},
 					})
 					newIdx++
@@ -505,8 +505,8 @@ func (m Model) buildExpandedRowsWithAlignment(fp sidebyside.FilePair) []displayR
 				oldIdx < len(fp.OldContent) && newIdx < len(fp.NewContent) {
 				rows = append(rows, displayRow{
 					pair: sidebyside.LinePair{
-						Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+						New: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
 					},
 				})
 				oldIdx++
@@ -519,11 +519,11 @@ func (m Model) buildExpandedRowsWithAlignment(fp sidebyside.FilePair) []displayR
 		rows = append(rows, pairRow)
 
 		// Advance indices past this pair
-		if pair.Left.Num > 0 {
-			oldIdx = pair.Left.Num // Now at 0-based index after this line
+		if pair.Old.Num > 0 {
+			oldIdx = pair.Old.Num // Now at 0-based index after this line
 		}
-		if pair.Right.Num > 0 {
-			newIdx = pair.Right.Num
+		if pair.New.Num > 0 {
+			newIdx = pair.New.Num
 		}
 	}
 
@@ -531,8 +531,8 @@ func (m Model) buildExpandedRowsWithAlignment(fp sidebyside.FilePair) []displayR
 	for oldIdx < len(fp.OldContent) && newIdx < len(fp.NewContent) {
 		rows = append(rows, displayRow{
 			pair: sidebyside.LinePair{
-				Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
-				Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+				Old: sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+				New: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
 			},
 		})
 		oldIdx++
@@ -543,8 +543,8 @@ func (m Model) buildExpandedRowsWithAlignment(fp sidebyside.FilePair) []displayR
 	for oldIdx < len(fp.OldContent) {
 		rows = append(rows, displayRow{
 			pair: sidebyside.LinePair{
-				Left:  sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
-				Right: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+				Old: sidebyside.Line{Num: oldIdx + 1, Content: fp.OldContent[oldIdx], Type: sidebyside.Context},
+				New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
 			},
 		})
 		oldIdx++
@@ -552,8 +552,8 @@ func (m Model) buildExpandedRowsWithAlignment(fp sidebyside.FilePair) []displayR
 	for newIdx < len(fp.NewContent) {
 		rows = append(rows, displayRow{
 			pair: sidebyside.LinePair{
-				Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-				Right: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
+				Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+				New: sidebyside.Line{Num: newIdx + 1, Content: fp.NewContent[newIdx], Type: sidebyside.Context},
 			},
 		})
 		newIdx++
@@ -564,18 +564,18 @@ func (m Model) buildExpandedRowsWithAlignment(fp sidebyside.FilePair) []displayR
 
 // buildPairRow creates a displayRow from a Pair, using full file content when available.
 func (m Model) buildPairRow(pair sidebyside.LinePair, fp sidebyside.FilePair) displayRow {
-	left := pair.Left
-	right := pair.Right
+	old := pair.Old
+	new := pair.New
 
 	// Use content from full file if available (it should match, but ensures consistency)
-	if left.Num > 0 && left.Num <= len(fp.OldContent) {
-		left.Content = fp.OldContent[left.Num-1]
+	if old.Num > 0 && old.Num <= len(fp.OldContent) {
+		old.Content = fp.OldContent[old.Num-1]
 	}
-	if right.Num > 0 && right.Num <= len(fp.NewContent) {
-		right.Content = fp.NewContent[right.Num-1]
+	if new.Num > 0 && new.Num <= len(fp.NewContent) {
+		new.Content = fp.NewContent[new.Num-1]
 	}
 
-	return displayRow{pair: sidebyside.LinePair{Left: left, Right: right}}
+	return displayRow{pair: sidebyside.LinePair{Old: old, New: new}}
 }
 
 // isHunkBoundary returns true if there's a gap between consecutive line pairs.
@@ -591,26 +591,26 @@ func isHunkBoundary(prevLeft, prevRight, currLeft, currRight int) bool {
 	return false
 }
 
-// findFirstRightLineNum finds the first non-zero Right.Num starting at index start.
+// findFirstNewLineNum finds the first non-zero New.Num starting at index start.
 // Used to find the line number for breadcrumb lookup when a chunk starts with deletions.
-func findFirstRightLineNum(pairs []sidebyside.LinePair, start int) int {
+func findFirstNewLineNum(pairs []sidebyside.LinePair, start int) int {
 	for i := start; i < len(pairs); i++ {
-		if pairs[i].Right.Num > 0 {
-			return pairs[i].Right.Num
+		if pairs[i].New.Num > 0 {
+			return pairs[i].New.Num
 		}
 		// Stop at next hunk boundary to avoid crossing into another chunk
 		if i > start {
-			prevLeft := 0
-			prevRight := 0
+			prevOld := 0
+			prevNew := 0
 			if i > 0 {
-				if pairs[i-1].Left.Num > 0 {
-					prevLeft = pairs[i-1].Left.Num
+				if pairs[i-1].Old.Num > 0 {
+					prevOld = pairs[i-1].Old.Num
 				}
-				if pairs[i-1].Right.Num > 0 {
-					prevRight = pairs[i-1].Right.Num
+				if pairs[i-1].New.Num > 0 {
+					prevNew = pairs[i-1].New.Num
 				}
 			}
-			if isHunkBoundary(prevLeft, prevRight, pairs[i].Left.Num, pairs[i].Right.Num) {
+			if isHunkBoundary(prevOld, prevNew, pairs[i].Old.Num, pairs[i].New.Num) {
 				break
 			}
 		}
@@ -627,10 +627,10 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	lineNumWidth := m.lineNumWidth()
 
 	leftHalfWidth := defaultHalf
-	// Dynamic divider: use smaller left width if old content is narrower
-	if m.maxOldContentWidth > 0 {
+	// Dynamic divider: use smaller left width if new content (now on left) is narrower
+	if m.maxNewContentWidth > 0 {
 		// Layout: indicator(1) + space(1) + lineNum + space(1) + content + gutter(4)
-		minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxOldContentWidth + 4
+		minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxNewContentWidth + 4
 		if minLeftWidth < leftHalfWidth {
 			leftHalfWidth = minLeftWidth
 		}
@@ -692,32 +692,32 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 }
 
 // renderHunkSeparator renders a separator line between hunks.
-// If structure data is available, shows breadcrumbs on the right side.
+// If structure data is available, shows breadcrumbs on the left side (new content).
 func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth int, isCursorRow bool) string {
 	shadeStyle := hunkSeparatorStyle
 
-	// Try to get breadcrumb for the chunk start line (new/right side only)
+	// Try to get breadcrumb for the chunk start line (new/left side only)
 	var breadcrumb string
 	if row.chunkStartLine > 0 {
 		entries := m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
 		breadcrumb = formatBreadcrumbs(entries)
 	}
 
-	// Build right half: breadcrumb (truncated) + ░ padding, or all ░
-	var rightHalf string
+	// Build left half: ░ padding + breadcrumb (truncated), or all ░
+	var leftHalf string
 	if breadcrumb != "" {
 		// Truncate if needed (no ellipsis, just cut)
-		breadcrumb = runewidth.Truncate(breadcrumb, rightHalfWidth, "")
+		breadcrumb = runewidth.Truncate(breadcrumb, leftHalfWidth, "")
 		displayWidth := runewidth.StringWidth(breadcrumb)
-		padding := rightHalfWidth - displayWidth
-		rightHalf = shadeStyle.Render(breadcrumb + strings.Repeat("░", padding))
+		padding := leftHalfWidth - displayWidth
+		leftHalf = shadeStyle.Render(strings.Repeat("░", padding) + breadcrumb)
 	} else {
-		rightHalf = shadeStyle.Render(strings.Repeat("░", rightHalfWidth))
+		leftHalf = shadeStyle.Render(strings.Repeat("░", leftHalfWidth))
 	}
 
 	if !isCursorRow {
-		// Left half all shading
-		leftHalf := shadeStyle.Render(strings.Repeat("░", leftHalfWidth))
+		// Right half all shading
+		rightHalf := shadeStyle.Render(strings.Repeat("░", rightHalfWidth))
 		return leftHalf + shadeStyle.Render("░░░") + rightHalf
 	}
 
@@ -738,10 +738,10 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	rightContentShade := shadeStyle.Render(strings.Repeat("░", rightContentWidth))
 
 	// Both sides have same layout: arrow + shade + lineNum + shade + content
-	leftHalf := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + leftContentShade
-	rightHalf = cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + rightContentShade
+	leftHalfCursor := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + leftContentShade
+	rightHalfCursor := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + rightContentShade
 
-	return leftHalf + shadeStyle.Render("░░░") + rightHalf
+	return leftHalfCursor + shadeStyle.Render("░░░") + rightHalfCursor
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
@@ -1156,10 +1156,10 @@ func countFileStats(fp sidebyside.FilePair) (added, removed int) {
 
 	// Fall back to counting from Pairs (for tests or edge cases)
 	for _, pair := range fp.Pairs {
-		if pair.Right.Type == sidebyside.Added {
+		if pair.New.Type == sidebyside.Added {
 			added++
 		}
-		if pair.Left.Type == sidebyside.Removed {
+		if pair.Old.Type == sidebyside.Removed {
 			removed++
 		}
 	}
@@ -1604,22 +1604,24 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 	separatorChar := "╏"
 
 	// Check if this is a modified pair where we should show inline diff
-	isModifiedPair := pair.Left.Type == sidebyside.Removed && pair.Right.Type == sidebyside.Added
+	isModifiedPair := pair.Old.Type == sidebyside.Removed && pair.New.Type == sidebyside.Added
 
-	var leftSpans, rightSpans []inlinediff.Span
+	var oldSpans, newSpans []inlinediff.Span
 	if isModifiedPair {
-		leftSpans, rightSpans = m.getInlineDiff(fileIndex, pair)
+		oldSpans, newSpans = m.getInlineDiff(fileIndex, pair)
 	}
 
 	// Get syntax highlight spans for each side
-	leftSyntax := m.getLineSpans(fileIndex, pair.Left.Num, true)
-	rightSyntax := m.getLineSpans(fileIndex, pair.Right.Num, false)
+	// New content on left (side 0), Old content on right (side 1)
+	newSyntax := m.getLineSpans(fileIndex, pair.New.Num, false)
+	oldSyntax := m.getLineSpans(fileIndex, pair.Old.Num, true)
 
 	// Use blue "changed" styling when we have word-level diff (both sides modified)
-	hasWordDiff := len(leftSpans) > 0
+	hasWordDiff := len(oldSpans) > 0
 
-	left := m.renderLineWithSpans(pair.Left, leftContentWidth, lineNumWidth, leftSpans, leftSyntax, rowIdx, 0, isCursorRow, hasWordDiff)
-	right := m.renderLineWithSpans(pair.Right, rightContentWidth, lineNumWidth, rightSpans, rightSyntax, rowIdx, 1, isCursorRow, hasWordDiff)
+	// Render: New on left (side 0), Old on right (side 1)
+	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, rowIdx, 0, isCursorRow, hasWordDiff)
+	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, rowIdx, 1, isCursorRow, hasWordDiff)
 
 	separator := hunkSeparatorStyle.Render(separatorChar)
 	return left + " " + separator + " " + right
@@ -1686,8 +1688,9 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 	// Apply styling with layers: syntax (base) -> inline diff -> search (top)
 	// Exception: context lines on old side are dimmed (no syntax highlighting)
+	// Old side is now on the right (side == 1)
 	var styledContent string
-	isOldSideContext := side == 0 && line.Type == sidebyside.Context
+	isOldSideContext := side == 1 && line.Type == sidebyside.Context
 
 	if isOldSideContext {
 		// Dim context lines on the old side - they're duplicates of the new side
@@ -2142,36 +2145,37 @@ func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.L
 
 // getInlineDiff returns cached inline diff spans for a modified line pair,
 // computing and caching them if not already cached.
+// Returns (oldSpans, newSpans) for the old and new content respectively.
 func (m Model) getInlineDiff(fileIndex int, pair sidebyside.LinePair) ([]inlinediff.Span, []inlinediff.Span) {
-	cacheKey := inlineDiffKey{fileIndex: fileIndex, leftNum: pair.Left.Num, rightNum: pair.Right.Num}
+	cacheKey := inlineDiffKey{fileIndex: fileIndex, oldNum: pair.Old.Num, newNum: pair.New.Num}
 
 	// Check cache first (if cache exists)
 	if m.inlineDiffCache != nil {
 		if cached, ok := m.inlineDiffCache[cacheKey]; ok {
-			return cached.leftSpans, cached.rightSpans
+			return cached.oldSpans, cached.newSpans
 		}
 	}
 
 	// Compute inline diff
-	var leftSpans, rightSpans []inlinediff.Span
-	leftContent := expandTabs(pair.Left.Content)
-	rightContent := expandTabs(pair.Right.Content)
+	var oldSpans, newSpans []inlinediff.Span
+	oldContent := expandTabs(pair.Old.Content)
+	newContent := expandTabs(pair.New.Content)
 
 	// Only do inline diff if lines are similar enough
-	if !inlinediff.ShouldSkipInlineDiff(leftContent, rightContent) {
-		leftSpans, rightSpans = inlinediff.Diff(leftContent, rightContent)
+	if !inlinediff.ShouldSkipInlineDiff(oldContent, newContent) {
+		oldSpans, newSpans = inlinediff.Diff(oldContent, newContent)
 
 		// Also skip if too much would be highlighted (not useful)
-		if inlinediff.ShouldSkipBasedOnSpans(leftSpans, len(leftContent)) ||
-			inlinediff.ShouldSkipBasedOnSpans(rightSpans, len(rightContent)) {
-			leftSpans, rightSpans = nil, nil
+		if inlinediff.ShouldSkipBasedOnSpans(oldSpans, len(oldContent)) ||
+			inlinediff.ShouldSkipBasedOnSpans(newSpans, len(newContent)) {
+			oldSpans, newSpans = nil, nil
 		}
 	}
 
 	// Cache the result (even if nil - means we computed and found nothing useful)
 	if m.inlineDiffCache != nil {
-		m.inlineDiffCache[cacheKey] = inlineDiffResult{leftSpans: leftSpans, rightSpans: rightSpans}
+		m.inlineDiffCache[cacheKey] = inlineDiffResult{oldSpans: oldSpans, newSpans: newSpans}
 	}
 
-	return leftSpans, rightSpans
+	return oldSpans, newSpans
 }

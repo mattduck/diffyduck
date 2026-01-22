@@ -205,9 +205,9 @@ func buildContentFromPairs(pairs []sidebyside.LinePair, isOld bool) ([]byte, map
 	for _, pair := range pairs {
 		var line sidebyside.Line
 		if isOld {
-			line = pair.Left
+			line = pair.Old
 		} else {
-			line = pair.Right
+			line = pair.New
 		}
 
 		// Skip empty lines (no line number)

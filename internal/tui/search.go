@@ -49,15 +49,16 @@ func (m Model) findMatches(query string) []Match {
 			header := formatFileHeader(row.header, row.header)
 			matches = append(matches, findInString(header, searchQuery, caseSensitive, rowIdx, 0)...)
 		} else {
-			// Search in both left and right content
-			leftContent := row.pair.Left.Content
-			rightContent := row.pair.Right.Content
+			// Search in both new and old content
+			// New content is on left (side 0), Old content is on right (side 1)
+			newContent := row.pair.New.Content
+			oldContent := row.pair.Old.Content
 
-			matches = append(matches, findInString(leftContent, searchQuery, caseSensitive, rowIdx, 0)...)
+			matches = append(matches, findInString(newContent, searchQuery, caseSensitive, rowIdx, 0)...)
 
-			// Only search right side if it differs from left (avoid duplicates for context lines)
-			if rightContent != leftContent {
-				matches = append(matches, findInString(rightContent, searchQuery, caseSensitive, rowIdx, 1)...)
+			// Only search old side if it differs from new (avoid duplicates for context lines)
+			if oldContent != newContent {
+				matches = append(matches, findInString(oldContent, searchQuery, caseSensitive, rowIdx, 1)...)
 			}
 		}
 	}

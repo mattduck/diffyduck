@@ -183,8 +183,8 @@ func TestStatusInfo_UseCursorPosition_NotScrollPosition(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 20)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
-			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+			Old: sidebyside.Line{Num: i + 1, Content: "content"},
+			New: sidebyside.Line{Num: i + 1, Content: "content"},
 		}
 	}
 
@@ -219,8 +219,8 @@ func TestStatusInfo_CursorOnBlankLine_CountsAsFileAbove(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 5)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
-			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+			Old: sidebyside.Line{Num: i + 1, Content: "content"},
+			New: sidebyside.Line{Num: i + 1, Content: "content"},
 		}
 	}
 
@@ -246,8 +246,8 @@ func TestStatusInfo_CursorOnLastBlankLine_CountsAsLastFile(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 5)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
-			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+			Old: sidebyside.Line{Num: i + 1, Content: "content"},
+			New: sidebyside.Line{Num: i + 1, Content: "content"},
 		}
 	}
 
@@ -298,8 +298,8 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 					NewPath: "b/test.go",
 					Pairs: []sidebyside.LinePair{
 						{
-							Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-							Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 						},
 					},
 				},
@@ -339,8 +339,8 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 					NewPath: "b/test.go",
 					Pairs: []sidebyside.LinePair{
 						{
-							Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-							Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 						},
 					},
 				},
@@ -378,8 +378,8 @@ func TestView_FileHeader_SpansFullWidth(t *testing.T) {
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "left content", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 1, Content: "right content", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 1, Content: "left content", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "right content", Type: sidebyside.Context},
 					},
 				},
 			},
@@ -428,8 +428,8 @@ func TestView_CursorHighlight_OnDiffLine(t *testing.T) {
 					NewPath: "b/test.go",
 					Pairs: []sidebyside.LinePair{
 						{
-							Left:  sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-							Right: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+							Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+							New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
 						},
 					},
 				},
@@ -465,8 +465,8 @@ func TestView_CursorHighlight_OnBlankSeparator(t *testing.T) {
 					NewPath: "b/first.go",
 					Pairs: []sidebyside.LinePair{
 						{
-							Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-							Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 						},
 					},
 				},
@@ -475,8 +475,8 @@ func TestView_CursorHighlight_OnBlankSeparator(t *testing.T) {
 					NewPath: "b/second.go",
 					Pairs: []sidebyside.LinePair{
 						{
-							Left:  sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-							Right: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 						},
 					},
 				},
@@ -513,13 +513,13 @@ func TestView_CursorHighlight_OnHunkSeparator(t *testing.T) {
 					NewPath: "b/test.go",
 					Pairs: []sidebyside.LinePair{
 						{
-							Left:  sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
-							Right: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+							Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
+							New: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
 						},
 						// Gap - next line is 100, so there will be a hunk separator
 						{
-							Left:  sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
-							Right: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+							Old: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
+							New: sidebyside.Line{Num: 100, Content: "line hundred", Type: sidebyside.Context},
 						},
 					},
 				},
@@ -557,8 +557,8 @@ func TestView_CursorHighlight_BothGuttersOnAddedLine(t *testing.T) {
 					NewPath: "b/test.go",
 					Pairs: []sidebyside.LinePair{
 						{
-							Left:  sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-							Right: sidebyside.Line{Num: 1, Content: "added", Type: sidebyside.Added},
+							Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+							New: sidebyside.Line{Num: 1, Content: "added", Type: sidebyside.Added},
 						},
 					},
 				},
@@ -598,8 +598,8 @@ func TestFoldToggle_CursorOnHeader_StaysOnHeader(t *testing.T) {
 				OldPath: "a/test.go",
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
-					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
-					{Left: sidebyside.Line{Num: 2, Content: "line2"}, Right: sidebyside.Line{Num: 2, Content: "line2"}},
+					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
 				},
 				FoldLevel: sidebyside.FoldNormal,
 			},
@@ -645,8 +645,8 @@ func TestFoldToggle_CursorOnDiffLine_StaysOnDiffLine(t *testing.T) {
 				OldPath: "a/test.go",
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
-					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
-					{Left: sidebyside.Line{Num: 2, Content: "line2"}, Right: sidebyside.Line{Num: 2, Content: "line2"}},
+					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
 				},
 				FoldLevel: sidebyside.FoldNormal,
 			},
@@ -680,8 +680,8 @@ func TestFoldToggle_CursorOnDiffLine_FoldToHeader(t *testing.T) {
 				OldPath: "a/test.go",
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
-					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
-					{Left: sidebyside.Line{Num: 2, Content: "line2"}, Right: sidebyside.Line{Num: 2, Content: "line2"}},
+					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
 				},
 				FoldLevel: sidebyside.FoldExpanded, // Start at Expanded so next toggle goes to Folded
 			},
@@ -716,13 +716,13 @@ func TestFoldToggle_CursorOnBlankLine_StaysOnBlankLine(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldNormal,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldNormal,
 			},
 		},
@@ -763,13 +763,13 @@ func TestFoldToggle_CursorOnBlankLine_BlankDisappears(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldExpanded, // Will toggle to Folded via Shift+Tab
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldExpanded, // Same level, so Shift+Tab advances to Folded
 			},
 		},
@@ -817,9 +817,9 @@ func TestFoldToggle_CursorOnHunkSeparator_FoldToHeader(t *testing.T) {
 				OldPath: "a/test.go",
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
-					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 					// Gap - next line number is 100, creating a hunk separator
-					{Left: sidebyside.Line{Num: 100, Content: "line100"}, Right: sidebyside.Line{Num: 100, Content: "line100"}},
+					{Old: sidebyside.Line{Num: 100, Content: "line100"}, New: sidebyside.Line{Num: 100, Content: "line100"}},
 				},
 				FoldLevel: sidebyside.FoldExpanded, // Will toggle to Folded
 			},
@@ -861,13 +861,13 @@ func TestFoldToggleAll_PreservesScrollPosition(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldNormal,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldNormal,
 			},
 		},
@@ -902,13 +902,13 @@ func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldNormal,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldNormal,
 			},
 		},
@@ -958,19 +958,19 @@ func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldFolded,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldFolded,
 			},
 			{
 				OldPath:   "a/third.go",
 				NewPath:   "b/third.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldFolded,
 			},
 		},
@@ -1020,12 +1020,12 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 				OldPath: "a/test.go",
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
-					{Left: sidebyside.Line{Num: 10, Content: "line10"}, Right: sidebyside.Line{Num: 10, Content: "line10"}},
-					{Left: sidebyside.Line{Num: 11, Content: "line11"}, Right: sidebyside.Line{Num: 11, Content: "line11"}},
-					{Left: sidebyside.Line{Num: 12, Content: "line12"}, Right: sidebyside.Line{Num: 12, Content: "line12"}},
-					{Left: sidebyside.Line{Num: 13, Content: "line13"}, Right: sidebyside.Line{Num: 13, Content: "line13"}},
-					{Left: sidebyside.Line{Num: 14, Content: "line14"}, Right: sidebyside.Line{Num: 14, Content: "line14"}},
-					{Left: sidebyside.Line{Num: 15, Content: "line15"}, Right: sidebyside.Line{Num: 15, Content: "line15"}},
+					{Old: sidebyside.Line{Num: 10, Content: "line10"}, New: sidebyside.Line{Num: 10, Content: "line10"}},
+					{Old: sidebyside.Line{Num: 11, Content: "line11"}, New: sidebyside.Line{Num: 11, Content: "line11"}},
+					{Old: sidebyside.Line{Num: 12, Content: "line12"}, New: sidebyside.Line{Num: 12, Content: "line12"}},
+					{Old: sidebyside.Line{Num: 13, Content: "line13"}, New: sidebyside.Line{Num: 13, Content: "line13"}},
+					{Old: sidebyside.Line{Num: 14, Content: "line14"}, New: sidebyside.Line{Num: 14, Content: "line14"}},
+					{Old: sidebyside.Line{Num: 15, Content: "line15"}, New: sidebyside.Line{Num: 15, Content: "line15"}},
 				},
 				FoldLevel: sidebyside.FoldNormal,
 				// No OldContent/NewContent - content not loaded yet
@@ -1053,7 +1053,7 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 
 	// Verify we're on the line with content "line12"
 	rows := m.buildRows()
-	assert.Equal(t, 12, rows[5].pair.Left.Num, "cursor should be on file line 12")
+	assert.Equal(t, 12, rows[5].pair.Old.Num, "cursor should be on file line 12")
 
 	// Press Tab to expand
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -1097,9 +1097,9 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	// The cursor should point to a row with file line 12
 	if cursorPos >= 0 && cursorPos < len(rows) {
 		row := rows[cursorPos]
-		assert.Equal(t, 12, row.pair.Left.Num,
+		assert.Equal(t, 12, row.pair.Old.Num,
 			"after content loads, cursor should still be on file line 12 (got line %d at cursor pos %d)",
-			row.pair.Left.Num, cursorPos)
+			row.pair.Old.Num, cursorPos)
 	} else {
 		t.Errorf("cursor position %d is out of bounds (total rows: %d)", cursorPos, len(rows))
 	}
@@ -1114,8 +1114,8 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	pairs := make([]sidebyside.LinePair, 10)
 	for i := range pairs {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: "content"},
-			Right: sidebyside.Line{Num: i + 1, Content: "content"},
+			Old: sidebyside.Line{Num: i + 1, Content: "content"},
+			New: sidebyside.Line{Num: i + 1, Content: "content"},
 		}
 	}
 
@@ -1178,8 +1178,8 @@ func TestResize_CursorOnHeaderTopBorder_StaysOnTopBorder(t *testing.T) {
 				OldPath: "a/test.go",
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
-					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
-					{Left: sidebyside.Line{Num: 2, Content: "line2"}, Right: sidebyside.Line{Num: 2, Content: "line2"}},
+					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
 				},
 				FoldLevel: sidebyside.FoldNormal,
 			},
@@ -1220,13 +1220,13 @@ func TestResize_CursorOnTrailingTopBorder_StaysOnTrailingBorder(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldNormal,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldNormal,
 			},
 		},
@@ -1277,7 +1277,7 @@ func TestResize_CursorOnTruncationIndicator_StaysOnTruncation(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
 				FoldLevel: sidebyside.FoldNormal,
 				Truncated: true, // This adds a truncation indicator row
 			},
@@ -1324,7 +1324,7 @@ func TestFoldToggle_CursorOnTopBorder_StaysOnTopBorder(t *testing.T) {
 				OldPath: "a/test.go",
 				NewPath: "b/test.go",
 				Pairs: []sidebyside.LinePair{
-					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 				},
 				FoldLevel: sidebyside.FoldNormal,
 			},

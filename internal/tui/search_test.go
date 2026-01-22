@@ -91,8 +91,8 @@ func TestFindMatches_BothSides(t *testing.T) {
 	// Create a model with different content on left and right
 	pairs := []sidebyside.LinePair{
 		{
-			Left:  sidebyside.Line{Num: 1, Content: "left match", Type: sidebyside.Removed},
-			Right: sidebyside.Line{Num: 1, Content: "right match", Type: sidebyside.Added},
+			Old: sidebyside.Line{Num: 1, Content: "left match", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 1, Content: "right match", Type: sidebyside.Added},
 		},
 	}
 	m := Model{
@@ -119,8 +119,8 @@ func TestFindMatches_InHeader(t *testing.T) {
 				NewPath: "b/searchable.go",
 				Pairs: []sidebyside.LinePair{
 					{
-						Left:  sidebyside.Line{Num: 1, Content: "content"},
-						Right: sidebyside.Line{Num: 1, Content: "content"},
+						Old: sidebyside.Line{Num: 1, Content: "content"},
+						New: sidebyside.Line{Num: 1, Content: "content"},
 					},
 				},
 			},
@@ -453,8 +453,8 @@ func makeSearchTestModel(lines []string) Model {
 	pairs := make([]sidebyside.LinePair, len(lines))
 	for i, line := range lines {
 		pairs[i] = sidebyside.LinePair{
-			Left:  sidebyside.Line{Num: i + 1, Content: line, Type: sidebyside.Context},
-			Right: sidebyside.Line{Num: i + 1, Content: line, Type: sidebyside.Context},
+			Old: sidebyside.Line{Num: i + 1, Content: line, Type: sidebyside.Context},
+			New: sidebyside.Line{Num: i + 1, Content: line, Type: sidebyside.Context},
 		}
 	}
 
@@ -529,8 +529,8 @@ func TestRefreshSearch_ExpandedViewWithMoreContent(t *testing.T) {
 				Pairs: []sidebyside.LinePair{
 					// Only line 2 in the diff
 					{
-						Left:  sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
-						Right: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
+						Old: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
 					},
 				},
 				OldContent: []string{"world", "hello", "search"},
