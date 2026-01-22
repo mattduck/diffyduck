@@ -1080,3 +1080,105 @@ func TestStructureExtraction_TruncatedFile(t *testing.T) {
 		}
 	}
 }
+
+func TestStructureExtraction_PythonFile(t *testing.T) {
+	// Test structure extraction for Python files
+	pythonContent := `import os
+
+class MyClass:
+    def __init__(self):
+        self.value = 0
+
+    def method(self):
+        return self.value
+
+def standalone_function():
+    return 42
+
+@decorator
+def decorated_function():
+    pass
+`
+	lines := strings.Split(pythonContent, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/test.py",
+			NewPath:    "b/test.py",
+			FoldLevel:  sidebyside.FoldExpanded,
+			NewContent: lines,
+			OldContent: lines,
+			Pairs: []sidebyside.LinePair{
+				{
+					Left:  sidebyside.Line{Num: 1, Content: "import os", Type: sidebyside.Context},
+					Right: sidebyside.Line{Num: 1, Content: "import os", Type: sidebyside.Context},
+				},
+			},
+		},
+	}
+
+	m := New(files)
+	defer m.highlighter.Close()
+
+	cmd := m.RequestHighlight(0)
+	if cmd == nil {
+		t.Fatal("RequestHighlight returned nil")
+	}
+
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	if !ok {
+		t.Fatalf("Expected HighlightReadyMsg, got %T", msg)
+	}
+
+	if len(hlMsg.NewStructure) == 0 {
+		t.Fatal("No structure entries extracted from Python file")
+	}
+
+	m.storeHighlightSpans(hlMsg)
+
+	// Log all extracted entries
+	t.Log("Extracted Python structure entries:")
+	for _, e := range m.structureMaps[0].NewStructure.Entries {
+		t.Logf("  %s %s (lines %d-%d)", e.Kind, e.Name, e.StartLine, e.EndLine)
+	}
+
+	// Verify we found the class
+	entries4 := m.getStructureAtLine(0, 4)
+	t.Logf("Structure at line 4 (inside MyClass.__init__): %+v", entries4)
+	if len(entries4) == 0 {
+		t.Error("Expected to find structure at line 4 (inside MyClass)")
+	}
+
+	// Verify we found standalone_function
+	entries11 := m.getStructureAtLine(0, 11)
+	t.Logf("Structure at line 11 (inside standalone_function): %+v", entries11)
+	if len(entries11) == 0 {
+		t.Error("Expected to find structure at line 11 (standalone_function)")
+	}
+
+	// Verify we found decorated_function
+	entries15 := m.getStructureAtLine(0, 15)
+	t.Logf("Structure at line 15 (inside decorated_function): %+v", entries15)
+	if len(entries15) == 0 {
+		t.Error("Expected to find structure at line 15 (decorated_function)")
+	}
+
+	// Verify the kinds are correct
+	foundClass := false
+	foundDef := false
+	for _, e := range m.structureMaps[0].NewStructure.Entries {
+		if e.Kind == "class" && e.Name == "MyClass" {
+			foundClass = true
+		}
+		if e.Kind == "def" && e.Name == "standalone_function" {
+			foundDef = true
+		}
+	}
+	if !foundClass {
+		t.Error("Expected to find 'class MyClass'")
+	}
+	if !foundDef {
+		t.Error("Expected to find 'def standalone_function'")
+	}
+}

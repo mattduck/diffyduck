@@ -20,7 +20,8 @@ type languageExtractor interface {
 func NewExtractor() *Extractor {
 	return &Extractor{
 		extractors: map[string]languageExtractor{
-			"go": &goExtractor{},
+			"go":     &goExtractor{},
+			"python": &pythonExtractor{},
 		},
 	}
 }
