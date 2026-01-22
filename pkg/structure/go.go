@@ -35,7 +35,7 @@ func (g *goExtractor) walkNode(node *tree_sitter.Node, content []byte, entries *
 
 	// Check if this is a structural node type
 	if kind, ok := goStructuralTypes[nodeType]; ok {
-		name := g.extractName(node, nodeType, content)
+		name, signature := g.extractNameAndSignature(node, nodeType, content)
 		if name != "" {
 			// tree-sitter positions are 0-based, we want 1-based
 			startPos := node.StartPosition()
@@ -46,6 +46,7 @@ func (g *goExtractor) walkNode(node *tree_sitter.Node, content []byte, entries *
 				EndLine:   int(endPos.Row) + 1,
 				Name:      name,
 				Kind:      kind,
+				Signature: signature,
 			})
 		}
 	}
@@ -58,30 +59,65 @@ func (g *goExtractor) walkNode(node *tree_sitter.Node, content []byte, entries *
 	}
 }
 
-// extractName extracts the name from a structural node.
-func (g *goExtractor) extractName(node *tree_sitter.Node, nodeType string, content []byte) string {
+// extractNameAndSignature extracts the name and signature from a structural node.
+// Returns (name, signature) where signature includes receiver and params for functions.
+func (g *goExtractor) extractNameAndSignature(node *tree_sitter.Node, nodeType string, content []byte) (string, string) {
 	switch nodeType {
-	case "function_declaration", "method_declaration":
-		// The "name" field contains the function/method name
+	case "function_declaration":
 		nameNode := node.ChildByFieldName("name")
-		if nameNode != nil {
-			return nameNode.Utf8Text(content)
+		if nameNode == nil {
+			return "", ""
 		}
+		name := nameNode.Utf8Text(content)
+		params := g.extractParams(node, content)
+		signature := name + params
+		return name, signature
+
+	case "method_declaration":
+		nameNode := node.ChildByFieldName("name")
+		if nameNode == nil {
+			return "", ""
+		}
+		name := nameNode.Utf8Text(content)
+		receiver := g.extractReceiver(node, content)
+		params := g.extractParams(node, content)
+		signature := receiver + name + params
+		return name, signature
 
 	case "type_declaration":
 		// type_declaration contains one or more type_spec children
-		// Each type_spec has a "name" field
 		childCount := node.ChildCount()
 		for i := uint(0); i < uint(childCount); i++ {
 			child := node.Child(i)
 			if child != nil && child.Kind() == "type_spec" {
 				nameNode := child.ChildByFieldName("name")
 				if nameNode != nil {
-					return nameNode.Utf8Text(content)
+					return nameNode.Utf8Text(content), ""
 				}
 			}
 		}
 	}
 
-	return ""
+	return "", ""
+}
+
+// extractReceiver extracts the receiver from a method declaration.
+// Returns e.g., "(m Model) " or "(m *Model) "
+func (g *goExtractor) extractReceiver(node *tree_sitter.Node, content []byte) string {
+	receiverNode := node.ChildByFieldName("receiver")
+	if receiverNode == nil {
+		return ""
+	}
+	// Get the full receiver text including parens
+	return receiverNode.Utf8Text(content) + " "
+}
+
+// extractParams extracts the parameters from a function/method declaration.
+// Returns e.g., "(ctx, name string)" or "()"
+func (g *goExtractor) extractParams(node *tree_sitter.Node, content []byte) string {
+	paramsNode := node.ChildByFieldName("parameters")
+	if paramsNode == nil {
+		return "()"
+	}
+	return paramsNode.Utf8Text(content)
 }

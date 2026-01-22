@@ -39,7 +39,7 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 		if defNode != nil {
 			defType := defNode.Kind()
 			if kind, ok := pythonStructuralTypes[defType]; ok {
-				name := p.extractName(defNode, content)
+				name, signature := p.extractNameAndSignature(defNode, content)
 				if name != "" {
 					// Use the decorated_definition's span (includes decorators)
 					startPos := node.StartPosition()
@@ -50,6 +50,7 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 						EndLine:   int(endPos.Row) + 1,
 						Name:      name,
 						Kind:      kind,
+						Signature: signature,
 					})
 				}
 			}
@@ -74,7 +75,7 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 			return
 		}
 
-		name := p.extractName(node, content)
+		name, signature := p.extractNameAndSignature(node, content)
 		if name != "" {
 			startPos := node.StartPosition()
 			endPos := node.EndPosition()
@@ -84,6 +85,7 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 				EndLine:   int(endPos.Row) + 1,
 				Name:      name,
 				Kind:      kind,
+				Signature: signature,
 			})
 		}
 	}
@@ -96,12 +98,29 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 	}
 }
 
-// extractName extracts the name from a structural node.
-func (p *pythonExtractor) extractName(node *tree_sitter.Node, content []byte) string {
-	// Both function_definition and class_definition have a "name" field
+// extractNameAndSignature extracts the name and signature from a structural node.
+func (p *pythonExtractor) extractNameAndSignature(node *tree_sitter.Node, content []byte) (string, string) {
 	nameNode := node.ChildByFieldName("name")
-	if nameNode != nil {
-		return nameNode.Utf8Text(content)
+	if nameNode == nil {
+		return "", ""
 	}
-	return ""
+	name := nameNode.Utf8Text(content)
+
+	// Only functions have parameters
+	if node.Kind() == "function_definition" {
+		params := p.extractParams(node, content)
+		return name, name + params
+	}
+
+	// Classes don't have a signature
+	return name, ""
+}
+
+// extractParams extracts the parameters from a function definition.
+func (p *pythonExtractor) extractParams(node *tree_sitter.Node, content []byte) string {
+	paramsNode := node.ChildByFieldName("parameters")
+	if paramsNode == nil {
+		return "()"
+	}
+	return paramsNode.Utf8Text(content)
 }

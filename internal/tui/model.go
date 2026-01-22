@@ -416,7 +416,7 @@ func (m Model) getStructureAtLine(fileIdx int, lineNum int) []structure.Entry {
 
 // formatBreadcrumbs formats structure entries as a breadcrumb string.
 // Entries are expected to be ordered from outermost to innermost.
-// Output format: "type MyStruct > func myMethod"
+// Output format: "type MyStruct > func (m Model) myMethod(ctx)"
 func formatBreadcrumbs(entries []structure.Entry) string {
 	if len(entries) == 0 {
 		return ""
@@ -424,7 +424,13 @@ func formatBreadcrumbs(entries []structure.Entry) string {
 
 	var parts []string
 	for _, e := range entries {
-		part := e.Kind + " " + e.Name
+		var part string
+		if e.Signature != "" {
+			// Use signature (includes receiver and params for functions)
+			part = e.Kind + " " + e.Signature
+		} else {
+			part = e.Kind + " " + e.Name
+		}
 		parts = append(parts, part)
 	}
 
