@@ -1162,3 +1162,194 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 		}
 	}
 }
+
+// =============================================================================
+// Cursor Identity Tests - Row Type Preservation
+// =============================================================================
+
+// Test: Cursor on isHeaderTopBorder should stay there after resize
+// Bug: cursorRowIdentity doesn't capture isHeaderTopBorder, so cursor jumps to wrong position
+func TestResize_CursorOnHeaderTopBorder_StaysOnTopBorder(t *testing.T) {
+	// Setup: single unfolded file, cursor on top border (line 0)
+	// Layout: row 0 = top border, row 1 = header, row 2 = bottom border, row 3+ = content
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Left: sidebyside.Line{Num: 2, Content: "line2"}, Right: sidebyside.Line{Num: 2, Content: "line2"}},
+				},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+		},
+		width:  80,
+		height: 20, // cursor offset = 3
+		scroll: -3, // cursor at line 0 (the top border)
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Verify cursor is on top border initially
+	rows := m.buildRows()
+	cursorPos := m.cursorLine()
+	require.Equal(t, 0, cursorPos, "cursor should start on line 0")
+	require.True(t, rows[0].isHeaderTopBorder, "line 0 should be top border")
+
+	// Resize the terminal (triggers cursor identity save/restore)
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 25})
+	model := newM.(Model)
+
+	// Cursor should still be on top border (line 0)
+	rows = model.buildRows()
+	cursorPos = model.cursorLine()
+	assert.True(t, rows[cursorPos].isHeaderTopBorder,
+		"after resize, cursor should still be on top border (got cursorPos=%d, isHeaderTopBorder=%v)",
+		cursorPos, rows[cursorPos].isHeaderTopBorder)
+}
+
+// Test: Cursor on trailing top border (between files) should stay there after resize
+func TestResize_CursorOnTrailingTopBorder_StaysOnTrailingBorder(t *testing.T) {
+	// Setup: two unfolded files, cursor on trailing top border of first file
+	// Layout for first file: top border (0), header (1), bottom border (2), content (3),
+	//                        4 blanks (4-7), trailing top border (8)
+	// Then second file: header (9), bottom border (10), ...
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+		},
+		width:  80,
+		height: 20, // cursor offset = 3
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find the trailing top border of first file
+	rows := m.buildRows()
+	trailingBorderIdx := -1
+	for i, row := range rows {
+		if row.fileIndex == 0 && row.isHeaderTopBorder && i > 0 {
+			// This is the trailing border (not the leading one at index 0)
+			trailingBorderIdx = i
+		}
+	}
+	require.NotEqual(t, -1, trailingBorderIdx, "should find trailing top border")
+	require.True(t, rows[trailingBorderIdx].isHeaderTopBorder, "should be a top border row")
+
+	// Position cursor on trailing top border
+	m.scroll = trailingBorderIdx - m.cursorOffset()
+	cursorPos := m.cursorLine()
+	require.Equal(t, trailingBorderIdx, cursorPos, "cursor should be on trailing top border")
+
+	// Resize the terminal
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 25})
+	model := newM.(Model)
+
+	// Cursor should still be on trailing top border of first file
+	rows = model.buildRows()
+	cursorPos = model.cursorLine()
+
+	// BUG: Without isHeaderTopBorder in cursorRowIdentity, this fails!
+	// The cursor jumps to the header of the file above instead.
+	assert.True(t, rows[cursorPos].isHeaderTopBorder && rows[cursorPos].fileIndex == 0,
+		"after resize, cursor should still be on first file's trailing top border "+
+			"(got cursorPos=%d, fileIndex=%d, isHeaderTopBorder=%v, isHeader=%v)",
+		cursorPos, rows[cursorPos].fileIndex, rows[cursorPos].isHeaderTopBorder, rows[cursorPos].isHeader)
+}
+
+// Test: Cursor on truncation indicator should stay there after resize
+func TestResize_CursorOnTruncationIndicator_StaysOnTruncation(t *testing.T) {
+	// Setup: file with truncation indicator
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Pairs:     []sidebyside.LinePair{{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldNormal,
+				Truncated: true, // This adds a truncation indicator row
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find the truncation indicator row
+	rows := m.buildRows()
+	truncIdx := -1
+	for i, row := range rows {
+		if row.isTruncationIndicator {
+			truncIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, truncIdx, "should find truncation indicator row")
+
+	// Position cursor on truncation indicator
+	m.scroll = truncIdx - m.cursorOffset()
+	cursorPos := m.cursorLine()
+	require.Equal(t, truncIdx, cursorPos, "cursor should be on truncation indicator")
+
+	// Resize the terminal
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 25})
+	model := newM.(Model)
+
+	// Cursor should still be on truncation indicator
+	rows = model.buildRows()
+	cursorPos = model.cursorLine()
+	assert.True(t, rows[cursorPos].isTruncationIndicator,
+		"after resize, cursor should still be on truncation indicator (got cursorPos=%d)", cursorPos)
+}
+
+// Test: Cursor on top border should stay there after fold toggle
+func TestFoldToggle_CursorOnTopBorder_StaysOnTopBorder(t *testing.T) {
+	// Setup: cursor on top border, toggle fold
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{Left: sidebyside.Line{Num: 1, Content: "line1"}, Right: sidebyside.Line{Num: 1, Content: "line1"}},
+				},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+		},
+		width:  80,
+		height: 20,
+		scroll: -3, // cursor at line 0 (top border)
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Verify on top border
+	rows := m.buildRows()
+	require.True(t, rows[0].isHeaderTopBorder, "line 0 should be top border")
+
+	// Toggle fold: Normal -> Expanded
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	// In Expanded mode, top border still exists at line 0
+	rows = model.buildRows()
+	cursorPos := model.cursorLine()
+
+	// Should be on top border, not jumped to header or elsewhere
+	assert.True(t, rows[cursorPos].isHeaderTopBorder,
+		"after fold toggle, cursor should still be on top border (got cursorPos=%d, isHeaderTopBorder=%v)",
+		cursorPos, rows[cursorPos].isHeaderTopBorder)
+}

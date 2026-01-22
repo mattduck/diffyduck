@@ -83,38 +83,59 @@ func (m Model) View() string {
 	return strings.Join(output, "\n")
 }
 
+// RowKind identifies the type of a display row.
+// Using an enum instead of multiple booleans ensures cursor identity
+// logic stays in sync when new row types are added.
+type RowKind int
+
+const (
+	RowKindContent RowKind = iota // default: content line pair with diff data
+	RowKindHeader
+	RowKindHeaderSpacer    // bottom border line after header
+	RowKindHeaderTopBorder // top border line before header
+	RowKindBlank
+	RowKindSeparator           // hunk separator (┈┈┈)
+	RowKindSummary             // summary row at the end
+	RowKindTruncationIndicator // truncation message row
+)
+
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
 type displayRow struct {
-	fileIndex         int // index of the file this row belongs to (-1 for summary row)
-	isHeader          bool
-	isSeparator       bool
-	isBlank           bool
-	isHeaderSpacer    bool // bottom border line after header
-	isHeaderTopBorder bool // top border line before header
-	borderVisible     bool // whether border should use normal color (true) or fg=0 (false)
-	isSummary         bool // summary row at the end showing total stats
-	isFirstLine       bool // first line pair in a file (uses ┬ separator)
-	isLastLine        bool // last line pair in a file (uses ┴ separator)
-	header            string
-	foldLevel         sidebyside.FoldLevel // fold level for headers (used for icon and styling)
-	status            FileStatus           // file status (added, deleted, renamed, modified) for headers
-	pair              sidebyside.LinePair
-	added             int // number of added lines (for headers)
-	removed           int // number of removed lines (for headers)
-	maxHeaderWidth    int // max header width across all files (for alignment in folded view)
-	maxAddWidth       int // max addition count width across all files (for column alignment)
-	maxRemWidth       int // max removal count width across all files (for column alignment)
-	maxCountWidth     int // max stats count width across all files (for bar alignment)
-	headerBoxWidth    int // width of the box around header content (for border alignment)
+	kind      RowKind // type of row - use this for identity matching
+	fileIndex int     // index of the file this row belongs to (-1 for summary row)
+
+	// Legacy boolean flags - kept for backward compatibility during refactor.
+	// These are derived from 'kind' and will be removed in a future cleanup.
+	isHeader              bool
+	isSeparator           bool
+	isBlank               bool
+	isHeaderSpacer        bool // bottom border line after header
+	isHeaderTopBorder     bool // top border line before header
+	isSummary             bool // summary row at the end showing total stats
+	isTruncationIndicator bool // true if this row shows a truncation message
+
+	borderVisible  bool // whether border should use normal color (true) or fg=0 (false)
+	isFirstLine    bool // first line pair in a file (uses ┬ separator)
+	isLastLine     bool // last line pair in a file (uses ┴ separator)
+	header         string
+	foldLevel      sidebyside.FoldLevel // fold level for headers (used for icon and styling)
+	status         FileStatus           // file status (added, deleted, renamed, modified) for headers
+	pair           sidebyside.LinePair
+	added          int // number of added lines (for headers)
+	removed        int // number of removed lines (for headers)
+	maxHeaderWidth int // max header width across all files (for alignment in folded view)
+	maxAddWidth    int // max addition count width across all files (for column alignment)
+	maxRemWidth    int // max removal count width across all files (for column alignment)
+	maxCountWidth  int // max stats count width across all files (for bar alignment)
+	headerBoxWidth int // width of the box around header content (for border alignment)
 	// Summary row fields
 	totalFiles   int // total number of files changed
 	totalAdded   int // total insertions across all files
 	totalRemoved int // total deletions across all files
 	// Truncation indicator fields
-	isTruncationIndicator bool   // true if this row shows a truncation message
-	truncationMessage     string // message to display
-	truncateOld           bool   // show truncation on left (old) side
-	truncateNew           bool   // show truncation on right (new) side
+	truncationMessage string // message to display
+	truncateOld       bool   // show truncation on left (old) side
+	truncateNew       bool   // show truncation on right (new) side
 	// Hunk separator fields
 	chunkStartLine int // first line of the following chunk (new/right side), for breadcrumbs
 }
@@ -184,7 +205,7 @@ func (m Model) buildRows() []displayRow {
 		case sidebyside.FoldFolded:
 			// Folded: just the header, no borders - files stack tightly together
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth})
+			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth})
 
 		case sidebyside.FoldExpanded:
 			// Expanded: show full file content with diff highlighting
@@ -192,16 +213,16 @@ func (m Model) buildRows() []displayRow {
 			if fp.HasContent() {
 				// First file gets a top border before header (visible since no file above)
 				if isFirstFile && isUnfolded {
-					rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
+					rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
 				}
 
 				// File header with stats
 				// Border visible only if previous file is also unfolded (or this is first file)
 				header := formatFileHeader(fp.OldPath, fp.NewPath)
-				rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+				rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 				// Bottom border of header box (visible only if previous file is also unfolded)
-				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+				rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 				// Build expanded rows from full file content
 				expandedRows := m.buildExpandedRows(fp)
@@ -228,6 +249,7 @@ func (m Model) buildRows() []displayRow {
 						newTrunc = true
 					}
 					rows = append(rows, displayRow{
+						kind:                  RowKindTruncationIndicator,
 						fileIndex:             fileIdx,
 						isTruncationIndicator: true,
 						truncationMessage:     "[truncated due to file size limit]",
@@ -238,12 +260,12 @@ func (m Model) buildRows() []displayRow {
 
 				// Add 4 blank lines after expanded content
 				for i := 0; i < 4; i++ {
-					rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
+					rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
 				}
 
 				// Trailing top border (visually looks like top of next file, but belongs to this file)
 				// Only visible if next file is also unfolded
-				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
 				continue // Skip the normal view below
 			}
 			// Fall through to normal view if content not loaded
@@ -252,16 +274,16 @@ func (m Model) buildRows() []displayRow {
 		default: // FoldNormal (or FoldExpanded falling through while content loads)
 			// First file gets a top border before header (visible since no file above)
 			if isFirstFile && isUnfolded {
-				rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
+				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
 			}
 
 			// File header with stats
 			// Border visible only if previous file is also unfolded (or this is first file)
 			header := formatFileHeader(fp.OldPath, fp.NewPath)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 			// Bottom border of header box (visible only if previous file is also unfolded)
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 			// Line pairs with hunk separators
 			var prevLeft, prevRight int
@@ -270,10 +292,10 @@ func (m Model) buildRows() []displayRow {
 				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Left.Num, pair.Right.Num) {
 					// Find first non-zero Right.Num in this chunk for breadcrumb lookup
 					chunkStartLine := findFirstRightLineNum(fp.Pairs, i)
-					rows = append(rows, displayRow{fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
+					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
 				}
 
-				row := displayRow{fileIndex: fileIdx, pair: pair}
+				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair}
 				if i == 0 {
 					row.isFirstLine = true
 				}
@@ -302,6 +324,7 @@ func (m Model) buildRows() []displayRow {
 					newTrunc = true
 				}
 				rows = append(rows, displayRow{
+					kind:                  RowKindTruncationIndicator,
 					fileIndex:             fileIdx,
 					isTruncationIndicator: true,
 					truncationMessage:     "[truncated due to file size limit]",
@@ -312,18 +335,19 @@ func (m Model) buildRows() []displayRow {
 
 			// Add 4 blank lines after normal content
 			for i := 0; i < 4; i++ {
-				rows = append(rows, displayRow{fileIndex: fileIdx, isBlank: true})
+				rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
 			}
 
 			// Trailing top border (visually looks like top of next file, but belongs to this file)
 			// Only visible if next file is also unfolded
-			rows = append(rows, displayRow{fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
 		}
 	}
 
 	// Add truncation indicator if files were omitted
 	if m.truncatedFileCount > 0 {
 		rows = append(rows, displayRow{
+			kind:                  RowKindTruncationIndicator,
 			fileIndex:             -1,
 			isTruncationIndicator: true,
 			truncationMessage:     fmt.Sprintf("[%d files truncated]", m.truncatedFileCount),
@@ -340,6 +364,7 @@ func (m Model) buildRows() []displayRow {
 			totalRemoved += removed
 		}
 		rows = append(rows, displayRow{
+			kind:           RowKindSummary,
 			fileIndex:      -1, // No file association
 			isSummary:      true,
 			totalFiles:     len(m.files),

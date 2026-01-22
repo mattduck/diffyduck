@@ -196,13 +196,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // cursorRowIdentity captures the "identity" of the row the cursor is on.
 // This is used to preserve scroll position across fold changes and resize.
+// Using RowKind ensures this stays in sync with displayRow types automatically.
 type cursorRowIdentity struct {
-	fileIndex      int
-	isHeader       bool
-	isHeaderSpacer bool
-	isBlank        bool
-	isSeparator    bool
-	isSummary      bool
+	kind      RowKind // row type - must match for non-content rows
+	fileIndex int     // file this row belongs to (-1 for summary)
 	// For blank rows, which blank row within the file's blank area (0-indexed)
 	blankIndex int
 	// For content rows, the line numbers to match
@@ -234,9 +231,9 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 
 	// For blank rows, count which blank row this is within the file's blank area
 	blankIndex := 0
-	if row.isBlank {
+	if row.kind == RowKindBlank {
 		for i := cursorPos - 1; i >= 0; i-- {
-			if rows[i].isBlank && rows[i].fileIndex == row.fileIndex {
+			if rows[i].kind == RowKindBlank && rows[i].fileIndex == row.fileIndex {
 				blankIndex++
 			} else {
 				break
@@ -245,15 +242,11 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 	}
 
 	return cursorRowIdentity{
-		fileIndex:      row.fileIndex,
-		isHeader:       row.isHeader,
-		isHeaderSpacer: row.isHeaderSpacer,
-		isBlank:        row.isBlank,
-		isSeparator:    row.isSeparator,
-		isSummary:      row.isSummary,
-		blankIndex:     blankIndex,
-		leftNum:        row.pair.Left.Num,
-		rightNum:       row.pair.Right.Num,
+		kind:       row.kind,
+		fileIndex:  row.fileIndex,
+		blankIndex: blankIndex,
+		leftNum:    row.pair.Left.Num,
+		rightNum:   row.pair.Right.Num,
 	}
 }
 
@@ -286,7 +279,7 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 		}
 
 		// Count blanks after checking (so first blank has index 0)
-		if row.isBlank && row.fileIndex == identity.fileIndex {
+		if row.kind == RowKindBlank && row.fileIndex == identity.fileIndex {
 			blanksSeen++
 		}
 	}
@@ -298,7 +291,7 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 		if row.fileIndex > identity.fileIndex {
 			break // Past our file, stop searching
 		}
-		if row.isHeader || row.isSeparator {
+		if row.kind == RowKindHeader || row.kind == RowKindSeparator {
 			lastHeaderOrSep = i
 		}
 	}
@@ -309,9 +302,9 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 // rowMatchesIdentity checks if a row matches the given identity.
 // For blank rows, blanksSeen tracks how many blanks we've seen for this file.
 func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, blanksSeen int) bool {
-	// Summary row: only matches other summary rows
-	if identity.isSummary {
-		return row.isSummary
+	// Summary row: only matches other summary rows (no file index check needed)
+	if identity.kind == RowKindSummary {
+		return row.kind == RowKindSummary
 	}
 
 	// File index must match for non-summary rows
@@ -319,30 +312,37 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 		return false
 	}
 
-	// Type must match
-	if identity.isHeader {
-		return row.isHeader
-	}
-	if identity.isHeaderSpacer {
-		return row.isHeaderSpacer
-	}
-	if identity.isBlank {
-		// Match the specific blank row by index
-		return row.isBlank && blanksSeen == identity.blankIndex
-	}
-	if identity.isSeparator {
-		return row.isSeparator
+	// For non-content rows, kind must match exactly
+	switch identity.kind {
+	case RowKindHeader:
+		return row.kind == RowKindHeader
+	case RowKindHeaderSpacer:
+		return row.kind == RowKindHeaderSpacer
+	case RowKindHeaderTopBorder:
+		return row.kind == RowKindHeaderTopBorder
+	case RowKindBlank:
+		// Match the specific blank row by index within the file
+		return row.kind == RowKindBlank && blanksSeen == identity.blankIndex
+	case RowKindSeparator:
+		return row.kind == RowKindSeparator
+	case RowKindTruncationIndicator:
+		return row.kind == RowKindTruncationIndicator
+	case RowKindContent:
+		// For content rows, match by line numbers
+		// Handle cases where one side might be 0 (added/removed lines)
+		if row.kind != RowKindContent {
+			return false
+		}
+		if identity.leftNum > 0 && row.pair.Left.Num == identity.leftNum {
+			return true
+		}
+		if identity.rightNum > 0 && row.pair.Right.Num == identity.rightNum {
+			return true
+		}
+		// If both are 0, no match (can't identify the row)
+		return false
 	}
 
-	// For content rows, match by line numbers
-	// Handle cases where one side might be 0 (added/removed lines)
-	if identity.leftNum > 0 && row.pair.Left.Num == identity.leftNum {
-		return true
-	}
-	if identity.rightNum > 0 && row.pair.Right.Num == identity.rightNum {
-		return true
-	}
-	// If both are 0, no match (can't identify the row)
 	return false
 }
 
