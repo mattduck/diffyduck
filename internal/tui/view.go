@@ -695,6 +695,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 // If structure data is available, shows breadcrumbs on the left side (new content).
 func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth int, isCursorRow bool) string {
 	shadeStyle := hunkSeparatorStyle
+	lineNumWidth := m.lineNumWidth()
 
 	// Try to get breadcrumb for the chunk start line (new/left side only)
 	var breadcrumb string
@@ -703,55 +704,95 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 		breadcrumb = formatBreadcrumbs(entries)
 	}
 
-	// Build left half: breadcrumb (truncated) + ░ padding, or all ░
-	var leftHalf string
-	if breadcrumb != "" {
-		// Truncate if needed (no ellipsis, just cut)
-		breadcrumb = runewidth.Truncate(breadcrumb, leftHalfWidth, "")
-		displayWidth := runewidth.StringWidth(breadcrumb)
-		padding := leftHalfWidth - displayWidth
-		leftHalf = shadeStyle.Render(breadcrumb + strings.Repeat("░", padding))
-	} else {
-		leftHalf = shadeStyle.Render(strings.Repeat("░", leftHalfWidth))
-	}
+	// Arrow column width: indicator(1) + space(1) = 2
+	arrowWidth := 2
 
-	if !isCursorRow {
-		// Right half all shading
-		rightHalf := shadeStyle.Render(strings.Repeat("░", rightHalfWidth))
-		return leftHalf + shadeStyle.Render("░░░") + rightHalf
-	}
-
-	// Cursor row: arrows and highlighted line number areas on both sides
-	lineNumWidth := m.lineNumWidth()
-	lineNumShade := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
-
-	// Left side content: breadcrumb or shading
-	leftContentWidth := leftHalfWidth - lineNumWidth - 4
+	// Content width after arrow (breadcrumb starts here, overlapping where line numbers would be)
+	leftContentWidth := leftHalfWidth - arrowWidth
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
+	rightContentWidth := rightHalfWidth - arrowWidth
+	if rightContentWidth < 0 {
+		rightContentWidth = 0
+	}
+
+	if !isCursorRow {
+		// Non-cursor: all shading
+		leftArrow := shadeStyle.Render("░░")
+		rightArrow := shadeStyle.Render("░░")
+
+		var leftContent string
+		if breadcrumb != "" && leftContentWidth > 0 {
+			breadcrumb = runewidth.Truncate(breadcrumb, leftContentWidth, "")
+			displayWidth := runewidth.StringWidth(breadcrumb)
+			padding := leftContentWidth - displayWidth
+			leftContent = shadeStyle.Render(breadcrumb + strings.Repeat("░", padding))
+		} else {
+			leftContent = shadeStyle.Render(strings.Repeat("░", leftContentWidth))
+		}
+		rightContent := shadeStyle.Render(strings.Repeat("░", rightContentWidth))
+
+		return leftArrow + leftContent + shadeStyle.Render("░░░") + rightArrow + rightContent
+	}
+
+	// Cursor row: arrow + shade, then lineNumWidth chars with cursor bg (showing breadcrumb or shading)
+	leftArrow := cursorArrowStyle.Render("▶") + shadeStyle.Render("░")
+	rightArrow := cursorArrowStyle.Render("▶") + shadeStyle.Render("░")
+
+	// Left side: first lineNumWidth chars get cursor bg (breadcrumb text or shading), rest is normal
 	var leftContent string
 	if breadcrumb != "" && leftContentWidth > 0 {
 		breadcrumb = runewidth.Truncate(breadcrumb, leftContentWidth, "")
 		displayWidth := runewidth.StringWidth(breadcrumb)
-		padding := leftContentWidth - displayWidth
-		leftContent = cursorStyle.Render(breadcrumb + strings.Repeat("░", padding))
+
+		// Split breadcrumb: first lineNumWidth chars with cursor bg, rest with shade style
+		if displayWidth <= lineNumWidth {
+			// Entire breadcrumb fits in cursor area
+			padding := lineNumWidth - displayWidth
+			cursorPart := cursorStyle.Render(breadcrumb + strings.Repeat("░", padding))
+			restWidth := leftContentWidth - lineNumWidth
+			if restWidth > 0 {
+				leftContent = cursorPart + shadeStyle.Render(strings.Repeat("░", restWidth))
+			} else {
+				leftContent = cursorPart
+			}
+		} else {
+			// Breadcrumb extends beyond cursor area
+			cursorPart := cursorStyle.Render(runewidth.Truncate(breadcrumb, lineNumWidth, ""))
+			restBreadcrumb := truncateLeft(breadcrumb, lineNumWidth)
+			restWidth := leftContentWidth - lineNumWidth
+			if restWidth > 0 {
+				restBreadcrumb = runewidth.Truncate(restBreadcrumb, restWidth, "")
+				restDisplayWidth := runewidth.StringWidth(restBreadcrumb)
+				padding := restWidth - restDisplayWidth
+				leftContent = cursorPart + shadeStyle.Render(restBreadcrumb+strings.Repeat("░", padding))
+			} else {
+				leftContent = cursorPart
+			}
+		}
 	} else {
-		leftContent = cursorStyle.Render(strings.Repeat("░", leftContentWidth))
+		// No breadcrumb: cursor bg shading for lineNumWidth, then normal shading
+		cursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+		restWidth := leftContentWidth - lineNumWidth
+		if restWidth > 0 {
+			leftContent = cursorPart + shadeStyle.Render(strings.Repeat("░", restWidth))
+		} else {
+			leftContent = cursorPart
+		}
 	}
 
-	// Right side content: all shading
-	rightContentWidth := rightHalfWidth - lineNumWidth - 4
-	if rightContentWidth < 0 {
-		rightContentWidth = 0
+	// Right side: lineNumWidth chars with cursor bg shading, rest normal
+	rightCursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	rightRestWidth := rightContentWidth - lineNumWidth
+	var rightContent string
+	if rightRestWidth > 0 {
+		rightContent = rightCursorPart + shadeStyle.Render(strings.Repeat("░", rightRestWidth))
+	} else {
+		rightContent = rightCursorPart
 	}
-	rightContent := cursorStyle.Render(strings.Repeat("░", rightContentWidth))
 
-	// Both sides have same layout: arrow + shade + lineNum + shade + content
-	leftHalfCursor := cursorArrowStyle.Render("▶") + cursorStyle.Render("░") + lineNumShade + cursorStyle.Render("░░") + leftContent
-	rightHalfCursor := cursorArrowStyle.Render("▶") + cursorStyle.Render("░") + lineNumShade + cursorStyle.Render("░░") + rightContent
-
-	return leftHalfCursor + cursorStyle.Render("░░░") + rightHalfCursor
+	return leftArrow + leftContent + shadeStyle.Render("░░░") + rightArrow + rightContent
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
@@ -2041,6 +2082,22 @@ func expandTabs(s string) string {
 // wide characters (CJK, emoji) that take 2 cells.
 func displayWidth(s string) int {
 	return runewidth.StringWidth(s)
+}
+
+// truncateLeft removes the first width display columns from a string.
+func truncateLeft(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	currentWidth := 0
+	for i, r := range s {
+		w := runewidth.RuneWidth(r)
+		currentWidth += w
+		if currentWidth >= width {
+			return s[i+len(string(r)):]
+		}
+	}
+	return ""
 }
 
 // truncateOrPad truncates or pads a string to exactly the given display width.

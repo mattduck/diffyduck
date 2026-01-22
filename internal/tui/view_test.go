@@ -3741,7 +3741,7 @@ func TestView_HunkSeparatorNoCrossInMiddle(t *testing.T) {
 }
 
 func TestView_HunkSeparatorBreadcrumbs(t *testing.T) {
-	// Hunk separator should show breadcrumbs (function/type name) on the right side
+	// Hunk separator should show breadcrumbs (function/type name) on the left side
 	// when structure data is available (file was expanded and parsed)
 	m := Model{
 		files: []sidebyside.FilePair{
@@ -3960,6 +3960,96 @@ func AnotherFunction() {
 	require.NotEmpty(t, hunkLine, "should find hunk separator line")
 	// The separator should contain the function name as a breadcrumb
 	assert.Contains(t, hunkLine, "func MyFunction", "hunk separator should show 'func MyFunction' breadcrumb")
+}
+
+func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
+	// Test that breadcrumbs appear on the left side (new content side) of the hunk separator,
+	// starting after the arrow column (position 2), and that cursor styling only affects
+	// the gutter area while preserving the breadcrumb text.
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					// First hunk
+					{
+						Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					},
+					// Gap creates hunk separator - next chunk is inside MyFunction
+					{
+						Old: sidebyside.Line{Num: 20, Content: "    code", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 20, Content: "    code", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  100,
+		height: 20,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 10, EndLine: 50, Name: "MyFunction", Kind: "func"},
+				}),
+			},
+		},
+	}
+	m.calculateTotalLines()
+	m.rebuildRowsCache()
+
+	// Find the hunk separator row
+	rows := m.buildRows()
+	var hunkSepIdx int
+	for i, row := range rows {
+		if row.isSeparator {
+			hunkSepIdx = i
+			break
+		}
+	}
+	require.NotZero(t, hunkSepIdx, "should find hunk separator row")
+
+	// Test 1: Non-cursor row - breadcrumb on left side
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	var hunkLine string
+	for _, line := range lines {
+		if strings.Contains(line, "func MyFunction") {
+			hunkLine = line
+			break
+		}
+	}
+	require.NotEmpty(t, hunkLine, "should find hunk separator with breadcrumb")
+
+	// The breadcrumb should appear in the left half of the line
+	// Find the center divider (3 shade chars) and check breadcrumb is before it
+	halfWidth := (m.width - 3) / 2
+	leftHalf := hunkLine[:halfWidth]
+	assert.Contains(t, leftHalf, "func MyFunction", "breadcrumb should appear in left half (new content side)")
+
+	// Test 2: Cursor row - breadcrumb still visible with cursor arrow
+	m.scroll = hunkSepIdx - m.cursorOffset()
+	output = m.View()
+	lines = strings.Split(output, "\n")
+
+	var cursorHunkLine string
+	for _, line := range lines {
+		if strings.Contains(line, "▶") && strings.Contains(line, "MyFunction") {
+			cursorHunkLine = line
+			break
+		}
+	}
+	require.NotEmpty(t, cursorHunkLine, "cursor row should show arrow and breadcrumb")
+
+	// Verify arrow appears and breadcrumb is preserved
+	assert.Contains(t, cursorHunkLine, "▶", "cursor row should have arrow")
+	assert.Contains(t, cursorHunkLine, "MyFunction", "cursor row should preserve breadcrumb text")
 }
 
 func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
