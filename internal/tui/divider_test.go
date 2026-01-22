@@ -166,8 +166,9 @@ func TestMaxNewContentWidth_OnlyGrows(t *testing.T) {
 	assert.Equal(t, 67, m.maxNewContentWidth, "width should grow when new file has longer content")
 }
 
-func TestDynamicDivider_AsymmetricWidths(t *testing.T) {
+func TestDynamicDivider_NarrowContentUses5050(t *testing.T) {
 	// Create a model with narrow new content (new is now on left side)
+	// When left content is narrow but 50/50 still gives it enough room, use 50/50
 	m := Model{
 		width:  80, // terminal width
 		height: 24,
@@ -195,24 +196,22 @@ func TestDynamicDivider_AsymmetricWidths(t *testing.T) {
 	// Verify maxNewContentWidth is set correctly
 	assert.Equal(t, 5, m.maxNewContentWidth) // "short" = 5 chars
 
-	// Calculate what the widths should be
+	// At width 80, 50/50 gives each side 38 chars
+	// With gutterOverhead of 11, left content area = 27 chars
+	// Since 27 >= 5 (targetLeftContent), we use 50/50
 	defaultHalf := (m.width - 3) / 2 // 38
-	lineNumWidth := m.lineNumWidth() // 4
 
-	// minLeftWidth = indicator(1) + space(1) + lineNum(4) + space(1) + content(5) + gutter(4) = 16
-	minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxNewContentWidth + 4
-	assert.Equal(t, 16, minLeftWidth)
+	// Both sides should be equal at ~50%
+	expectedLeftWidth := defaultHalf                      // 38
+	expectedRightWidth := m.width - 3 - expectedLeftWidth // 39
 
-	// Left should be minLeftWidth since it's less than defaultHalf
-	expectedLeftWidth := minLeftWidth
-	expectedRightWidth := m.width - 3 - expectedLeftWidth // 80 - 3 - 16 = 61
-
-	assert.Less(t, expectedLeftWidth, defaultHalf, "left side should be narrower than 50%")
-	assert.Greater(t, expectedRightWidth, defaultHalf, "right side should be wider than 50%")
+	assert.Equal(t, expectedLeftWidth, defaultHalf, "left side should be at 50%")
+	assert.Equal(t, expectedRightWidth, m.width-3-defaultHalf, "right side should be at 50%")
 }
 
-func TestDynamicDivider_WideContentStaysAt50Percent(t *testing.T) {
+func TestDynamicDivider_WideContentExpandsLeft(t *testing.T) {
 	// Create a model with wide new content (wider than 50%)
+	// Left side should expand to fit content, squeezing right side to just its gutter
 	m := Model{
 		width:  80,
 		height: 24,
@@ -235,16 +234,102 @@ func TestDynamicDivider_WideContentStaysAt50Percent(t *testing.T) {
 
 	m.updateMaxNewContentWidth()
 
-	// The new content is 68 chars, which with overhead would exceed 50%
+	// The new content is 68 chars
 	assert.Equal(t, 68, m.maxNewContentWidth)
 
-	defaultHalf := (m.width - 3) / 2 // 38
 	lineNumWidth := m.lineNumWidth() // 4
+	// Right side minimum: no trailing gutter when squeezed
+	// indicator(1) + space(1) + lineNum(4) + space(1) + left gutter(2) = 9
+	minRightWidth := 1 + 1 + lineNumWidth + 1 + 2
 
-	// minLeftWidth would be: 1 + 1 + 4 + 1 + 68 + 4 = 79, which exceeds defaultHalf (38)
-	minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxNewContentWidth + 4
-	assert.Greater(t, minLeftWidth, defaultHalf, "calculated min width exceeds 50%")
+	// targetLeftContent = min(80, 68) = 68
+	// targetLeftWidth = 11 + 68 = 79
+	// maxLeftWidth = 80 - 3 - 9 = 68
+	// leftHalfWidth = min(79, 68) = 68
+	expectedLeftWidth := 68
+	expectedRightWidth := m.width - 3 - expectedLeftWidth // 9
 
-	// So the actual left width should cap at defaultHalf (50%)
-	// This is tested implicitly by the rendering - both sides stay equal
+	defaultHalf := (m.width - 3) / 2 // 38
+	assert.Greater(t, expectedLeftWidth, defaultHalf, "left side should be wider than 50%")
+	assert.Equal(t, expectedRightWidth, minRightWidth, "right side should be squeezed to just its gutter (no trailing)")
+}
+
+func TestDynamicDivider_WideTerminalUses5050(t *testing.T) {
+	// On a wide terminal, even with wide content, use 50/50 if both sides have room
+	m := Model{
+		width:  200, // wide terminal
+		height: 24,
+		files: []sidebyside.FilePair{
+			{
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "old content", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new content that is moderately long", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		maxNewContentWidth:  0,
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+	}
+
+	m.updateMaxNewContentWidth()
+
+	lineNumWidth := m.lineNumWidth()               // 4
+	gutterOverhead := 1 + 1 + lineNumWidth + 1 + 4 // 11
+
+	// At width 200, defaultHalf = 98, leftContentAt50 = 98 - 11 = 87
+	// targetLeftContent = min(80, 35) = 35
+	// Since 87 >= 35, use 50/50
+	defaultHalf := (m.width - 3) / 2                // 98
+	leftContentAt50 := defaultHalf - gutterOverhead // 87
+
+	assert.GreaterOrEqual(t, leftContentAt50, 80, "50/50 gives left side enough room for 80 chars")
+	// Both sides should be at ~50%
+}
+
+func TestDynamicDivider_VeryNarrowTerminal(t *testing.T) {
+	// On a very narrow terminal, left side takes as much as possible,
+	// right side shows only its gutter
+	m := Model{
+		width:  50, // very narrow
+		height: 24,
+		files: []sidebyside.FilePair{
+			{
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 1, Content: "new content here", Type: sidebyside.Added},
+					},
+				},
+			},
+		},
+		maxNewContentWidth:  0,
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+	}
+
+	m.updateMaxNewContentWidth()
+
+	lineNumWidth := m.lineNumWidth()               // 4
+	gutterOverhead := 1 + 1 + lineNumWidth + 1 + 4 // 11
+	minRightWidth := gutterOverhead
+
+	// At width 50, defaultHalf = 23, leftContentAt50 = 23 - 11 = 12
+	// targetLeftContent = min(80, 16) = 16
+	// Since 12 < 16, prioritize left side
+	// targetLeftWidth = 11 + 16 = 27
+	// maxLeftWidth = 50 - 3 - 11 = 36
+	// leftHalfWidth = min(27, 36) = 27
+	expectedLeftWidth := 27
+	expectedRightWidth := m.width - 3 - expectedLeftWidth // 20
+
+	defaultHalf := (m.width - 3) / 2 // 23
+	assert.Greater(t, expectedLeftWidth, defaultHalf, "left side should be wider than 50%")
+	assert.Greater(t, expectedRightWidth, minRightWidth, "right side has more than minimum since content is small")
 }

@@ -622,21 +622,48 @@ func findFirstNewLineNum(pairs []sidebyside.LinePair, start int) int {
 func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	var visible []string
 
-	// Calculate column widths - asymmetric to give new side more room when old is narrow
-	defaultHalf := (m.width - 3) / 2 // -3 for the separator " │ "
+	// Calculate column widths - prioritize left (new) side on narrow terminals
 	lineNumWidth := m.lineNumWidth()
 
-	leftHalfWidth := defaultHalf
-	// Dynamic divider: use smaller left width if new content (now on left) is narrower
-	if m.maxNewContentWidth > 0 {
-		// Layout: indicator(1) + space(1) + lineNum + space(1) + content + gutter(4)
-		minLeftWidth := 1 + 1 + lineNumWidth + 1 + m.maxNewContentWidth + 4
-		if minLeftWidth < leftHalfWidth {
-			leftHalfWidth = minLeftWidth
+	// Layout per side: indicator(1) + space(1) + lineNum + space(1) + content + gutter(4)
+	// Gutter is: ░ + space + content + space + ░ (2 chars on each side)
+	gutterOverhead := 1 + 1 + lineNumWidth + 1 + 4 // everything except content
+
+	// Right side minimum: show only left gutter (no trailing gutter when squeezed)
+	// indicator(1) + space(1) + lineNum + space(1) + leftGutter(2) = 5 + lineNumWidth
+	minRightWidth := 1 + 1 + lineNumWidth + 1 + 2
+
+	// Left side wants up to 80 chars of content (or actual max content width if smaller)
+	// If there's no new content (e.g., deleted file), use 50/50
+	targetLeftContent := 80
+	if m.maxNewContentWidth < targetLeftContent {
+		targetLeftContent = m.maxNewContentWidth
+	}
+
+	defaultHalf := (m.width - 3) / 2 // -3 for separator " │ "
+	leftContentAt50 := defaultHalf - gutterOverhead
+
+	var leftHalfWidth int
+	if leftContentAt50 >= targetLeftContent {
+		// 50/50 split gives left side enough content room
+		leftHalfWidth = defaultHalf
+	} else {
+		// Terminal is narrow - prioritize left side
+		targetLeftWidth := gutterOverhead + targetLeftContent
+		maxLeftWidth := m.width - 3 - minRightWidth
+		leftHalfWidth = targetLeftWidth
+		if leftHalfWidth > maxLeftWidth {
+			leftHalfWidth = maxLeftWidth
 		}
 	}
+
 	// Right side gets whatever is left after left side and separator
 	rightHalfWidth := m.width - 3 - leftHalfWidth
+
+	// Hide right trailing gutter when right side is squeezed (no content visible)
+	// Right content area = rightHalfWidth - lineNumWidth - 3 (indicator, spaces) - 4 (gutter)
+	rightContentArea := rightHalfWidth - lineNumWidth - 3 - 4
+	hideRightTrailingGutter := rightContentArea <= 0
 
 	// The cursor is at a fixed viewport position
 	cursorViewportRow := m.cursorOffset()
@@ -684,7 +711,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.isTruncationIndicator {
 			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew))
 		} else {
-			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine))
+			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter))
 		}
 	}
 
@@ -1646,7 +1673,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	return "  " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine bool) string {
+func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool) string {
 	leftContentWidth := leftHalfWidth - lineNumWidth - 3   // -3 for indicator, space after indicator, and space after line num
 	rightContentWidth := rightHalfWidth - lineNumWidth - 3 // same layout on right side
 
@@ -1670,14 +1697,14 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 	hasWordDiff := len(oldSpans) > 0
 
 	// Render: New on left (side 0), Old on right (side 1)
-	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, rowIdx, 0, isCursorRow, hasWordDiff)
-	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, rowIdx, 1, isCursorRow, hasWordDiff)
+	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, rowIdx, 0, isCursorRow, hasWordDiff, false)
+	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, rowIdx, 1, isCursorRow, hasWordDiff, hideRightTrailingGutter)
 
 	separator := hunkSeparatorStyle.Render(separatorChar)
 	return left + " " + separator + " " + right
 }
 
-func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool, hasWordDiff bool) string {
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool) string {
 	// Diff indicator (+/-/~/space) before line number
 	// On cursor row, show arrowhead instead
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
@@ -1728,10 +1755,15 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	// Content - expand tabs
 	expanded := expandTabs(line.Content)
 
-	// Reduce content width to make room for gutter columns on both sides
+	// Reduce content width to make room for gutter columns
 	// Layout: [gutter char] + space + content + space + [gutter char] (4 chars total)
+	// When hideTrailingGutter is true, only left gutter: [gutter char] + space (2 chars)
 	// Added/removed lines get ░, context/empty lines get spaces
-	actualContentWidth := contentWidth - 4
+	gutterWidth := 4
+	if hideTrailingGutter {
+		gutterWidth = 2
+	}
+	actualContentWidth := contentWidth - gutterWidth
 
 	// Apply horizontal scroll to get visible portion
 	visible := horizontalSlice(expanded, m.hscroll, actualContentWidth)
@@ -1773,7 +1805,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 	// Wrap added/removed lines with gutter indicators
 	// Use blue for changed lines (hasWordDiff), otherwise green/red
-	styledContent = m.applyColumnIndicators(styledContent, line.Type, hasWordDiff)
+	styledContent = m.applyColumnIndicators(styledContent, line.Type, hasWordDiff, hideTrailingGutter)
 
 	// Style truncation indicator with fg=13 if present
 	if strings.Contains(visible, diff.LineTruncationText) {
@@ -2185,11 +2217,15 @@ func horizontalSlice(s string, offset, width int) string {
 // applyColumnIndicators wraps lines with gutter columns:
 // - Added/removed: ░ + space + content + space + ░
 // - Context/empty: space + space + content + space + space
-func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.LineType, hasWordDiff bool) string {
+// When hideTrailingGutter is true, omits the trailing space + indicator.
+func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.LineType, hasWordDiff bool, hideTrailingGutter bool) string {
 	isAddedOrRemoved := lineType == sidebyside.Added || lineType == sidebyside.Removed
 
 	// For context/empty lines, just wrap with spaces to align with added/removed
 	if !isAddedOrRemoved {
+		if hideTrailingGutter {
+			return "  " + styledContent
+		}
 		return "  " + styledContent + "  "
 	}
 
@@ -2204,8 +2240,12 @@ func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.L
 		colorStyle = removedStyle // red
 	}
 	startIndicator := colorStyle.Render("░")
-	endIndicator := colorStyle.Render("░")
 
+	if hideTrailingGutter {
+		return startIndicator + " " + styledContent
+	}
+
+	endIndicator := colorStyle.Render("░")
 	return startIndicator + " " + styledContent + " " + endIndicator
 }
 
