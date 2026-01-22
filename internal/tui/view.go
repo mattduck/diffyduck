@@ -703,14 +703,14 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 		breadcrumb = formatBreadcrumbs(entries)
 	}
 
-	// Build left half: ░ padding + breadcrumb (truncated), or all ░
+	// Build left half: breadcrumb (truncated) + ░ padding, or all ░
 	var leftHalf string
 	if breadcrumb != "" {
 		// Truncate if needed (no ellipsis, just cut)
 		breadcrumb = runewidth.Truncate(breadcrumb, leftHalfWidth, "")
 		displayWidth := runewidth.StringWidth(breadcrumb)
 		padding := leftHalfWidth - displayWidth
-		leftHalf = shadeStyle.Render(strings.Repeat("░", padding) + breadcrumb)
+		leftHalf = shadeStyle.Render(breadcrumb + strings.Repeat("░", padding))
 	} else {
 		leftHalf = shadeStyle.Render(strings.Repeat("░", leftHalfWidth))
 	}
@@ -725,23 +725,33 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	lineNumWidth := m.lineNumWidth()
 	lineNumShade := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
 
+	// Left side content: breadcrumb or shading
 	leftContentWidth := leftHalfWidth - lineNumWidth - 4
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
+	var leftContent string
+	if breadcrumb != "" && leftContentWidth > 0 {
+		breadcrumb = runewidth.Truncate(breadcrumb, leftContentWidth, "")
+		displayWidth := runewidth.StringWidth(breadcrumb)
+		padding := leftContentWidth - displayWidth
+		leftContent = cursorStyle.Render(breadcrumb + strings.Repeat("░", padding))
+	} else {
+		leftContent = cursorStyle.Render(strings.Repeat("░", leftContentWidth))
+	}
+
+	// Right side content: all shading
 	rightContentWidth := rightHalfWidth - lineNumWidth - 4
 	if rightContentWidth < 0 {
 		rightContentWidth = 0
 	}
-
-	leftContentShade := shadeStyle.Render(strings.Repeat("░", leftContentWidth))
-	rightContentShade := shadeStyle.Render(strings.Repeat("░", rightContentWidth))
+	rightContent := cursorStyle.Render(strings.Repeat("░", rightContentWidth))
 
 	// Both sides have same layout: arrow + shade + lineNum + shade + content
-	leftHalfCursor := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + leftContentShade
-	rightHalfCursor := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + lineNumShade + shadeStyle.Render("░░") + rightContentShade
+	leftHalfCursor := cursorArrowStyle.Render("▶") + cursorStyle.Render("░") + lineNumShade + cursorStyle.Render("░░") + leftContent
+	rightHalfCursor := cursorArrowStyle.Render("▶") + cursorStyle.Render("░") + lineNumShade + cursorStyle.Render("░░") + rightContent
 
-	return leftHalfCursor + shadeStyle.Render("░░░") + rightHalfCursor
+	return leftHalfCursor + cursorStyle.Render("░░░") + rightHalfCursor
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
