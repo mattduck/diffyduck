@@ -718,27 +718,27 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	}
 
 	if !isCursorRow {
-		// Non-cursor: all shading
-		leftArrow := shadeStyle.Render("░░")
-		rightArrow := shadeStyle.Render("░░")
+		// Non-cursor: all spaces (no shading)
+		leftArrow := "  "
+		rightArrow := "  "
 
 		var leftContent string
 		if breadcrumb != "" && leftContentWidth > 0 {
 			breadcrumb = runewidth.Truncate(breadcrumb, leftContentWidth, "")
 			displayWidth := runewidth.StringWidth(breadcrumb)
 			padding := leftContentWidth - displayWidth
-			leftContent = shadeStyle.Render(breadcrumb + strings.Repeat("░", padding))
+			leftContent = shadeStyle.Render(breadcrumb) + strings.Repeat(" ", padding)
 		} else {
-			leftContent = shadeStyle.Render(strings.Repeat("░", leftContentWidth))
+			leftContent = strings.Repeat(" ", leftContentWidth)
 		}
-		rightContent := shadeStyle.Render(strings.Repeat("░", rightContentWidth))
+		rightContent := strings.Repeat(" ", rightContentWidth)
 
-		return leftArrow + leftContent + shadeStyle.Render("░░░") + rightArrow + rightContent
+		return leftArrow + leftContent + "   " + rightArrow + rightContent
 	}
 
-	// Cursor row: arrow + shade, then lineNumWidth chars with cursor bg (showing breadcrumb or shading)
-	leftArrow := cursorArrowStyle.Render("▶") + shadeStyle.Render("░")
-	rightArrow := cursorArrowStyle.Render("▶") + shadeStyle.Render("░")
+	// Cursor row: arrow + space, then lineNumWidth chars with cursor bg (showing breadcrumb or spaces)
+	leftArrow := cursorArrowStyle.Render("▶") + " "
+	rightArrow := cursorArrowStyle.Render("▶") + " "
 
 	// Left side: first lineNumWidth chars get cursor bg (breadcrumb text or shading), rest is normal
 	var leftContent string
@@ -746,14 +746,14 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 		breadcrumb = runewidth.Truncate(breadcrumb, leftContentWidth, "")
 		displayWidth := runewidth.StringWidth(breadcrumb)
 
-		// Split breadcrumb: first lineNumWidth chars with cursor bg, rest with shade style
+		// Split breadcrumb: first lineNumWidth chars with cursor bg, rest plain
 		if displayWidth <= lineNumWidth {
 			// Entire breadcrumb fits in cursor area
 			padding := lineNumWidth - displayWidth
-			cursorPart := cursorStyle.Render(breadcrumb + strings.Repeat("░", padding))
+			cursorPart := cursorStyle.Render(breadcrumb + strings.Repeat(" ", padding))
 			restWidth := leftContentWidth - lineNumWidth
 			if restWidth > 0 {
-				leftContent = cursorPart + shadeStyle.Render(strings.Repeat("░", restWidth))
+				leftContent = cursorPart + strings.Repeat(" ", restWidth)
 			} else {
 				leftContent = cursorPart
 			}
@@ -766,42 +766,42 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 				restBreadcrumb = runewidth.Truncate(restBreadcrumb, restWidth, "")
 				restDisplayWidth := runewidth.StringWidth(restBreadcrumb)
 				padding := restWidth - restDisplayWidth
-				leftContent = cursorPart + shadeStyle.Render(restBreadcrumb+strings.Repeat("░", padding))
+				leftContent = cursorPart + shadeStyle.Render(restBreadcrumb) + strings.Repeat(" ", padding)
 			} else {
 				leftContent = cursorPart
 			}
 		}
 	} else {
-		// No breadcrumb: cursor bg shading for lineNumWidth, then normal shading
-		cursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+		// No breadcrumb: cursor bg spaces for lineNumWidth, then plain spaces
+		cursorPart := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
 		restWidth := leftContentWidth - lineNumWidth
 		if restWidth > 0 {
-			leftContent = cursorPart + shadeStyle.Render(strings.Repeat("░", restWidth))
+			leftContent = cursorPart + strings.Repeat(" ", restWidth)
 		} else {
 			leftContent = cursorPart
 		}
 	}
 
-	// Right side: lineNumWidth chars with cursor bg shading, rest normal
-	rightCursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	// Right side: lineNumWidth chars with cursor bg spaces, rest plain
+	rightCursorPart := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
 	rightRestWidth := rightContentWidth - lineNumWidth
 	var rightContent string
 	if rightRestWidth > 0 {
-		rightContent = rightCursorPart + shadeStyle.Render(strings.Repeat("░", rightRestWidth))
+		rightContent = rightCursorPart + strings.Repeat(" ", rightRestWidth)
 	} else {
 		rightContent = rightCursorPart
 	}
 
-	return leftArrow + leftContent + shadeStyle.Render("░░░") + rightArrow + rightContent
+	return leftArrow + leftContent + "   " + rightArrow + rightContent
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
 func (m Model) renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth int) string {
 	// Highlight both gutter areas (left and right)
-	leftGutter := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
-	rightGutter := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	leftGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+	rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
 
-	// Content areas with light shading (accounting for indicator + space + gutter + space)
+	// Content areas (accounting for indicator + space + gutter + space)
 	leftContentWidth := leftHalfWidth - lineNumWidth - 3
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
@@ -810,13 +810,12 @@ func (m Model) renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth
 	if rightContentWidth < 0 {
 		rightContentWidth = 0
 	}
-	leftContent := interFileStyle.Render(strings.Repeat("░", leftContentWidth))
-	rightContent := interFileStyle.Render(strings.Repeat("░", rightContentWidth))
+	leftContent := strings.Repeat(" ", leftContentWidth)
+	rightContent := strings.Repeat(" ", rightContentWidth)
 
-	separator := interFileStyle.Render("░")
-	// Format: arrow + shade + gutter + shade + content
-	return cursorArrowStyle.Render("▶") + interFileStyle.Render("░") + leftGutter + interFileStyle.Render("░") + leftContent + interFileStyle.Render("░") + separator + interFileStyle.Render("░") +
-		cursorArrowStyle.Render("▶") + interFileStyle.Render("░") + rightGutter + interFileStyle.Render("░") + rightContent
+	// Format: arrow + space + gutter + space + content
+	return cursorArrowStyle.Render("▶") + " " + leftGutter + " " + leftContent + " " + " " + " " +
+		cursorArrowStyle.Render("▶") + " " + rightGutter + " " + rightContent
 }
 
 // renderInterFileBlank renders a blank line between files.

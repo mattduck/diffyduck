@@ -685,11 +685,8 @@ func TestView_HunkSeparator(t *testing.T) {
 
 	output := m.View()
 
-	// Should contain a separator line with continuous shading (no vertical divider)
-	// Format: ░░░░░░░░░░░░ (full width of shading)
-	assert.Contains(t, output, "░░░░")
-	// Should NOT contain cross separator (we use continuous shading instead)
-	assert.NotContains(t, output, "┼")
+	// Hunk separator should be blank (no cross separator)
+	assert.NotContains(t, output, "┼", "hunk separator should NOT have cross in middle")
 }
 
 func TestView_BlankLineBeforeFileHeader(t *testing.T) {
@@ -3592,11 +3589,11 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the hunk separator line (full-width shaded line without line numbers, not the header)
-	// Hunk separators are filled with ░ and don't contain file names or line numbers
+	// Find the hunk separator line (blank line without line numbers, not the header)
+	// Hunk separators don't contain file names or line numbers, and have ▶ when cursor is on them
 	var hunkSepLine string
 	for i, line := range lines {
-		if i > 2 && strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "100") && !strings.Contains(line, "first") {
+		if i > 2 && strings.Contains(line, "▶") && !strings.Contains(line, "test.go") && !strings.Contains(line, "100") && !strings.Contains(line, "first") {
 			hunkSepLine = line
 			break
 		}
@@ -3725,18 +3722,21 @@ func TestView_HunkSeparatorNoCrossInMiddle(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the hunk separator line (full-width shaded line, not file header)
+	// Find the hunk separator line (blank line between content, not file header)
+	// Hunk separator is row 4 in this test (after header area at rows 0-2, and first content at row 3)
 	var hunkLine string
 	for i, line := range lines {
-		if i > 2 && strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "100") && !strings.Contains(line, "first") && !strings.Contains(line, "second") {
+		// Skip header area (rows 0-2) and content lines with file name, line numbers, or content
+		if i > 2 && !strings.Contains(line, "test.go") && !strings.Contains(line, "100") &&
+			!strings.Contains(line, "first") && !strings.Contains(line, "second") &&
+			!strings.Contains(line, "─") && !strings.Contains(line, "│") {
 			hunkLine = line
 			break
 		}
 	}
 
 	require.NotEmpty(t, hunkLine, "should find hunk separator line")
-	// Should have shading but NO cross character
-	assert.Contains(t, hunkLine, "░", "hunk separator should have shading")
+	// Should NOT have cross character in middle
 	assert.NotContains(t, hunkLine, "┼", "hunk separator should NOT have cross in middle")
 }
 
@@ -3796,20 +3796,17 @@ func TestView_HunkSeparatorBreadcrumbs(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the hunk separator line
+	// Find the hunk separator line by looking for breadcrumb content
 	var hunkLine string
 	for _, line := range lines {
-		// Hunk separator has shading but no line numbers, no file name
-		if strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "package") {
-			// Check it's not a content line (doesn't have line numbers like "15" or "16")
-			if !strings.Contains(line, " 15 ") && !strings.Contains(line, " 16 ") && !strings.Contains(line, " 1 ") && !strings.Contains(line, " 2 ") && !strings.Contains(line, " 3 ") {
-				hunkLine = line
-				break
-			}
+		// Hunk separator contains breadcrumb but no file name or line numbers
+		if strings.Contains(line, "func MyFunction") && !strings.Contains(line, "test.go") && !strings.Contains(line, "package") {
+			hunkLine = line
+			break
 		}
 	}
 
-	require.NotEmpty(t, hunkLine, "should find hunk separator line")
+	require.NotEmpty(t, hunkLine, "should find hunk separator line with breadcrumb")
 	// The separator should contain the function name as a breadcrumb
 	assert.Contains(t, hunkLine, "func MyFunction", "hunk separator should show breadcrumb for the function containing the chunk start")
 }
@@ -3845,19 +3842,21 @@ func TestView_HunkSeparatorBreadcrumbs_NoBreadcrumbWithoutStructure(t *testing.T
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the hunk separator line
+	// Find the hunk separator line (blank line without content)
+	// It's between rows 3 (line 1 content) and row 5 (line 100 content)
 	var hunkLine string
-	for _, line := range lines {
-		if strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "line") {
-			if !strings.Contains(line, " 1 ") && !strings.Contains(line, " 100 ") {
-				hunkLine = line
-				break
-			}
+	for i, line := range lines {
+		// Skip header area and content lines
+		if i > 2 && !strings.Contains(line, "test.go") && !strings.Contains(line, "line") &&
+			!strings.Contains(line, " 1 ") && !strings.Contains(line, " 100 ") &&
+			!strings.Contains(line, "─") && !strings.Contains(line, "│") {
+			hunkLine = line
+			break
 		}
 	}
 
 	require.NotEmpty(t, hunkLine, "should find hunk separator line")
-	// Without structure, should just be all shading
+	// Without structure, should not have breadcrumb
 	assert.NotContains(t, hunkLine, "func", "hunk separator without structure should not have breadcrumb")
 }
 
@@ -3946,18 +3945,16 @@ func AnotherFunction() {
 	output := m.View()
 	outputLines := strings.Split(output, "\n")
 
-	// Find the hunk separator line (has ░ but no line numbers or content)
+	// Find the hunk separator line by looking for breadcrumb content
 	var hunkLine string
 	for _, line := range outputLines {
-		if strings.Contains(line, "░") && !strings.Contains(line, "test.go") && !strings.Contains(line, "package") && !strings.Contains(line, "x :=") {
-			if !strings.Contains(line, " 1 ") && !strings.Contains(line, " 2 ") && !strings.Contains(line, " 4 ") && !strings.Contains(line, " 5 ") {
-				hunkLine = line
-				break
-			}
+		if strings.Contains(line, "func MyFunction") && !strings.Contains(line, "test.go") && !strings.Contains(line, "package") && !strings.Contains(line, "x :=") {
+			hunkLine = line
+			break
 		}
 	}
 
-	require.NotEmpty(t, hunkLine, "should find hunk separator line")
+	require.NotEmpty(t, hunkLine, "should find hunk separator line with breadcrumb")
 	// The separator should contain the function name as a breadcrumb
 	assert.Contains(t, hunkLine, "func MyFunction", "hunk separator should show 'func MyFunction' breadcrumb")
 }
@@ -5695,11 +5692,11 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	hunkOutput := m.View()
 	hunkLines := strings.Split(hunkOutput, "\n")
 
-	// Find the hunk separator line (all ░ shading, no line numbers, has arrows)
+	// Find the hunk separator line (has arrows but no line content or file names)
 	var hunkSepLine string
 	for i, line := range hunkLines {
-		// Skip header area, look for line that's mostly ░ and has arrows but no line content
-		if i > 3 && strings.Contains(line, "▶") && strings.Contains(line, "░") &&
+		// Skip header area, look for line that has arrows but no line content
+		if i > 3 && strings.Contains(line, "▶") &&
 			!strings.Contains(line, "test.go") && !strings.Contains(line, "100") &&
 			!strings.Contains(line, "first") && !strings.Contains(line, "second") {
 			hunkSepLine = line
