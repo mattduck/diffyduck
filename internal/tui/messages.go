@@ -61,4 +61,5 @@ type StructureEntry struct {
 	EndLine   int    // 1-based line number (inclusive)
 	Name      string // e.g., "MyStruct", "myMethod"
 	Kind      string // e.g., "type", "func"
+	Signature string // e.g., "(m Model) myMethod(ctx)" - includes receiver and params
 }

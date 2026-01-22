@@ -254,6 +254,7 @@ func convertStructure(m *structure.Map) []StructureEntry {
 			EndLine:   e.EndLine,
 			Name:      e.Name,
 			Kind:      e.Kind,
+			Signature: e.Signature,
 		}
 	}
 	return result
@@ -315,6 +316,7 @@ func unconvertStructure(entries []StructureEntry) *structure.Map {
 			EndLine:   e.EndLine,
 			Name:      e.Name,
 			Kind:      e.Kind,
+			Signature: e.Signature,
 		}
 	}
 	return structure.NewMap(structEntries)
