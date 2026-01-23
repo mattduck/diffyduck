@@ -983,3 +983,484 @@ func TestSearch_GoToTop_ResetsMatchIndex(t *testing.T) {
 
 	assert.Equal(t, 0, model.searchMatchIdx, "match index should reset to 0 after gg")
 }
+
+// =============================================================================
+// Search in Comments Tests
+// =============================================================================
+
+// Helper to create a test model with comments
+func makeSearchWithCommentsTestModel(lines []string, comments map[commentKey]string) Model {
+	pairs := make([]sidebyside.LinePair, len(lines))
+	for i, line := range lines {
+		pairs[i] = sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i + 1, Content: line, Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: i + 1, Content: line, Type: sidebyside.Added},
+		}
+	}
+
+	m := Model{
+		files: []sidebyside.FilePair{
+			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		},
+		width:       80,
+		height:      30,
+		keys:        DefaultKeyMap(),
+		hscrollStep: DefaultHScrollStep,
+		comments:    comments,
+	}
+	m.calculateTotalLines()
+	return m
+}
+
+// Test: Basic search finds text in comment content
+func TestSearch_FindsTextInComment(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 2}: "This comment has searchterm in it",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"line one",
+		"line two",
+		"line three",
+	}, comments)
+
+	m.searchQuery = "searchterm"
+	row, found := m.findNextMatchRow(0, true)
+
+	assert.True(t, found, "should find 'searchterm' in comment")
+	// The match should be in a comment row
+	rows := m.buildRows()
+	assert.Equal(t, RowKindComment, rows[row].kind, "match should be in a comment row")
+}
+
+// Test: Search finds text only in code when comment doesn't match
+func TestSearch_FindsTextInCodeNotComment(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "This comment has nothing special",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"line with target here",
+		"another line",
+	}, comments)
+
+	m.searchQuery = "target"
+	row, found := m.findNextMatchRow(0, true)
+
+	assert.True(t, found, "should find 'target' in code")
+	// The match should be in a content row, not a comment row
+	rows := m.buildRows()
+	assert.Equal(t, RowKindContent, rows[row].kind, "match should be in a content row")
+}
+
+// Test: n/N navigation visits matches in comments
+func TestSearch_NextMatch_VisitsCommentMatches(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 2}: "Comment with foo here",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"foo in first line", // row has "foo"
+		"no match here",     // has comment with "foo"
+		"foo in third line", // row has "foo"
+	}, comments)
+
+	m.searchQuery = "foo"
+	m.searchForward = true
+
+	// Start search from the beginning (row 0)
+	rows := m.buildRows()
+
+	// Collect all rows with matches to verify we visit content and comment rows
+	var matchRowKinds []RowKind
+	for i := range rows {
+		if len(m.findMatchColsOnRow(i)) > 0 {
+			matchRowKinds = append(matchRowKinds, rows[i].kind)
+		}
+	}
+
+	// Should have matches in content rows AND comment rows
+	hasContentMatch := false
+	hasCommentMatch := false
+	for _, kind := range matchRowKinds {
+		if kind == RowKindContent {
+			hasContentMatch = true
+		}
+		if kind == RowKindComment {
+			hasCommentMatch = true
+		}
+	}
+
+	assert.True(t, hasContentMatch, "should have matches in content rows")
+	assert.True(t, hasCommentMatch, "should have matches in comment rows")
+
+	// Test that nextMatch can navigate to both types
+	// Position cursor at the very start
+	m.scroll = m.minScroll()
+
+	// Find first match from beginning
+	firstRow, found := m.findNextMatchRow(0, true)
+	assert.True(t, found, "should find first match")
+
+	// Move to that row
+	m.adjustScrollToRow(firstRow)
+	m.searchMatchIdx = 0
+	m.searchMatchSide = 0
+
+	// Navigate through all matches and verify we see both content and comment
+	visitedKinds := make(map[RowKind]bool)
+	visitedKinds[rows[firstRow].kind] = true
+
+	for i := 0; i < 10; i++ { // limit iterations
+		if !m.nextMatch() {
+			break
+		}
+		cursorRow := m.cursorLine()
+		if cursorRow >= 0 && cursorRow < len(rows) {
+			visitedKinds[rows[cursorRow].kind] = true
+		}
+	}
+
+	assert.True(t, visitedKinds[RowKindContent], "nextMatch should visit content rows")
+	assert.True(t, visitedKinds[RowKindComment], "nextMatch should visit comment rows")
+}
+
+// Test: Cursor moves to comment row when match is in comment
+func TestSearch_Execute_MovesToCommentRow(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "uniqueword appears here",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"no match in content",
+		"still no match",
+	}, comments)
+
+	m.searchMode = true
+	m.searchInput = "uniqueword"
+	m.searchForward = true
+
+	// Execute search
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model := newM.(Model)
+
+	// Cursor should be on the comment row
+	cursorRow := model.cursorLine()
+	rows := model.buildRows()
+	assert.Equal(t, RowKindComment, rows[cursorRow].kind,
+		"cursor should move to comment row containing match")
+}
+
+// Test: Multiple matches in same comment
+func TestSearch_MultipleMatchesInSameComment(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "foo bar foo baz foo",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"no foo here wait there is foo",
+	}, comments)
+
+	m.searchQuery = "foo"
+	m.searchForward = true
+
+	// Find matches in the comment CONTENT row (not border)
+	rows := m.buildRows()
+	var commentRowIdx int
+	for i, r := range rows {
+		// Look for content row (commentLineIndex >= 0), not border
+		if r.kind == RowKindComment && r.commentLineIndex >= 0 {
+			commentRowIdx = i
+			break
+		}
+	}
+
+	// Check that the comment content row has multiple matches
+	matches := m.findMatchColsOnRowSide(commentRowIdx, 0)
+	assert.GreaterOrEqual(t, len(matches), 3,
+		"comment content row should have at least 3 matches for 'foo'")
+}
+
+// Test: Match can be in both comment and code (same search term)
+func TestSearch_MatchInBothCommentAndCode(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "Comment mentions variable myVar",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"code uses myVar = 42",
+		"another line",
+	}, comments)
+
+	m.searchQuery = "myVar"
+	m.searchForward = true
+
+	// Count total matches
+	rows := m.buildRows()
+	totalMatches := 0
+	for i := range rows {
+		matches := m.findMatchColsOnRow(i)
+		totalMatches += len(matches)
+	}
+
+	assert.GreaterOrEqual(t, totalMatches, 2,
+		"should find 'myVar' in both comment and code")
+}
+
+// Test: Case-insensitive search in comments
+func TestSearch_CaseInsensitiveInComments(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "This has UPPERCASE text",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"lowercase content",
+	}, comments)
+
+	// Lowercase query = case insensitive
+	m.searchQuery = "uppercase"
+	row, found := m.findNextMatchRow(0, true)
+
+	assert.True(t, found, "case-insensitive search should find 'UPPERCASE'")
+	rows := m.buildRows()
+	assert.Equal(t, RowKindComment, rows[row].kind,
+		"match should be in comment row")
+}
+
+// Test: Case-sensitive search in comments
+func TestSearch_CaseSensitiveInComments(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "This has MixedCase text",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"lowercase content",
+	}, comments)
+
+	// Mixed case query = case sensitive
+	m.searchQuery = "MixedCase"
+	row, found := m.findNextMatchRow(0, true)
+
+	assert.True(t, found, "case-sensitive search should find 'MixedCase'")
+	rows := m.buildRows()
+	assert.Equal(t, RowKindComment, rows[row].kind)
+
+	// Should NOT find with wrong case
+	m.searchQuery = "mixedcase"
+	_, found = m.findNextMatchRow(0, true)
+	// This will find in the comment because lowercase query is case-insensitive
+	// Let's use a different approach - search for something that doesn't exist
+	m.searchQuery = "MiXeDcAsE" // different mixed case
+	_, found = m.findNextMatchRow(0, true)
+	assert.False(t, found, "case-sensitive search should NOT find 'MiXeDcAsE'")
+}
+
+// Test: Search doesn't find in comments when file is folded
+func TestSearch_FoldedFile_NoCommentMatches(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "hidden searchterm in comment",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"line content",
+	}, comments)
+
+	// Fold the file
+	m.files[0].FoldLevel = sidebyside.FoldFolded
+	m.calculateTotalLines()
+
+	m.searchQuery = "searchterm"
+	_, found := m.findNextMatchRow(0, true)
+
+	assert.False(t, found, "should not find comment content when file is folded")
+}
+
+// Test: searchableText returns comment text for comment rows
+func TestSearchableText_ReturnsCommentText(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "My comment text here",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"line content",
+	}, comments)
+
+	rows := m.buildRows()
+
+	// Find the comment CONTENT row (not border)
+	for _, r := range rows {
+		if r.kind == RowKindComment && r.commentLineIndex >= 0 {
+			text := searchableText(r, 0)
+			assert.Contains(t, text, "My comment text here",
+				"searchableText should return comment text for comment content rows")
+			return
+		}
+	}
+	t.Fatal("should have found a comment content row")
+}
+
+// Test: prevMatch (N) visits comment matches going backward
+func TestSearch_PrevMatch_VisitsCommentMatches(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "Comment with foo",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"foo first",
+		"foo second",
+	}, comments)
+
+	m.searchQuery = "foo"
+	m.searchForward = true
+
+	// Position at last match (second content line)
+	rows := m.buildRows()
+	lastContentIdx := -1
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].kind == RowKindContent {
+			lastContentIdx = i
+			break
+		}
+	}
+	m.adjustScrollToRow(lastContentIdx)
+
+	// Press N to go backward - should eventually find comment match
+	foundComment := false
+	for i := 0; i < 10; i++ { // limit iterations
+		m.prevMatch()
+		cursorRow := m.cursorLine()
+		if rows[cursorRow].kind == RowKindComment {
+			foundComment = true
+			break
+		}
+	}
+
+	assert.True(t, foundComment, "prevMatch should visit comment matches")
+}
+
+// Test: Rendered comment row includes the search term
+// This test would have caught the bug where renderCommentRow didn't apply highlighting
+func TestSearch_RenderCommentRow_IncludesSearchTerm(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "Comment with searchterm here",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"line content",
+	}, comments)
+
+	m.searchQuery = "searchterm"
+
+	// Find a comment content row (not border)
+	rows := m.buildRows()
+	var commentContentRow displayRow
+	var commentRowIdx int
+	for i, r := range rows {
+		if r.kind == RowKindComment && r.commentLineIndex >= 0 {
+			commentContentRow = r
+			commentRowIdx = i
+			break
+		}
+	}
+
+	// Position cursor on the comment row
+	m.adjustScrollToRow(commentRowIdx)
+	isCursorRow := m.cursorLine() == commentRowIdx
+
+	// Render the comment row
+	rendered := m.renderCommentRow(commentContentRow, 40, 40, 4, isCursorRow)
+
+	// The rendered output should contain "searchterm"
+	// (even without ANSI codes being testable, the text should be there)
+	assert.Contains(t, rendered, "searchterm",
+		"rendered comment row should contain the search term")
+}
+
+// Test: View() output includes comment text when searching
+func TestSearch_ViewIncludesCommentMatch(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "uniquecommenttext",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"line content",
+	}, comments)
+
+	m.searchQuery = "uniquecommenttext"
+	m.width = 100
+	m.height = 20
+
+	// Execute search to position cursor
+	m.executeSearch()
+
+	output := m.View()
+
+	// The view should include the comment text
+	assert.Contains(t, output, "uniquecommenttext",
+		"View() should include comment text that matches search")
+}
+
+// Test: Search finds comment content row, not border row
+// This catches the bug where cursor jumped to comment border instead of content
+func TestSearch_FindsCommentContentRow_NotBorder(t *testing.T) {
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "findme in comment",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"no match here",
+	}, comments)
+
+	m.searchQuery = "findme"
+	row, found := m.findNextMatchRow(0, true)
+
+	assert.True(t, found, "should find match in comment")
+
+	rows := m.buildRows()
+	matchedRow := rows[row]
+
+	// The matched row should be a comment CONTENT row, not a border
+	assert.Equal(t, RowKindComment, matchedRow.kind, "should be a comment row")
+	assert.GreaterOrEqual(t, matchedRow.commentLineIndex, 0,
+		"should be a content row (commentLineIndex >= 0), not a border row")
+}
+
+// Test: searchableText returns empty for comment border rows
+func TestSearchableText_CommentBorderReturnsEmpty(t *testing.T) {
+	// Border row has commentLineIndex = -1
+	borderRow := displayRow{
+		kind:             RowKindComment,
+		commentText:      "some comment text",
+		commentLineIndex: -1, // border row
+	}
+
+	text := searchableText(borderRow, 0)
+	assert.Equal(t, "", text, "border rows should return empty searchable text")
+}
+
+// Test: searchableText returns specific line for comment content rows
+func TestSearchableText_CommentContentReturnsSpecificLine(t *testing.T) {
+	// Content row for line 1 of a multi-line comment
+	contentRow := displayRow{
+		kind:             RowKindComment,
+		commentText:      "Line zero\nLine one\nLine two",
+		commentLineIndex: 1, // second line (0-indexed)
+	}
+
+	text := searchableText(contentRow, 0)
+	assert.Equal(t, "Line one", text,
+		"content row should return only its specific line")
+}
+
+// Test: n navigation lands on correct line within multi-line comment
+func TestSearch_NextMatch_LandsOnCorrectCommentLine(t *testing.T) {
+	// Multi-line comment where search term is on second line
+	comments := map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "First line\nSecond has target\nThird line",
+	}
+	m := makeSearchWithCommentsTestModel([]string{
+		"no match",
+	}, comments)
+
+	m.searchQuery = "target"
+	m.searchForward = true
+	m.scroll = m.minScroll()
+
+	// Find the match
+	row, found := m.findNextMatchRow(0, true)
+	assert.True(t, found, "should find 'target' in comment")
+
+	rows := m.buildRows()
+	matchedRow := rows[row]
+
+	// Should land on the specific line containing "target" (line index 1)
+	assert.Equal(t, RowKindComment, matchedRow.kind)
+	assert.Equal(t, 1, matchedRow.commentLineIndex,
+		"should land on line index 1 which contains 'target'")
+}

@@ -2696,14 +2696,21 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 		lineText = lines[lineIdx]
 	}
 
+	// Apply search highlighting to the comment text
+	// Comments are always on side 0 (new/left side)
+	highlightedText := m.highlightSearchInVisible(lineText, isCursorRow, m.searchMatchIdx, 0, m.searchMatchSide)
+
 	lineWidth := displayWidth(lineText)
 	padding := contentWidth - lineWidth
 	if padding < 0 {
 		padding = 0
 	}
-	paddedText := lineText + strings.Repeat(" ", padding)
 
-	return leftGutter + commentBorderStyle.Render("│ ") + commentTextStyle.Render(paddedText) + " " + commentBorderStyle.Render("│") + sep + rightGutter + rightContent
+	// Build the content with highlighting and padding
+	// Note: padding must be added after highlighting to maintain box alignment
+	paddedText := highlightedText + strings.Repeat(" ", padding)
+
+	return leftGutter + commentBorderStyle.Render("│ ") + paddedText + " " + commentBorderStyle.Render("│") + sep + rightGutter + rightContent
 }
 
 // wrapText wraps text to fit within maxWidth, preserving words where possible.

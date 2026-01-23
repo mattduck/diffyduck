@@ -21,7 +21,22 @@ func isSmartCaseSensitive(query string) bool {
 // searchableText returns the text to search for a given row and side.
 // For the old side (side=1), only returns text for removed lines (- and ~ lines).
 // For the new side (side=0) and headers, returns the full text.
+// For comment rows, returns the specific line displayed by that row (only on side 0).
+// Comment border rows (top/bottom) return empty string since they don't display text.
 func searchableText(row displayRow, side int) string {
+	// Comment rows - only searchable on side 0 (new/left side)
+	// Only content rows are searchable, not border rows
+	if row.kind == RowKindComment {
+		if side == 0 && row.commentLineIndex >= 0 {
+			// Return only the specific line this row displays
+			lines := strings.Split(row.commentText, "\n")
+			if row.commentLineIndex < len(lines) {
+				return lines[row.commentLineIndex]
+			}
+		}
+		return ""
+	}
+
 	if row.isHeader {
 		if side == 0 {
 			return row.header // Already formatted

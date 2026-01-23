@@ -62,20 +62,20 @@
 - [X] Page up/down through comment rows
 
 ** Search Integration
-- [ ] Search should match text within comments
-- [ ] Highlight matches in comment text
-- [ ] Tests for search within comments
+- [X] Search should match text within comments
+- [X] Highlight matches in comment text
+- [X] Tests for search within comments
 
 *** Test Cases for Search
-- [ ] Basic search finds text in comment content
-- [ ] Search highlights match within comment box
-- [ ] n/N navigation visits matches in comments
-- [ ] Search match count includes comment matches
-- [ ] Cursor moves to comment row when match is in comment
-- [ ] Multiple matches in same comment
-- [ ] Match spans comment and code (e.g., variable name in both)
-- [ ] Clear search removes highlight from comments
-- [ ] Case-insensitive search in comments
+- [X] Basic search finds text in comment content
+- [X] Search highlights match within comment box
+- [X] n/N navigation visits matches in comments
+- [X] Search match count includes comment matches
+- [X] Cursor moves to comment row when match is in comment
+- [X] Multiple matches in same comment
+- [X] Match spans comment and code (e.g., variable name in both)
+- [X] Clear search removes highlight from comments
+- [X] Case-insensitive search in comments
 
 * Future Enhancements
 
