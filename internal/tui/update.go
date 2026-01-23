@@ -20,6 +20,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
 
+	case tea.MouseMsg:
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.scroll -= 3
+			m.clampScroll()
+			m.resetSearchMatchForRow()
+		case tea.MouseButtonWheelDown:
+			m.scroll += 3
+			m.clampScroll()
+			m.resetSearchMatchForRow()
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		// Capture cursor row index before resize changes cursorOffset()
 		// Row list is stable on resize (only rendering widths change, not row count),

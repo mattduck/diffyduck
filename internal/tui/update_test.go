@@ -462,6 +462,47 @@ func TestUpdate_ScrollLeft_ArrowKey(t *testing.T) {
 	assert.Equal(t, 4, model.hscroll)
 }
 
+func TestUpdate_MouseWheelDown(t *testing.T) {
+	m := makeTestModel(100)
+	m.scroll = 0
+
+	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	model := newM.(Model)
+
+	assert.Equal(t, 3, model.scroll) // scrolls 3 lines
+}
+
+func TestUpdate_MouseWheelUp(t *testing.T) {
+	m := makeTestModel(100)
+	m.scroll = 10
+
+	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	model := newM.(Model)
+
+	assert.Equal(t, 7, model.scroll) // 10 - 3
+}
+
+func TestUpdate_MouseWheelUp_AtTop(t *testing.T) {
+	m := makeTestModel(100)
+	m.scroll = 0
+
+	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	model := newM.(Model)
+
+	// Scroll can go negative to allow cursor to reach first line
+	assert.Equal(t, -3, model.scroll)
+}
+
+func TestUpdate_MouseWheelDown_AtBottom(t *testing.T) {
+	m := makeTestModel(30)
+	m.scroll = m.maxScroll()
+
+	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	model := newM.(Model)
+
+	assert.Equal(t, m.maxScroll(), model.scroll) // clamped to max
+}
+
 func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
 	m := makeTestModel(10)
 	// Initially at FoldNormal (zero value)
