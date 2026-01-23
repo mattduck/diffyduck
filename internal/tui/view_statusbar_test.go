@@ -598,3 +598,133 @@ func TestStatusInfo_BreadcrumbsOnChunkSeparator(t *testing.T) {
 	info = m.StatusInfo()
 	assert.Contains(t, info.Breadcrumbs, "func MyFunction", "cursor on separator bottom should show breadcrumb")
 }
+
+func TestTopBar_WithCommitInfo(t *testing.T) {
+	// Create model with commit info using NewWithCommits
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+				},
+			},
+		},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890",
+			Author:  "Test Author",
+			Email:   "test@example.com",
+			Date:    "2024-01-15T10:30:00+00:00",
+			Subject: "Fix the bug in parser",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 20
+	m.focused = true
+
+	topBar := m.renderTopBar()
+	lines := strings.Split(topBar, "\n")
+
+	// Should have 3 lines: commit line, file line, divider
+	require.GreaterOrEqual(t, len(lines), 3, "top bar should have commit line, file line, and divider")
+
+	// First line should contain commit info
+	commitLine := lines[0]
+	assert.Contains(t, commitLine, "abc123d", "commit line should contain short SHA")
+	assert.Contains(t, commitLine, "Test Author", "commit line should contain author")
+	assert.Contains(t, commitLine, "Fix the bug", "commit line should contain subject")
+
+	// Second line should contain file info
+	fileLine := lines[1]
+	assert.Contains(t, fileLine, "foo.go", "file line should contain filename")
+}
+
+func TestTopBar_WithoutCommitInfo(t *testing.T) {
+	// Create model without commit info using New()
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+				},
+			},
+		},
+	}
+	m := New(files)
+	m.width = 80
+	m.height = 20
+	m.focused = true
+
+	topBar := m.renderTopBar()
+	lines := strings.Split(topBar, "\n")
+
+	// Should have 2 lines: file line and divider (no commit line)
+	require.Equal(t, 2, len(lines), "top bar without commit info should have file line and divider only")
+
+	// First line should contain file info (not commit info)
+	fileLine := lines[0]
+	assert.Contains(t, fileLine, "foo.go", "should contain filename")
+	assert.NotContains(t, fileLine, "abc123", "should NOT contain SHA")
+}
+
+func TestFormatRelativeDate(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		contains string // what the output should contain
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			contains: "",
+		},
+		{
+			name:     "invalid format returns as-is",
+			input:    "not a date",
+			contains: "not a date",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatRelativeDate(tt.input)
+			if tt.contains == "" {
+				assert.Empty(t, result)
+			} else {
+				assert.Contains(t, result, tt.contains)
+			}
+		})
+	}
+}
+
+func TestContentHeight_WithCommitInfo(t *testing.T) {
+	// Without commit info
+	m1 := New([]sidebyside.FilePair{{OldPath: "a/foo.go", NewPath: "b/foo.go"}})
+	m1.height = 20
+
+	// With commit info
+	commit := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc123", Author: "Test"},
+		Files:       []sidebyside.FilePair{{OldPath: "a/foo.go", NewPath: "b/foo.go"}},
+		FilesLoaded: true,
+	}
+	m2 := NewWithCommits([]sidebyside.CommitSet{commit})
+	m2.height = 20
+
+	// Content height should be 1 less when commit info is present
+	assert.Equal(t, m1.contentHeight()-1, m2.contentHeight(),
+		"content height should be 1 less when commit info is present")
+}

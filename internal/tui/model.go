@@ -304,7 +304,11 @@ func (m Model) Init() tea.Cmd {
 
 // contentHeight returns the height available for content (minus top bar, divider, and bottom bar).
 func (m Model) contentHeight() int {
-	h := m.height - 3 // Reserve 1 line for top bar + 1 line for divider + 1 line for bottom bar
+	reserved := 3 // 1 line for top bar + 1 line for divider + 1 line for bottom bar
+	if m.hasCommitInfo() {
+		reserved++ // extra line for commit info
+	}
+	h := m.height - reserved
 	if h < 1 {
 		return 1
 	}

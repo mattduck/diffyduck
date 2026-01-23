@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -1060,6 +1061,83 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 func (m Model) renderTopBar() string {
 	info := m.StatusInfo()
 
+	var lines []string
+
+	// Commit info line (only if we have commit metadata)
+	if m.hasCommitInfo() {
+		commitLine := m.renderCommitLine()
+		lines = append(lines, commitLine)
+	}
+
+	// File info line
+	fileLine := m.renderFileLine(info)
+	lines = append(lines, fileLine)
+
+	// Divider line using upper 1/8 block (dim, faint when unfocused)
+	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	if !m.focused {
+		dividerStyle = dividerStyle.Faint(true)
+	}
+	divider := dividerStyle.Render(strings.Repeat("▔", m.width))
+	lines = append(lines, divider)
+
+	return strings.Join(lines, "\n")
+}
+
+// renderCommitLine renders the commit info line for the top bar.
+func (m Model) renderCommitLine() string {
+	commit := m.currentCommit()
+	if commit == nil {
+		return ""
+	}
+	commitInfo := commit.Info
+
+	// Style for dim text
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	// Style for SHA (yellow/gold)
+	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	// Style for author (cyan)
+	authorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	// Build commit line: ▶ a1b2c3d  Author Name  2d ago  Subject line
+	var prefix string
+	if m.focused {
+		prefix = cursorArrowStyle.Render("▶") + " "
+	} else {
+		prefix = unfocusedCursorArrowStyle.Render("▷") + " "
+	}
+
+	sha := shaStyle.Render(commitInfo.ShortSHA())
+	author := authorStyle.Render(commitInfo.Author)
+	date := dimStyle.Render(formatRelativeDate(commitInfo.Date))
+	subject := commitInfo.Subject
+
+	// Calculate available width for subject
+	// Layout: prefix(2) + sha(7) + sep(2) + author + sep(2) + date + sep(2) + subject
+	sep := dimStyle.Render("  ")
+	fixedParts := prefix + sha + sep + author + sep + date + sep
+	fixedWidth := 2 + 7 + 2 + len(commitInfo.Author) + 2 + len(formatRelativeDate(commitInfo.Date)) + 2
+	availableWidth := m.width - fixedWidth
+	if availableWidth < 0 {
+		availableWidth = 0
+	}
+
+	// Truncate subject if needed
+	if len(subject) > availableWidth {
+		if availableWidth > 3 {
+			subject = subject[:availableWidth-3] + "..."
+		} else if availableWidth > 0 {
+			subject = subject[:availableWidth]
+		} else {
+			subject = ""
+		}
+	}
+
+	return fixedParts + subject
+}
+
+// renderFileLine renders the file info line for the top bar.
+func (m Model) renderFileLine(info StatusInfo) string {
 	// Only show file info when cursor is on a file (not on summary row)
 	var content string
 	if info.CurrentFile > 0 {
@@ -1118,16 +1196,69 @@ func (m Model) renderTopBar() string {
 	} else {
 		prefix = unfocusedCursorArrowStyle.Render("▷") + " "
 	}
-	topLine := prefix + fileCounter + content + strings.Repeat(" ", padding) + rightSection
 
-	// Divider line using upper 1/8 block (dim, faint when unfocused)
-	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	if !m.focused {
-		dividerStyle = dividerStyle.Faint(true)
+	return prefix + fileCounter + content + strings.Repeat(" ", padding) + rightSection
+}
+
+// formatRelativeDate converts an ISO 8601 date string to a relative format like "2d ago".
+func formatRelativeDate(isoDate string) string {
+	if isoDate == "" {
+		return ""
 	}
-	divider := dividerStyle.Render(strings.Repeat("▔", m.width))
 
-	return topLine + "\n" + divider
+	// Try to parse ISO 8601 format
+	t, err := time.Parse(time.RFC3339, isoDate)
+	if err != nil {
+		// Try without timezone
+		t, err = time.Parse("2006-01-02T15:04:05", isoDate)
+		if err != nil {
+			return isoDate // Return as-is if can't parse
+		}
+	}
+
+	now := time.Now()
+	diff := now.Sub(t)
+
+	switch {
+	case diff < time.Minute:
+		return "now"
+	case diff < time.Hour:
+		mins := int(diff.Minutes())
+		if mins == 1 {
+			return "1m ago"
+		}
+		return fmt.Sprintf("%dm ago", mins)
+	case diff < 24*time.Hour:
+		hours := int(diff.Hours())
+		if hours == 1 {
+			return "1h ago"
+		}
+		return fmt.Sprintf("%dh ago", hours)
+	case diff < 7*24*time.Hour:
+		days := int(diff.Hours() / 24)
+		if days == 1 {
+			return "1d ago"
+		}
+		return fmt.Sprintf("%dd ago", days)
+	case diff < 30*24*time.Hour:
+		weeks := int(diff.Hours() / 24 / 7)
+		if weeks == 1 {
+			return "1w ago"
+		}
+		return fmt.Sprintf("%dw ago", weeks)
+	case diff < 365*24*time.Hour:
+		months := int(diff.Hours() / 24 / 30)
+		if months == 1 {
+			return "1mo ago"
+		}
+		return fmt.Sprintf("%dmo ago", months)
+	default:
+		years := int(diff.Hours() / 24 / 365)
+		if years == 1 {
+			return "1y ago"
+		}
+		return fmt.Sprintf("%dy ago", years)
+	}
 }
 
 // renderStatusBar renders the status bar at the bottom of the screen.
