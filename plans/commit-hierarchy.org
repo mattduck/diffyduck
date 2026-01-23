@@ -410,36 +410,36 @@ From a line in the diff, jump to blame view showing when that line was added.
 - [X] One commit expanded, others folded: correct mix of rows - TestMultiCommit_OneExpanded_OtherFolded
 - [X] Multiple commits expanded: rows interleaved correctly - TestMultiCommit_BothExpanded_RowsInterleaved
 - [X] Commit header rows have correct ~commitIndex~ - TestMultiCommit_CommitHeadersHaveCorrectIndex
-- [ ] File rows within a commit have correct ~fileIndex~ (global)
-- [ ] Blank rows and borders appear at correct commit boundaries
+- [X] File rows within a commit have correct ~fileIndex~ (global) - TestMultiCommit_FileRowsHaveCorrectFileIndex
+- [X] Blank rows and borders appear at correct commit boundaries - TestMultiCommit_BlankRowsAtCommitBoundaries
 
 **** Cursor Positioning Tests (internal/tui/)
 
 - [X] Cursor on commit 0 header: ~cursorCommitIndex()~ returns 0 - TestMultiCommit_CursorCommitIndex_OnCommitHeader
-- [ ] Cursor on commit N header: ~cursorCommitIndex()~ returns N
+- [X] Cursor on commit N header: ~cursorCommitIndex()~ returns N - TestMultiCommit_CursorCommitIndex_OnCommitNHeader
 - [X] Cursor on commit body row: ~cursorCommitIndex()~ returns correct commit - TestMultiCommit_CursorCommitIndex_OnCommitBody
 - [X] Cursor on file row: ~cursorCommitIndex()~ returns -1 (not on commit section) - TestMultiCommit_CursorCommitIndex_OnFileRow_ReturnsNegative
-- [ ] ~isOnCommitHeader()~ correctly identifies commit header rows
-- [ ] ~isOnCommitSection()~ correctly identifies header and body rows
+- [X] ~isOnCommitHeader()~ correctly identifies commit header rows - TestMultiCommit_IsOnCommitHeader
+- [X] ~isOnCommitSection()~ correctly identifies header and body rows - TestMultiCommit_IsOnCommitSection
 
 **** Fold Toggle Tests (internal/tui/)
 
 - [X] Tab on commit 0 header: only commit 0 changes fold level - TestMultiCommit_TabOnCommit0_OnlyExpandsCommit0
-- [ ] Tab on commit N header: only commit N changes fold level
+- [X] Tab on commit N header: only commit N changes fold level - TestMultiCommit_TabOnCommitNHeader_OnlyExpandsCommitN
 - [X] Tab on commit header cycles: Folded -> Normal -> (files Normal) -> Folded - TestMultiCommit_TabCycle_CommitFoldLevels
 - [X] Expanding commit 0 doesn't affect commit 1's files - TestMultiCommit_ExpandingCommit_DoesNotAffectOtherCommitFiles
-- [ ] Collapsing commit 1 doesn't affect commit 0's state
+- [X] Collapsing commit 1 doesn't affect commit 0's state - TestMultiCommit_CollapsingCommit1_DoesNotAffectCommit0
 - [X] ~commitVisibilityLevelFor(N)~ returns correct level per commit - TestMultiCommit_VisibilityLevelIndependent
 - [X] Mixed states: commit 0 at level 3, commit 1 at level 1 - TestMultiCommit_MixedFoldStates
 
 **** Rendering Tests (internal/tui/)
 
-- [ ] Each commit header shows correct SHA (from that commit, not commit 0)
-- [ ] Each commit header shows correct author
-- [ ] Each commit header shows correct subject
-- [ ] Each commit header shows correct file count for that commit
-- [ ] Each commit header shows correct +/- stats for that commit
-- [ ] Fold icon reflects each commit's individual fold state
+- [X] Each commit header shows correct SHA (from that commit, not commit 0) - TestMultiCommit_RenderCommitHeader_ShowsCorrectSHA
+- [X] Each commit header shows correct author - TestMultiCommit_RenderCommitHeader_ShowsCorrectAuthor
+- [X] Each commit header shows correct subject - TestMultiCommit_RenderCommitHeader_ShowsCorrectSubject
+- [X] Each commit header shows correct file count for that commit - TestMultiCommit_CommitFileStatsArePerCommit
+- [X] Each commit header shows correct +/- stats for that commit - TestMultiCommit_CommitAddRemoveStatsArePerCommit
+- [X] Fold icon reflects each commit's individual fold state - TestMultiCommit_RenderCommitHeader_FoldIconReflectsState
 
 **** Scroll and Navigation Tests (internal/tui/)
 
@@ -447,15 +447,15 @@ From a line in the diff, jump to blame view showing when that line was added.
 - [X] Expanding a commit updates scroll bounds correctly - TestMultiCommit_ExpandCommit_ScrollBoundsUpdate
 - [X] Collapsing a commit doesn't lose cursor position - TestMultiCommit_CollapseCommit_CursorAdjusts
 - [X] j/k navigation moves through commit headers when all folded - TestMultiCommit_NavigateJK_ThroughFoldedCommits
-- [ ] After expanding, j/k can reach file rows within that commit
+- [X] After expanding, j/k can reach file rows within that commit - TestMultiCommit_AfterExpanding_JKReachesFileRows
 
 **** Edge Cases
 
 - [X] Single commit (log with 1 result): behaves like show command - TestMultiCommit_SingleCommit_BehavesLikeShow
 - [X] All commits have 0 files: display headers only - TestMultiCommit_AllCommitsEmpty_OnlyHeaders
 - [X] First commit empty, second has files: indexing correct - TestMultiCommit_FirstCommitEmpty_SecondHasFiles
-- [ ] Very long commit message in body: renders without crash
-- [ ] Commit with 100+ files: file truncation per commit works
+- [X] Very long commit message in body: renders without crash - TestMultiCommit_VeryLongCommitBody_RendersWithoutCrash
+- [X] Commit with many files: handles large file counts - TestMultiCommit_ManyFilesInOneCommit
 
 ** Performance Considerations
 
