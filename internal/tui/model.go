@@ -30,11 +30,13 @@ type Model struct {
 	// Data - hierarchical: commits contain files
 	commits []sidebyside.CommitSet
 
-	// Legacy field for single-commit access (will be removed)
-	// Use commits[0].Files or helper methods instead
-	files              []sidebyside.FilePair // points to commits[0].Files
-	fetcher            *content.Fetcher      // for fetching full file contents (lazy)
-	truncatedFileCount int                   // number of files omitted due to limit
+	// Flattened files from all commits for unified indexing
+	// commitFileStarts[i] is the index in files where commit i's files start
+	files            []sidebyside.FilePair
+	commitFileStarts []int // start index in files for each commit
+
+	fetcher            *content.Fetcher // for fetching full file contents (lazy)
+	truncatedFileCount int              // number of files omitted due to limit
 
 	// Pager mode
 	pagerMode bool // true when running as a pager (stdin input, no fetcher)
@@ -203,10 +205,12 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		focused:             true,
 	}
 
-	// Set up legacy files pointer for backward compatibility
-	if len(commits) > 0 {
-		m.files = commits[0].Files
-		m.truncatedFileCount = commits[0].TruncatedFileCount
+	// Flatten files from all commits and track boundaries
+	m.commitFileStarts = make([]int, len(commits))
+	for i, c := range commits {
+		m.commitFileStarts[i] = len(m.files)
+		m.files = append(m.files, c.Files...)
+		m.truncatedFileCount += c.TruncatedFileCount
 	}
 
 	for _, opt := range opts {
@@ -705,6 +709,22 @@ func (m Model) currentCommit() *sidebyside.CommitSet {
 	}
 	// TODO: When log view is implemented, track which commit the cursor is in
 	return &m.commits[0]
+}
+
+// commitForFile returns the commit index that contains the given file index.
+func (m Model) commitForFile(fileIdx int) int {
+	for i := len(m.commitFileStarts) - 1; i >= 0; i-- {
+		if fileIdx >= m.commitFileStarts[i] {
+			return i
+		}
+	}
+	return 0
+}
+
+// isFirstFileInCommit returns true if fileIdx is the first file in its commit.
+func (m Model) isFirstFileInCommit(fileIdx int) bool {
+	commitIdx := m.commitForFile(fileIdx)
+	return fileIdx == m.commitFileStarts[commitIdx]
 }
 
 // hasCommitInfo returns true if the current view has commit metadata.

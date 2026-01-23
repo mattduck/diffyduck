@@ -23,7 +23,7 @@ func main() {
 
 // parsedArgs contains parsed command line arguments.
 type parsedArgs struct {
-	cmd     string   // "diff" or "show"
+	cmd     string   // "diff", "show", or "log"
 	gitArgs []string // args to pass to git
 	mode    content.Mode
 	ref1    string // commit for show, or first ref for diff
@@ -46,6 +46,9 @@ func parseArgs(args []string) parsedArgs {
 		case "show":
 			result.cmd = "show"
 			result.gitArgs = args[1:]
+		case "log":
+			result.cmd = "log"
+			result.gitArgs = args[1:]
 		case "pager":
 			result.cmd = "pager"
 			result.gitArgs = args[1:]
@@ -53,9 +56,9 @@ func parseArgs(args []string) parsedArgs {
 	}
 
 	// Determine mode and refs based on command and args
-	if result.cmd == "show" {
+	if result.cmd == "show" || result.cmd == "log" {
 		result.mode = content.ModeShow
-		// First non-flag arg is the commit ref
+		// First non-flag arg is the commit ref (for show; log ignores this for now)
 		for _, arg := range result.gitArgs {
 			if !isFlag(arg) {
 				result.ref1 = arg
@@ -136,6 +139,11 @@ func run() error {
 		return runPagerMode(debugMode)
 	}
 
+	// Handle log command separately
+	if args.cmd == "log" {
+		return runLogMode(debugMode)
+	}
+
 	g := git.New()
 
 	// Get diff from git, with optional commit metadata
@@ -201,6 +209,67 @@ func run() error {
 		opts = append(opts, tui.WithDebugMode())
 	}
 	model := tui.NewWithCommits([]sidebyside.CommitSet{commit}, opts...)
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("TUI error: %w", err)
+	}
+
+	return nil
+}
+
+// runLogMode handles log mode showing multiple commits.
+func runLogMode(debugMode bool) error {
+	g := git.New()
+
+	// Fetch last 10 commits with diffs
+	commits, err := g.LogWithMeta(10)
+	if err != nil {
+		return fmt.Errorf("git log: %w", err)
+	}
+
+	if len(commits) == 0 {
+		fmt.Println("No commits")
+		return nil
+	}
+
+	// Convert to CommitSets
+	var commitSets []sidebyside.CommitSet
+	for _, c := range commits {
+		// Parse the diff for this commit
+		d, err := diff.Parse(c.Diff)
+		if err != nil {
+			return fmt.Errorf("parse diff for %s: %w", c.Meta.SHA[:7], err)
+		}
+
+		// Transform to side-by-side format
+		files, truncatedFileCount := sidebyside.TransformDiff(d)
+
+		commitSet := sidebyside.CommitSet{
+			Info: sidebyside.CommitInfo{
+				SHA:     c.Meta.SHA,
+				Author:  c.Meta.Author,
+				Email:   c.Meta.Email,
+				Date:    c.Meta.Date,
+				Subject: c.Meta.Subject,
+				Body:    c.Meta.Body,
+			},
+			Files:              files,
+			FoldLevel:          sidebyside.CommitFolded, // Start folded
+			FilesLoaded:        true,
+			TruncatedFileCount: truncatedFileCount,
+		}
+		commitSets = append(commitSets, commitSet)
+	}
+
+	// Create content fetcher - for now, no fetcher for log mode
+	// (would need per-commit refs for content expansion)
+	opts := []tui.Option{}
+	if debugMode {
+		opts = append(opts, tui.WithDebugMode())
+	}
+
+	model := tui.NewWithCommits(commitSets, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
 
 	if _, err := p.Run(); err != nil {

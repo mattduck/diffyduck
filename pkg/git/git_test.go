@@ -216,3 +216,274 @@ DIFFYDUCK_BODY_END
 	assert.Equal(t, "Merging branch", meta.Body)
 	assert.Equal(t, "", diff)
 }
+
+// =============================================================================
+// parseLogOutput Tests (Multi-Commit Parsing)
+// =============================================================================
+
+func TestParseLogOutput_MultipleCommits(t *testing.T) {
+	// Simulate git log -p output with multiple commits
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:aaa111111111111111111111111111111
+DIFFYDUCK_AUTHOR:Alice
+DIFFYDUCK_EMAIL:alice@example.com
+DIFFYDUCK_DATE:2024-01-15T10:00:00+00:00
+DIFFYDUCK_SUBJECT:First commit
+DIFFYDUCK_BODY_START
+First body
+DIFFYDUCK_BODY_END
+diff --git a/file1.go b/file1.go
++package main
+DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:bbb222222222222222222222222222222
+DIFFYDUCK_AUTHOR:Bob
+DIFFYDUCK_EMAIL:bob@example.com
+DIFFYDUCK_DATE:2024-01-14T09:00:00+00:00
+DIFFYDUCK_SUBJECT:Second commit
+DIFFYDUCK_BODY_START
+Second body
+DIFFYDUCK_BODY_END
+diff --git a/file2.go b/file2.go
++package other
+`
+
+	commits := parseLogOutput(input)
+
+	require.Equal(t, 2, len(commits), "should parse 2 commits")
+
+	// First commit
+	assert.Equal(t, "aaa111111111111111111111111111111", commits[0].Meta.SHA)
+	assert.Equal(t, "Alice", commits[0].Meta.Author)
+	assert.Equal(t, "First commit", commits[0].Meta.Subject)
+	assert.Equal(t, "First body", commits[0].Meta.Body)
+	assert.Contains(t, commits[0].Diff, "file1.go")
+
+	// Second commit
+	assert.Equal(t, "bbb222222222222222222222222222222", commits[1].Meta.SHA)
+	assert.Equal(t, "Bob", commits[1].Meta.Author)
+	assert.Equal(t, "Second commit", commits[1].Meta.Subject)
+	assert.Equal(t, "Second body", commits[1].Meta.Body)
+	assert.Contains(t, commits[1].Diff, "file2.go")
+}
+
+func TestParseLogOutput_SingleCommit(t *testing.T) {
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:abc123
+DIFFYDUCK_AUTHOR:Jane
+DIFFYDUCK_EMAIL:jane@example.com
+DIFFYDUCK_DATE:2024-01-10
+DIFFYDUCK_SUBJECT:Only commit
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+diff --git a/main.go b/main.go
+`
+
+	commits := parseLogOutput(input)
+
+	require.Equal(t, 1, len(commits), "should parse 1 commit")
+	assert.Equal(t, "abc123", commits[0].Meta.SHA)
+	assert.Equal(t, "Only commit", commits[0].Meta.Subject)
+}
+
+func TestParseLogOutput_EmptyInput(t *testing.T) {
+	commits := parseLogOutput("")
+
+	assert.Equal(t, 0, len(commits), "empty input should return no commits")
+}
+
+func TestParseLogOutput_CommitWithNoDiff(t *testing.T) {
+	// A commit without any file changes (e.g., empty commit)
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:empty123
+DIFFYDUCK_AUTHOR:Dev
+DIFFYDUCK_EMAIL:dev@example.com
+DIFFYDUCK_DATE:2024-01-05
+DIFFYDUCK_SUBJECT:Empty commit
+DIFFYDUCK_BODY_START
+No changes in this commit
+DIFFYDUCK_BODY_END
+`
+
+	commits := parseLogOutput(input)
+
+	require.Equal(t, 1, len(commits), "should parse 1 commit")
+	assert.Equal(t, "empty123", commits[0].Meta.SHA)
+	assert.Equal(t, "", commits[0].Diff, "diff should be empty")
+	assert.Equal(t, "No changes in this commit", commits[0].Meta.Body)
+}
+
+func TestParseLogOutput_TenCommits(t *testing.T) {
+	// Simulate 10 commits like the log command would return
+	var input string
+	for i := 0; i < 10; i++ {
+		input += `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:` + string(rune('a'+i)) + `00000000000000000000
+DIFFYDUCK_AUTHOR:Author` + string(rune('0'+i)) + `
+DIFFYDUCK_EMAIL:author` + string(rune('0'+i)) + `@example.com
+DIFFYDUCK_DATE:2024-01-` + string(rune('0'+i)) + `0
+DIFFYDUCK_SUBJECT:Commit ` + string(rune('0'+i)) + `
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+diff --git a/file` + string(rune('0'+i)) + `.go b/file` + string(rune('0'+i)) + `.go
+`
+	}
+
+	commits := parseLogOutput(input)
+
+	assert.Equal(t, 10, len(commits), "should parse 10 commits")
+
+	// Verify each commit has unique SHA
+	shas := make(map[string]bool)
+	for _, c := range commits {
+		shas[c.Meta.SHA] = true
+	}
+	assert.Equal(t, 10, len(shas), "all 10 SHAs should be unique")
+}
+
+func TestParseLogOutput_CommitWithMultipleFiles(t *testing.T) {
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:multi123
+DIFFYDUCK_AUTHOR:Multi
+DIFFYDUCK_EMAIL:multi@example.com
+DIFFYDUCK_DATE:2024-01-20
+DIFFYDUCK_SUBJECT:Multi-file commit
+DIFFYDUCK_BODY_START
+Changed several files
+DIFFYDUCK_BODY_END
+diff --git a/file1.go b/file1.go
++package file1
+diff --git a/file2.go b/file2.go
++package file2
+diff --git a/file3.go b/file3.go
++package file3
+`
+
+	commits := parseLogOutput(input)
+
+	require.Equal(t, 1, len(commits), "should parse 1 commit")
+	// The diff should contain all three files
+	assert.Contains(t, commits[0].Diff, "file1.go")
+	assert.Contains(t, commits[0].Diff, "file2.go")
+	assert.Contains(t, commits[0].Diff, "file3.go")
+}
+
+func TestParseLogOutput_CommitWithBinaryFile(t *testing.T) {
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:binary123
+DIFFYDUCK_AUTHOR:Dev
+DIFFYDUCK_EMAIL:dev@example.com
+DIFFYDUCK_DATE:2024-01-25
+DIFFYDUCK_SUBJECT:Add binary file
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+diff --git a/image.png b/image.png
+Binary files differ
+`
+
+	commits := parseLogOutput(input)
+
+	require.Equal(t, 1, len(commits), "should parse 1 commit")
+	assert.Contains(t, commits[0].Diff, "Binary files differ")
+}
+
+func TestParseLogOutput_FewerThanRequestedCommits(t *testing.T) {
+	// When repo has fewer commits than requested, output is shorter
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:only123
+DIFFYDUCK_AUTHOR:Solo
+DIFFYDUCK_EMAIL:solo@example.com
+DIFFYDUCK_DATE:2024-01-01
+DIFFYDUCK_SUBJECT:Initial commit
+DIFFYDUCK_BODY_START
+First ever commit
+DIFFYDUCK_BODY_END
+diff --git a/README.md b/README.md
++# New project
+`
+
+	// Even if we requested 10, we only get 1 if repo has 1 commit
+	commits := parseLogOutput(input)
+
+	assert.Equal(t, 1, len(commits), "should return however many commits exist")
+}
+
+func TestParseLogOutput_LongCommitBody(t *testing.T) {
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:long123
+DIFFYDUCK_AUTHOR:Verbose
+DIFFYDUCK_EMAIL:verbose@example.com
+DIFFYDUCK_DATE:2024-01-30
+DIFFYDUCK_SUBJECT:Commit with long body
+DIFFYDUCK_BODY_START
+This is a very long commit message.
+
+It has multiple paragraphs explaining the changes in great detail.
+
+- Bullet point 1
+- Bullet point 2
+- Bullet point 3
+
+The changes include refactoring, bug fixes, and new features.
+
+Signed-off-by: Verbose <verbose@example.com>
+DIFFYDUCK_BODY_END
+diff --git a/main.go b/main.go
++package main
+`
+
+	commits := parseLogOutput(input)
+
+	require.Equal(t, 1, len(commits), "should parse 1 commit")
+	assert.Contains(t, commits[0].Meta.Body, "multiple paragraphs")
+	assert.Contains(t, commits[0].Meta.Body, "Bullet point 1")
+	assert.Contains(t, commits[0].Meta.Body, "Signed-off-by")
+}
+
+func TestMockGit_LogWithMeta(t *testing.T) {
+	mock := &MockGit{
+		LogOutput: []CommitWithDiff{
+			{
+				Meta: &CommitMeta{
+					SHA:     "aaa111",
+					Author:  "Alice",
+					Subject: "First",
+				},
+				Diff: "diff --git a/f1.go b/f1.go\n",
+			},
+			{
+				Meta: &CommitMeta{
+					SHA:     "bbb222",
+					Author:  "Bob",
+					Subject: "Second",
+				},
+				Diff: "diff --git a/f2.go b/f2.go\n",
+			},
+		},
+	}
+
+	commits, err := mock.LogWithMeta(10)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(commits))
+	assert.Equal(t, "aaa111", commits[0].Meta.SHA)
+	assert.Equal(t, "bbb222", commits[1].Meta.SHA)
+}
+
+func TestMockGit_LogWithMeta_Empty(t *testing.T) {
+	mock := &MockGit{
+		LogOutput: []CommitWithDiff{},
+	}
+
+	commits, err := mock.LogWithMeta(10)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(commits))
+}
+
+func TestMockGit_LogWithMeta_Error(t *testing.T) {
+	mock := &MockGit{
+		LogError: errors.New("git log failed"),
+	}
+
+	_, err := mock.LogWithMeta(10)
+	require.Error(t, err)
+	assert.Equal(t, "git log failed", err.Error())
+}

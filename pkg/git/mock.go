@@ -13,6 +13,8 @@ type MockGit struct {
 	ShowMeta   *CommitMeta // optional metadata for ShowWithMeta
 	DiffOutput string
 	DiffError  error
+	LogOutput  []CommitWithDiff // output for LogWithMeta
+	LogError   error
 	// FileContents maps "ref:path" to file content for GetFileContent.
 	// Use empty ref for index, e.g., ":foo.go" for staged content.
 	FileContents map[string]string
@@ -33,6 +35,18 @@ func (m *MockGit) ShowWithMeta(args ...string) (*CommitMeta, string, error) {
 		meta = &CommitMeta{} // return empty metadata if not set
 	}
 	return meta, m.ShowOutput, nil
+}
+
+// LogWithMeta returns the preconfigured log output.
+func (m *MockGit) LogWithMeta(n int) ([]CommitWithDiff, error) {
+	if m.LogError != nil {
+		return nil, m.LogError
+	}
+	// Return at most n commits
+	if n >= len(m.LogOutput) {
+		return m.LogOutput, nil
+	}
+	return m.LogOutput[:n], nil
 }
 
 // Diff returns the preconfigured output or error.

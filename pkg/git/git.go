@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"io"
 	"os/exec"
 	"strings"
@@ -35,17 +36,31 @@ type CommitMeta struct {
 
 // Delimiters used in custom format output for reliable parsing.
 const (
-	metaSHA       = "DIFFYDUCK_SHA:"
-	metaAuthor    = "DIFFYDUCK_AUTHOR:"
-	metaEmail     = "DIFFYDUCK_EMAIL:"
-	metaDate      = "DIFFYDUCK_DATE:"
-	metaSubject   = "DIFFYDUCK_SUBJECT:"
-	metaBodyStart = "DIFFYDUCK_BODY_START"
-	metaBodyEnd   = "DIFFYDUCK_BODY_END"
+	metaCommitStart = "DIFFYDUCK_COMMIT_START"
+	metaSHA         = "DIFFYDUCK_SHA:"
+	metaAuthor      = "DIFFYDUCK_AUTHOR:"
+	metaEmail       = "DIFFYDUCK_EMAIL:"
+	metaDate        = "DIFFYDUCK_DATE:"
+	metaSubject     = "DIFFYDUCK_SUBJECT:"
+	metaBodyStart   = "DIFFYDUCK_BODY_START"
+	metaBodyEnd     = "DIFFYDUCK_BODY_END"
 )
 
 // showMetaFormat is the git format string for extracting commit metadata.
 var showMetaFormat = strings.Join([]string{
+	metaSHA + "%H",
+	metaAuthor + "%an",
+	metaEmail + "%ae",
+	metaDate + "%aI",
+	metaSubject + "%s",
+	metaBodyStart,
+	"%b",
+	metaBodyEnd,
+}, "%n") + "%n"
+
+// logMetaFormat is the git format string for log with commit boundary markers.
+var logMetaFormat = strings.Join([]string{
+	metaCommitStart,
 	metaSHA + "%H",
 	metaAuthor + "%an",
 	metaEmail + "%ae",
@@ -102,6 +117,65 @@ func (g *RealGit) ShowWithMeta(args ...string) (*CommitMeta, string, error) {
 
 	meta, diff := parseShowOutput(string(out))
 	return meta, diff, nil
+}
+
+// LogWithMeta returns commit metadata and diff output for multiple commits.
+// The n parameter limits the number of commits returned.
+// Returns a slice of (CommitMeta, diff string) pairs.
+func (g *RealGit) LogWithMeta(n int) ([]CommitWithDiff, error) {
+	gitArgs := []string{
+		"log",
+		"-p", // include patches
+		fmt.Sprintf("-n%d", n),
+		"--format=" + logMetaFormat,
+	}
+	cmd := exec.Command("git", gitArgs...)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git log",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+
+	return parseLogOutput(string(out)), nil
+}
+
+// CommitWithDiff holds a commit's metadata and its diff output.
+type CommitWithDiff struct {
+	Meta *CommitMeta
+	Diff string
+}
+
+// parseLogOutput splits git log output into multiple commits.
+func parseLogOutput(output string) []CommitWithDiff {
+	var results []CommitWithDiff
+
+	// Split by commit start marker
+	parts := strings.Split(output, metaCommitStart+"\n")
+
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+
+		meta, diff := parseShowOutput(part)
+		if meta.SHA != "" {
+			results = append(results, CommitWithDiff{
+				Meta: meta,
+				Diff: diff,
+			})
+		}
+	}
+
+	return results
 }
 
 // parseShowOutput splits git show output into metadata and diff portions.

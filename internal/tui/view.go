@@ -173,27 +173,114 @@ type displayRow struct {
 func (m Model) buildRows() []displayRow {
 	var rows []displayRow
 
-	// Add commit header row when we have commit info
-	if m.hasCommitInfo() {
-		commit := m.currentCommit()
-		rows = append(rows, displayRow{
-			kind:            RowKindCommitHeader,
-			fileIndex:       -1, // not associated with a specific file
-			isCommitHeader:  true,
-			commitFoldLevel: commit.FoldLevel,
-			commitIndex:     0, // single commit for now
-		})
-
-		// If commit is folded, only show the commit header row
-		if commit.FoldLevel == sidebyside.CommitFolded {
-			return rows
-		}
-
-		// Add commit body rows (full details) when not folded
-		rows = append(rows, m.buildCommitBodyRows(commit)...)
+	// Handle legacy case where Model was created without using New/NewWithCommits
+	// (e.g., tests that directly set m.files)
+	if len(m.commits) == 0 && len(m.files) > 0 {
+		return m.buildRowsLegacy()
 	}
 
-	// Calculate max header width and max add/rem widths across all files for alignment
+	// Calculate max header width and max add/rem widths across all visible files
+	maxHeaderWidth := 0
+	maxAddWidth := 0
+	maxRemWidth := 0
+	for commitIdx, commit := range m.commits {
+		// Skip files in folded commits for width calculation
+		if commit.Info.HasMetadata() && commit.FoldLevel == sidebyside.CommitFolded {
+			continue
+		}
+		startIdx := m.commitFileStarts[commitIdx]
+		endIdx := len(m.files)
+		if commitIdx+1 < len(m.commits) {
+			endIdx = m.commitFileStarts[commitIdx+1]
+		}
+		for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
+			fp := m.files[fileIdx]
+			header := formatFileHeader(fp)
+			w := displayWidth(header)
+			if w > maxHeaderWidth {
+				maxHeaderWidth = w
+			}
+			added, removed := countFileStats(fp)
+			aw := statsAddWidth(added)
+			if aw > maxAddWidth {
+				maxAddWidth = aw
+			}
+			rw := statsRemWidth(removed)
+			if rw > maxRemWidth {
+				maxRemWidth = rw
+			}
+		}
+	}
+
+	// Calculate consistent header box width for borders
+	totalFiles := len(m.files)
+	numDigits := len(fmt.Sprintf("%d", totalFiles))
+	fileNumWidth := 1 + numDigits
+	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1 // "   ◐ #01 ~ "
+	maxStatsBarWidth := 0
+	if maxAddWidth > 0 || maxRemWidth > 0 {
+		maxStatsBarWidth = 1 + maxAddWidth
+		if maxAddWidth > 0 {
+			maxStatsBarWidth++
+		}
+		maxStatsBarWidth += maxRemWidth
+	}
+	headerBoxWidth := iconPartWidth + maxHeaderWidth + maxStatsBarWidth
+
+	// Build rows for each commit
+	for commitIdx, commit := range m.commits {
+		// Add commit header row if commit has metadata
+		if commit.Info.HasMetadata() {
+			rows = append(rows, displayRow{
+				kind:            RowKindCommitHeader,
+				fileIndex:       -1,
+				isCommitHeader:  true,
+				commitFoldLevel: commit.FoldLevel,
+				commitIndex:     commitIdx,
+			})
+
+			// If commit is folded, skip its files
+			if commit.FoldLevel == sidebyside.CommitFolded {
+				continue
+			}
+
+			// Add commit body rows when not folded
+			rows = append(rows, m.buildCommitBodyRows(&commit)...)
+		}
+
+		// Get file range for this commit
+		startIdx := m.commitFileStarts[commitIdx]
+		endIdx := len(m.files)
+		if commitIdx+1 < len(m.commits) {
+			endIdx = m.commitFileStarts[commitIdx+1]
+		}
+
+		// Add file rows for this commit
+		for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
+			fp := m.files[fileIdx]
+			rows = m.buildFileRows(rows, fileIdx, fp, startIdx, endIdx, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth)
+		}
+	}
+
+	// Add truncation indicator if files were omitted
+	if m.truncatedFileCount > 0 {
+		rows = append(rows, displayRow{
+			kind:                  RowKindTruncationIndicator,
+			fileIndex:             -1,
+			isTruncationIndicator: true,
+			truncationMessage:     fmt.Sprintf("[%d files truncated]", m.truncatedFileCount),
+		})
+	}
+
+	return rows
+}
+
+// buildRowsLegacy handles the case where Model was created without using New/NewWithCommits.
+// This maintains backward compatibility with tests that directly set m.files.
+func (m Model) buildRowsLegacy() []displayRow {
+	var rows []displayRow
+
+	// Calculate max header width and max add/rem widths across all files
 	maxHeaderWidth := 0
 	maxAddWidth := 0
 	maxRemWidth := 0
@@ -215,232 +302,23 @@ func (m Model) buildRows() []displayRow {
 	}
 
 	// Calculate consistent header box width for borders
-	// Box contains: indent(3) + icon(1) + space(1) + fileNum(#NN) + space(1) + status(1) + space(1) + header + stats
-	// New layout: "   ◐ #01 ~ filename +N -M"
 	totalFiles := len(m.files)
 	numDigits := len(fmt.Sprintf("%d", totalFiles))
-	fileNumWidth := 1 + numDigits                         // # + digits
-	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1 // "   ◐ #01 ~ "
+	fileNumWidth := 1 + numDigits
+	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1
 	maxStatsBarWidth := 0
 	if maxAddWidth > 0 || maxRemWidth > 0 {
-		maxStatsBarWidth = 1 + maxAddWidth // leading space + add column
+		maxStatsBarWidth = 1 + maxAddWidth
 		if maxAddWidth > 0 {
-			maxStatsBarWidth++ // space between + and -
+			maxStatsBarWidth++
 		}
-		maxStatsBarWidth += maxRemWidth // removal column
+		maxStatsBarWidth += maxRemWidth
 	}
 	headerBoxWidth := iconPartWidth + maxHeaderWidth + maxStatsBarWidth
 
+	// Add file rows (no commit headers in legacy mode)
 	for fileIdx, fp := range m.files {
-		// Count stats once per file for header display
-		added, removed := countFileStats(fp)
-		status := fileStatusFromPair(fp)
-
-		// Check if this is the first file and if it's unfolded - needs a top border
-		isFirstFile := fileIdx == 0
-		isUnfolded := fp.FoldLevel != sidebyside.FoldFolded
-
-		// Check if previous file is unfolded (for header/bottom border visibility)
-		// First file counts as "previous unfolded" since there's nothing above
-		prevFileUnfolded := isFirstFile
-		if fileIdx > 0 {
-			prevFileUnfolded = m.files[fileIdx-1].FoldLevel != sidebyside.FoldFolded
-		}
-
-		// Check if next file exists and is unfolded (for trailing border visibility)
-		nextFileUnfolded := false
-		if fileIdx+1 < len(m.files) {
-			nextFileUnfolded = m.files[fileIdx+1].FoldLevel != sidebyside.FoldFolded
-		}
-
-		switch fp.FoldLevel {
-		case sidebyside.FoldFolded:
-			// Folded: just the header, no borders - files stack tightly together
-			header := formatFileHeader(fp)
-			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth})
-
-		case sidebyside.FoldExpanded:
-			// Expanded: show full file content with diff highlighting
-			// If content not loaded yet, fall back to normal view
-			if fp.HasContent() {
-				// First file gets a top border before header (visible since no file above)
-				if isFirstFile && isUnfolded {
-					rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
-				}
-
-				// File header with stats
-				// Border visible only if previous file is also unfolded (or this is first file)
-				header := formatFileHeader(fp)
-				rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
-
-				// Bottom border of header box (visible only if previous file is also unfolded)
-				rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
-
-				// Build expanded rows from full file content
-				expandedRows := m.buildExpandedRows(fp)
-				for i := range expandedRows {
-					expandedRows[i].fileIndex = fileIdx
-					if i == 0 {
-						expandedRows[i].isFirstLine = true
-					}
-					if i == len(expandedRows)-1 {
-						expandedRows[i].isLastLine = true
-					}
-				}
-				rows = append(rows, expandedRows...)
-
-				// Add file truncation indicator if this file was truncated
-				if fp.Truncated || fp.ContentTruncated || fp.OldContentTruncated || fp.NewContentTruncated {
-					// Determine which sides to show truncation on
-					// For expanded view, use content truncation flags; fall back to diff truncation flags
-					oldTrunc := fp.OldContentTruncated || fp.OldTruncated
-					newTrunc := fp.NewContentTruncated || fp.NewTruncated
-					// Legacy: if only ContentTruncated is set (old code path), show on both sides
-					if fp.ContentTruncated && !fp.OldContentTruncated && !fp.NewContentTruncated {
-						oldTrunc = true
-						newTrunc = true
-					}
-					rows = append(rows, displayRow{
-						kind:                  RowKindTruncationIndicator,
-						fileIndex:             fileIdx,
-						isTruncationIndicator: true,
-						truncationMessage:     "[truncated due to file size limit]",
-						truncateOld:           oldTrunc,
-						truncateNew:           newTrunc,
-					})
-				}
-
-				// Add blank lines and trailing border only if there is a next file
-				isLastFile := fileIdx == len(m.files)-1
-				if !isLastFile {
-					// Add 4 blank lines after expanded content
-					for i := 0; i < 4; i++ {
-						rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
-					}
-
-					// Trailing top border (visually looks like top of next file, but belongs to this file)
-					// Only visible if next file is also unfolded
-					rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
-				}
-				continue // Skip the normal view below
-			}
-			// Fall through to normal view if content not loaded
-			fallthrough
-
-		default: // FoldNormal (or FoldExpanded falling through while content loads)
-			// First file gets a top border before header (visible since no file above)
-			if isFirstFile && isUnfolded {
-				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
-			}
-
-			// File header with stats
-			// Border visible only if previous file is also unfolded (or this is first file)
-			header := formatFileHeader(fp)
-			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
-
-			// Bottom border of header box (visible only if previous file is also unfolded)
-			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
-
-			// Binary files: show message instead of content
-			if fp.IsBinary {
-				var msg string
-				var showOld, showNew bool
-				if fp.OldPath == "/dev/null" {
-					msg = "Binary file created"
-					showNew = true
-				} else if fp.NewPath == "/dev/null" {
-					msg = "Binary file deleted"
-					showOld = true
-				} else {
-					msg = "Binary file changed"
-					showOld = true
-					showNew = true
-				}
-				rows = append(rows, displayRow{
-					kind:              RowKindBinaryIndicator,
-					fileIndex:         fileIdx,
-					isBinaryIndicator: true,
-					binaryMessage:     msg,
-					binaryOld:         showOld,
-					binaryNew:         showNew,
-					isFirstLine:       true,
-					isLastLine:        true,
-				})
-			} else {
-				// Line pairs with hunk separators
-				var prevLeft, prevRight int
-				for i, pair := range fp.Pairs {
-					// Add separator before first chunk if it starts after line 1
-					// (when starting at line 1, user can see they're at the top - no breadcrumb needed)
-					if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
-						chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-						rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
-						rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
-						rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
-					}
-
-					// Check for gap in line numbers (hunk boundary)
-					if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
-						// Find first non-zero New.Num in this chunk for breadcrumb lookup
-						chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-						// Add three-line separator: top shader + breadcrumb + bottom shader
-						rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
-						rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
-						rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
-					}
-
-					row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair}
-					if i == 0 {
-						row.isFirstLine = true
-					}
-					if i == len(fp.Pairs)-1 {
-						row.isLastLine = true
-					}
-					rows = append(rows, row)
-
-					// Track previous line numbers (use non-zero values)
-					if pair.Old.Num > 0 {
-						prevLeft = pair.Old.Num
-					}
-					if pair.New.Num > 0 {
-						prevRight = pair.New.Num
-					}
-				}
-
-				// Add file truncation indicator if this file was truncated
-				if fp.Truncated || fp.OldTruncated || fp.NewTruncated {
-					// Determine which sides to show truncation on
-					oldTrunc := fp.OldTruncated
-					newTrunc := fp.NewTruncated
-					// Legacy: if only Truncated is set (old code path), show on both sides
-					if fp.Truncated && !fp.OldTruncated && !fp.NewTruncated {
-						oldTrunc = true
-						newTrunc = true
-					}
-					rows = append(rows, displayRow{
-						kind:                  RowKindTruncationIndicator,
-						fileIndex:             fileIdx,
-						isTruncationIndicator: true,
-						truncationMessage:     "[truncated due to file size limit]",
-						truncateOld:           oldTrunc,
-						truncateNew:           newTrunc,
-					})
-				}
-			}
-
-			// Add blank lines and trailing border only if there is a next file
-			isLastFile := fileIdx == len(m.files)-1
-			if !isLastFile {
-				// Add 4 blank lines after normal content
-				for i := 0; i < 4; i++ {
-					rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
-				}
-
-				// Trailing top border (visually looks like top of next file, but belongs to this file)
-				// Only visible if next file is also unfolded
-				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
-			}
-		}
+		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth)
 	}
 
 	// Add truncation indicator if files were omitted
@@ -451,6 +329,181 @@ func (m Model) buildRows() []displayRow {
 			isTruncationIndicator: true,
 			truncationMessage:     fmt.Sprintf("[%d files truncated]", m.truncatedFileCount),
 		})
+	}
+
+	return rows
+}
+
+// buildFileRows adds all rows for a single file to the rows slice.
+func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FilePair, commitStartIdx, commitEndIdx int, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth int) []displayRow {
+	added, removed := countFileStats(fp)
+	status := fileStatusFromPair(fp)
+
+	// Check if this is the first file in the commit and if it's unfolded
+	isFirstFile := fileIdx == commitStartIdx
+	isUnfolded := fp.FoldLevel != sidebyside.FoldFolded
+
+	// Check if previous file is unfolded (for header/bottom border visibility)
+	prevFileUnfolded := isFirstFile
+	if fileIdx > commitStartIdx {
+		prevFileUnfolded = m.files[fileIdx-1].FoldLevel != sidebyside.FoldFolded
+	}
+
+	// Check if next file exists and is unfolded (for trailing border visibility)
+	nextFileUnfolded := false
+	if fileIdx+1 < commitEndIdx {
+		nextFileUnfolded = m.files[fileIdx+1].FoldLevel != sidebyside.FoldFolded
+	}
+
+	isLastFile := fileIdx == commitEndIdx-1
+
+	switch fp.FoldLevel {
+	case sidebyside.FoldFolded:
+		header := formatFileHeader(fp)
+		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth})
+
+	case sidebyside.FoldExpanded:
+		if fp.HasContent() {
+			if isFirstFile && isUnfolded {
+				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
+			}
+
+			header := formatFileHeader(fp)
+			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+
+			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+
+			expandedRows := m.buildExpandedRows(fp)
+			for i := range expandedRows {
+				expandedRows[i].fileIndex = fileIdx
+				if i == 0 {
+					expandedRows[i].isFirstLine = true
+				}
+				if i == len(expandedRows)-1 {
+					expandedRows[i].isLastLine = true
+				}
+			}
+			rows = append(rows, expandedRows...)
+
+			if fp.Truncated || fp.ContentTruncated || fp.OldContentTruncated || fp.NewContentTruncated {
+				oldTrunc := fp.OldContentTruncated || fp.OldTruncated
+				newTrunc := fp.NewContentTruncated || fp.NewTruncated
+				if fp.ContentTruncated && !fp.OldContentTruncated && !fp.NewContentTruncated {
+					oldTrunc = true
+					newTrunc = true
+				}
+				rows = append(rows, displayRow{
+					kind:                  RowKindTruncationIndicator,
+					fileIndex:             fileIdx,
+					isTruncationIndicator: true,
+					truncationMessage:     "[truncated due to file size limit]",
+					truncateOld:           oldTrunc,
+					truncateNew:           newTrunc,
+				})
+			}
+
+			if !isLastFile {
+				for i := 0; i < 4; i++ {
+					rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
+				}
+				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+			}
+			return rows
+		}
+		fallthrough
+
+	default: // FoldNormal
+		if isFirstFile && isUnfolded {
+			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
+		}
+
+		header := formatFileHeader(fp)
+		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+
+		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+
+		if fp.IsBinary {
+			var msg string
+			var showOld, showNew bool
+			if fp.OldPath == "/dev/null" {
+				msg = "Binary file created"
+				showNew = true
+			} else if fp.NewPath == "/dev/null" {
+				msg = "Binary file deleted"
+				showOld = true
+			} else {
+				msg = "Binary file changed"
+				showOld = true
+				showNew = true
+			}
+			rows = append(rows, displayRow{
+				kind:              RowKindBinaryIndicator,
+				fileIndex:         fileIdx,
+				isBinaryIndicator: true,
+				binaryMessage:     msg,
+				binaryOld:         showOld,
+				binaryNew:         showNew,
+				isFirstLine:       true,
+				isLastLine:        true,
+			})
+		} else {
+			var prevLeft, prevRight int
+			for i, pair := range fp.Pairs {
+				if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
+					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
+					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
+					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
+					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
+				}
+
+				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
+					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
+					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
+					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
+					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
+				}
+
+				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair}
+				if i == 0 {
+					row.isFirstLine = true
+				}
+				if i == len(fp.Pairs)-1 {
+					row.isLastLine = true
+				}
+				rows = append(rows, row)
+
+				if pair.Old.Num > 0 {
+					prevLeft = pair.Old.Num
+				}
+				if pair.New.Num > 0 {
+					prevRight = pair.New.Num
+				}
+			}
+
+			if fp.Truncated || fp.OldTruncated || fp.NewTruncated {
+				oldTrunc := fp.OldTruncated
+				newTrunc := fp.NewTruncated
+				if fp.Truncated && !fp.OldTruncated && !fp.NewTruncated {
+					oldTrunc = true
+					newTrunc = true
+				}
+				rows = append(rows, displayRow{
+					kind:                  RowKindTruncationIndicator,
+					fileIndex:             fileIdx,
+					isTruncationIndicator: true,
+					truncationMessage:     "[truncated due to file size limit]",
+					truncateOld:           oldTrunc,
+					truncateNew:           newTrunc,
+				})
+			}
+		}
+
+		if !isLastFile {
+			for i := 0; i < 4; i++ {
+				rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
+			}
+			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+		}
 	}
 
 	return rows
@@ -1097,10 +1150,11 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 // Fixed columns (left): sha, files, +added, -removed, time, author (max 15 chars)
 // Dynamic column (right): subject (max 120 chars)
 func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
-	commit := m.currentCommit()
-	if commit == nil {
+	// Use commitIndex from the row to get the correct commit
+	if row.commitIndex < 0 || row.commitIndex >= len(m.commits) {
 		return ""
 	}
+	commit := &m.commits[row.commitIndex]
 	commitInfo := commit.Info
 
 	// Styles

@@ -654,6 +654,23 @@ func (m Model) isOnCommitHeader() bool {
 	return rows[cursorPos].isCommitHeader
 }
 
+// cursorCommitIndex returns the commit index for the row at cursor position.
+// Returns -1 if cursor is not on a commit-related row.
+func (m Model) cursorCommitIndex() int {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return -1
+	}
+
+	row := rows[cursorPos]
+	if row.isCommitHeader || row.isCommitBody {
+		return row.commitIndex
+	}
+	return -1
+}
+
 // isOnCommitSection returns true if the cursor is on any commit-related row
 // (either commit header or commit body).
 func (m Model) isOnCommitSection() bool {
@@ -674,31 +691,43 @@ func (m Model) isOnCommitSection() bool {
 // Level 3: File hunks visible (files at FoldNormal)
 // Cycling: Level 1 -> Level 2 -> Level 3 -> Level 1
 func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
-	if len(m.commits) == 0 {
+	commitIdx := m.cursorCommitIndex()
+	// Fall back to commit 0 for backward compatibility (when cursor isn't on a commit header)
+	if commitIdx < 0 {
+		commitIdx = 0
+	}
+	if commitIdx >= len(m.commits) {
 		return m, nil
 	}
 
-	commit := &m.commits[0]
+	commit := &m.commits[commitIdx]
 
-	// Determine current level
-	currentLevel := m.commitVisibilityLevel()
+	// Get file range for this commit
+	startIdx := m.commitFileStarts[commitIdx]
+	endIdx := len(m.files)
+	if commitIdx+1 < len(m.commits) {
+		endIdx = m.commitFileStarts[commitIdx+1]
+	}
+
+	// Determine current level for this commit
+	currentLevel := m.commitVisibilityLevelFor(commitIdx)
 
 	switch currentLevel {
 	case 1:
 		// Level 1 -> Level 2: Show file headings only
 		commit.FoldLevel = sidebyside.CommitNormal
-		for i := range m.files {
+		for i := startIdx; i < endIdx; i++ {
 			m.files[i].FoldLevel = sidebyside.FoldFolded
 		}
 	case 2:
 		// Level 2 -> Level 3: Show file hunks
-		for i := range m.files {
+		for i := startIdx; i < endIdx; i++ {
 			m.files[i].FoldLevel = sidebyside.FoldNormal
 		}
 	default:
 		// Level 3 -> Level 1: Collapse everything
 		commit.FoldLevel = sidebyside.CommitFolded
-		for i := range m.files {
+		for i := startIdx; i < endIdx; i++ {
 			m.files[i].FoldLevel = sidebyside.FoldFolded
 		}
 	}
@@ -708,25 +737,38 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// commitVisibilityLevel returns the current visibility level (1, 2, or 3).
+// commitVisibilityLevel returns the current visibility level for the first commit (1, 2, or 3).
+// Deprecated: Use commitVisibilityLevelFor for multi-commit support.
+func (m Model) commitVisibilityLevel() int {
+	return m.commitVisibilityLevelFor(0)
+}
+
+// commitVisibilityLevelFor returns the visibility level for a specific commit (1, 2, or 3).
 // Level 1: Commit is folded (only commit header visible)
 // Level 2: Commit is normal, all files are FoldFolded (file headings only)
 // Level 3: Any file is not FoldFolded (file content visible)
-func (m Model) commitVisibilityLevel() int {
-	if len(m.commits) == 0 {
+func (m Model) commitVisibilityLevelFor(commitIdx int) int {
+	if commitIdx < 0 || commitIdx >= len(m.commits) {
 		return 1
 	}
 
-	commit := m.commits[0]
+	commit := m.commits[commitIdx]
 
 	// Level 1: Commit itself is folded
 	if commit.FoldLevel == sidebyside.CommitFolded {
 		return 1
 	}
 
-	// Check if any file is expanded beyond FoldFolded
-	for _, fp := range m.files {
-		if fp.FoldLevel != sidebyside.FoldFolded {
+	// Get file range for this commit
+	startIdx := m.commitFileStarts[commitIdx]
+	endIdx := len(m.files)
+	if commitIdx+1 < len(m.commits) {
+		endIdx = m.commitFileStarts[commitIdx+1]
+	}
+
+	// Check if any file in this commit is expanded beyond FoldFolded
+	for i := startIdx; i < endIdx; i++ {
+		if m.files[i].FoldLevel != sidebyside.FoldFolded {
 			return 3
 		}
 	}

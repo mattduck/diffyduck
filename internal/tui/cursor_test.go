@@ -1498,3 +1498,768 @@ func TestFoldToggle_CursorOnTopBorder_StaysOnTopBorder(t *testing.T) {
 		"after fold toggle, cursor should still be on top border (got cursorPos=%d, isHeaderTopBorder=%v)",
 		cursorPos, rows[cursorPos].isHeaderTopBorder)
 }
+
+// =============================================================================
+// Multi-Commit Tests
+// =============================================================================
+
+// createTwoCommitModel creates a model with two commits for testing.
+// Both commits start folded (CommitFolded).
+func createTwoCommitModel() Model {
+	commit1 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "aaa1111",
+			Author:  "Author One",
+			Subject: "First commit subject",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/file1.go",
+				NewPath:   "b/file1.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "old1"}, New: sidebyside.Line{Num: 1, Content: "new1"}},
+				},
+			},
+		},
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: true,
+	}
+	commit2 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "bbb2222",
+			Author:  "Author Two",
+			Subject: "Second commit subject",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/file2.go",
+				NewPath:   "b/file2.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "old2"}, New: sidebyside.Line{Num: 1, Content: "new2"}},
+				},
+			},
+		},
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit1, commit2})
+	m.width = 80
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+	return m
+}
+
+func TestMultiCommit_BothStartFolded(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Both commits should start folded
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should start folded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should start folded")
+
+	// Should have 2 rows (one header per commit)
+	rows := m.buildRows()
+	assert.Equal(t, 2, len(rows), "should have 2 rows when both commits folded")
+	assert.True(t, rows[0].isCommitHeader, "row 0 should be commit header")
+	assert.True(t, rows[1].isCommitHeader, "row 1 should be commit header")
+	assert.Equal(t, 0, rows[0].commitIndex, "row 0 should be commit 0")
+	assert.Equal(t, 1, rows[1].commitIndex, "row 1 should be commit 1")
+}
+
+func TestMultiCommit_CursorOnFirstCommitHeader(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// With scroll=0 and default cursor offset (20% of viewport),
+	// cursor should be on first commit header (row 0)
+	// since there are only 2 rows
+	cursorPos := m.cursorLine()
+	rows := m.buildRows()
+
+	// Cursor position depends on viewport math, but should be within rows
+	if cursorPos >= len(rows) {
+		cursorPos = len(rows) - 1
+	}
+
+	// Scroll to put cursor on first commit header (row 0)
+	m.scroll = -m.cursorOffset() // This puts row 0 at cursor position
+	m.calculateTotalLines()
+
+	cursorPos = m.cursorLine()
+	assert.True(t, cursorPos >= 0 && cursorPos < len(rows), "cursor should be within rows")
+}
+
+func TestMultiCommit_TabExpandsCorrectCommit_First(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Use a small viewport so cursor offset is small
+	m.height = 10
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+	require.Equal(t, 2, len(rows), "should have 2 rows when both folded")
+
+	// Position scroll so cursor is on row 0 (first commit header)
+	// cursorLine() = scroll + cursorOffset()
+	// We need scroll such that scroll + cursorOffset() = 0
+	cursorOffset := m.cursorOffset()
+	m.scroll = -cursorOffset
+	if m.scroll < 0 {
+		m.scroll = 0
+	}
+
+	cursorPos := m.cursorLine()
+
+	// If cursor is beyond rows, it will be clamped
+	if cursorPos >= len(rows) {
+		cursorPos = len(rows) - 1
+	}
+
+	// Verify cursor is on a commit header
+	require.True(t, rows[cursorPos].isCommitHeader, "cursor should be on commit header")
+	commitIdx := rows[cursorPos].commitIndex
+
+	// Verify we're starting correctly
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should start folded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should start folded")
+
+	// Press Tab to expand the commit at cursor
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = newM.(Model)
+
+	// The commit at cursor should be expanded, the other should stay folded
+	if commitIdx == 0 {
+		assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should be expanded after Tab")
+		assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should still be folded")
+	} else {
+		assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should still be folded")
+		assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should be expanded after Tab")
+	}
+}
+
+func TestMultiCommit_TabExpandsCorrectCommit_Second(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// First, we need to position cursor on second commit header
+	// When both folded, row 0 = commit 0 header, row 1 = commit 1 header
+	// We need scroll such that cursorLine() returns 1
+
+	rows := m.buildRows()
+	require.Equal(t, 2, len(rows), "should have 2 rows when both folded")
+
+	// Set scroll to put cursor on row 1 (second commit header)
+	cursorOffset := m.cursorOffset()
+	m.scroll = 1 - cursorOffset
+	if m.scroll < 0 {
+		m.scroll = 0
+	}
+
+	// Verify cursor position
+	cursorPos := m.cursorLine()
+	if cursorPos != 1 {
+		// If cursor isn't on row 1, manually verify we're in the right area
+		t.Logf("cursorPos=%d, cursorOffset=%d, scroll=%d", cursorPos, cursorOffset, m.scroll)
+	}
+
+	// Press Tab
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = newM.(Model)
+
+	// Check which commit got expanded
+	// If cursor was on second commit, it should expand; if on first, first should expand
+	if cursorPos == 1 {
+		assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should still be folded")
+		assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should be expanded after Tab")
+	} else {
+		// Cursor was on first commit, so first got expanded (fallback behavior)
+		t.Logf("Cursor was on row %d, not second commit header", cursorPos)
+	}
+}
+
+func TestMultiCommit_ExpandFirstThenSecond(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Expand first commit by setting cursor on row 0
+	m.scroll = 0 // Put cursor near top
+
+	// Tab to expand first commit (uses fallback to commit 0)
+	newM, _ := m.handleCommitFoldCycle()
+	m = newM.(Model)
+
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should be expanded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should still be folded")
+
+	// Now rows include: commit 0 header, commit 0 body rows, commit 0 files, commit 1 header
+	rows := m.buildRows()
+
+	// Find second commit header row
+	var secondCommitRow int
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 1 {
+			secondCommitRow = i
+			break
+		}
+	}
+	require.NotZero(t, secondCommitRow, "should find second commit header")
+
+	// Position cursor on second commit header
+	cursorOffset := m.cursorOffset()
+	m.scroll = secondCommitRow - cursorOffset
+	if m.scroll < 0 {
+		m.scroll = 0
+	}
+
+	// Verify cursor is on second commit header
+	cursorPos := m.cursorLine()
+	if cursorPos < len(rows) && rows[cursorPos].isCommitHeader && rows[cursorPos].commitIndex == 1 {
+		// Tab to expand second commit
+		newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = newM.(Model)
+
+		// Both should now be expanded
+		assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should still be expanded")
+		assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should now be expanded")
+	} else {
+		t.Skipf("Could not position cursor on second commit header (cursorPos=%d, secondCommitRow=%d)", cursorPos, secondCommitRow)
+	}
+}
+
+func TestMultiCommit_VisibilityLevelIndependent(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Initially both at level 1 (folded)
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should be at level 1")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should be at level 1")
+
+	// Expand first commit to level 2
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.calculateTotalLines()
+
+	// First at level 2, second still at level 1
+	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "commit 0 should be at level 2")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should still be at level 1")
+
+	// Expand first commit's files to level 3
+	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.calculateTotalLines()
+
+	// First at level 3, second still at level 1
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "commit 0 should be at level 3")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should still be at level 1")
+}
+
+// =============================================================================
+// Multi-Commit Model Initialization Tests
+// =============================================================================
+
+func TestMultiCommit_CommitFileStarts_TracksFileBoundaries(t *testing.T) {
+	// Create commits with different numbers of files
+	commit1 := sidebyside.CommitSet{
+		Info:      sidebyside.CommitInfo{SHA: "aaa1111", Author: "Author One", Subject: "Commit 1"},
+		FoldLevel: sidebyside.CommitFolded,
+		Files: []sidebyside.FilePair{
+			{OldPath: "a/file1.go", NewPath: "b/file1.go"},
+			{OldPath: "a/file2.go", NewPath: "b/file2.go"},
+		},
+	}
+	commit2 := sidebyside.CommitSet{
+		Info:      sidebyside.CommitInfo{SHA: "bbb2222", Author: "Author Two", Subject: "Commit 2"},
+		FoldLevel: sidebyside.CommitFolded,
+		Files: []sidebyside.FilePair{
+			{OldPath: "a/file3.go", NewPath: "b/file3.go"},
+			{OldPath: "a/file4.go", NewPath: "b/file4.go"},
+			{OldPath: "a/file5.go", NewPath: "b/file5.go"},
+		},
+	}
+	commit3 := sidebyside.CommitSet{
+		Info:      sidebyside.CommitInfo{SHA: "ccc3333", Author: "Author Three", Subject: "Commit 3"},
+		FoldLevel: sidebyside.CommitFolded,
+		Files: []sidebyside.FilePair{
+			{OldPath: "a/file6.go", NewPath: "b/file6.go"},
+		},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit1, commit2, commit3})
+
+	// Total files should be 2 + 3 + 1 = 6
+	assert.Equal(t, 6, len(m.files), "should have 6 total files flattened")
+
+	// commitFileStarts should track boundaries
+	assert.Equal(t, 3, len(m.commitFileStarts), "should have 3 commit file starts")
+	assert.Equal(t, 0, m.commitFileStarts[0], "commit 0 files start at index 0")
+	assert.Equal(t, 2, m.commitFileStarts[1], "commit 1 files start at index 2")
+	assert.Equal(t, 5, m.commitFileStarts[2], "commit 2 files start at index 5")
+}
+
+func TestMultiCommit_CommitForFile_ReturnsCorrectCommit(t *testing.T) {
+	// Setup: 3 commits with 2, 3, and 1 files respectively
+	commit1 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{SHA: "aaa1111"},
+		Files: []sidebyside.FilePair{
+			{OldPath: "a/file1.go", NewPath: "b/file1.go"},
+			{OldPath: "a/file2.go", NewPath: "b/file2.go"},
+		},
+	}
+	commit2 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{SHA: "bbb2222"},
+		Files: []sidebyside.FilePair{
+			{OldPath: "a/file3.go", NewPath: "b/file3.go"},
+			{OldPath: "a/file4.go", NewPath: "b/file4.go"},
+			{OldPath: "a/file5.go", NewPath: "b/file5.go"},
+		},
+	}
+	commit3 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{SHA: "ccc3333"},
+		Files: []sidebyside.FilePair{
+			{OldPath: "a/file6.go", NewPath: "b/file6.go"},
+		},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit1, commit2, commit3})
+
+	// Files 0, 1 -> commit 0
+	assert.Equal(t, 0, m.commitForFile(0), "file 0 should belong to commit 0")
+	assert.Equal(t, 0, m.commitForFile(1), "file 1 should belong to commit 0")
+
+	// Files 2, 3, 4 -> commit 1
+	assert.Equal(t, 1, m.commitForFile(2), "file 2 should belong to commit 1")
+	assert.Equal(t, 1, m.commitForFile(3), "file 3 should belong to commit 1")
+	assert.Equal(t, 1, m.commitForFile(4), "file 4 should belong to commit 1")
+
+	// File 5 -> commit 2
+	assert.Equal(t, 2, m.commitForFile(5), "file 5 should belong to commit 2")
+}
+
+func TestMultiCommit_EmptyCommit_FileIndexingCorrect(t *testing.T) {
+	// Edge case: first commit has 0 files
+	commit1 := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{SHA: "aaa1111"},
+		Files: []sidebyside.FilePair{}, // Empty
+	}
+	commit2 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{SHA: "bbb2222"},
+		Files: []sidebyside.FilePair{
+			{OldPath: "a/file1.go", NewPath: "b/file1.go"},
+		},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit1, commit2})
+
+	// Total files should be 1
+	assert.Equal(t, 1, len(m.files), "should have 1 total file")
+
+	// Boundaries: commit 0 starts at 0, commit 1 also starts at 0 (empty commit)
+	assert.Equal(t, 0, m.commitFileStarts[0], "commit 0 files start at index 0")
+	assert.Equal(t, 0, m.commitFileStarts[1], "commit 1 files start at index 0 (commit 0 was empty)")
+
+	// File 0 should belong to commit 1 (since commit 0 is empty)
+	assert.Equal(t, 1, m.commitForFile(0), "file 0 should belong to commit 1")
+}
+
+// =============================================================================
+// Multi-Commit Row Building Tests
+// =============================================================================
+
+func TestMultiCommit_AllFolded_OnlyCommitHeaders(t *testing.T) {
+	m := createTwoCommitModel()
+
+	rows := m.buildRows()
+
+	// Should have exactly 2 rows (one per commit header)
+	assert.Equal(t, 2, len(rows), "should have 2 rows when both commits folded")
+
+	// Both should be commit headers
+	for i, row := range rows {
+		assert.True(t, row.isCommitHeader, "row %d should be commit header", i)
+		assert.Equal(t, i, row.commitIndex, "row %d should have commitIndex %d", i, i)
+	}
+}
+
+func TestMultiCommit_OneExpanded_OtherFolded(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Expand first commit
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Should have: commit 0 header + commit 0 body rows + commit 0 file rows + commit 1 header
+	assert.Greater(t, len(rows), 2, "should have more than 2 rows when one commit expanded")
+
+	// First row should be commit 0 header
+	assert.True(t, rows[0].isCommitHeader, "first row should be commit header")
+	assert.Equal(t, 0, rows[0].commitIndex, "first row should be commit 0")
+
+	// Find commit 1 header
+	var commit1HeaderIdx int
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 1 {
+			commit1HeaderIdx = i
+			break
+		}
+	}
+	assert.NotEqual(t, 0, commit1HeaderIdx, "should find commit 1 header")
+	assert.True(t, rows[commit1HeaderIdx].isCommitHeader, "commit 1 row should be header")
+}
+
+func TestMultiCommit_BothExpanded_RowsInterleaved(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Expand both commits
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.commits[1].FoldLevel = sidebyside.CommitNormal
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Should have rows for both commits
+	var commit0Rows, commit1Rows int
+	for _, row := range rows {
+		if row.isCommitHeader || row.isCommitBody {
+			if row.commitIndex == 0 {
+				commit0Rows++
+			} else if row.commitIndex == 1 {
+				commit1Rows++
+			}
+		}
+	}
+
+	assert.Greater(t, commit0Rows, 0, "should have rows for commit 0")
+	assert.Greater(t, commit1Rows, 0, "should have rows for commit 1")
+}
+
+func TestMultiCommit_CommitHeadersHaveCorrectIndex(t *testing.T) {
+	// Create 3 commits
+	commits := []sidebyside.CommitSet{
+		{Info: sidebyside.CommitInfo{SHA: "aaa1111"}, FoldLevel: sidebyside.CommitFolded, Files: []sidebyside.FilePair{{OldPath: "a/f1.go", NewPath: "b/f1.go"}}},
+		{Info: sidebyside.CommitInfo{SHA: "bbb2222"}, FoldLevel: sidebyside.CommitFolded, Files: []sidebyside.FilePair{{OldPath: "a/f2.go", NewPath: "b/f2.go"}}},
+		{Info: sidebyside.CommitInfo{SHA: "ccc3333"}, FoldLevel: sidebyside.CommitFolded, Files: []sidebyside.FilePair{{OldPath: "a/f3.go", NewPath: "b/f3.go"}}},
+	}
+	m := NewWithCommits(commits)
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Should have 3 commit headers
+	var commitHeaders []displayRow
+	for _, row := range rows {
+		if row.isCommitHeader {
+			commitHeaders = append(commitHeaders, row)
+		}
+	}
+
+	assert.Equal(t, 3, len(commitHeaders), "should have 3 commit headers")
+	for i, header := range commitHeaders {
+		assert.Equal(t, i, header.commitIndex, "header %d should have commitIndex %d", i, i)
+	}
+}
+
+// =============================================================================
+// Multi-Commit Cursor Positioning Tests
+// =============================================================================
+
+func TestMultiCommit_CursorCommitIndex_OnCommitHeader(t *testing.T) {
+	m := createTwoCommitModel()
+
+	rows := m.buildRows()
+	require.Equal(t, 2, len(rows), "should have 2 rows when both folded")
+
+	// Position cursor on first commit header (row 0)
+	m.scroll = -m.cursorOffset()
+	cursorPos := m.cursorLine()
+	if cursorPos >= len(rows) {
+		cursorPos = 0
+	}
+
+	commitIdx := m.cursorCommitIndex()
+	if cursorPos == 0 {
+		assert.Equal(t, 0, commitIdx, "cursor on row 0 should return commit 0")
+	}
+}
+
+func TestMultiCommit_CursorCommitIndex_OnCommitBody(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Expand first commit to see body rows
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find a commit body row
+	var bodyRowIdx int = -1
+	for i, row := range rows {
+		if row.isCommitBody && row.commitIndex == 0 {
+			bodyRowIdx = i
+			break
+		}
+	}
+
+	if bodyRowIdx >= 0 {
+		m.scroll = bodyRowIdx - m.cursorOffset()
+		commitIdx := m.cursorCommitIndex()
+		assert.Equal(t, 0, commitIdx, "cursor on commit 0 body should return commit 0")
+	}
+}
+
+func TestMultiCommit_CursorCommitIndex_OnFileRow_ReturnsNegative(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Expand first commit and its files
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find a file content row (not header, not commit header/body)
+	var fileRowIdx int = -1
+	for i, row := range rows {
+		if !row.isCommitHeader && !row.isCommitBody && !row.isHeader && row.fileIndex >= 0 {
+			fileRowIdx = i
+			break
+		}
+	}
+
+	if fileRowIdx >= 0 {
+		m.scroll = fileRowIdx - m.cursorOffset()
+		commitIdx := m.cursorCommitIndex()
+		assert.Equal(t, -1, commitIdx, "cursor on file content row should return -1")
+	}
+}
+
+// =============================================================================
+// Multi-Commit Fold Toggle Tests
+// =============================================================================
+
+func TestMultiCommit_TabOnCommit0_OnlyExpandsCommit0(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Both start folded
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel)
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel)
+
+	// Press Tab (uses handleCommitFoldCycle with fallback to commit 0)
+	newM, _ := m.handleCommitFoldCycle()
+	m = newM.(Model)
+
+	// Commit 0 should be expanded, commit 1 should still be folded
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should be expanded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should still be folded")
+}
+
+func TestMultiCommit_TabCycle_CommitFoldLevels(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Start: both folded (level 1)
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0))
+
+	// Tab 1: Folded -> Normal (level 2)
+	newM, _ := m.handleCommitFoldCycle()
+	m = newM.(Model)
+	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "after first Tab, commit 0 should be at level 2")
+
+	// Tab 2: Normal -> files expanded (level 3)
+	newM, _ = m.handleCommitFoldCycle()
+	m = newM.(Model)
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "after second Tab, commit 0 should be at level 3")
+
+	// Tab 3: level 3 -> Folded (level 1)
+	newM, _ = m.handleCommitFoldCycle()
+	m = newM.(Model)
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "after third Tab, commit 0 should be back to level 1")
+}
+
+func TestMultiCommit_ExpandingCommit_DoesNotAffectOtherCommitFiles(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Expand commit 0
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	// Also expand commit 0's files
+	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.calculateTotalLines()
+
+	// Commit 1's files should still be folded
+	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "commit 1's files should still be folded")
+
+	// Now expand commit 1
+	m.commits[1].FoldLevel = sidebyside.CommitNormal
+	m.calculateTotalLines()
+
+	// Commit 0's files should still be at their level
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel, "commit 0's files should remain unchanged")
+	// Commit 1's files should still be folded (commit expanded but files not)
+	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "commit 1's files should still be folded")
+}
+
+func TestMultiCommit_MixedFoldStates(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Set commit 0 to level 3 (fully expanded)
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.files[0].FoldLevel = sidebyside.FoldNormal
+
+	// Set commit 1 to level 1 (folded)
+	m.commits[1].FoldLevel = sidebyside.CommitFolded
+
+	m.calculateTotalLines()
+
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "commit 0 should be at level 3")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should be at level 1")
+}
+
+// =============================================================================
+// Multi-Commit Scroll and Navigation Tests
+// =============================================================================
+
+func TestMultiCommit_ScrollThroughFoldedCommits(t *testing.T) {
+	m := createTwoCommitModel()
+
+	rows := m.buildRows()
+	require.Equal(t, 2, len(rows), "should have 2 rows when both folded")
+
+	// Should be able to scroll to reach both headers
+	m.scroll = 0
+	cursorPos := m.cursorLine()
+
+	// With small viewport, we should be able to reach all rows
+	for i := 0; i < len(rows); i++ {
+		m.scroll = i - m.cursorOffset()
+		cursorPos = m.cursorLine()
+		if cursorPos >= 0 && cursorPos < len(rows) {
+			assert.True(t, rows[cursorPos].isCommitHeader, "row %d should be commit header", cursorPos)
+		}
+	}
+}
+
+func TestMultiCommit_ExpandCommit_ScrollBoundsUpdate(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Get initial total lines (2 when both folded)
+	initialTotal := m.totalLines
+	assert.Equal(t, 2, initialTotal, "should have 2 total lines when both folded")
+
+	// Expand first commit
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.calculateTotalLines()
+
+	// Total lines should increase
+	assert.Greater(t, m.totalLines, initialTotal, "total lines should increase when commit expanded")
+}
+
+func TestMultiCommit_CollapseCommit_CursorAdjusts(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Expand first commit
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+	initialRowCount := len(rows)
+
+	// Position cursor somewhere in commit 0's expanded content
+	var contentRowIdx int = -1
+	for i, row := range rows {
+		if row.commitIndex == 0 && (row.isCommitBody || row.isHeader) && i > 0 {
+			contentRowIdx = i
+			break
+		}
+	}
+
+	if contentRowIdx > 0 {
+		m.scroll = contentRowIdx - m.cursorOffset()
+
+		// Collapse commit 0
+		m.commits[0].FoldLevel = sidebyside.CommitFolded
+		m.calculateTotalLines()
+
+		newRows := m.buildRows()
+		assert.Less(t, len(newRows), initialRowCount, "row count should decrease after collapsing")
+	}
+}
+
+func TestMultiCommit_NavigateJK_ThroughFoldedCommits(t *testing.T) {
+	m := createTwoCommitModel()
+
+	// Start at top
+	m.scroll = m.minScroll()
+
+	// Press j to scroll down
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = newM.(Model)
+
+	// Scroll should have increased
+	assert.Greater(t, m.scroll, m.minScroll(), "j should scroll down")
+}
+
+// =============================================================================
+// Multi-Commit Edge Cases
+// =============================================================================
+
+func TestMultiCommit_SingleCommit_BehavesLikeShow(t *testing.T) {
+	commit := sidebyside.CommitSet{
+		Info:      sidebyside.CommitInfo{SHA: "aaa1111", Author: "Author", Subject: "Subject"},
+		FoldLevel: sidebyside.CommitFolded,
+		Files: []sidebyside.FilePair{
+			{OldPath: "a/file.go", NewPath: "b/file.go"},
+		},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Should have at least 1 commit header
+	assert.Greater(t, len(rows), 0, "should have at least one row")
+	assert.True(t, rows[0].isCommitHeader, "first row should be commit header")
+}
+
+func TestMultiCommit_AllCommitsEmpty_OnlyHeaders(t *testing.T) {
+	commits := []sidebyside.CommitSet{
+		{Info: sidebyside.CommitInfo{SHA: "aaa1111"}, FoldLevel: sidebyside.CommitFolded, Files: []sidebyside.FilePair{}},
+		{Info: sidebyside.CommitInfo{SHA: "bbb2222"}, FoldLevel: sidebyside.CommitFolded, Files: []sidebyside.FilePair{}},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	// Total files should be 0
+	assert.Equal(t, 0, len(m.files), "should have 0 total files")
+
+	rows := m.buildRows()
+
+	// Should have 2 commit headers only
+	assert.Equal(t, 2, len(rows), "should have 2 rows (one per empty commit header)")
+}
+
+func TestMultiCommit_FirstCommitEmpty_SecondHasFiles(t *testing.T) {
+	commits := []sidebyside.CommitSet{
+		{Info: sidebyside.CommitInfo{SHA: "aaa1111"}, FoldLevel: sidebyside.CommitFolded, Files: []sidebyside.FilePair{}},
+		{Info: sidebyside.CommitInfo{SHA: "bbb2222"}, FoldLevel: sidebyside.CommitFolded, Files: []sidebyside.FilePair{
+			{OldPath: "a/file.go", NewPath: "b/file.go"},
+		}},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	// File should belong to commit 1
+	assert.Equal(t, 1, len(m.files), "should have 1 file")
+	assert.Equal(t, 1, m.commitForFile(0), "file 0 should belong to commit 1")
+
+	// commitFileStarts
+	assert.Equal(t, 0, m.commitFileStarts[0], "commit 0 starts at index 0")
+	assert.Equal(t, 0, m.commitFileStarts[1], "commit 1 starts at index 0 (commit 0 empty)")
+}

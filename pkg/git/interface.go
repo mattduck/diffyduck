@@ -13,6 +13,10 @@ type Git interface {
 	// The first return is parsed commit metadata, the second is the diff.
 	ShowWithMeta(args ...string) (*CommitMeta, string, error)
 
+	// LogWithMeta returns commit metadata and diff output for multiple commits.
+	// The n parameter limits the number of commits returned.
+	LogWithMeta(n int) ([]CommitWithDiff, error)
+
 	// Diff returns the diff output for git diff.
 	// Args are passed through to git diff.
 	Diff(args ...string) (string, error)

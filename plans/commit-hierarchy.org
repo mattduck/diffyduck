@@ -188,20 +188,40 @@ Add fold state to commits.
 
 Add ~diffyduck log~ command.
 
-- [ ] Add "log" subcommand to cmd/diffyduck/main.go
-- [ ] Parse ~git log -p~ output into multiple CommitSets
+**** MVP (Current Scope)
+
+Simple implementation to validate the multi-commit display:
+
+- [ ] Add "log" subcommand to cmd/diffyduck/main.go (no args, last 10 commits)
+- [ ] Fetch all 10 commits with diffs upfront (simple, no lazy loading)
+- [ ] Parse ~git log -p -10~ output into multiple CommitSets
 - [ ] Extract commit metadata (sha, author, date, message)
-- [ ] Initial display with commits folded
-- [ ] Async unfold loads file content per commit
+- [ ] Initial display with all commits folded (CommitFolded)
+- [ ] Tab expands individual commits (existing behavior)
+
+**** Deferred Items
+
+- [ ] Dynamic/lazy loading of commit diffs (fetch metadata first, load diff on expand)
+  - Required for performance with many commits
+  - Current upfront fetch won't scale past ~20-30 commits
+- [ ] Command-line arguments (~diffyduck log -n 20~, ~diffyduck log main..feature~)
+- [ ] Path filtering (~diffyduck log -- src/~)
+- [ ] Expand/collapse all commits
+  - Will require reworking Shift+Tab behavior
+  - Currently Shift+Tab cycles file fold levels; need to handle commit level too
+- [ ] Commit-level navigation (gJ/gK to jump between commit headers)
 
 *** Phase 4: Navigation Keys
 
 Implement hierarchical navigation.
 
 - [ ] Add NextFile/PrevFile keys (gj/gk)
-- [ ] Add NextCommit/PrevCommit keys (gJ/gK)
+- [ ] Add NextCommit/PrevCommit keys (gJ/gK) (deferred until log MVP validated)
 - [ ] Update cursor movement to respect hierarchy
 - [ ] Jump lands on header row of target item
+
+Note: Commit navigation (gJ/gK) is lower priority - can navigate with j/k through
+commit headers when commits are folded. Will revisit after log command MVP.
 
 *** Phase 5: Top Bar Changes
 
@@ -360,6 +380,82 @@ From a line in the diff, jump to blame view showing when that line was added.
 2. Pager mode with log input
 3. Navigation through large commit list
 4. Async loading behavior
+
+*** Multi-Commit Log Test Coverage (MVP)
+
+**** Git Parsing Tests (pkg/git/)
+
+- [X] ~LogWithMeta~ returns correct number of commits (request 10, get 10) - TestParseLogOutput_TenCommits
+- [X] ~LogWithMeta~ handles repos with fewer commits than requested - TestParseLogOutput_FewerThanRequestedCommits
+- [X] ~LogWithMeta~ correctly parses commit boundaries (DIFFYDUCK_COMMIT_START) - TestParseLogOutput_MultipleCommits
+- [X] Each commit's metadata is correctly extracted (SHA, author, date, subject, body) - TestParseLogOutput_MultipleCommits
+- [X] Each commit's diff is correctly associated with its metadata - TestParseLogOutput_MultipleCommits
+- [X] Empty commits (no file changes) are handled - TestParseLogOutput_CommitWithNoDiff
+- [X] Commits with binary files are handled - TestParseLogOutput_CommitWithBinaryFile
+- [X] Commits with very long diffs are handled - TestParseLogOutput_CommitWithMultipleFiles
+- [X] Long commit body is parsed correctly - TestParseLogOutput_LongCommitBody
+- [X] Mock LogWithMeta works correctly - TestMockGit_LogWithMeta, TestMockGit_LogWithMeta_Empty, TestMockGit_LogWithMeta_Error
+
+**** Model Initialization Tests (internal/tui/)
+
+- [X] ~NewWithCommits~ with multiple commits flattens files correctly - TestMultiCommit_CommitFileStarts_TracksFileBoundaries
+- [X] ~commitFileStarts~ accurately tracks file boundaries per commit - TestMultiCommit_CommitFileStarts_TracksFileBoundaries
+- [X] Files from commit N are at indices ~[commitFileStarts[N], commitFileStarts[N+1])~ - TestMultiCommit_CommitForFile_ReturnsCorrectCommit
+- [X] ~commitForFile(fileIdx)~ returns correct commit index - TestMultiCommit_CommitForFile_ReturnsCorrectCommit
+- [X] Empty commits (0 files) don't break file indexing - TestMultiCommit_EmptyCommit_FileIndexingCorrect
+
+**** Row Building Tests (internal/tui/)
+
+- [X] All commits folded: only commit header rows, no file rows - TestMultiCommit_AllFolded_OnlyCommitHeaders
+- [X] One commit expanded, others folded: correct mix of rows - TestMultiCommit_OneExpanded_OtherFolded
+- [X] Multiple commits expanded: rows interleaved correctly - TestMultiCommit_BothExpanded_RowsInterleaved
+- [X] Commit header rows have correct ~commitIndex~ - TestMultiCommit_CommitHeadersHaveCorrectIndex
+- [ ] File rows within a commit have correct ~fileIndex~ (global)
+- [ ] Blank rows and borders appear at correct commit boundaries
+
+**** Cursor Positioning Tests (internal/tui/)
+
+- [X] Cursor on commit 0 header: ~cursorCommitIndex()~ returns 0 - TestMultiCommit_CursorCommitIndex_OnCommitHeader
+- [ ] Cursor on commit N header: ~cursorCommitIndex()~ returns N
+- [X] Cursor on commit body row: ~cursorCommitIndex()~ returns correct commit - TestMultiCommit_CursorCommitIndex_OnCommitBody
+- [X] Cursor on file row: ~cursorCommitIndex()~ returns -1 (not on commit section) - TestMultiCommit_CursorCommitIndex_OnFileRow_ReturnsNegative
+- [ ] ~isOnCommitHeader()~ correctly identifies commit header rows
+- [ ] ~isOnCommitSection()~ correctly identifies header and body rows
+
+**** Fold Toggle Tests (internal/tui/)
+
+- [X] Tab on commit 0 header: only commit 0 changes fold level - TestMultiCommit_TabOnCommit0_OnlyExpandsCommit0
+- [ ] Tab on commit N header: only commit N changes fold level
+- [X] Tab on commit header cycles: Folded -> Normal -> (files Normal) -> Folded - TestMultiCommit_TabCycle_CommitFoldLevels
+- [X] Expanding commit 0 doesn't affect commit 1's files - TestMultiCommit_ExpandingCommit_DoesNotAffectOtherCommitFiles
+- [ ] Collapsing commit 1 doesn't affect commit 0's state
+- [X] ~commitVisibilityLevelFor(N)~ returns correct level per commit - TestMultiCommit_VisibilityLevelIndependent
+- [X] Mixed states: commit 0 at level 3, commit 1 at level 1 - TestMultiCommit_MixedFoldStates
+
+**** Rendering Tests (internal/tui/)
+
+- [ ] Each commit header shows correct SHA (from that commit, not commit 0)
+- [ ] Each commit header shows correct author
+- [ ] Each commit header shows correct subject
+- [ ] Each commit header shows correct file count for that commit
+- [ ] Each commit header shows correct +/- stats for that commit
+- [ ] Fold icon reflects each commit's individual fold state
+
+**** Scroll and Navigation Tests (internal/tui/)
+
+- [X] Scrolling through folded commits: each header is reachable - TestMultiCommit_ScrollThroughFoldedCommits
+- [X] Expanding a commit updates scroll bounds correctly - TestMultiCommit_ExpandCommit_ScrollBoundsUpdate
+- [X] Collapsing a commit doesn't lose cursor position - TestMultiCommit_CollapseCommit_CursorAdjusts
+- [X] j/k navigation moves through commit headers when all folded - TestMultiCommit_NavigateJK_ThroughFoldedCommits
+- [ ] After expanding, j/k can reach file rows within that commit
+
+**** Edge Cases
+
+- [X] Single commit (log with 1 result): behaves like show command - TestMultiCommit_SingleCommit_BehavesLikeShow
+- [X] All commits have 0 files: display headers only - TestMultiCommit_AllCommitsEmpty_OnlyHeaders
+- [X] First commit empty, second has files: indexing correct - TestMultiCommit_FirstCommitEmpty_SecondHasFiles
+- [ ] Very long commit message in body: renders without crash
+- [ ] Commit with 100+ files: file truncation per commit works
 
 ** Performance Considerations
 
