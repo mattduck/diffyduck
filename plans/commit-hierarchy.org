@@ -391,6 +391,36 @@ Current view rendering iterates all files. With hierarchy:
 - Cache row structure when possible
 - Avoid re-parsing on every render
 
+** Follow-up Tasks (Show Command)
+
+These items came up during initial implementation and need addressing:
+
+*** Top Bar Cleanup
+
+- [ ] Remove #00 indicator when no file is selected (cursor on commit header)
+- [ ] Remove duplicate arrow (commit line and file line both have arrows)
+- [ ] Remove extra space after commit SHA in top bar
+- [ ] Move "N files +X -Y" stats to the commit line (top row) instead of file line
+
+*** Commit Header Row Improvements
+
+- [ ] Show parts dynamically based on available width
+  - Priority: +/- files count first, then message, then date, then author
+- [ ] Search should work on commit header rows (match SHA, subject)
+- [ ] When expanded (level 2), pull in and display commit body message
+- [ ] Use consistent gray color (not faint) for commit fold icon
+  - Use ○/◐/● to indicate levels 1/2/3
+- [ ] Cursor line should highlight SHA with background color (like file gutters)
+
+*** Visual Hierarchy
+
+- [ ] Consider swapping file number and circle icon for org-style bullets
+  - Current: ~#01 ◐ foo.go~
+  - Proposed: ~◐ 01 foo.go~ or similar
+- [ ] Add visual break at commit boundary (like file headers have)
+  - Prevents commit being missed when scrolling
+  - Could use top border similar to file headers
+
 ** References
 
 - Current fold implementation: internal/tui/update.go (~handleFoldToggle~)

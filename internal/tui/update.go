@@ -224,6 +224,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case matchesKey(msg, keys.FoldToggleAll):
 		return m.handleFoldToggleAll()
+
+	case matchesKey(msg, keys.Enter):
+		return m.handleEnter()
 	}
 
 	return m, nil
@@ -361,6 +364,8 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 		return row.kind == RowKindSeparatorBottom
 	case RowKindTruncationIndicator:
 		return row.kind == RowKindTruncationIndicator
+	case RowKindCommitHeader:
+		return row.kind == RowKindCommitHeader
 	case RowKindContent:
 		// For content rows, match by line numbers
 		// Handle cases where one side might be 0 (added/removed lines)
@@ -413,8 +418,13 @@ func (m Model) nextFoldLevelForFile(fp sidebyside.FilePair) sidebyside.FoldLevel
 	return next
 }
 
-// handleFoldToggle cycles the fold level of the current file.
+// handleFoldToggle cycles the fold level of the current file, or commit if on commit header.
 func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
+	// If cursor is on commit header, do commit fold cycle instead
+	if m.isOnCommitHeader() {
+		return m.handleCommitFoldCycle()
+	}
+
 	fileIdx := m.currentFileIndex()
 	if fileIdx < 0 || fileIdx >= len(m.files) {
 		return m, nil
@@ -622,4 +632,91 @@ func (m *Model) goToPrevHeading() {
 			return
 		}
 	}
+}
+
+// handleEnter handles the Enter key.
+// On hunk separator: (future) expand context
+func (m Model) handleEnter() (tea.Model, tea.Cmd) {
+	// TODO: Handle context expansion on hunk separators
+
+	return m, nil
+}
+
+// isOnCommitHeader returns true if the cursor is on a commit header row.
+func (m Model) isOnCommitHeader() bool {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return false
+	}
+
+	return rows[cursorPos].isCommitHeader
+}
+
+// handleCommitFoldCycle cycles through 3 levels of commit visibility (org-mode style).
+// Level 1 (Folded): Just the commit header row
+// Level 2: File headings only (all files at FoldFolded)
+// Level 3: File hunks visible (files at FoldNormal)
+// Cycling: Level 1 -> Level 2 -> Level 3 -> Level 1
+func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
+	if len(m.commits) == 0 {
+		return m, nil
+	}
+
+	commit := &m.commits[0]
+
+	// Determine current level
+	currentLevel := m.commitVisibilityLevel()
+
+	switch currentLevel {
+	case 1:
+		// Level 1 -> Level 2: Show file headings only
+		commit.FoldLevel = sidebyside.CommitNormal
+		for i := range m.files {
+			m.files[i].FoldLevel = sidebyside.FoldFolded
+		}
+	case 2:
+		// Level 2 -> Level 3: Show file hunks
+		for i := range m.files {
+			m.files[i].FoldLevel = sidebyside.FoldNormal
+		}
+	default:
+		// Level 3 -> Level 1: Collapse everything
+		commit.FoldLevel = sidebyside.CommitFolded
+		for i := range m.files {
+			m.files[i].FoldLevel = sidebyside.FoldFolded
+		}
+	}
+
+	m.calculateTotalLines()
+
+	return m, nil
+}
+
+// commitVisibilityLevel returns the current visibility level (1, 2, or 3).
+// Level 1: Commit is folded (only commit header visible)
+// Level 2: Commit is normal, all files are FoldFolded (file headings only)
+// Level 3: Any file is not FoldFolded (file content visible)
+func (m Model) commitVisibilityLevel() int {
+	if len(m.commits) == 0 {
+		return 1
+	}
+
+	commit := m.commits[0]
+
+	// Level 1: Commit itself is folded
+	if commit.FoldLevel == sidebyside.CommitFolded {
+		return 1
+	}
+
+	// Check if any file is expanded beyond FoldFolded
+	for _, fp := range m.files {
+		if fp.FoldLevel != sidebyside.FoldFolded {
+			return 3
+		}
+	}
+
+	// All files are FoldFolded
+	return 2
 }

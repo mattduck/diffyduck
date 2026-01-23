@@ -21,6 +21,7 @@ type KeyMap struct {
 	PrevMatch     []string
 	FoldToggle    []string
 	FoldToggleAll []string
+	Enter         []string // used for commit fold toggle and context expansion
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -43,6 +44,7 @@ func DefaultKeyMap() KeyMap {
 		PrevMatch:     []string{"N"},
 		FoldToggle:    []string{"tab"},
 		FoldToggleAll: []string{"shift+tab"},
+		Enter:         []string{"enter"},
 	}
 }
 

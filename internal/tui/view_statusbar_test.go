@@ -637,11 +637,11 @@ func TestTopBar_WithCommitInfo(t *testing.T) {
 	// Should have 3 lines: commit line, file line, divider
 	require.GreaterOrEqual(t, len(lines), 3, "top bar should have commit line, file line, and divider")
 
-	// First line should contain commit info
+	// First line should contain commit info (SHA + subject only, no author/date)
 	commitLine := lines[0]
 	assert.Contains(t, commitLine, "abc123d", "commit line should contain short SHA")
-	assert.Contains(t, commitLine, "Test Author", "commit line should contain author")
 	assert.Contains(t, commitLine, "Fix the bug", "commit line should contain subject")
+	assert.NotContains(t, commitLine, "Test Author", "commit line should NOT contain author")
 
 	// Second line should contain file info
 	fileLine := lines[1]
@@ -715,16 +715,261 @@ func TestContentHeight_WithCommitInfo(t *testing.T) {
 	m1 := New([]sidebyside.FilePair{{OldPath: "a/foo.go", NewPath: "b/foo.go"}})
 	m1.height = 20
 
-	// With commit info
+	// With commit info (unfolded - shows both commit and file lines)
 	commit := sidebyside.CommitSet{
 		Info:        sidebyside.CommitInfo{SHA: "abc123", Author: "Test"},
 		Files:       []sidebyside.FilePair{{OldPath: "a/foo.go", NewPath: "b/foo.go"}},
+		FoldLevel:   sidebyside.CommitNormal, // Important: unfolded state
 		FilesLoaded: true,
 	}
 	m2 := NewWithCommits([]sidebyside.CommitSet{commit})
 	m2.height = 20
 
-	// Content height should be 1 less when commit info is present
+	// Content height should be 1 less when commit info is present (extra line for commit info)
 	assert.Equal(t, m1.contentHeight()-1, m2.contentHeight(),
 		"content height should be 1 less when commit info is present")
+}
+
+func TestContentHeight_CommitFolded(t *testing.T) {
+	// With commit info but folded - top bar still shows
+	commit := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc123", Author: "Test"},
+		Files:       []sidebyside.FilePair{{OldPath: "a/foo.go", NewPath: "b/foo.go"}},
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.height = 20
+
+	// Top bar always shows: commit line + file line + divider + bottom bar = 4 reserved
+	// Content height = 20 - 4 = 16
+	assert.Equal(t, 16, m.contentHeight(),
+		"folded commit should still reserve 4 lines (commit + file + divider + bottom)")
+}
+
+func TestCommitHeaderRow(t *testing.T) {
+	// Create model with commit info
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+				},
+			},
+		},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890",
+			Author:  "Test Author",
+			Subject: "Fix the bug",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Build rows and check first row is commit header
+	rows := m.buildRows()
+	require.NotEmpty(t, rows, "should have rows")
+	assert.True(t, rows[0].isCommitHeader, "first row should be commit header")
+	assert.Equal(t, RowKindCommitHeader, rows[0].kind, "first row kind should be RowKindCommitHeader")
+
+	// Check that file rows come after commit header
+	foundFileHeader := false
+	for _, row := range rows[1:] {
+		if row.isHeader && !row.isCommitHeader {
+			foundFileHeader = true
+			break
+		}
+	}
+	assert.True(t, foundFileHeader, "should have file header after commit header")
+}
+
+func TestCommitFolding(t *testing.T) {
+	// Create model with commit info
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+				},
+			},
+		},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890",
+			Author:  "Test Author",
+			Subject: "Fix the bug",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal, // Start unfolded
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Normal (unfolded) state should have multiple rows
+	rowsUnfolded := m.buildRows()
+	assert.Greater(t, len(rowsUnfolded), 1, "unfolded commit should have more than 1 row")
+
+	// Fold the commit
+	m.commits[0].FoldLevel = sidebyside.CommitFolded
+	m.calculateTotalLines()
+
+	// Folded state should have only 1 row (the commit header)
+	rowsFolded := m.buildRows()
+	assert.Equal(t, 1, len(rowsFolded), "folded commit should have exactly 1 row")
+	assert.True(t, rowsFolded[0].isCommitHeader, "the only row should be commit header")
+}
+
+func TestCommitFoldCycle(t *testing.T) {
+	// Create model with commit info and multiple files
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
+			},
+		},
+		{
+			OldPath:   "a/bar.go",
+			NewPath:   "b/bar.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
+			},
+		},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890",
+			Author:  "Test Author",
+			Subject: "Fix the bug",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitFolded, // Start at Level 1
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Start at Level 1 (folded)
+	assert.Equal(t, 1, m.commitVisibilityLevel(), "should start at level 1")
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel)
+
+	// Cycle to Level 2 (file headings only)
+	m.handleCommitFoldCycle()
+	assert.Equal(t, 2, m.commitVisibilityLevel(), "should be at level 2 after first cycle")
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel)
+	for _, f := range m.files {
+		assert.Equal(t, sidebyside.FoldFolded, f.FoldLevel, "all files should be FoldFolded at level 2")
+	}
+
+	// Cycle to Level 3 (file hunks visible)
+	m.handleCommitFoldCycle()
+	assert.Equal(t, 3, m.commitVisibilityLevel(), "should be at level 3 after second cycle")
+	for _, f := range m.files {
+		assert.Equal(t, sidebyside.FoldNormal, f.FoldLevel, "all files should be FoldNormal at level 3")
+	}
+
+	// Cycle back to Level 1 (folded)
+	m.handleCommitFoldCycle()
+	assert.Equal(t, 1, m.commitVisibilityLevel(), "should be back at level 1 after third cycle")
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel)
+}
+
+func TestCommitFoldCycleWithMixedFiles(t *testing.T) {
+	// Test that if any file is expanded, we're at level 3
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldFolded},
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldNormal}, // One expanded
+	}
+	commit := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc123"},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	// Should be at level 3 because one file is expanded
+	assert.Equal(t, 3, m.commitVisibilityLevel(), "mixed files should be level 3")
+
+	// Cycling should go back to level 1
+	m.handleCommitFoldCycle()
+	assert.Equal(t, 1, m.commitVisibilityLevel(), "should collapse to level 1")
+}
+
+func TestIsOnCommitHeader(t *testing.T) {
+	// Create model with commit info
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+				},
+			},
+		},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890",
+			Author:  "Test Author",
+			Subject: "Fix the bug",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Position cursor on commit header (row 0)
+	m.scroll = -m.cursorOffset() // minScroll, so cursor is at row 0
+	assert.True(t, m.isOnCommitHeader(), "cursor at row 0 should be on commit header")
+
+	// Move cursor down past commit header
+	m.scroll = 0 // cursor is now at cursorOffset, which should be after commit header
+	// For small heights this might still be on commit header, so let's be more explicit
+	m.scroll = 1 // Move scroll so cursor is further down
+	// This might or might not be on commit header depending on total lines
+	// Let's just verify isOnCommitHeader returns the correct value
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos >= 0 && cursorPos < len(rows) {
+		assert.Equal(t, rows[cursorPos].isCommitHeader, m.isOnCommitHeader())
+	}
 }

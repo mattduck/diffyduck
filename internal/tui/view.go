@@ -114,6 +114,7 @@ const (
 	RowKindSeparatorBottom     // bottom shader line below hunk separator
 	RowKindTruncationIndicator // truncation message row
 	RowKindBinaryIndicator     // binary file message row
+	RowKindCommitHeader        // commit header row (sha, author, date, subject)
 )
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
@@ -157,11 +158,32 @@ type displayRow struct {
 	binaryNew         bool   // show binary message on right (new) side
 	// Hunk separator fields
 	chunkStartLine int // first line of the following chunk (new/right side), for breadcrumbs
+	// Commit header fields
+	isCommitHeader  bool                       // true if this is a commit header row
+	commitFoldLevel sidebyside.CommitFoldLevel // fold level for commit headers
+	commitIndex     int                        // which commit this header belongs to
 }
 
 // buildRows creates all displayable rows from the model data.
 func (m Model) buildRows() []displayRow {
 	var rows []displayRow
+
+	// Add commit header row when we have commit info
+	if m.hasCommitInfo() {
+		commit := m.currentCommit()
+		rows = append(rows, displayRow{
+			kind:            RowKindCommitHeader,
+			fileIndex:       -1, // not associated with a specific file
+			isCommitHeader:  true,
+			commitFoldLevel: commit.FoldLevel,
+			commitIndex:     0, // single commit for now
+		})
+
+		// If commit is folded, only show the commit header row
+		if commit.FoldLevel == sidebyside.CommitFolded {
+			return rows
+		}
+	}
 
 	// Calculate max header width and max add/rem widths across all files for alignment
 	maxHeaderWidth := 0
@@ -738,7 +760,9 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		row := rows[i]
 		isCursorRow := len(visible) == cursorViewportRow
 
-		if row.isHeaderTopBorder {
+		if row.isCommitHeader {
+			visible = append(visible, m.renderCommitHeaderRow(row, isCursorRow))
+		} else if row.isHeaderTopBorder {
 			visible = append(visible, m.renderHeaderTopBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow))
 		} else if row.isHeaderSpacer {
 			visible = append(visible, m.renderHeaderBottomBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow))
@@ -1057,6 +1081,111 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 	return borderStyle.Render(border + "┘")
 }
 
+// renderCommitHeaderRow renders a commit header row in the content area.
+// This is shown when viewing a commit and can be folded/unfolded.
+func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
+	commit := m.currentCommit()
+	if commit == nil {
+		return ""
+	}
+	commitInfo := commit.Info
+
+	// Styles
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	authorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	// Fold icon - similar to file fold icons
+	var foldIcon string
+	switch row.commitFoldLevel {
+	case sidebyside.CommitFolded:
+		foldIcon = "◯" // hollow circle = folded (no content visible)
+	case sidebyside.CommitNormal:
+		foldIcon = "◐" // half-filled = normal view
+	case sidebyside.CommitExpanded:
+		foldIcon = "●" // filled = expanded
+	}
+
+	// Calculate file stats for display
+	totalAdded := 0
+	totalRemoved := 0
+	for _, fp := range m.files {
+		added, removed := countFileStats(fp)
+		totalAdded += added
+		totalRemoved += removed
+	}
+
+	// Build the row content
+	// Format: [cursor] [fold] sha  author  date  subject  [+N -M] [N files]
+	var prefix string
+	if isCursorRow {
+		if m.focused {
+			prefix = cursorArrowStyle.Render("▶") + " "
+		} else {
+			prefix = unfocusedCursorArrowStyle.Render("▷") + " "
+		}
+	} else {
+		prefix = "  "
+	}
+
+	// Fold icon with appropriate styling
+	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	if row.commitFoldLevel == sidebyside.CommitFolded {
+		foldIconStyle = foldIconStyle.Faint(true)
+	}
+
+	sha := shaStyle.Render(commitInfo.ShortSHA())
+	author := authorStyle.Render(commitInfo.Author)
+	date := dimStyle.Render(formatRelativeDate(commitInfo.Date))
+	sep := dimStyle.Render("  ")
+
+	// Right side: stats and file count
+	var rightParts []string
+	if totalAdded > 0 || totalRemoved > 0 {
+		rightParts = append(rightParts, addedStyle.Render(fmt.Sprintf("+%d", totalAdded)))
+		rightParts = append(rightParts, removedStyle.Render(fmt.Sprintf("-%d", totalRemoved)))
+	}
+	fileCount := len(m.files)
+	if fileCount == 1 {
+		rightParts = append(rightParts, dimStyle.Render("1 file"))
+	} else {
+		rightParts = append(rightParts, dimStyle.Render(fmt.Sprintf("%d files", fileCount)))
+	}
+	rightSection := strings.Join(rightParts, " ")
+	rightWidth := displayWidth(rightSection)
+
+	// Calculate available width for subject
+	fixedWidth := 2 + 1 + 1 + 7 + 2 + len(commitInfo.Author) + 2 + len(formatRelativeDate(commitInfo.Date)) + 2
+	availableWidth := m.width - fixedWidth - rightWidth - 2 // -2 for padding before right section
+	if availableWidth < 0 {
+		availableWidth = 0
+	}
+
+	// Truncate subject if needed
+	subject := commitInfo.Subject
+	if len(subject) > availableWidth {
+		if availableWidth > 3 {
+			subject = subject[:availableWidth-3] + "..."
+		} else if availableWidth > 0 {
+			subject = subject[:availableWidth]
+		} else {
+			subject = ""
+		}
+	}
+
+	// Build left side content
+	leftContent := prefix + foldIconStyle.Render(foldIcon) + " " + sha + sep + author + sep + date + sep + subject
+
+	// Calculate padding to right-align the stats
+	leftWidth := displayWidth(leftContent)
+	padding := m.width - leftWidth - rightWidth
+	if padding < 0 {
+		padding = 0
+	}
+
+	return leftContent + strings.Repeat(" ", padding) + rightSection
+}
+
 // renderTopBar renders the top bar showing file info with a divider line below.
 func (m Model) renderTopBar() string {
 	info := m.StatusInfo()
@@ -1085,6 +1214,7 @@ func (m Model) renderTopBar() string {
 }
 
 // renderCommitLine renders the commit info line for the top bar.
+// Shows just SHA and subject for a compact display.
 func (m Model) renderCommitLine() string {
 	commit := m.currentCommit()
 	if commit == nil {
@@ -1092,14 +1222,10 @@ func (m Model) renderCommitLine() string {
 	}
 	commitInfo := commit.Info
 
-	// Style for dim text
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	// Style for SHA (yellow/gold)
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	// Style for author (cyan)
-	authorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
-	// Build commit line: ▶ a1b2c3d  Author Name  2d ago  Subject line
+	// Build commit line: ▶ a1b2c3d  Subject line
 	var prefix string
 	if m.focused {
 		prefix = cursorArrowStyle.Render("▶") + " "
@@ -1108,15 +1234,11 @@ func (m Model) renderCommitLine() string {
 	}
 
 	sha := shaStyle.Render(commitInfo.ShortSHA())
-	author := authorStyle.Render(commitInfo.Author)
-	date := dimStyle.Render(formatRelativeDate(commitInfo.Date))
 	subject := commitInfo.Subject
 
 	// Calculate available width for subject
-	// Layout: prefix(2) + sha(7) + sep(2) + author + sep(2) + date + sep(2) + subject
-	sep := dimStyle.Render("  ")
-	fixedParts := prefix + sha + sep + author + sep + date + sep
-	fixedWidth := 2 + 7 + 2 + len(commitInfo.Author) + 2 + len(formatRelativeDate(commitInfo.Date)) + 2
+	// Layout: prefix(2) + sha(7) + sep(2) + subject
+	fixedWidth := 2 + 7 + 2
 	availableWidth := m.width - fixedWidth
 	if availableWidth < 0 {
 		availableWidth = 0
@@ -1133,7 +1255,7 @@ func (m Model) renderCommitLine() string {
 		}
 	}
 
-	return fixedParts + subject
+	return prefix + sha + "  " + subject
 }
 
 // renderFileLine renders the file info line for the top bar.

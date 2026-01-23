@@ -304,9 +304,9 @@ func (m Model) Init() tea.Cmd {
 
 // contentHeight returns the height available for content (minus top bar, divider, and bottom bar).
 func (m Model) contentHeight() int {
-	reserved := 3 // 1 line for top bar + 1 line for divider + 1 line for bottom bar
+	reserved := 3 // file line + divider + bottom bar
 	if m.hasCommitInfo() {
-		reserved++ // extra line for commit info
+		reserved++ // commit info line in top bar
 	}
 	h := m.height - reserved
 	if h < 1 {
@@ -589,10 +589,10 @@ func (m Model) fileAtLine(line int) (int, string) {
 	}
 
 	row := rows[line]
-	// Summary row has fileIndex = -1, return last file info
+	// Commit header or summary row has fileIndex = -1
+	// Return 0 to indicate no specific file is selected
 	if row.fileIndex < 0 {
-		lastFile := m.files[len(m.files)-1]
-		return len(m.files), formatFilePath(lastFile.OldPath, lastFile.NewPath)
+		return 0, ""
 	}
 	return row.fileIndex + 1, formatFilePath(
 		m.files[row.fileIndex].OldPath,
