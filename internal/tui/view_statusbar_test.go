@@ -642,10 +642,15 @@ func TestTopBar_WithCommitInfo(t *testing.T) {
 	assert.Contains(t, commitLine, "abc123d", "commit line should contain short SHA")
 	assert.Contains(t, commitLine, "Fix the bug", "commit line should contain subject")
 	assert.NotContains(t, commitLine, "Test Author", "commit line should NOT contain author")
+	// Stats should be on commit line
+	assert.Contains(t, commitLine, "1 file", "commit line should contain file stats")
+	assert.Contains(t, commitLine, "+1", "commit line should contain added stats")
+	assert.Contains(t, commitLine, "-1", "commit line should contain removed stats")
 
-	// Second line should contain file info
+	// Second line should contain file info but NOT stats
 	fileLine := lines[1]
 	assert.Contains(t, fileLine, "foo.go", "file line should contain filename")
+	assert.NotContains(t, fileLine, "1 file", "file line should NOT contain stats when commit info present")
 }
 
 func TestTopBar_WithoutCommitInfo(t *testing.T) {
@@ -678,6 +683,10 @@ func TestTopBar_WithoutCommitInfo(t *testing.T) {
 	fileLine := lines[0]
 	assert.Contains(t, fileLine, "foo.go", "should contain filename")
 	assert.NotContains(t, fileLine, "abc123", "should NOT contain SHA")
+	// Stats should be on file line when no commit info
+	assert.Contains(t, fileLine, "1 file", "file line should contain stats when no commit info")
+	assert.Contains(t, fileLine, "+1", "file line should contain added stats when no commit info")
+	assert.Contains(t, fileLine, "-1", "file line should contain removed stats when no commit info")
 }
 
 func TestFormatRelativeDate(t *testing.T) {

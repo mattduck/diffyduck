@@ -1214,7 +1214,7 @@ func (m Model) renderTopBar() string {
 }
 
 // renderCommitLine renders the commit info line for the top bar.
-// Shows just SHA and subject for a compact display.
+// Shows SHA, subject, and file stats for a compact display.
 func (m Model) renderCommitLine() string {
 	commit := m.currentCommit()
 	if commit == nil {
@@ -1225,7 +1225,7 @@ func (m Model) renderCommitLine() string {
 	// Style for SHA (yellow/gold)
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
-	// Build commit line: ▶ a1b2c3d  Subject line
+	// Build commit line: ▶ a1b2c3d  Subject line    N files +X -Y
 	var prefix string
 	if m.focused {
 		prefix = cursorArrowStyle.Render("▶") + " "
@@ -1236,36 +1236,6 @@ func (m Model) renderCommitLine() string {
 	sha := shaStyle.Render(commitInfo.ShortSHA())
 	subject := commitInfo.Subject
 
-	// Calculate available width for subject
-	// Layout: prefix(2) + sha(7) + sep(2) + subject
-	fixedWidth := 2 + 7 + 2
-	availableWidth := m.width - fixedWidth
-	if availableWidth < 0 {
-		availableWidth = 0
-	}
-
-	// Truncate subject if needed
-	if len(subject) > availableWidth {
-		if availableWidth > 3 {
-			subject = subject[:availableWidth-3] + "..."
-		} else if availableWidth > 0 {
-			subject = subject[:availableWidth]
-		} else {
-			subject = ""
-		}
-	}
-
-	return prefix + sha + "  " + subject
-}
-
-// renderFileLine renders the file info line for the top bar.
-func (m Model) renderFileLine(info StatusInfo) string {
-	// Only show file info when cursor is on a file (not on summary row)
-	var content string
-	if info.CurrentFile > 0 {
-		content = m.formatStatusFileInfo(info)
-	}
-
 	// Calculate total stats for all files
 	totalAdded := 0
 	totalRemoved := 0
@@ -1275,14 +1245,7 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		totalRemoved += removed
 	}
 
-	// Left section: file counter #01 - colored to match current file's status
-	_, fileCounterStyle := fileStatusIndicator(FileStatus(info.FileStatus))
-	totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
-	counterText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
-	fileCounter := fileCounterStyle.Render(counterText) + " "
-	counterDisplayWidth := len(counterText) + 1 // +1 for trailing space
-
-	// Right section: N files +123 -123
+	// Build right section: N files +X -Y
 	var rightText string
 	var rightSection string
 	fileCount := len(m.files)
@@ -1299,12 +1262,85 @@ func (m Model) renderFileLine(info StatusInfo) string {
 	} else {
 		rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText)
 	}
+	rightWidth := len(rightText)
+
+	// Calculate available width for subject
+	// Layout: prefix(2) + sha(7) + sep(2) + subject + padding(1+) + rightSection
+	fixedWidth := 2 + 7 + 2 + 1 + rightWidth
+	availableWidth := m.width - fixedWidth
+	if availableWidth < 0 {
+		availableWidth = 0
+	}
+
+	// Truncate subject if needed
+	if len(subject) > availableWidth {
+		if availableWidth > 3 {
+			subject = subject[:availableWidth-3] + "..."
+		} else if availableWidth > 0 {
+			subject = subject[:availableWidth]
+		} else {
+			subject = ""
+		}
+	}
+
+	// Calculate padding between subject and right section
+	padding := m.width - 2 - 7 - 2 - len(subject) - rightWidth
+	if padding < 1 {
+		padding = 1
+	}
+
+	return prefix + sha + "  " + subject + strings.Repeat(" ", padding) + rightSection
+}
+
+// renderFileLine renders the file info line for the top bar.
+func (m Model) renderFileLine(info StatusInfo) string {
+	// Only show file info when cursor is on a file (not on summary row)
+	var content string
+	if info.CurrentFile > 0 {
+		content = m.formatStatusFileInfo(info)
+	}
+
+	// Left section: file counter #01 - colored to match current file's status
+	_, fileCounterStyle := fileStatusIndicator(FileStatus(info.FileStatus))
+	totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
+	counterText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
+	fileCounter := fileCounterStyle.Render(counterText) + " "
+	counterDisplayWidth := len(counterText) + 1 // +1 for trailing space
+
+	// Right section: N files +123 -123 (only when no commit info - stats move to commit line otherwise)
+	var rightText string
+	var rightSection string
+	var rightWidth int
+	if !m.hasCommitInfo() {
+		totalAdded := 0
+		totalRemoved := 0
+		for _, fp := range m.files {
+			added, removed := countFileStats(fp)
+			totalAdded += added
+			totalRemoved += removed
+		}
+
+		fileCount := len(m.files)
+		if fileCount == 1 {
+			rightText = "1 file"
+		} else {
+			rightText = fmt.Sprintf("%d files", fileCount)
+		}
+		if totalAdded > 0 || totalRemoved > 0 {
+			addedText := fmt.Sprintf("+%d", totalAdded)
+			removedText := fmt.Sprintf("-%d", totalRemoved)
+			rightText += " " + addedText + " " + removedText
+			rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText[:len(rightText)-len(addedText)-len(removedText)-2]) + " " + addedStyle.Render(addedText) + " " + removedStyle.Render(removedText)
+		} else {
+			rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText)
+		}
+		rightWidth = len(rightText)
+	}
 
 	// Calculate widths for padding
 	// Layout: prefix + counter + content + padding + rightSection
 	prefixWidth := 2 // "▶ "
 	contentWidth := lipgloss.Width(content)
-	rightWidth := len(rightText)
 	padding := m.width - prefixWidth - counterDisplayWidth - contentWidth - rightWidth
 	if padding < 0 {
 		padding = 0
