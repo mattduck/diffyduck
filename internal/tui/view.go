@@ -1214,7 +1214,7 @@ func (m Model) renderTopBar() string {
 }
 
 // renderCommitLine renders the commit info line for the top bar.
-// Shows SHA, subject, and file stats for a compact display.
+// Shows fold icon, SHA, subject, and file stats for a compact display.
 func (m Model) renderCommitLine() string {
 	commit := m.currentCommit()
 	if commit == nil {
@@ -1225,13 +1225,34 @@ func (m Model) renderCommitLine() string {
 	// Style for SHA (yellow/gold)
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
-	// Build commit line: ▶ a1b2c3d  Subject line    N files +X -Y
+	// Build commit line: ▶ ◐ a1b2c3d Subject line    N files +X -Y
+	// Arrow only shows when cursor is on commit header
 	var prefix string
-	if m.focused {
-		prefix = cursorArrowStyle.Render("▶") + " "
+	if m.isOnCommitHeader() {
+		if m.focused {
+			prefix = cursorArrowStyle.Render("▶") + " "
+		} else {
+			prefix = unfocusedCursorArrowStyle.Render("▷") + " "
+		}
 	} else {
-		prefix = unfocusedCursorArrowStyle.Render("▷") + " "
+		prefix = "  " // Same width as arrow + space
 	}
+
+	// Fold level icon: ◯ = folded, ◐ = normal, ● = expanded
+	var foldIcon string
+	switch commit.FoldLevel {
+	case sidebyside.CommitFolded:
+		foldIcon = "◯"
+	case sidebyside.CommitNormal:
+		foldIcon = "◐"
+	case sidebyside.CommitExpanded:
+		foldIcon = "●"
+	}
+	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	if commit.FoldLevel == sidebyside.CommitFolded {
+		foldIconStyle = foldIconStyle.Faint(true)
+	}
+	foldIconRendered := foldIconStyle.Render(foldIcon) + " "
 
 	sha := shaStyle.Render(commitInfo.ShortSHA())
 	subject := commitInfo.Subject
@@ -1265,8 +1286,8 @@ func (m Model) renderCommitLine() string {
 	rightWidth := len(rightText)
 
 	// Calculate available width for subject
-	// Layout: prefix(2) + sha(7) + sep(2) + subject + padding(1+) + rightSection
-	fixedWidth := 2 + 7 + 2 + 1 + rightWidth
+	// Layout: prefix(2) + foldIcon(2) + sha(7) + sep(1) + subject + padding(1+) + rightSection
+	fixedWidth := 2 + 2 + 7 + 1 + 1 + rightWidth
 	availableWidth := m.width - fixedWidth
 	if availableWidth < 0 {
 		availableWidth = 0
@@ -1284,28 +1305,33 @@ func (m Model) renderCommitLine() string {
 	}
 
 	// Calculate padding between subject and right section
-	padding := m.width - 2 - 7 - 2 - len(subject) - rightWidth
+	padding := m.width - 2 - 2 - 7 - 1 - len(subject) - rightWidth
 	if padding < 1 {
 		padding = 1
 	}
 
-	return prefix + sha + "  " + subject + strings.Repeat(" ", padding) + rightSection
+	return prefix + foldIconRendered + sha + " " + subject + strings.Repeat(" ", padding) + rightSection
 }
 
 // renderFileLine renders the file info line for the top bar.
 func (m Model) renderFileLine(info StatusInfo) string {
-	// Only show file info when cursor is on a file (not on summary row)
+	// Only show file info when cursor is on a file (not on commit header)
 	var content string
 	if info.CurrentFile > 0 {
 		content = m.formatStatusFileInfo(info)
 	}
 
 	// Left section: file counter #01 - colored to match current file's status
-	_, fileCounterStyle := fileStatusIndicator(FileStatus(info.FileStatus))
-	totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
-	counterText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
-	fileCounter := fileCounterStyle.Render(counterText) + " "
-	counterDisplayWidth := len(counterText) + 1 // +1 for trailing space
+	// Hide counter when on commit header (CurrentFile == 0)
+	var fileCounter string
+	var counterDisplayWidth int
+	if info.CurrentFile > 0 {
+		_, fileCounterStyle := fileStatusIndicator(FileStatus(info.FileStatus))
+		totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
+		counterText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
+		fileCounter = fileCounterStyle.Render(counterText) + " "
+		counterDisplayWidth = len(counterText) + 1 // +1 for trailing space
+	}
 
 	// Right section: N files +123 -123 (only when no commit info - stats move to commit line otherwise)
 	var rightText string
@@ -1337,22 +1363,27 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		rightWidth = len(rightText)
 	}
 
+	// Leading arrow indicator - only show when NOT on commit header (or no commit info)
+	// When on commit header, the arrow shows on the commit line instead
+	var prefix string
+	showArrow := !m.hasCommitInfo() || !m.isOnCommitHeader()
+	if showArrow {
+		if m.focused {
+			prefix = cursorArrowStyle.Render("▶") + " "
+		} else {
+			prefix = unfocusedCursorArrowStyle.Render("▷") + " "
+		}
+	} else {
+		prefix = "  " // Same width as arrow + space
+	}
+
 	// Calculate widths for padding
 	// Layout: prefix + counter + content + padding + rightSection
-	prefixWidth := 2 // "▶ "
+	prefixWidth := 2 // "▶ " or "  "
 	contentWidth := lipgloss.Width(content)
 	padding := m.width - prefixWidth - counterDisplayWidth - contentWidth - rightWidth
 	if padding < 0 {
 		padding = 0
-	}
-
-	// Leading arrow indicator (matches cursor arrow in gutter)
-	// Use outline arrow when unfocused
-	var prefix string
-	if m.focused {
-		prefix = cursorArrowStyle.Render("▶") + " "
-	} else {
-		prefix = unfocusedCursorArrowStyle.Render("▷") + " "
 	}
 
 	return prefix + fileCounter + content + strings.Repeat(" ", padding) + rightSection
