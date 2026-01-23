@@ -79,6 +79,11 @@ type FilePair struct {
 	// Stats (accurate even if truncated)
 	TotalAdded   int // total added lines from diff
 	TotalRemoved int // total removed lines from diff
+
+	// Rename/copy metadata from git
+	IsRename   bool // true if "rename from/to" was present
+	IsCopy     bool // true if "copy from/to" was present
+	Similarity int  // similarity index percentage (0-100), -1 if not present
 }
 
 // HasContent returns true if full file content has been loaded.

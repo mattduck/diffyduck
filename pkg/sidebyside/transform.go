@@ -95,6 +95,9 @@ func TransformFile(file diff.File) FilePair {
 		Truncated:    file.Truncated,
 		TotalAdded:   file.TotalAdded,
 		TotalRemoved: file.TotalRemoved,
+		IsRename:     file.IsRename,
+		IsCopy:       file.IsCopy,
+		Similarity:   file.Similarity,
 	}
 
 	// Set per-side truncation flags based on which sides exist

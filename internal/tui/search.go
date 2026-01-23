@@ -45,9 +45,8 @@ func (m Model) findMatches(query string) []Match {
 
 	for rowIdx, row := range rows {
 		if row.isHeader {
-			// Search in header
-			header := formatFileHeader(row.header, row.header)
-			matches = append(matches, findInString(header, searchQuery, caseSensitive, rowIdx, 0)...)
+			// Search in header (row.header is already formatted)
+			matches = append(matches, findInString(row.header, searchQuery, caseSensitive, rowIdx, 0)...)
 		} else {
 			// Search in both new and old content
 			// New content is on left (side 0), Old content is on right (side 1)

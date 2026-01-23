@@ -41,6 +41,11 @@ type File struct {
 	Truncated    bool // True if lines were truncated due to MaxLinesPerFile limit
 	TotalAdded   int  // Total added lines (accurate even if truncated)
 	TotalRemoved int  // Total removed lines (accurate even if truncated)
+
+	// Rename/copy metadata from git
+	IsRename   bool // true if "rename from/to" was present
+	IsCopy     bool // true if "copy from/to" was present
+	Similarity int  // similarity index percentage (0-100), -1 if not present
 }
 
 // Diff represents a complete diff, possibly spanning multiple files.

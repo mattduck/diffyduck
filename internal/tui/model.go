@@ -388,7 +388,7 @@ func (m Model) StatusInfo() StatusInfo {
 		info.CurrentFile = fileIdx + 1
 		info.FileName = formatFilePath(fp.OldPath, fp.NewPath)
 		info.FoldLevel = fp.FoldLevel
-		info.FileStatus = string(fileStatus(fp.OldPath, fp.NewPath))
+		info.FileStatus = string(fileStatusFromPair(fp))
 		info.Added, info.Removed = countFileStats(fp)
 
 		// Get breadcrumbs for current source line

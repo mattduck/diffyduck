@@ -170,6 +170,79 @@ index abc1234..0000000
 	assert.Equal(t, Removed, file.Hunks[0].Lines[0].Type)
 }
 
+func TestParse_RenamedFile_PureRename(t *testing.T) {
+	// Pure rename with 100% similarity - no --- or +++ lines, no hunks
+	input := `diff --git a/old.go b/new.go
+similarity index 100%
+rename from old.go
+rename to new.go
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.Equal(t, "a/old.go", file.OldPath)
+	assert.Equal(t, "b/new.go", file.NewPath)
+	assert.True(t, file.IsRename)
+	assert.False(t, file.IsCopy)
+	assert.Equal(t, 100, file.Similarity)
+	assert.Len(t, file.Hunks, 0)
+}
+
+func TestParse_RenamedFile_WithChanges(t *testing.T) {
+	// Rename with content changes
+	input := `diff --git a/old.go b/new.go
+similarity index 80%
+rename from old.go
+rename to new.go
+index abc123..def456 100644
+--- a/old.go
++++ b/new.go
+@@ -1,2 +1,3 @@
+ package main
++
++func new() {}
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.Equal(t, "a/old.go", file.OldPath)
+	assert.Equal(t, "b/new.go", file.NewPath)
+	assert.True(t, file.IsRename)
+	assert.False(t, file.IsCopy)
+	assert.Equal(t, 80, file.Similarity)
+	require.Len(t, file.Hunks, 1)
+	assert.Equal(t, 2, file.TotalAdded)
+}
+
+func TestParse_CopiedFile(t *testing.T) {
+	// Copy with modifications
+	input := `diff --git a/original.go b/copy.go
+similarity index 90%
+copy from original.go
+copy to copy.go
+index abc123..def456 100644
+--- a/original.go
++++ b/copy.go
+@@ -1 +1,2 @@
+ package main
++func copied() {}
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.Equal(t, "a/original.go", file.OldPath)
+	assert.Equal(t, "b/copy.go", file.NewPath)
+	assert.False(t, file.IsRename)
+	assert.True(t, file.IsCopy)
+	assert.Equal(t, 90, file.Similarity)
+}
+
 func TestParse_EmptyInput(t *testing.T) {
 	diff, err := Parse("")
 	require.NoError(t, err)

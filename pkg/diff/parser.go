@@ -7,10 +7,16 @@ import (
 )
 
 var (
-	diffHeaderRe = regexp.MustCompile(`^diff --git`)
-	oldFileRe    = regexp.MustCompile(`^--- (.+)$`)
-	newFileRe    = regexp.MustCompile(`^\+\+\+ (.+)$`)
-	hunkHeaderRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
+	diffHeaderRe   = regexp.MustCompile(`^diff --git`)
+	oldFileRe      = regexp.MustCompile(`^--- (.+)$`)
+	newFileRe      = regexp.MustCompile(`^\+\+\+ (.+)$`)
+	hunkHeaderRe   = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
+	renameFromRe   = regexp.MustCompile(`^rename from (.+)$`)
+	renameToRe     = regexp.MustCompile(`^rename to (.+)$`)
+	copyFromRe     = regexp.MustCompile(`^copy from (.+)$`)
+	copyToRe       = regexp.MustCompile(`^copy to (.+)$`)
+	similarityRe   = regexp.MustCompile(`^similarity index (\d+)%`)
+	diffGitPathsRe = regexp.MustCompile(`^diff --git a/(.+) b/(.+)$`)
 )
 
 // Parse parses a unified diff string into a Diff structure.
@@ -24,6 +30,7 @@ func Parse(input string) (*Diff, error) {
 	var currentFile *File
 	var currentHunk *Hunk
 	var fileLineCount int
+	var inTruncatedGitDiff bool // true if we saw a diff --git but couldn't create a file due to limit
 
 	// saveFile saves the current file to the diff, respecting MaxFiles limit.
 	// Returns true if the file was saved, false if we've hit the limit.
@@ -48,29 +55,124 @@ func Parse(input string) (*Diff, error) {
 			if currentHunk != nil && currentFile != nil {
 				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
 			}
-			saveFile()
-			currentFile = &File{}
+			saved := saveFile()
 			currentHunk = nil
 			fileLineCount = 0
+			inTruncatedGitDiff = false
+
+			if !saved || len(diff.Files) >= MaxFiles {
+				// We've hit the file limit, don't create new files
+				// Mark that we're in a truncated git diff block so --- doesn't double-count
+				if len(diff.Files) >= MaxFiles && saved {
+					// saveFile() returned true (nothing to save) but we're at limit
+					// Count this new file as truncated
+					diff.TruncatedFileCount++
+				}
+				currentFile = nil
+				inTruncatedGitDiff = true
+				continue
+			}
+
+			currentFile = &File{Similarity: -1} // -1 means not present
+
+			// Extract fallback filenames from "diff --git a/X b/Y" header
+			// These will be overridden by --- and +++ lines if present
+			if m := diffGitPathsRe.FindStringSubmatch(line); m != nil {
+				currentFile.OldPath = "a/" + m[1]
+				currentFile.NewPath = "b/" + m[2]
+			}
 			continue
 		}
 
-		// Old file path
+		// Git metadata lines (between diff header and ---/+++ lines)
+		if currentFile != nil {
+			// Rename metadata
+			if m := renameFromRe.FindStringSubmatch(line); m != nil {
+				currentFile.IsRename = true
+				currentFile.OldPath = "a/" + m[1]
+				continue
+			}
+			if m := renameToRe.FindStringSubmatch(line); m != nil {
+				currentFile.IsRename = true
+				currentFile.NewPath = "b/" + m[1]
+				continue
+			}
+			// Copy metadata
+			if m := copyFromRe.FindStringSubmatch(line); m != nil {
+				currentFile.IsCopy = true
+				currentFile.OldPath = "a/" + m[1]
+				continue
+			}
+			if m := copyToRe.FindStringSubmatch(line); m != nil {
+				currentFile.IsCopy = true
+				currentFile.NewPath = "b/" + m[1]
+				continue
+			}
+			// Similarity index
+			if m := similarityRe.FindStringSubmatch(line); m != nil {
+				currentFile.Similarity = mustAtoi(m[1])
+				continue
+			}
+		}
+
+		// Old file path (--- line)
 		if m := oldFileRe.FindStringSubmatch(line); m != nil {
+			// If we're in a truncated git diff block, this --- is for the same file
+			// that was already counted as truncated in the diff --git handler
+			if inTruncatedGitDiff {
+				inTruncatedGitDiff = false
+				continue
+			}
+
 			// Support standard unified diff (no "diff --git" header)
-			// If we already have a file in progress, save it and start a new one
-			if currentFile != nil && currentFile.OldPath != "" {
+			// Only create a new file if we have an in-progress file with content
+			// (i.e., we've moved past the header into hunks)
+			// Check both saved hunks and the current unsaved hunk
+			hasContent := currentFile != nil && (len(currentFile.Hunks) > 0 || currentHunk != nil)
+			if hasContent {
 				// Save the last hunk of the previous file
 				if currentHunk != nil {
 					currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
 					currentHunk = nil
 				}
-				saveFile()
-				currentFile = &File{}
+				saved := saveFile()
+				if !saved {
+					// We've hit the file limit, just count remaining files as truncated
+					currentFile = nil
+					continue
+				}
+				currentFile = &File{Similarity: -1}
 				fileLineCount = 0
 			} else if currentFile == nil {
-				currentFile = &File{}
+				// Check if we've already hit the limit (this can happen after
+				// we stopped creating files due to truncation)
+				if len(diff.Files) >= MaxFiles {
+					diff.TruncatedFileCount++
+					continue
+				}
+				currentFile = &File{Similarity: -1}
 				fileLineCount = 0
+			} else {
+				// currentFile exists but has no content - this means either:
+				// 1. Git diff: created from diff --git, this --- confirms the path
+				// 2. Standard unified diff: previous file's content was skipped (at limit)
+				//    and this --- is for a NEW file
+				//
+				// In case 1, the path matches and we just update OldPath.
+				// In case 2, we need to count the current file AND the new file.
+				if len(diff.Files) >= MaxFiles {
+					// Count the current file that couldn't get content
+					diff.TruncatedFileCount++
+					// For standard unified diff, also count the new file we can't start
+					// (In git diff format, inTruncatedGitDiff would have been set)
+					if !inTruncatedGitDiff && m[1] != currentFile.OldPath {
+						// This is a different file in standard unified diff format
+						diff.TruncatedFileCount++
+					}
+					currentFile = nil // Prevent saveFile() from counting again
+					continue
+				}
+				// Don't create a new file, just update OldPath below
 			}
 			currentFile.OldPath = m[1]
 			continue

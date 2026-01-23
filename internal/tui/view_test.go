@@ -2297,6 +2297,8 @@ func TestFileStatus(t *testing.T) {
 		name       string
 		oldPath    string
 		newPath    string
+		isRename   bool
+		isCopy     bool
 		wantStatus FileStatus
 	}{
 		{
@@ -2312,10 +2314,24 @@ func TestFileStatus(t *testing.T) {
 			wantStatus: FileStatusDeleted,
 		},
 		{
-			name:       "renamed file",
+			name:       "renamed file - detected from paths",
 			oldPath:    "a/old.go",
 			newPath:    "b/new.go",
 			wantStatus: FileStatusRenamed,
+		},
+		{
+			name:       "renamed file - explicit metadata",
+			oldPath:    "a/old.go",
+			newPath:    "b/new.go",
+			isRename:   true,
+			wantStatus: FileStatusRenamed,
+		},
+		{
+			name:       "copied file",
+			oldPath:    "a/original.go",
+			newPath:    "b/copy.go",
+			isCopy:     true,
+			wantStatus: FileStatusCopied,
 		},
 		{
 			name:       "modified file - same name with prefixes",
@@ -2333,7 +2349,13 @@ func TestFileStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := fileStatus(tt.oldPath, tt.newPath)
+			fp := sidebyside.FilePair{
+				OldPath:  tt.oldPath,
+				NewPath:  tt.newPath,
+				IsRename: tt.isRename,
+				IsCopy:   tt.isCopy,
+			}
+			got := fileStatusFromPair(fp)
 			assert.Equal(t, tt.wantStatus, got)
 		})
 	}
@@ -2346,7 +2368,8 @@ func TestFileStatusIndicator(t *testing.T) {
 	}{
 		{FileStatusAdded, "+"},
 		{FileStatusDeleted, "-"},
-		{FileStatusRenamed, ">"},
+		{FileStatusRenamed, "→"},
+		{FileStatusCopied, "→"},
 		{FileStatusModified, "~"},
 	}
 
@@ -2386,7 +2409,7 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 			oldPath:       "a/old.go",
 			newPath:       "b/new.go",
 			foldLevel:     sidebyside.FoldFolded,
-			wantIndicator: ">",
+			wantIndicator: "→",
 		},
 		{
 			name:          "modified file - folded",

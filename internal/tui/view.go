@@ -167,7 +167,7 @@ func (m Model) buildRows() []displayRow {
 	maxAddWidth := 0
 	maxRemWidth := 0
 	for _, fp := range m.files {
-		header := formatFileHeader(fp.OldPath, fp.NewPath)
+		header := formatFileHeader(fp)
 		w := displayWidth(header)
 		if w > maxHeaderWidth {
 			maxHeaderWidth = w
@@ -200,7 +200,7 @@ func (m Model) buildRows() []displayRow {
 	for fileIdx, fp := range m.files {
 		// Count stats once per file for header display
 		added, removed := countFileStats(fp)
-		status := fileStatus(fp.OldPath, fp.NewPath)
+		status := fileStatusFromPair(fp)
 
 		// Check if this is the first file and if it's unfolded - needs a top border
 		isFirstFile := fileIdx == 0
@@ -222,7 +222,7 @@ func (m Model) buildRows() []displayRow {
 		switch fp.FoldLevel {
 		case sidebyside.FoldFolded:
 			// Folded: just the header, no borders - files stack tightly together
-			header := formatFileHeader(fp.OldPath, fp.NewPath)
+			header := formatFileHeader(fp)
 			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth})
 
 		case sidebyside.FoldExpanded:
@@ -236,7 +236,7 @@ func (m Model) buildRows() []displayRow {
 
 				// File header with stats
 				// Border visible only if previous file is also unfolded (or this is first file)
-				header := formatFileHeader(fp.OldPath, fp.NewPath)
+				header := formatFileHeader(fp)
 				rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 				// Bottom border of header box (visible only if previous file is also unfolded)
@@ -297,7 +297,7 @@ func (m Model) buildRows() []displayRow {
 
 			// File header with stats
 			// Border visible only if previous file is also unfolded (or this is first file)
-			header := formatFileHeader(fp.OldPath, fp.NewPath)
+			header := formatFileHeader(fp)
 			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 			// Bottom border of header box (visible only if previous file is also unfolded)
@@ -1456,16 +1456,20 @@ func formatStatsBar(added, removed, maxWidth int) string {
 	return strings.Join(parts, " ")
 }
 
-func formatFileHeader(oldPath, newPath string) string {
+func formatFileHeader(fp sidebyside.FilePair) string {
 	// Strip a/ and b/ prefixes if present
-	old := strings.TrimPrefix(oldPath, "a/")
-	new := strings.TrimPrefix(newPath, "b/")
+	old := strings.TrimPrefix(fp.OldPath, "a/")
+	new := strings.TrimPrefix(fp.NewPath, "b/")
 
-	if old == new || oldPath == "/dev/null" {
+	if old == new || fp.OldPath == "/dev/null" {
 		return new
 	}
-	if newPath == "/dev/null" {
+	if fp.NewPath == "/dev/null" {
 		return old
+	}
+	// Show similarity percentage for renames/copies if available
+	if fp.Similarity >= 0 {
+		return fmt.Sprintf("%s → %s (%d%%)", old, new, fp.Similarity)
 	}
 	return old + " → " + new
 }
@@ -1504,22 +1508,31 @@ const (
 	FileStatusAdded    FileStatus = "added"
 	FileStatusDeleted  FileStatus = "deleted"
 	FileStatusRenamed  FileStatus = "renamed"
+	FileStatusCopied   FileStatus = "copied"
 	FileStatusModified FileStatus = "modified"
 )
 
-// fileStatus determines the status of a file based on its old and new paths.
-func fileStatus(oldPath, newPath string) FileStatus {
+// fileStatusFromPair determines the status of a file from a FilePair.
+func fileStatusFromPair(fp sidebyside.FilePair) FileStatus {
 	// Added: old path is /dev/null
-	if oldPath == "/dev/null" {
+	if fp.OldPath == "/dev/null" {
 		return FileStatusAdded
 	}
 	// Deleted: new path is /dev/null
-	if newPath == "/dev/null" {
+	if fp.NewPath == "/dev/null" {
 		return FileStatusDeleted
 	}
-	// Renamed: paths differ after stripping a/ and b/ prefixes
-	old := strings.TrimPrefix(oldPath, "a/")
-	new := strings.TrimPrefix(newPath, "b/")
+	// Explicit copy from git metadata
+	if fp.IsCopy {
+		return FileStatusCopied
+	}
+	// Explicit rename from git metadata
+	if fp.IsRename {
+		return FileStatusRenamed
+	}
+	// Renamed: paths differ after stripping a/ and b/ prefixes (fallback detection)
+	old := strings.TrimPrefix(fp.OldPath, "a/")
+	new := strings.TrimPrefix(fp.NewPath, "b/")
 	if old != new {
 		return FileStatusRenamed
 	}
@@ -1527,16 +1540,19 @@ func fileStatus(oldPath, newPath string) FileStatus {
 	return FileStatusModified
 }
 
+// renamedStyle is cyan for renamed/copied files.
+var renamedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
 // fileStatusIndicator returns the symbol and style for a file status.
-// + (green) for added, - (red) for deleted, > (blue) for renamed, ~ (blue) for modified.
+// + (green) for added, - (red) for deleted, → (cyan) for renamed/copied, ~ (blue) for modified.
 func fileStatusIndicator(status FileStatus) (symbol string, style lipgloss.Style) {
 	switch status {
 	case FileStatusAdded:
 		return "+", addedStyle
 	case FileStatusDeleted:
 		return "-", removedStyle
-	case FileStatusRenamed:
-		return ">", lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	case FileStatusRenamed, FileStatusCopied:
+		return "→", renamedStyle
 	default: // FileStatusModified
 		return "~", lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 	}
