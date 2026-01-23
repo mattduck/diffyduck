@@ -408,12 +408,16 @@ These items came up during initial implementation and need addressing:
 - [ ] Show parts dynamically based on available width
   - Priority: +/- files count first, then message, then date, then author
 - [ ] Search should work on commit header rows (match SHA, subject)
-- [ ] When expanded (level 2), pull in and display commit body message
+- [X] When expanded (level 2), pull in and display commit body message
+  - Shows full SHA, author, date, subject, body (like git log)
 - [X] Use consistent gray color (fg=8, not faint) for all fold icons
   - Applies to both commit and file headers
 - [X] Cursor highlighting for headers
   - File headers: minimal 1-char bg highlight before fold icon
   - Commit headers: arrow only, no bg highlight
+- [ ] Horizontal scroll for commit body section
+  - Needs independent scroll state from file contents
+  - Long commit messages or SHAs may exceed viewport width
 
 *** Visual Hierarchy
 

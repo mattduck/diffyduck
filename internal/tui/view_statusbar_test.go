@@ -631,6 +631,15 @@ func TestTopBar_WithCommitInfo(t *testing.T) {
 	m.width = 80
 	m.height = 20
 	m.focused = true
+	m.calculateTotalLines()
+
+	// Move cursor to a file row by adjusting scroll
+	// Commit body rows: blank + SHA + Author + Date + blank + Subject + trailing blank = 7 rows
+	// Plus commit header = 8 rows before files (row 8 is first file row, 0-indexed)
+	// cursorLine = scroll + cursorOffset, where cursorOffset ≈ contentHeight * 0.2
+	// For height=20, contentHeight ≈ 17, cursorOffset ≈ 3
+	// To get cursor on row 8: scroll = 8 - 3 = 5
+	m.scroll = 10 // Set high enough to be past commit body rows
 
 	topBar := m.renderTopBar()
 	lines := strings.Split(topBar, "\n")
@@ -934,6 +943,161 @@ func TestCommitFoldCycleWithMixedFiles(t *testing.T) {
 	// Cycling should go back to level 1
 	m.handleCommitFoldCycle()
 	assert.Equal(t, 1, m.commitVisibilityLevel(), "should collapse to level 1")
+}
+
+func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
+	// Test that commit body rows appear when commit is not folded (level 2+)
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890fedcba9876543210",
+			Author:  "Test Author",
+			Email:   "test@example.com",
+			Date:    "Mon Jan 15 10:30:00 2024 -0500",
+			Subject: "Add new feature",
+			Body:    "This is the commit body.\nIt has multiple lines.",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal, // Normal state (level 2)
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 100
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Build rows and check for commit body rows
+	rows := m.buildRows()
+
+	// Should have commit header row first
+	require.Greater(t, len(rows), 1, "should have more than one row")
+	assert.True(t, rows[0].isCommitHeader, "first row should be commit header")
+
+	// Find commit body rows
+	var bodyRows []displayRow
+	for _, row := range rows {
+		if row.isCommitBody {
+			bodyRows = append(bodyRows, row)
+		}
+	}
+
+	// Should have body rows when expanded
+	require.Greater(t, len(bodyRows), 0, "should have commit body rows when expanded")
+
+	// Check content of body rows
+	var foundSHA, foundAuthor, foundDate, foundSubject, foundBody bool
+	for _, row := range bodyRows {
+		if strings.Contains(row.commitBodyLine, "commit abc123def4567890fedcba9876543210") {
+			foundSHA = true
+		}
+		if strings.Contains(row.commitBodyLine, "Author: Test Author") {
+			foundAuthor = true
+		}
+		if strings.Contains(row.commitBodyLine, "Date:") {
+			foundDate = true
+		}
+		if strings.Contains(row.commitBodyLine, "Add new feature") {
+			foundSubject = true
+		}
+		if strings.Contains(row.commitBodyLine, "commit body") {
+			foundBody = true
+		}
+	}
+
+	assert.True(t, foundSHA, "should have full SHA in body rows")
+	assert.True(t, foundAuthor, "should have author in body rows")
+	assert.True(t, foundDate, "should have date in body rows")
+	assert.True(t, foundSubject, "should have subject in body rows")
+	assert.True(t, foundBody, "should have body text in body rows")
+}
+
+func TestCommitBodyRow_Rendering(t *testing.T) {
+	// Test the actual rendering of commit body rows
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890fedcba9876543210",
+			Author:  "Test Author",
+			Email:   "test@example.com",
+			Date:    "Mon Jan 15 10:30:00 2024 -0500",
+			Subject: "Add new feature",
+			Body:    "Details here.",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal, // Shows at level 2
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 100
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find the SHA row and render it
+	for _, row := range rows {
+		if row.isCommitBody && strings.HasPrefix(row.commitBodyLine, "commit ") {
+			rendered := m.renderCommitBodyRow(row, false)
+			// Should have 2-space indent after the 2-char prefix (4 spaces total)
+			assert.True(t, strings.HasPrefix(rendered, "    commit "), "SHA row should have proper indent")
+			assert.Contains(t, rendered, "abc123def4567890fedcba9876543210", "should contain full SHA")
+			break
+		}
+	}
+
+	// Find author row
+	for _, row := range rows {
+		if row.isCommitBody && strings.HasPrefix(row.commitBodyLine, "Author:") {
+			rendered := m.renderCommitBodyRow(row, false)
+			assert.Contains(t, rendered, "Author: Test Author <test@example.com>", "should have author with email")
+			break
+		}
+	}
+
+	// Find subject row (indented message)
+	for _, row := range rows {
+		if row.isCommitBody && strings.Contains(row.commitBodyLine, "Add new feature") {
+			rendered := m.renderCommitBodyRow(row, false)
+			// Subject should have additional indent (4 spaces) plus the 3-space base indent
+			assert.Contains(t, rendered, "    Add new feature", "subject should be indented")
+			break
+		}
+	}
+}
+
+func TestCommitBodyRows_NotShownWhenFolded(t *testing.T) {
+	// Test that commit body rows do NOT appear when commit is folded (level 1)
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890",
+			Author:  "Test Author",
+			Subject: "Add new feature",
+			Body:    "This is the commit body.",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitFolded, // Folded state (level 1)
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 100
+	m.height = 40
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Should NOT have commit body rows when folded
+	for _, row := range rows {
+		assert.False(t, row.isCommitBody, "should not have commit body rows when folded")
+	}
 }
 
 func TestIsOnCommitHeader(t *testing.T) {

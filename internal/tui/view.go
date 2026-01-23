@@ -115,6 +115,7 @@ const (
 	RowKindTruncationIndicator // truncation message row
 	RowKindBinaryIndicator     // binary file message row
 	RowKindCommitHeader        // commit header row (sha, author, date, subject)
+	RowKindCommitBody          // commit body row (full sha, author, date, message)
 )
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
@@ -162,6 +163,10 @@ type displayRow struct {
 	isCommitHeader  bool                       // true if this is a commit header row
 	commitFoldLevel sidebyside.CommitFoldLevel // fold level for commit headers
 	commitIndex     int                        // which commit this header belongs to
+	// Commit body fields (shown when commit is expanded)
+	isCommitBody      bool   // true if this is a commit body row
+	commitBodyLine    string // the text content for this body line
+	commitBodyIsBlank bool   // true if this is a blank line in the body
 }
 
 // buildRows creates all displayable rows from the model data.
@@ -183,6 +188,9 @@ func (m Model) buildRows() []displayRow {
 		if commit.FoldLevel == sidebyside.CommitFolded {
 			return rows
 		}
+
+		// Add commit body rows (full details) when not folded
+		rows = append(rows, m.buildCommitBodyRows(commit)...)
 	}
 
 	// Calculate max header width and max add/rem widths across all files for alignment
@@ -765,6 +773,8 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 		if row.isCommitHeader {
 			visible = append(visible, m.renderCommitHeaderRow(row, isCursorRow))
+		} else if row.isCommitBody {
+			visible = append(visible, m.renderCommitBodyRow(row, isCursorRow))
 		} else if row.isHeaderTopBorder {
 			visible = append(visible, m.renderHeaderTopBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow))
 		} else if row.isHeaderSpacer {
@@ -1182,6 +1192,135 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	return leftContent + strings.Repeat(" ", padding) + rightSection
 }
 
+// buildCommitBodyRows creates display rows for the commit body (shown when expanded).
+// Format is similar to git log: full SHA, author, date, then message body.
+func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
+	var rows []displayRow
+	info := commit.Info
+
+	// Blank line after commit header row
+	rows = append(rows, displayRow{
+		kind:              RowKindCommitBody,
+		fileIndex:         -1,
+		isCommitBody:      true,
+		commitBodyLine:    "",
+		commitBodyIsBlank: true,
+	})
+
+	// Line 1: "commit <full sha>" (indented 2 spaces)
+	commitLine := "commit " + info.SHA
+	rows = append(rows, displayRow{
+		kind:           RowKindCommitBody,
+		fileIndex:      -1,
+		isCommitBody:   true,
+		commitBodyLine: commitLine,
+	})
+
+	// Line 2: "Author: <author> <email>"
+	authorLine := "Author: " + info.Author
+	if info.Email != "" {
+		authorLine += " <" + info.Email + ">"
+	}
+	rows = append(rows, displayRow{
+		kind:           RowKindCommitBody,
+		fileIndex:      -1,
+		isCommitBody:   true,
+		commitBodyLine: authorLine,
+	})
+
+	// Line 3: "Date:   <date>"
+	dateLine := "Date:   " + info.Date
+	rows = append(rows, displayRow{
+		kind:           RowKindCommitBody,
+		fileIndex:      -1,
+		isCommitBody:   true,
+		commitBodyLine: dateLine,
+	})
+
+	// Blank line before message
+	rows = append(rows, displayRow{
+		kind:              RowKindCommitBody,
+		fileIndex:         -1,
+		isCommitBody:      true,
+		commitBodyLine:    "",
+		commitBodyIsBlank: true,
+	})
+
+	// Subject line (first line of message, indented)
+	if info.Subject != "" {
+		rows = append(rows, displayRow{
+			kind:           RowKindCommitBody,
+			fileIndex:      -1,
+			isCommitBody:   true,
+			commitBodyLine: "    " + info.Subject,
+		})
+	}
+
+	// Body lines (rest of message, indented)
+	if info.Body != "" {
+		bodyLines := strings.Split(info.Body, "\n")
+		for _, line := range bodyLines {
+			// Skip empty lines at the start of body
+			if line == "" {
+				rows = append(rows, displayRow{
+					kind:              RowKindCommitBody,
+					fileIndex:         -1,
+					isCommitBody:      true,
+					commitBodyLine:    "",
+					commitBodyIsBlank: true,
+				})
+			} else {
+				rows = append(rows, displayRow{
+					kind:           RowKindCommitBody,
+					fileIndex:      -1,
+					isCommitBody:   true,
+					commitBodyLine: "    " + line,
+				})
+			}
+		}
+	}
+
+	// Trailing blank line for separation from files
+	rows = append(rows, displayRow{
+		kind:              RowKindCommitBody,
+		fileIndex:         -1,
+		isCommitBody:      true,
+		commitBodyLine:    "",
+		commitBodyIsBlank: true,
+	})
+
+	return rows
+}
+
+// renderCommitBodyRow renders a single line of the commit body.
+func (m Model) renderCommitBodyRow(row displayRow, isCursorRow bool) string {
+	// Style the content
+	var content string
+	if strings.HasPrefix(row.commitBodyLine, "commit ") {
+		// SHA line - "commit" in normal text, SHA in yellow
+		shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+		sha := strings.TrimPrefix(row.commitBodyLine, "commit ")
+		content = "commit " + shaStyle.Render(sha)
+	} else {
+		content = row.commitBodyLine
+	}
+
+	// Cursor handling with 1-char bg highlight (like file headers)
+	if isCursorRow && m.focused {
+		// Format: arrow + space + [1 char bg] + space + content
+		styledGutter := cursorStyle.Render(" ")
+		return cursorArrowStyle.Render("▶") + " " + styledGutter + " " + content
+	}
+
+	if isCursorRow && !m.focused {
+		// Unfocused: outline arrow, no background highlight
+		return unfocusedCursorArrowStyle.Render("▷") + "   " + content
+	}
+
+	// Non-cursor: 2-space prefix + 2-space indent
+	return "    " + content
+}
+
 // renderTopBar renders the top bar showing file info with a divider line below.
 func (m Model) renderTopBar() string {
 	info := m.StatusInfo()
@@ -1222,9 +1361,9 @@ func (m Model) renderCommitLine() string {
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
 	// Build commit line: ▶ ◐ a1b2c3d Subject line    N files +X -Y
-	// Arrow only shows when cursor is on commit header
+	// Arrow shows when cursor is on any commit section (header or body)
 	var prefix string
-	if m.isOnCommitHeader() {
+	if m.isOnCommitSection() {
 		if m.focused {
 			prefix = cursorArrowStyle.Render("▶") + " "
 		} else {
@@ -1360,10 +1499,10 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		rightWidth = len(rightText)
 	}
 
-	// Leading arrow indicator - only show when NOT on commit header (or no commit info)
-	// When on commit header, the arrow shows on the commit line instead
+	// Leading arrow indicator - only show when NOT on commit section (or no commit info)
+	// When on commit header or body, the arrow shows on the commit line instead
 	var prefix string
-	showArrow := !m.hasCommitInfo() || !m.isOnCommitHeader()
+	showArrow := !m.hasCommitInfo() || !m.isOnCommitSection()
 	if showArrow {
 		if m.focused {
 			prefix = cursorArrowStyle.Render("▶") + " "

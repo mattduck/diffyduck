@@ -654,6 +654,20 @@ func (m Model) isOnCommitHeader() bool {
 	return rows[cursorPos].isCommitHeader
 }
 
+// isOnCommitSection returns true if the cursor is on any commit-related row
+// (either commit header or commit body).
+func (m Model) isOnCommitSection() bool {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return false
+	}
+
+	row := rows[cursorPos]
+	return row.isCommitHeader || row.isCommitBody
+}
+
 // handleCommitFoldCycle cycles through 3 levels of commit visibility (org-mode style).
 // Level 1 (Folded): Just the commit header row
 // Level 2: File headings only (all files at FoldFolded)
