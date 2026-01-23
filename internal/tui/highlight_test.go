@@ -176,7 +176,7 @@ func TestSyntaxHighlighting_RenderedOutput(t *testing.T) {
 
 	// Even without TTY, we can verify the code path works
 	// by checking that applySyntaxHighlight produces output
-	result := m.applySyntaxHighlight("package main", "package main", "package main", spans, 0, 0)
+	result := m.applySyntaxHighlight("package main", "package main", "package main", spans, false, false, 0, 0, 0)
 	t.Logf("applySyntaxHighlight result: %q", result)
 
 	// The result should contain "package main" (even if no ANSI codes due to no TTY)

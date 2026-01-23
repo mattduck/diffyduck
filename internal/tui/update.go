@@ -69,8 +69,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			newRowIdx := m.findRowOrNearestAbove(identity)
 			m.adjustScrollToRow(newRowIdx)
 
-			m.refreshSearch()
-
 			// File content loaded, but still loading until highlight is ready
 			// (loading state will be cleared when HighlightReadyMsg arrives)
 
@@ -121,8 +119,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Preserve scroll position
 			newRowIdx := m.findRowOrNearestAbove(identity)
 			m.adjustScrollToRow(newRowIdx)
-
-			m.refreshSearch()
 
 			// Trigger syntax highlighting for all files
 			return m, m.RequestHighlightAll()
@@ -421,8 +417,6 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
 
-	m.refreshSearch()
-
 	// If expanding to full view and content not loaded, fetch it
 	if newLevel == sidebyside.FoldExpanded && !m.files[fileIdx].HasContent() {
 		return m, m.FetchFileContent(fileIdx)
@@ -470,8 +464,6 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	// Preserve scroll position
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
-
-	m.refreshSearch()
 
 	// If expanding to full view, fetch content for files that don't have it
 	if newLevel == sidebyside.FoldExpanded {

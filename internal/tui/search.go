@@ -3,14 +3,9 @@ package tui
 import (
 	"strings"
 	"unicode"
-)
 
-// Match represents a search match location.
-type Match struct {
-	Row  int // display row index
-	Col  int // column offset within the line content
-	Side int // 0 = left/header, 1 = right
-}
+	"github.com/user/diffyduck/pkg/sidebyside"
+)
 
 // isSmartCaseSensitive returns true if the query should be matched case-sensitively.
 // Smart-case: lowercase query = insensitive, any uppercase = sensitive.
@@ -23,233 +18,224 @@ func isSmartCaseSensitive(query string) bool {
 	return false
 }
 
-// findMatches finds all matches for the current search query in the displayable content.
-func (m Model) findMatches(query string) []Match {
-	if query == "" {
+// searchableText returns the text to search for a given row and side.
+// For the old side (side=1), only returns text for removed lines (- and ~ lines).
+// For the new side (side=0) and headers, returns the full text.
+func searchableText(row displayRow, side int) string {
+	if row.isHeader {
+		if side == 0 {
+			return row.header // Already formatted
+		}
+		return "" // Don't search headers on side 1
+	}
+
+	if side == 0 {
+		// New side (left) - always searchable
+		return row.pair.New.Content
+	}
+
+	// Old side (right) - only search if it's a removed line (includes changed lines)
+	if row.pair.Old.Type == sidebyside.Removed {
+		return row.pair.Old.Content
+	}
+	return "" // Skip context lines on old side
+}
+
+// findMatchColsOnRowSide finds all match column positions on a given row for a specific side.
+// side: 0 = new/left side, 1 = old/right side
+// Returns byte offsets of all matches in the searchable content for that side.
+func (m Model) findMatchColsOnRowSide(rowIdx, side int) []int {
+	if m.searchQuery == "" {
 		return nil
 	}
 
-	var matches []Match
-	caseSensitive := isSmartCaseSensitive(query)
-
-	searchQuery := query
-	if !caseSensitive {
-		searchQuery = strings.ToLower(query)
-	}
-
-	// Use cached rows if valid, otherwise rebuild
 	rows := m.cachedRows
 	if !m.rowsCacheValid {
 		rows = m.buildRows()
 	}
 
-	for rowIdx, row := range rows {
-		if row.isHeader {
-			// Search in header (row.header is already formatted)
-			matches = append(matches, findInString(row.header, searchQuery, caseSensitive, rowIdx, 0)...)
-		} else {
-			// Search in both new and old content
-			// New content is on left (side 0), Old content is on right (side 1)
-			newContent := row.pair.New.Content
-			oldContent := row.pair.Old.Content
-
-			matches = append(matches, findInString(newContent, searchQuery, caseSensitive, rowIdx, 0)...)
-
-			// Only search old side if it differs from new (avoid duplicates for context lines)
-			if oldContent != newContent {
-				matches = append(matches, findInString(oldContent, searchQuery, caseSensitive, rowIdx, 1)...)
-			}
-		}
+	if rowIdx < 0 || rowIdx >= len(rows) {
+		return nil
 	}
 
-	return matches
-}
+	row := rows[rowIdx]
+	text := searchableText(row, side)
+	if text == "" {
+		return nil
+	}
 
-// findInString finds all occurrences of query in s.
-func findInString(s, query string, caseSensitive bool, row, side int) []Match {
-	var matches []Match
-
-	searchIn := s
+	caseSensitive := isSmartCaseSensitive(m.searchQuery)
+	query := m.searchQuery
 	if !caseSensitive {
-		searchIn = strings.ToLower(s)
+		query = strings.ToLower(query)
 	}
 
+	searchIn := text
+	if !caseSensitive {
+		searchIn = strings.ToLower(text)
+	}
+
+	var cols []int
 	start := 0
 	for {
 		idx := strings.Index(searchIn[start:], query)
 		if idx == -1 {
 			break
 		}
-		matches = append(matches, Match{
-			Row:  row,
-			Col:  start + idx,
-			Side: side,
+		cols = append(cols, start+idx)
+		start += idx + 1
+	}
+
+	return cols
+}
+
+// findMatchColsOnRow finds all match column positions on a given row (both sides combined).
+// Returns byte offsets of all matches in the searchable content.
+func (m Model) findMatchColsOnRow(rowIdx int) []int {
+	var cols []int
+	for side := 0; side <= 1; side++ {
+		cols = append(cols, m.findMatchColsOnRowSide(rowIdx, side)...)
+	}
+	return cols
+}
+
+// rowHasMatchOnSide returns true if the given row has any matches on the specified side.
+func (m Model) rowHasMatchOnSide(rowIdx, side int) bool {
+	return len(m.findMatchColsOnRowSide(rowIdx, side)) > 0
+}
+
+// findNextMatchRow searches for the next row with a match starting from startRow.
+// Returns (rowIndex, found). Searches in the direction specified.
+// Respects fold state (only searches visible rows) and old-side filtering.
+func (m Model) findNextMatchRow(startRow int, forward bool) (int, bool) {
+	if m.searchQuery == "" {
+		return 0, false
+	}
+
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
+
+	if len(rows) == 0 {
+		return 0, false
+	}
+
+	caseSensitive := isSmartCaseSensitive(m.searchQuery)
+	query := m.searchQuery
+	if !caseSensitive {
+		query = strings.ToLower(query)
+	}
+
+	// Determine search range and direction
+	var indices []int
+	if forward {
+		for i := startRow; i < len(rows); i++ {
+			indices = append(indices, i)
+		}
+	} else {
+		for i := startRow; i >= 0; i-- {
+			indices = append(indices, i)
+		}
+	}
+
+	for _, rowIdx := range indices {
+		row := rows[rowIdx]
+
+		// Search both sides of this row
+		for side := 0; side <= 1; side++ {
+			text := searchableText(row, side)
+			if text == "" {
+				continue
+			}
+
+			searchIn := text
+			if !caseSensitive {
+				searchIn = strings.ToLower(text)
+			}
+
+			if strings.Contains(searchIn, query) {
+				return rowIdx, true
+			}
+		}
+	}
+
+	return 0, false
+}
+
+// RowMatch represents a match found within a single row during rendering.
+type RowMatch struct {
+	Col       int  // byte offset within the content
+	Len       int  // length of match in bytes
+	IsCurrent bool // true if this is the currently active match
+}
+
+// findMatchesInText finds all occurrences of the search query in the given text.
+// Returns matches with their byte offsets.
+// isCursorRow indicates if this is the cursor row.
+// currentIdx is the index of the current match (0 = first match).
+func (m Model) findMatchesInText(text string, isCursorRow bool, currentIdx int) []RowMatch {
+	if m.searchQuery == "" || text == "" {
+		return nil
+	}
+
+	caseSensitive := isSmartCaseSensitive(m.searchQuery)
+	query := m.searchQuery
+	searchIn := text
+	if !caseSensitive {
+		searchIn = strings.ToLower(text)
+		query = strings.ToLower(query)
+	}
+
+	var matches []RowMatch
+	start := 0
+	matchIdx := 0
+	for {
+		idx := strings.Index(searchIn[start:], query)
+		if idx == -1 {
+			break
+		}
+		col := start + idx
+
+		// Determine if this is the current match by index
+		isCurrent := isCursorRow && matchIdx == currentIdx
+
+		matches = append(matches, RowMatch{
+			Col:       col,
+			Len:       len(m.searchQuery),
+			IsCurrent: isCurrent,
 		})
-		start += idx + 1 // move past this match to find overlapping matches
+		start = col + 1 // Move past this match to find overlapping matches
+		matchIdx++
 	}
 
 	return matches
 }
 
-// scrollToMatch scrolls the view so that the given match is visible.
-func (m *Model) scrollToMatch(matchIdx int) {
-	if matchIdx < 0 || matchIdx >= len(m.matches) {
-		return
-	}
-
-	match := m.matches[matchIdx]
-	contentH := m.contentHeight()
-
-	// If match is above viewport, scroll up to it
-	if match.Row < m.scroll {
-		m.scroll = match.Row
-	}
-
-	// If match is below viewport, scroll down so it's visible
-	if match.Row >= m.scroll+contentH {
-		m.scroll = match.Row - contentH + 1
-	}
-
-	m.clampScroll()
-}
-
-// nextMatch moves to the next match in the search direction.
-// If scroll position changed since last search nav, finds match from current position.
-// Otherwise, moves to next match without wrap.
-// Returns true if moved to a new match.
-func (m *Model) nextMatch() bool {
-	if len(m.matches) == 0 {
-		return false
-	}
-
-	scrollChanged := m.scroll != m.lastSearchScroll
-
-	if m.searchForward {
-		if scrollChanged {
-			// Scroll changed: find first match at or after current scroll
-			for i, match := range m.matches {
-				if match.Row >= m.scroll {
-					m.currentMatch = i
-					m.scrollToMatch(m.currentMatch)
-					m.lastSearchScroll = m.scroll
-					return true
-				}
-			}
-		} else {
-			// No scroll change: just go to next match (no wrap)
-			if m.currentMatch < len(m.matches)-1 {
-				m.currentMatch++
-				m.scrollToMatch(m.currentMatch)
-				m.lastSearchScroll = m.scroll
-				return true
-			}
-		}
-	} else {
-		if scrollChanged {
-			// Scroll changed: find last match at or before current scroll
-			for i := len(m.matches) - 1; i >= 0; i-- {
-				if m.matches[i].Row <= m.scroll+m.contentHeight()-1 {
-					m.currentMatch = i
-					m.scrollToMatch(m.currentMatch)
-					m.lastSearchScroll = m.scroll
-					return true
-				}
-			}
-		} else {
-			// No scroll change: go to previous match (no wrap)
-			if m.currentMatch > 0 {
-				m.currentMatch--
-				m.scrollToMatch(m.currentMatch)
-				m.lastSearchScroll = m.scroll
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// prevMatch moves to the previous match (opposite of search direction).
-// If scroll position changed since last search nav, finds match from current position.
-// Otherwise, moves to previous match without wrap.
-// Returns true if moved to a new match.
-func (m *Model) prevMatch() bool {
-	if len(m.matches) == 0 {
-		return false
-	}
-
-	scrollChanged := m.scroll != m.lastSearchScroll
-
-	if m.searchForward {
-		if scrollChanged {
-			// Scroll changed: find last match at or before viewport bottom
-			for i := len(m.matches) - 1; i >= 0; i-- {
-				if m.matches[i].Row <= m.scroll+m.contentHeight()-1 {
-					m.currentMatch = i
-					m.scrollToMatch(m.currentMatch)
-					m.lastSearchScroll = m.scroll
-					return true
-				}
-			}
-		} else {
-			// No scroll change: go to previous match (no wrap)
-			if m.currentMatch > 0 {
-				m.currentMatch--
-				m.scrollToMatch(m.currentMatch)
-				m.lastSearchScroll = m.scroll
-				return true
-			}
-		}
-	} else {
-		if scrollChanged {
-			// Scroll changed: find first match at or after current scroll
-			for i, match := range m.matches {
-				if match.Row >= m.scroll {
-					m.currentMatch = i
-					m.scrollToMatch(m.currentMatch)
-					m.lastSearchScroll = m.scroll
-					return true
-				}
-			}
-		} else {
-			// No scroll change: go to next match (no wrap)
-			if m.currentMatch < len(m.matches)-1 {
-				m.currentMatch++
-				m.scrollToMatch(m.currentMatch)
-				m.lastSearchScroll = m.scroll
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 // executeSearch runs the search with the current input.
+// Finds the first match from the cursor position and jumps to it.
 func (m *Model) executeSearch() {
 	m.searchQuery = m.searchInput
 	m.searchInput = ""
 	m.searchMode = false
+	m.searchMatchIdx = 0  // Reset to first match
+	m.searchMatchSide = 0 // Start on new side (left)
 
 	if m.searchQuery == "" {
-		m.matches = nil
-		m.currentMatch = 0
 		return
 	}
 
-	m.matches = m.findMatches(m.searchQuery)
-	m.currentMatch = 0
-
-	if len(m.matches) > 0 {
-		// Find first match at or after current scroll position
-		for i, match := range m.matches {
-			if match.Row >= m.scroll {
-				m.currentMatch = i
-				break
-			}
+	// Find first match from current cursor position
+	cursorRow := m.cursorLine()
+	if row, found := m.findNextMatchRow(cursorRow, m.searchForward); found {
+		m.adjustScrollToRow(row)
+		m.searchMatchIdx = 0
+		// Start on whichever side has matches (prefer new side)
+		if m.rowHasMatchOnSide(row, 0) {
+			m.searchMatchSide = 0
+		} else {
+			m.searchMatchSide = 1
 		}
-		m.scrollToMatch(m.currentMatch)
-		m.lastSearchScroll = m.scroll
 	}
 }
 
@@ -259,32 +245,158 @@ func (m *Model) cancelSearch() {
 	m.searchInput = ""
 }
 
-// refreshSearch re-runs the current search query.
-// This should be called when the displayable content changes (e.g., fold toggle).
-func (m *Model) refreshSearch() {
+// nextMatch moves to the next match in the search direction.
+// Cycles through matches on current side, then other side, then next row.
+// Returns true if a match was found.
+func (m *Model) nextMatch() bool {
 	if m.searchQuery == "" {
-		return
+		return false
 	}
 
-	// Re-find matches with the current query
-	m.matches = m.findMatches(m.searchQuery)
+	cursorRow := m.cursorLine()
+	currentSideCount := len(m.findMatchColsOnRowSide(cursorRow, m.searchMatchSide))
 
-	// If we had a currentMatch, try to find the closest match to the current scroll
-	if len(m.matches) > 0 {
-		// Find first match at or after current scroll position
-		found := false
-		for i, match := range m.matches {
-			if match.Row >= m.scroll {
-				m.currentMatch = i
-				found = true
-				break
-			}
+	if m.searchForward {
+		// Forward search: try next match on current side first
+		if currentSideCount > 0 && m.searchMatchIdx < currentSideCount-1 {
+			m.searchMatchIdx++
+			return true
 		}
-		// If no match after scroll, use the last match
-		if !found {
-			m.currentMatch = len(m.matches) - 1
+
+		// Try other side of same row
+		otherSide := 1 - m.searchMatchSide
+		otherSideCount := len(m.findMatchColsOnRowSide(cursorRow, otherSide))
+		if otherSideCount > 0 {
+			m.searchMatchSide = otherSide
+			m.searchMatchIdx = 0
+			return true
+		}
+
+		// No more matches on current row, go to next row
+		if row, found := m.findNextMatchRow(cursorRow+1, true); found {
+			m.adjustScrollToRow(row)
+			m.searchMatchIdx = 0
+			// Start on whichever side has matches (prefer new side)
+			if m.rowHasMatchOnSide(row, 0) {
+				m.searchMatchSide = 0
+			} else {
+				m.searchMatchSide = 1
+			}
+			return true
 		}
 	} else {
-		m.currentMatch = 0
+		// Backward search: "next" means previous in document order
+		if currentSideCount > 0 && m.searchMatchIdx > 0 {
+			m.searchMatchIdx--
+			return true
+		}
+
+		// Try other side of same row (going backward means we want last match on other side)
+		otherSide := 1 - m.searchMatchSide
+		otherSideCount := len(m.findMatchColsOnRowSide(cursorRow, otherSide))
+		if otherSideCount > 0 {
+			m.searchMatchSide = otherSide
+			m.searchMatchIdx = otherSideCount - 1
+			return true
+		}
+
+		// No more matches on current row, go to previous row
+		if row, found := m.findNextMatchRow(cursorRow-1, false); found {
+			m.adjustScrollToRow(row)
+			// Set to last match on last side that has matches
+			if m.rowHasMatchOnSide(row, 1) {
+				m.searchMatchSide = 1
+				m.searchMatchIdx = len(m.findMatchColsOnRowSide(row, 1)) - 1
+			} else {
+				m.searchMatchSide = 0
+				m.searchMatchIdx = max(0, len(m.findMatchColsOnRowSide(row, 0))-1)
+			}
+			return true
+		}
 	}
+
+	return false
+}
+
+// prevMatch moves to the previous match (opposite of search direction).
+// Cycles through matches on current side, then other side, then previous row.
+// Returns true if a match was found.
+func (m *Model) prevMatch() bool {
+	if m.searchQuery == "" {
+		return false
+	}
+
+	cursorRow := m.cursorLine()
+	currentSideCount := len(m.findMatchColsOnRowSide(cursorRow, m.searchMatchSide))
+
+	if m.searchForward {
+		// Forward search mode: "prev" means go backward in matches
+		if currentSideCount > 0 && m.searchMatchIdx > 0 {
+			m.searchMatchIdx--
+			return true
+		}
+
+		// Try other side of same row (going backward)
+		otherSide := 1 - m.searchMatchSide
+		otherSideCount := len(m.findMatchColsOnRowSide(cursorRow, otherSide))
+		if otherSideCount > 0 {
+			m.searchMatchSide = otherSide
+			m.searchMatchIdx = otherSideCount - 1
+			return true
+		}
+
+		// No more matches on current row, go to previous row
+		if row, found := m.findNextMatchRow(cursorRow-1, false); found {
+			m.adjustScrollToRow(row)
+			// Set to last match on last side that has matches
+			if m.rowHasMatchOnSide(row, 1) {
+				m.searchMatchSide = 1
+				m.searchMatchIdx = len(m.findMatchColsOnRowSide(row, 1)) - 1
+			} else {
+				m.searchMatchSide = 0
+				m.searchMatchIdx = max(0, len(m.findMatchColsOnRowSide(row, 0))-1)
+			}
+			return true
+		}
+	} else {
+		// Backward search mode: "prev" means go forward in matches
+		if currentSideCount > 0 && m.searchMatchIdx < currentSideCount-1 {
+			m.searchMatchIdx++
+			return true
+		}
+
+		// Try other side of same row (going forward)
+		otherSide := 1 - m.searchMatchSide
+		otherSideCount := len(m.findMatchColsOnRowSide(cursorRow, otherSide))
+		if otherSideCount > 0 {
+			m.searchMatchSide = otherSide
+			m.searchMatchIdx = 0
+			return true
+		}
+
+		// No more matches on current row, go to next row
+		if row, found := m.findNextMatchRow(cursorRow+1, true); found {
+			m.adjustScrollToRow(row)
+			m.searchMatchIdx = 0
+			// Start on whichever side has matches (prefer new side)
+			if m.rowHasMatchOnSide(row, 0) {
+				m.searchMatchSide = 0
+			} else {
+				m.searchMatchSide = 1
+			}
+			return true
+		}
+	}
+
+	return false
+}
+
+// currentMatchIdx returns the current match index for rendering.
+func (m Model) currentMatchIdx() int {
+	return m.searchMatchIdx
+}
+
+// currentMatchSide returns the current match side for rendering (0=new/left, 1=old/right).
+func (m Model) currentMatchSide() int {
+	return m.searchMatchSide
 }

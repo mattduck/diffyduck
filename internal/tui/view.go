@@ -33,7 +33,7 @@ var (
 
 	// Search highlight styles (black text on yellow background)
 	searchMatchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
-	searchCurrentMatchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("11"))
+	searchCurrentMatchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("9"))
 
 	// Cursor highlight style (bg=7 silver, fg=0 black) for gutter areas
 	cursorStyle = lipgloss.NewStyle().Background(lipgloss.Color("7")).Foreground(lipgloss.Color("0"))
@@ -1144,16 +1144,6 @@ func (m Model) renderStatusBar() string {
 		loadingWidth = 1 + 1 + len(" Loading...") // space + spinner + text
 	}
 
-	// When there's an active search query, show search info
-	var searchInfo string
-	if m.searchQuery != "" {
-		if len(m.matches) == 0 {
-			searchInfo = " No matches"
-		} else {
-			searchInfo = fmt.Sprintf(" %d/%d", m.currentMatch+1, len(m.matches))
-		}
-	}
-
 	// Pager mode indicator (right-aligned)
 	var pagerIndicator string
 	if m.pagerMode {
@@ -1167,9 +1157,9 @@ func (m Model) renderStatusBar() string {
 		debugStats, debugWidth = m.formatDebugStats()
 	}
 
-	// Combine: reversed_less_indicator + loading + search_info + padding + debug_stats + pager_indicator
-	content := styledLessIndicator + loadingIndicator + searchInfo
-	contentWidth := displayWidth(" "+lessIndicator) + loadingWidth + displayWidth(searchInfo)
+	// Combine: reversed_less_indicator + loading + padding + debug_stats + pager_indicator
+	content := styledLessIndicator + loadingIndicator
+	contentWidth := displayWidth(" "+lessIndicator) + loadingWidth
 	pagerWidth := displayWidth(pagerIndicator)
 
 	// Calculate padding between content and right-side indicators
@@ -1272,19 +1262,12 @@ func (m Model) renderSearchPrompt() string {
 	return left + strings.Repeat(" ", padding)
 }
 
-// hasMatchOnRow returns true if there are search matches on the given row and side.
-func (m Model) hasMatchOnRow(rowIdx, side int) bool {
-	for _, match := range m.matches {
-		if match.Row == rowIdx && match.Side == side {
-			return true
-		}
-	}
-	return false
-}
-
 // highlightSearchInVisible highlights search matches in visible text.
-// It finds the query in the visible text and applies highlighting.
-func (m Model) highlightSearchInVisible(visible string, rowIdx, side int) string {
+// Searches on-demand in the visible text and highlights matches.
+// isCursorRow indicates if this row is at the cursor position.
+// currentIdx is the index of the current match (0 = first match).
+// side is which side is being rendered (0=new/left, 1=old/right), currentSide is which side has the current match.
+func (m Model) highlightSearchInVisible(visible string, isCursorRow bool, currentIdx, side, currentSide int) string {
 	if m.searchQuery == "" {
 		return visible
 	}
@@ -1298,18 +1281,10 @@ func (m Model) highlightSearchInVisible(visible string, rowIdx, side int) string
 		query = strings.ToLower(query)
 	}
 
-	// Find the current match index for this row/side to highlight it differently
-	currentMatchOnRow := -1
-	for i, match := range m.matches {
-		if match.Row == rowIdx && match.Side == side && i == m.currentMatch {
-			currentMatchOnRow = match.Col
-			break
-		}
-	}
-
 	// Find and highlight all occurrences
 	var result strings.Builder
 	lastEnd := 0
+	matchIdx := 0
 
 	for {
 		idx := strings.Index(searchIn[lastEnd:], query)
@@ -1321,16 +1296,14 @@ func (m Model) highlightSearchInVisible(visible string, rowIdx, side int) string
 		// Add text before match
 		result.WriteString(visible[lastEnd:pos])
 
-		// Determine if this is the current match
-		// We check if the position in the original content would match
-		originalPos := pos + m.hscroll
-		isCurrent := originalPos == currentMatchOnRow
-
 		// Add highlighted match
 		end := pos + len(m.searchQuery)
 		if end > len(visible) {
 			end = len(visible)
 		}
+
+		// Determine if this is the current match (must match both index and side)
+		isCurrent := isCursorRow && matchIdx == currentIdx && side == currentSide
 
 		matchText := visible[pos:end]
 		if isCurrent {
@@ -1339,75 +1312,12 @@ func (m Model) highlightSearchInVisible(visible string, rowIdx, side int) string
 			result.WriteString(searchMatchStyle.Render(matchText))
 		}
 		lastEnd = end
+		matchIdx++
 	}
 
 	// Add remaining text
 	if lastEnd < len(visible) {
 		result.WriteString(visible[lastEnd:])
-	}
-
-	return result.String()
-}
-
-// applySearchHighlight applies search highlighting to text for a given row and side.
-func (m Model) applySearchHighlight(text string, rowIdx, side int) string {
-	if len(m.matches) == 0 {
-		return text
-	}
-
-	// Find matches for this row and side
-	var rowMatches []Match
-	for i, match := range m.matches {
-		if match.Row == rowIdx && match.Side == side {
-			rowMatches = append(rowMatches, match)
-			// Mark if this is the current match
-			if i == m.currentMatch {
-				rowMatches[len(rowMatches)-1].Col = -rowMatches[len(rowMatches)-1].Col - 1 // negative marks current
-			}
-		}
-	}
-
-	if len(rowMatches) == 0 {
-		return text
-	}
-
-	// Build highlighted text
-	queryLen := len(m.searchQuery)
-	var result strings.Builder
-	lastEnd := 0
-
-	for _, match := range rowMatches {
-		col := match.Col
-		isCurrent := col < 0
-		if isCurrent {
-			col = -col - 1
-		}
-
-		if col < lastEnd || col >= len(text) {
-			continue
-		}
-
-		// Add text before match
-		result.WriteString(text[lastEnd:col])
-
-		// Add highlighted match
-		end := col + queryLen
-		if end > len(text) {
-			end = len(text)
-		}
-
-		matchText := text[col:end]
-		if isCurrent {
-			result.WriteString(searchCurrentMatchStyle.Render(matchText))
-		} else {
-			result.WriteString(searchMatchStyle.Render(matchText))
-		}
-		lastEnd = end
-	}
-
-	// Add remaining text
-	if lastEnd < len(text) {
-		result.WriteString(text[lastEnd:])
 	}
 
 	return result.String()
@@ -1830,9 +1740,13 @@ func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidt
 }
 
 func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borderVisible bool, status FileStatus, added, removed, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth, fileIndex, rowIdx int, isCursorRow bool) string {
-	// Apply search highlighting if there are matches
+	// Calculate header width BEFORE applying search highlighting (ANSI codes affect width calculation)
+	headerTextWidth := displayWidth(header)
+
+	// Apply search highlighting if there's a query
+	// Headers are always considered "side 0" for search purposes
 	if m.searchQuery != "" {
-		header = m.applySearchHighlight(header, rowIdx, 0)
+		header = m.highlightSearchInVisible(header, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide())
 	}
 
 	// Get fold level icon and file status indicator
@@ -1853,9 +1767,6 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	// All headers use same format: gutter + icon + status + header + stats + │ + trailing
 	statsBar := formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth)
 	statsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
-
-	// Pad header to align stats across all files
-	headerTextWidth := displayWidth(header)
 	headerPadding := ""
 	if maxHeaderWidth > headerTextWidth {
 		headerPadding = strings.Repeat(" ", maxHeaderWidth-headerTextWidth)
@@ -1888,20 +1799,28 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
 	}
 
+	// Style the header text - but if search highlighting was applied, don't override it
+	// (search highlighting sets fg=0 which would be overridden by headerStyle's fg=15)
+	styledHeader := headerStyle.Render(" " + header + headerPadding)
+	if m.searchQuery != "" {
+		// Search highlighting was applied; don't wrap with headerStyle to preserve fg color
+		styledHeader = " " + header + headerPadding
+	}
+
 	if isCursorRow && m.focused {
 		// Format: arrow + space + fileNum(with bg) + space + icon + status + header + padding + stats + boxPadding + space + │ + trailing
 		styledFileNum := cursorStyle.Render(fileNumPadded)
-		return cursorArrowStyle.Render("▶") + " " + styledFileNum + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+		return cursorArrowStyle.Render("▶") + " " + styledFileNum + headerStyle.Render(" "+icon+" ") + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 	}
 
 	if isCursorRow && !m.focused {
 		// Unfocused: outline arrow, no background highlight (use same style as non-cursor row)
-		return unfocusedCursorArrowStyle.Render("▷") + " " + fileStatusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+		return unfocusedCursorArrowStyle.Render("▷") + " " + fileStatusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 	}
 
 	// Normal rendering
 	// Format: space + space + fileNum + space + icon + status + header + padding + stats + boxPadding + space + │ + trailing
-	return "  " + fileStatusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+	return "  " + fileStatusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool) string {
@@ -1928,14 +1847,14 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 	hasWordDiff := len(oldSpans) > 0
 
 	// Render: New on left (side 0), Old on right (side 1)
-	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, rowIdx, 0, isCursorRow, hasWordDiff, false)
-	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, rowIdx, 1, isCursorRow, hasWordDiff, hideRightTrailingGutter)
+	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, 0, isCursorRow, hasWordDiff, false)
+	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, 1, isCursorRow, hasWordDiff, hideRightTrailingGutter)
 
 	separator := centerDividerStyle.Render(separatorChar)
 	return left + " " + separator + " " + right
 }
 
-func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool) string {
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool) string {
 	// Diff indicator (+/-/~/space) before line number
 	// On cursor row, show arrowhead instead (outline arrow when unfocused)
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
@@ -2009,24 +1928,26 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	var styledContent string
 	isOldSideContext := side == 1 && line.Type == sidebyside.Context
 
+	// Determine if this side should be searched
+	// New side (0): always searchable
+	// Old side (1): only searchable for removed lines (- and ~ lines)
+	shouldSearch := side == 0 || line.Type == sidebyside.Removed
+
 	if isOldSideContext {
 		// Dim context lines on the old side - they're duplicates of the new side
-		displayContent := visible
-		if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
-			displayContent = m.highlightSearchInVisible(visible, rowIdx, side)
-		}
-		styledContent = contextDimStyle.Render(displayContent)
+		// Don't search these (shouldSearch will be false for old side context)
+		styledContent = contextDimStyle.Render(visible)
 	} else if len(inlineSpans) > 0 && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		// Apply inline diff highlighting (with search highlighting taking precedence)
-		styledContent = m.applyInlineSpans(expanded, visible, inlineSpans, line.Type, rowIdx, side)
+		styledContent = m.applyInlineSpans(expanded, visible, inlineSpans, line.Type, isCursorRow, shouldSearch, m.currentMatchIdx(), side, m.currentMatchSide())
 	} else if len(syntaxSpans) > 0 {
 		// Apply syntax highlighting as base, with search on top
-		styledContent = m.applySyntaxHighlight(line.Content, expanded, visible, syntaxSpans, rowIdx, side)
+		styledContent = m.applySyntaxHighlight(line.Content, expanded, visible, syntaxSpans, isCursorRow, shouldSearch, m.currentMatchIdx(), side, m.currentMatchSide())
 	} else {
 		// Apply search highlighting first if applicable
 		displayContent := visible
-		if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
-			displayContent = m.highlightSearchInVisible(visible, rowIdx, side)
+		if m.searchQuery != "" && shouldSearch {
+			displayContent = m.highlightSearchInVisible(visible, isCursorRow, m.currentMatchIdx(), side, m.currentMatchSide())
 		}
 
 		// Apply simple style based on type
@@ -2054,7 +1975,10 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 // applyInlineSpans applies inline diff highlighting to visible content.
 // It maps spans from the full expanded string to the visible viewport slice.
 // Search highlighting takes precedence over inline diff highlighting.
-func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Span, lineType sidebyside.LineType, rowIdx, side int) string {
+// isCursorRow indicates if this is the cursor row (for "current match" styling).
+// shouldSearch indicates if search highlighting should be applied to this content.
+// side is which side is being rendered, currentSide is which side has the current match.
+func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Span, lineType sidebyside.LineType, isCursorRow, shouldSearch bool, currentIdx, side, currentSide int) string {
 	// Base style is context (no color) since gutter shows +/- indicators
 	// Highlight style matches the line type (green for added, red for removed)
 	baseStyle := contextStyle
@@ -2077,13 +2001,13 @@ func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Spa
 	}
 	byteToCol[len(expanded)] = col
 
-	// Build search match ranges (in visible coordinates) if we have matches
+	// Build search match ranges (in visible coordinates) if search is active
 	type searchRange struct {
 		start, end int
 		isCurrent  bool
 	}
 	var searchRanges []searchRange
-	if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
+	if m.searchQuery != "" && shouldSearch {
 		queryLen := len(m.searchQuery)
 		caseSensitive := isSmartCaseSensitive(m.searchQuery)
 		query := m.searchQuery
@@ -2095,6 +2019,7 @@ func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Spa
 
 		// Find all occurrences in visible text
 		pos := 0
+		matchIdx := 0
 		for {
 			idx := strings.Index(searchIn[pos:], query)
 			if idx == -1 {
@@ -2106,18 +2031,12 @@ func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Spa
 				end = len(visible)
 			}
 
-			// Check if this is the current match
-			originalPos := start + m.hscroll
-			isCurrent := false
-			for i, match := range m.matches {
-				if match.Row == rowIdx && match.Side == side && match.Col == originalPos && i == m.currentMatch {
-					isCurrent = true
-					break
-				}
-			}
+			// Determine if this is the current match by index and side
+			isCurrent := isCursorRow && matchIdx == currentIdx && side == currentSide
 
 			searchRanges = append(searchRanges, searchRange{start: start, end: end, isCurrent: isCurrent})
 			pos = start + 1
+			matchIdx++
 		}
 	}
 
@@ -2181,11 +2100,14 @@ func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Spa
 // It maps spans from the original line to the visible viewport slice,
 // with search highlighting taking precedence.
 // The `original` parameter is the original line content (before tab expansion).
-func (m Model) applySyntaxHighlight(original, _, visible string, syntaxSpans []highlight.Span, rowIdx, side int) string {
+// isCursorRow indicates if this is the cursor row (for "current match" styling).
+// shouldSearch indicates if search highlighting should be applied to this content.
+// side is which side is being rendered, currentSide is which side has the current match.
+func (m Model) applySyntaxHighlight(original, _, visible string, syntaxSpans []highlight.Span, isCursorRow, shouldSearch bool, currentIdx, side, currentSide int) string {
 	if len(syntaxSpans) == 0 {
 		// No syntax spans, just apply search if applicable
-		if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
-			return m.highlightSearchInVisible(visible, rowIdx, side)
+		if m.searchQuery != "" && shouldSearch {
+			return m.highlightSearchInVisible(visible, isCursorRow, m.currentMatchIdx(), side, currentSide)
 		}
 		return visible
 	}
@@ -2209,13 +2131,13 @@ func (m Model) applySyntaxHighlight(original, _, visible string, syntaxSpans []h
 	}
 	byteToCol[len(original)] = col
 
-	// Build search match ranges (in visible coordinates) if we have matches
+	// Build search match ranges (in visible coordinates) if search is active
 	type searchRange struct {
 		start, end int
 		isCurrent  bool
 	}
 	var searchRanges []searchRange
-	if m.searchQuery != "" && m.hasMatchOnRow(rowIdx, side) {
+	if m.searchQuery != "" && shouldSearch {
 		queryLen := len(m.searchQuery)
 		caseSensitive := isSmartCaseSensitive(m.searchQuery)
 		query := m.searchQuery
@@ -2226,6 +2148,7 @@ func (m Model) applySyntaxHighlight(original, _, visible string, syntaxSpans []h
 		}
 
 		pos := 0
+		matchIdx := 0
 		for {
 			idx := strings.Index(searchIn[pos:], query)
 			if idx == -1 {
@@ -2237,18 +2160,12 @@ func (m Model) applySyntaxHighlight(original, _, visible string, syntaxSpans []h
 				end = len(visible)
 			}
 
-			// Check if this is the current match
-			originalPos := start + m.hscroll
-			isCurrent := false
-			for i, match := range m.matches {
-				if match.Row == rowIdx && match.Side == side && match.Col == originalPos && i == m.currentMatch {
-					isCurrent = true
-					break
-				}
-			}
+			// Determine if this is the current match by index and side
+			isCurrent := isCursorRow && matchIdx == currentIdx && side == currentSide
 
 			searchRanges = append(searchRanges, searchRange{start: start, end: end, isCurrent: isCurrent})
 			pos = start + 1
+			matchIdx++
 		}
 	}
 

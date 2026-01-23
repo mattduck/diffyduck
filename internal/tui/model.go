@@ -58,13 +58,12 @@ type Model struct {
 	hscrollStep int // columns to scroll horizontally per keypress
 
 	// Search state
-	searchMode       bool    // true when in search input mode
-	searchForward    bool    // true for forward search (/), false for backward (?)
-	searchInput      string  // current input being typed
-	searchQuery      string  // executed search query
-	matches          []Match // search match positions
-	currentMatch     int     // index of current match in matches slice
-	lastSearchScroll int     // scroll position when last search navigation occurred
+	searchMode      bool   // true when in search input mode
+	searchForward   bool   // true for forward search (/), false for backward (?)
+	searchInput     string // current input being typed
+	searchQuery     string // executed search query
+	searchMatchIdx  int    // index of current match within cursor row on current side (0 = first)
+	searchMatchSide int    // which side the current match is on (0 = new/left, 1 = old/right)
 
 	// Multi-key sequence state
 	pendingKey string // first key of a multi-key sequence (e.g., "g" waiting for second key)
