@@ -117,6 +117,10 @@ type Model struct {
 	commentCursor int                   // cursor position in commentInput (byte offset)
 	commentKey    commentKey            // which line is being commented
 	comments      map[commentKey]string // stored comments
+
+	// Status message (echo area)
+	statusMessage     string    // message to display in status bar
+	statusMessageTime time.Time // when the message was set (for auto-clear)
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.

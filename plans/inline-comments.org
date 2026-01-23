@@ -82,6 +82,13 @@
 ** Navigation
 - [ ] Keybind to jump to next/previous comment (e.g., ]c / [c)
 
+** Yank (Copy to Clipboard)
+- [X] Press "y" on commented line or comment row to copy diff snippet
+- [X] Output format: unified diff with 2 lines context before, # prefixed comment
+- [X] Status message shows "Copied comment for $file" (auto-clears after 3s)
+- [X] Error message if clipboard unavailable
+- [ ] Support Linux (xclip/xsel) and Windows (clip.exe)
+
 ** Persistence & Export
 - [ ] Export comments to a file (JSON, markdown, or patch notes format)
 - [ ] Export as GitHub PR review comments format

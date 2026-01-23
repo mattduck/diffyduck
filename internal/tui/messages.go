@@ -1,5 +1,12 @@
 package tui
 
+import "time"
+
+// ClearStatusMsg is sent to clear the status message after a delay.
+type ClearStatusMsg struct {
+	SetTime time.Time // time when the message was set, to avoid clearing newer messages
+}
+
 // FileContentLoadedMsg is sent when file content has been fetched for a single file.
 type FileContentLoadedMsg struct {
 	FileIndex        int

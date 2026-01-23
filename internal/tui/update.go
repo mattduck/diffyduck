@@ -124,6 +124,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.RequestHighlightAll()
 		}
 		return m, nil
+
+	case ClearStatusMsg:
+		// Only clear if this message matches the current message time
+		// (prevents clearing a newer message set after this timer started)
+		if m.statusMessage != "" && m.statusMessageTime == msg.SetTime {
+			m.statusMessage = ""
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -236,6 +244,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.handleEnter()
+
+	case matchesKey(msg, keys.Yank):
+		return m.handleYank()
 	}
 
 	return m, nil

@@ -1819,6 +1819,15 @@ func (m Model) renderStatusBar() string {
 		styledLessIndicator = unfocusedStatusStyle.Render(" " + lessIndicator)
 	}
 
+	// Status message (echo area) - shown after less indicator
+	var statusMsg string
+	var statusMsgWidth int
+	if m.statusMessage != "" {
+		statusMsgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		statusMsg = " " + statusMsgStyle.Render(m.statusMessage)
+		statusMsgWidth = 1 + displayWidth(m.statusMessage)
+	}
+
 	// Loading indicator (grey, shown when any files are loading)
 	var loadingIndicator string
 	var loadingWidth int
@@ -1841,9 +1850,9 @@ func (m Model) renderStatusBar() string {
 		debugStats, debugWidth = m.formatDebugStats()
 	}
 
-	// Combine: reversed_less_indicator + loading + padding + debug_stats + pager_indicator
-	content := styledLessIndicator + loadingIndicator
-	contentWidth := displayWidth(" "+lessIndicator) + loadingWidth
+	// Combine: reversed_less_indicator + status_msg + loading + padding + debug_stats + pager_indicator
+	content := styledLessIndicator + statusMsg + loadingIndicator
+	contentWidth := displayWidth(" "+lessIndicator) + statusMsgWidth + loadingWidth
 	pagerWidth := displayWidth(pagerIndicator)
 
 	// Calculate padding between content and right-side indicators
