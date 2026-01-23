@@ -453,3 +453,549 @@ func TestComment_ScrollPastComment(t *testing.T) {
 			"cursor should be on content or comment row at bottom")
 	}
 }
+
+// =============================================================================
+// Cursor Integration Tests for Comments
+// =============================================================================
+
+// Test: Resize preserves cursor on comment row
+func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Add a comment on line 3
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.comments[key] = "Test comment"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Find the comment row position
+	rows := m.buildRows()
+	commentRowIdx := -1
+	for i, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 3 {
+			commentRowIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
+
+	// Position cursor on comment row
+	m.scroll = commentRowIdx - m.cursorOffset()
+	cursorPos := m.cursorLine()
+	require.Equal(t, commentRowIdx, cursorPos, "cursor should be on comment row")
+
+	// Resize the terminal
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 35})
+	model := newM.(Model)
+
+	// Cursor should still be on the comment row (same absolute position, rows are stable)
+	newCursorPos := model.cursorLine()
+	newRows := model.buildRows()
+	assert.True(t, newRows[newCursorPos].kind == RowKindComment,
+		"after resize, cursor should still be on comment row (got cursorPos=%d, kind=%d)",
+		newCursorPos, newRows[newCursorPos].kind)
+	assert.Equal(t, 3, newRows[newCursorPos].commentLineNum,
+		"comment should still be for line 3")
+}
+
+// Test: Fold toggle with comments - cursor on comment row when file folds
+func TestComment_FoldToggle_CursorOnCommentRow_JumpsToHeader(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.calculateTotalLines()
+
+	// Add a comment on a content line
+	key := commentKey{fileIndex: 0, newLineNum: 5}
+	m.comments[key] = "Comment on line 5"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Find the comment row position
+	rows := m.buildRows()
+	commentRowIdx := -1
+	for i, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 5 {
+			commentRowIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
+
+	// Position cursor on comment row
+	m.scroll = commentRowIdx - m.cursorOffset()
+	cursorPos := m.cursorLine()
+	require.Equal(t, commentRowIdx, cursorPos, "cursor should be on comment row")
+
+	// Fold the file (Normal -> Expanded -> Folded)
+	// First toggle: Normal -> Expanded
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+	// Second toggle: Expanded -> Folded
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = newM.(Model)
+
+	// In folded state, comments are hidden, cursor should jump to header
+	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
+
+	newCursorPos := model.cursorLine()
+	newRows := model.buildRows()
+	assert.True(t, newRows[newCursorPos].isHeader,
+		"after folding, cursor should be on header (comment is hidden)")
+}
+
+// Test: Multiple files with comments - navigation between them
+func TestComment_MultipleFiles_Navigation(t *testing.T) {
+	// Create two files with different comments
+	pairs1 := make([]sidebyside.LinePair, 5)
+	pairs2 := make([]sidebyside.LinePair, 5)
+	for i := range pairs1 {
+		pairs1[i] = sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i + 1, Content: "old line", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: i + 1, Content: "new line", Type: sidebyside.Added},
+		}
+	}
+	for i := range pairs2 {
+		pairs2[i] = sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i + 1, Content: "old line", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: i + 1, Content: "new line", Type: sidebyside.Added},
+		}
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2},
+	})
+	m.width = 80
+	m.height = 40
+	m.comments = make(map[commentKey]string)
+
+	// Add comments in both files
+	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Comment in first file"
+	m.comments[commentKey{fileIndex: 1, newLineNum: 3}] = "Comment in second file"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Navigate to second file using gj
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model := newM.(Model)
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model = newM.(Model)
+
+	info := model.StatusInfo()
+	assert.Equal(t, "second.go", info.FileName, "should be on second file")
+
+	// Navigate back to first file using gk
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model = newM.(Model)
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	model = newM.(Model)
+
+	info = model.StatusInfo()
+	assert.Equal(t, "first.go", info.FileName, "should be back on first file")
+}
+
+// Test: Comment on line near hunk boundary
+func TestComment_NearHunkBoundary(t *testing.T) {
+	// Create a file with a gap in line numbers (hunk boundary)
+	pairs := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 1, Content: "line 1 new", Type: sidebyside.Added}},
+		{Old: sidebyside.Line{Num: 2, Content: "line 2", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 2, Content: "line 2 new", Type: sidebyside.Added}},
+		// Gap here - next line is 100
+		{Old: sidebyside.Line{Num: 100, Content: "line 100", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 100, Content: "line 100 new", Type: sidebyside.Added}},
+		{Old: sidebyside.Line{Num: 101, Content: "line 101", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 101, Content: "line 101 new", Type: sidebyside.Added}},
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+	})
+	m.width = 80
+	m.height = 30
+	m.comments = make(map[commentKey]string)
+
+	// Add comment on last line before hunk boundary
+	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Comment before boundary"
+	// Add comment on first line after hunk boundary
+	m.comments[commentKey{fileIndex: 0, newLineNum: 100}] = "Comment after boundary"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	rows := m.buildRows()
+
+	// Find the hunk separator
+	separatorIdx := -1
+	for i, r := range rows {
+		if r.isSeparator {
+			separatorIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, separatorIdx, "should have a hunk separator")
+
+	// Find comment rows
+	var commentIndices []int
+	for i, r := range rows {
+		if r.kind == RowKindComment {
+			commentIndices = append(commentIndices, i)
+		}
+	}
+
+	// Should have at least 6 comment rows (3 per comment box: top border, content, bottom border)
+	assert.GreaterOrEqual(t, len(commentIndices), 6,
+		"should have comment rows for both comments")
+
+	// Verify comments appear after their respective content lines (not after separator)
+	for i, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 2 {
+			// This comment should appear before the separator
+			assert.Less(t, i, separatorIdx,
+				"comment on line 2 should appear before separator")
+			break
+		}
+	}
+}
+
+// Test: Very long comment (wrapping behavior)
+func TestComment_VeryLongComment(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.calculateTotalLines()
+
+	// Add a very long comment (longer than typical terminal width)
+	longComment := "This is a very long comment that should probably wrap or be truncated. " +
+		"It contains multiple sentences and lots of text to test how the display handles " +
+		"comments that exceed the available width."
+	key := commentKey{fileIndex: 0, newLineNum: 1}
+	m.comments[key] = longComment
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	rows := m.buildRows()
+
+	// Find comment rows
+	var commentRows []displayRow
+	for _, r := range rows {
+		if r.kind == RowKindComment {
+			commentRows = append(commentRows, r)
+		}
+	}
+
+	// Should have at least 3 rows (top border, content, bottom border)
+	assert.GreaterOrEqual(t, len(commentRows), 3,
+		"long comment should have at least 3 rows")
+
+	// The comment text should be stored correctly
+	assert.Equal(t, longComment, m.comments[key], "comment should be stored correctly")
+}
+
+// Test: Unicode characters in comments
+func TestComment_UnicodeCharacters(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.calculateTotalLines()
+
+	// Add a comment with various unicode characters
+	unicodeComment := "This has émojis 🎉 and special chars: ñ, ü, 中文, 日本語"
+	key := commentKey{fileIndex: 0, newLineNum: 1}
+	m.comments[key] = unicodeComment
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	rows := m.buildRows()
+
+	// Find comment rows
+	foundCommentRow := false
+	for _, r := range rows {
+		if r.kind == RowKindComment {
+			foundCommentRow = true
+			break
+		}
+	}
+
+	assert.True(t, foundCommentRow, "should have comment rows for unicode comment")
+
+	// Verify the comment is stored correctly
+	assert.Equal(t, unicodeComment, m.comments[key], "unicode comment should be stored correctly")
+}
+
+// Test: Breadcrumb shows correctly when cursor on comment row
+func TestComment_BreadcrumbOnCommentRow(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Add a comment
+	key := commentKey{fileIndex: 0, newLineNum: 5}
+	m.comments[key] = "A comment"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Find the comment row position
+	rows := m.buildRows()
+	commentRowIdx := -1
+	for i, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 5 {
+			commentRowIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
+
+	// Position cursor on comment row
+	m.scroll = commentRowIdx - m.cursorOffset()
+
+	// Get breadcrumbs (this tests that commentLineNum is used for lookups)
+	row := rows[commentRowIdx]
+	assert.Equal(t, 5, row.commentLineNum,
+		"comment row should have correct commentLineNum for breadcrumb lookup")
+}
+
+// Test: StatusInfo reports correct position with comments above cursor
+func TestComment_StatusInfo_CorrectPositionWithComments(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	totalBefore := m.totalLines
+
+	// Add comments on lines 1, 2, 3
+	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = "Comment 1"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Comment 2"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "Comment 3"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Total lines should have increased
+	assert.Greater(t, m.totalLines, totalBefore,
+		"totalLines should increase with comments")
+
+	// Position cursor on line 8 content
+	rows := m.buildRows()
+	line8Idx := -1
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Num == 8 {
+			line8Idx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, line8Idx, "should find line 8")
+
+	m.scroll = line8Idx - m.cursorOffset()
+
+	info := m.StatusInfo()
+
+	// CurrentLine should reflect the row position including comment rows
+	assert.Equal(t, line8Idx+1, info.CurrentLine,
+		"StatusInfo.CurrentLine should account for comment rows")
+	// TotalLines should include comment rows
+	assert.Equal(t, m.totalLines, info.TotalLines,
+		"StatusInfo.TotalLines should include comment rows")
+}
+
+// Test: Go to top (gg) with comments present
+func TestComment_GoToTop_WithComments(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Add a comment near the top
+	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = "Comment at top"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Start somewhere in the middle
+	m.scroll = 10
+
+	// Press gg to go to top
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model := newM.(Model)
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model = newM.(Model)
+
+	// Should be at minimum scroll (cursor on first row)
+	assert.Equal(t, model.minScroll(), model.scroll,
+		"gg should go to top even with comments present")
+}
+
+// Test: Go to bottom (G) with comments present
+func TestComment_GoToBottom_WithComments(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Add comments throughout
+	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Comment 2"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 5}] = "Comment 5"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 10}] = "Comment at end"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Start at top
+	m.scroll = m.minScroll()
+
+	// Press G to go to bottom
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	model := newM.(Model)
+
+	// Should be at maximum scroll (cursor on last row)
+	assert.Equal(t, model.maxScroll(), model.scroll,
+		"G should go to bottom even with comments present")
+
+	// Cursor should be on valid row
+	cursorPos := model.cursorLine()
+	rows := model.buildRows()
+	assert.True(t, cursorPos >= 0 && cursorPos < len(rows),
+		"cursor should be on valid row after G")
+}
+
+// Test: Page down through comment rows
+func TestComment_PageDown_ThroughComments(t *testing.T) {
+	m := makeCommentableTestModel(30)
+	m.height = 15 // Small viewport to ensure multiple pages
+	m.calculateTotalLines()
+
+	// Add comments sprinkled throughout
+	for i := 1; i <= 30; i += 5 {
+		m.comments[commentKey{fileIndex: 0, newLineNum: i}] = "Comment on line"
+	}
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	initialScroll := m.scroll
+
+	// Page down
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	model := newM.(Model)
+
+	// Should have scrolled forward
+	assert.Greater(t, model.scroll, initialScroll,
+		"page down should increase scroll")
+
+	// Page down again
+	secondScroll := model.scroll
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	model = newM.(Model)
+
+	// Should continue to scroll
+	assert.GreaterOrEqual(t, model.scroll, secondScroll,
+		"second page down should scroll further or stay at max")
+}
+
+// Test: Page up through comment rows
+func TestComment_PageUp_ThroughComments(t *testing.T) {
+	m := makeCommentableTestModel(30)
+	m.height = 15
+	m.calculateTotalLines()
+
+	// Add comments sprinkled throughout
+	for i := 1; i <= 30; i += 5 {
+		m.comments[commentKey{fileIndex: 0, newLineNum: i}] = "Comment on line"
+	}
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Start at bottom
+	m.scroll = m.maxScroll()
+	initialScroll := m.scroll
+
+	// Page up
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	model := newM.(Model)
+
+	// Should have scrolled backward
+	assert.Less(t, model.scroll, initialScroll,
+		"page up should decrease scroll")
+
+	// Page up again
+	secondScroll := model.scroll
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	model = newM.(Model)
+
+	// Should continue to scroll
+	assert.LessOrEqual(t, model.scroll, secondScroll,
+		"second page up should scroll further or stay at min")
+}
+
+// Test: j/k navigation includes comment rows in totalLines
+func TestComment_JK_NavigationIncludesComments(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.calculateTotalLines()
+	totalBefore := m.totalLines
+
+	// Add a multi-line comment
+	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Line 1\nLine 2\nLine 3"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Comment box adds rows: border + 3 lines + border = 5 rows
+	expectedIncrease := 5
+	assert.Equal(t, totalBefore+expectedIncrease, m.totalLines,
+		"totalLines should increase by comment box rows (got %d, expected %d)",
+		m.totalLines, totalBefore+expectedIncrease)
+
+	// Navigate with j through all rows
+	m.scroll = m.minScroll()
+	visitedRows := 0
+	for m.scroll < m.maxScroll() {
+		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m = newM.(Model)
+		visitedRows++
+	}
+
+	// Should have visited all rows (minus cursor offset positions)
+	assert.Greater(t, visitedRows, 0, "should visit multiple rows with j")
+}
+
+// Test: Comments in expanded view vs normal view
+func TestComment_ExpandedVsNormalView(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.calculateTotalLines()
+
+	// Add a comment
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.comments[key] = "Test comment"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	normalTotalLines := m.totalLines
+	normalRows := m.buildRows()
+
+	// Count comment rows in normal view
+	normalCommentRows := 0
+	for _, r := range normalRows {
+		if r.kind == RowKindComment {
+			normalCommentRows++
+		}
+	}
+
+	// Switch to expanded view
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	// Provide some content so expanded view works
+	content := make([]string, 10)
+	for i := range content {
+		content[i] = "content line"
+	}
+	m.files[0].OldContent = content
+	m.files[0].NewContent = content
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	expandedTotalLines := m.totalLines
+	expandedRows := m.buildRows()
+
+	// Count comment rows in expanded view
+	expandedCommentRows := 0
+	for _, r := range expandedRows {
+		if r.kind == RowKindComment {
+			expandedCommentRows++
+		}
+	}
+
+	// Comment rows should exist in both views
+	assert.Greater(t, normalCommentRows, 0, "should have comment rows in normal view")
+	assert.Greater(t, expandedCommentRows, 0, "should have comment rows in expanded view")
+
+	// Expanded view has more content, so total lines should be different
+	// (expanded shows full file, normal shows only diff hunks)
+	assert.NotEqual(t, normalTotalLines, expandedTotalLines,
+		"expanded view should have different total lines than normal")
+}

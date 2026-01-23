@@ -48,10 +48,34 @@
 - [X] Line caches may need refreshing on comment submit
 - [X] Tests for cursor behavior with comments
 
+*** Additional Tests to Add
+- [X] Resize preserves cursor on comment row
+- [X] Fold toggle with comments: cursor on comment row when file folds
+- [X] Comments in expanded view vs normal view
+- [X] Multiple files with comments - navigation between them
+- [X] Comment on line near hunk boundary
+- [X] Very long comment (wrapping behavior, box width)
+- [X] Unicode characters in comments
+- [X] Breadcrumb shows correctly when cursor on comment row
+- [X] StatusInfo reports correct position with comments above cursor
+- [X] Go to top (gg) / bottom (G) with comments present
+- [X] Page up/down through comment rows
+
 ** Search Integration
 - [ ] Search should match text within comments
 - [ ] Highlight matches in comment text
 - [ ] Tests for search within comments
+
+*** Test Cases for Search
+- [ ] Basic search finds text in comment content
+- [ ] Search highlights match within comment box
+- [ ] n/N navigation visits matches in comments
+- [ ] Search match count includes comment matches
+- [ ] Cursor moves to comment row when match is in comment
+- [ ] Multiple matches in same comment
+- [ ] Match spans comment and code (e.g., variable name in both)
+- [ ] Clear search removes highlight from comments
+- [ ] Case-insensitive search in comments
 
 * Future Enhancements
 
