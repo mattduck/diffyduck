@@ -175,32 +175,40 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case matchesKey(msg, keys.Up):
 		m.scroll--
 		m.clampScroll()
+		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.Down):
 		m.scroll++
 		m.clampScroll()
+		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.PageUp):
 		m.scroll -= m.height
 		m.clampScroll()
+		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.PageDown):
 		m.scroll += m.height
 		m.clampScroll()
+		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.HalfUp):
 		m.scroll -= m.height / 2
 		m.clampScroll()
+		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.HalfDown):
 		m.scroll += m.height / 2
 		m.clampScroll()
+		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.Top):
 		m.scroll = m.minScroll()
+		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.Bottom):
 		m.scroll = m.maxScroll()
+		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.Left):
 		m.hscroll -= m.hscrollStep
@@ -540,12 +548,15 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		// gg: go to top
 		m.scroll = m.minScroll()
+		m.resetSearchMatchForRow()
 	case "j":
 		// gj: next heading (file header)
 		m.goToNextHeading()
+		m.resetSearchMatchForRow()
 	case "k":
 		// gk: previous heading (file header)
 		m.goToPrevHeading()
+		m.resetSearchMatchForRow()
 	}
 	// Any other key just cancels the pending state without action
 
