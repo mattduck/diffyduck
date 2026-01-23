@@ -1853,8 +1853,8 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	}
 
 	if isCursorRow && !m.focused {
-		// Unfocused: outline arrow, no background highlight
-		return unfocusedCursorArrowStyle.Render("▷") + " " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+		// Unfocused: outline arrow, no background highlight (use same style as non-cursor row)
+		return unfocusedCursorArrowStyle.Render("▷") + " " + fileStatusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 	}
 
 	// Normal rendering

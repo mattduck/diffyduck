@@ -370,6 +370,48 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 	})
 }
 
+func TestView_CursorHighlight_OnFileHeader_UnfocusedNoBg(t *testing.T) {
+	// When unfocused, the file header should NOT have cursor background highlighting
+	// It should show the outline arrow but no bg color on file number
+	withANSIColors(t, func() {
+		m := Model{
+			focused: false, // unfocused
+			files: []sidebyside.FilePair{
+				{
+					OldPath: "a/test.go",
+					NewPath: "b/test.go",
+					Pairs: []sidebyside.LinePair{
+						{
+							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+							New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						},
+					},
+				},
+			},
+			width:  80,
+			height: 10,
+			scroll: 0, // cursor at line 1 (the header, after top border at line 0)
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		output := m.View()
+		lines := strings.Split(output, "\n")
+		// lines[0]=topBar, lines[1]=divider, lines[2]=top border, lines[3]=header (with cursor)
+		headerLine := lines[3]
+
+		// Should have outline arrow
+		assert.Contains(t, headerLine, "▷", "unfocused header should have outline arrow")
+
+		// Should NOT have cursor background style (bg=7)
+		assert.NotContains(t, headerLine, ansiCursorStyle, "unfocused header should NOT have cursor background highlighting")
+
+		// Should NOT have any background color on the file number area
+		// statusStyle uses Background(Color("8")) which produces ;100m (bright black bg)
+		assert.NotContains(t, headerLine, ";100m", "unfocused header should NOT have statusStyle background")
+	})
+}
+
 func TestView_FileHeader_SpansFullWidth(t *testing.T) {
 	// File headers should span the full terminal width without a │ separator
 	// (separators are only for diff content lines)
