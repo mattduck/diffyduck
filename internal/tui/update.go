@@ -130,6 +130,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle comment input mode first (highest priority)
+	if m.commentMode {
+		return m.handleCommentInput(msg)
+	}
+
 	// Handle search input mode separately
 	if m.searchMode {
 		return m.handleSearchInput(msg)
@@ -226,6 +231,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleFoldToggleAll()
 
 	case matchesKey(msg, keys.Enter):
+		// Enter starts comment mode on commentable lines
+		if m.startComment() {
+			return m, nil
+		}
 		return m.handleEnter()
 	}
 

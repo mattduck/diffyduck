@@ -57,6 +57,10 @@ var (
 	// Debug mode styles
 	debugLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5")) // magenta for labels
 	debugValueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan for values
+
+	// Comment styles
+	commentBorderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for borders
+	commentTextStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for text
 )
 
 // View implements tea.Model.
@@ -852,6 +856,17 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			visible = append(visible, m.renderBinaryIndicator(row.binaryMessage, isCursorRow, row.binaryOld, row.binaryNew))
 		} else {
 			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter))
+
+			// Render inline comment if this row has one
+			if comment, hasComment := m.getCommentForRow(row); hasComment && len(visible) < contentHeight {
+				commentLines := m.renderInlineComment(comment, leftHalfWidth, rightHalfWidth, lineNumWidth)
+				for _, line := range commentLines {
+					if len(visible) >= contentHeight {
+						break
+					}
+					visible = append(visible, line)
+				}
+			}
 		}
 	}
 
@@ -1705,6 +1720,11 @@ func formatShortRelativeDate(isoDate string) string {
 // renderStatusBar renders the status bar at the bottom of the screen.
 // This now only contains the less-style indicator (file info is in top bar).
 func (m Model) renderStatusBar() string {
+	// In comment mode, show comment prompt
+	if m.commentMode {
+		return m.renderCommentPrompt()
+	}
+
 	// In search mode, show search prompt
 	if m.searchMode {
 		return m.renderSearchPrompt()
@@ -1852,6 +1872,90 @@ func (m Model) renderSearchPrompt() string {
 
 	// No reverse styling for search prompt - just return plain text with padding
 	return left + strings.Repeat(" ", padding)
+}
+
+// renderCommentPrompt renders the comment input as a multi-line prompt.
+func (m Model) renderCommentPrompt() string {
+	// Split input into lines
+	lines := strings.Split(m.commentInput, "\n")
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+
+	// Find which line the cursor is on and the position within that line
+	cursorLine := 0
+	cursorCol := m.commentCursor
+	pos := 0
+	for i, line := range lines {
+		lineEnd := pos + len(line)
+		if i < len(lines)-1 {
+			lineEnd++ // account for newline
+		}
+		// Use < so cursor right after newline is on the next line
+		if m.commentCursor < lineEnd || i == len(lines)-1 {
+			cursorLine = i
+			cursorCol = m.commentCursor - pos
+			break
+		}
+		pos = lineEnd
+	}
+
+	var result []string
+
+	// Render each line of input
+	for i, line := range lines {
+		var prefix string
+		if i == cursorLine {
+			prefix = " > " // cursor line gets the main prompt
+		} else {
+			prefix = " . " // other lines get continuation indicator
+		}
+
+		var renderedLine string
+		if i == cursorLine {
+			// This line has the cursor
+			if cursorCol > len(line) {
+				cursorCol = len(line)
+			}
+
+			beforeCursor := line[:cursorCol]
+			var cursorChar string
+			var afterCursor string
+
+			if cursorCol < len(line) {
+				runes := []rune(line[cursorCol:])
+				cursorChar = string(runes[0])
+				afterCursor = string(runes[1:])
+			} else {
+				cursorChar = " "
+				afterCursor = ""
+			}
+
+			styledCursor := statusStyle.Render(cursorChar)
+			renderedLine = prefix + beforeCursor + styledCursor + afterCursor
+		} else {
+			renderedLine = prefix + line
+		}
+
+		// Pad to full width
+		lineWidth := displayWidth(renderedLine)
+		padding := m.width - lineWidth
+		if padding < 0 {
+			padding = 0
+		}
+		result = append(result, renderedLine+strings.Repeat(" ", padding))
+	}
+
+	// Add help line at the bottom
+	help := " (C-j to submit, C-c to cancel)"
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	helpPadding := m.width - displayWidth(help)
+	if helpPadding < 0 {
+		helpPadding = 0
+	}
+	result = append(result, helpStyle.Render(help)+strings.Repeat(" ", helpPadding))
+
+	return strings.Join(result, "\n")
 }
 
 // highlightSearchInVisible highlights search matches in visible text.
@@ -2452,6 +2556,100 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	// Normal rendering
 	// Format: prefix(2) + indent(3) + icon + fileNum + status + header + padding + stats + boxPadding + space + │ + trailing
 	return "     " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+}
+
+// renderInlineComment renders an inline comment below a content row.
+// Returns a slice of rendered lines with a full box border around the comment.
+func (m Model) renderInlineComment(comment string, leftHalfWidth, rightHalfWidth, lineNumWidth int) []string {
+	var result []string
+
+	// Gutter: arrow(1) + space(1) + lineNum area
+	gutterWidth := 2 + lineNumWidth
+
+	// Box spans from after gutter to the left half width
+	// Box structure: │ + space + content + space + │
+	boxWidth := leftHalfWidth - gutterWidth
+	if boxWidth < 6 {
+		boxWidth = 6
+	}
+
+	// Content width inside the box (minus borders and padding)
+	contentWidth := boxWidth - 4 // 4 = │ + space + space + │
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+
+	// Right side will be empty with shading
+	rightWidth := rightHalfWidth
+
+	// Wrap comment text into lines
+	commentLines := wrapText(comment, contentWidth)
+	if len(commentLines) == 0 {
+		commentLines = []string{""}
+	}
+
+	gutter := strings.Repeat(" ", gutterWidth)
+	sep := centerDividerStyle.Render(" │ ")
+	rightSide := hunkSeparatorStyle.Render(strings.Repeat("░", rightWidth))
+
+	// Top border: ┌────────┐
+	topBorder := "┌" + strings.Repeat("─", boxWidth-2) + "┐"
+	result = append(result, gutter+commentBorderStyle.Render(topBorder)+sep+rightSide)
+
+	// Content lines: │ text │
+	for _, line := range commentLines {
+		lineWidth := displayWidth(line)
+		padding := contentWidth - lineWidth
+		if padding < 0 {
+			padding = 0
+		}
+		paddedText := line + strings.Repeat(" ", padding)
+		result = append(result, gutter+commentBorderStyle.Render("│ ")+commentTextStyle.Render(paddedText)+" "+commentBorderStyle.Render("│")+sep+rightSide)
+	}
+
+	// Bottom border: └────────┘
+	bottomBorder := "└" + strings.Repeat("─", boxWidth-2) + "┘"
+	result = append(result, gutter+commentBorderStyle.Render(bottomBorder)+sep+rightSide)
+
+	return result
+}
+
+// wrapText wraps text to fit within maxWidth, preserving words where possible.
+func wrapText(text string, maxWidth int) []string {
+	if maxWidth <= 0 {
+		return []string{text}
+	}
+
+	var lines []string
+	// Split by explicit newlines first
+	paragraphs := strings.Split(text, "\n")
+
+	for _, para := range paragraphs {
+		if para == "" {
+			lines = append(lines, "")
+			continue
+		}
+
+		words := strings.Fields(para)
+		if len(words) == 0 {
+			lines = append(lines, "")
+			continue
+		}
+
+		currentLine := words[0]
+		for _, word := range words[1:] {
+			testLine := currentLine + " " + word
+			if displayWidth(testLine) <= maxWidth {
+				currentLine = testLine
+			} else {
+				lines = append(lines, currentLine)
+				currentLine = word
+			}
+		}
+		lines = append(lines, currentLine)
+	}
+
+	return lines
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool) string {

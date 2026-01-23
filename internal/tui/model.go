@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -17,6 +18,13 @@ type inlineDiffKey struct {
 	fileIndex int
 	oldNum    int
 	newNum    int
+}
+
+// commentKey identifies a line that can have a comment.
+// Comments attach to the new/left side line number.
+type commentKey struct {
+	fileIndex  int
+	newLineNum int // line number on new/left side
 }
 
 // inlineDiffResult stores cached inline diff spans for a line pair.
@@ -102,6 +110,13 @@ type Model struct {
 
 	// Focus state - true when terminal has focus
 	focused bool
+
+	// Comment state
+	commentMode   bool                  // true when editing a comment
+	commentInput  string                // text being edited
+	commentCursor int                   // cursor position in commentInput (byte offset)
+	commentKey    commentKey            // which line is being commented
+	comments      map[commentKey]string // stored comments
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
@@ -203,6 +218,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		spinner:             s,
 		loadingFiles:        make(map[int]time.Time),
 		focused:             true,
+		comments:            make(map[commentKey]string),
 	}
 
 	// Flatten files from all commits and track boundaries
@@ -306,12 +322,25 @@ func (m Model) Init() tea.Cmd {
 	return m.RequestHighlightFromPairsExcept(map[int]bool{0: true})
 }
 
+// commentPromptHeight returns the number of lines needed for the comment prompt.
+// Returns 1 when not in comment mode (for normal status bar).
+func (m Model) commentPromptHeight() int {
+	if !m.commentMode {
+		return 1
+	}
+	// Count newlines in the input, plus 1 for the current line
+	lines := strings.Count(m.commentInput, "\n") + 1
+	// Add 1 for the help line at the bottom
+	return lines + 1
+}
+
 // contentHeight returns the height available for content (minus top bar, divider, and bottom bar).
 func (m Model) contentHeight() int {
 	reserved := 3 // file line + divider + bottom bar
 	if m.hasCommitInfo() {
 		reserved++ // commit info line in top bar
 	}
+	reserved += m.commentPromptHeight() // comment input area
 	h := m.height - reserved
 	if h < 1 {
 		return 1
