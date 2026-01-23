@@ -428,7 +428,8 @@ func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
 		return ""
 	}
 
-	return formatBreadcrumbs(entries)
+	// Use 0 for compact default (status bar will truncate as needed)
+	return formatBreadcrumbs(entries, 0)
 }
 
 // getStructureAtLine returns structure entries containing the given line.
@@ -447,18 +448,51 @@ func (m Model) getStructureAtLine(fileIdx int, lineNum int) []structure.Entry {
 
 // formatBreadcrumbs formats structure entries as a breadcrumb string.
 // Entries are expected to be ordered from outermost to innermost.
-// Output format: "type MyStruct > func (m Model) myMethod(ctx)"
-func formatBreadcrumbs(entries []structure.Entry) string {
+// maxWidth controls signature truncation (0 = use compact default).
+// Output format: "type MyStruct > func (m Model) myMethod(ctx) -> error"
+func formatBreadcrumbs(entries []structure.Entry, maxWidth int) string {
 	if len(entries) == 0 {
 		return ""
 	}
 
+	// Calculate width budget for each entry's signature
+	// Reserve space for kind prefix and separators
+	separatorWidth := 3 // " > "
+	totalSeparators := len(entries) - 1
+	reservedWidth := totalSeparators * separatorWidth
+
+	// Rough estimate: divide remaining width among entries
+	// (In practice, outer entries like "class Foo" are short, inner ones need more space)
+	sigWidth := 0
+	if maxWidth > 0 && len(entries) > 0 {
+		// Give most of the budget to the innermost entry (last one)
+		sigWidth = maxWidth - reservedWidth
+		for _, e := range entries[:len(entries)-1] {
+			// Estimate width for outer entries (kind + name + some buffer)
+			outerWidth := len(e.Kind) + 1 + len(e.Name) + 5
+			sigWidth -= outerWidth
+		}
+		if sigWidth < 20 {
+			sigWidth = 20 // minimum reasonable width
+		}
+	}
+
 	var parts []string
-	for _, e := range entries {
+	for i, e := range entries {
 		var part string
-		if e.Signature != "" {
-			// Use signature (includes receiver and params for functions)
-			part = e.Kind + " " + e.Signature
+		// Use full width budget for innermost entry, compact for others
+		entryWidth := 0
+		if i == len(entries)-1 {
+			// Subtract the "kind " prefix from available width
+			kindPrefixLen := len(e.Kind) + 1
+			entryWidth = sigWidth - kindPrefixLen
+			if entryWidth < 0 {
+				entryWidth = 0
+			}
+		}
+		sig := e.FormatSignature(entryWidth)
+		if sig != "" {
+			part = e.Kind + " " + sig
 		} else {
 			part = e.Kind + " " + e.Name
 		}

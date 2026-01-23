@@ -7,15 +7,77 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mattn/go-runewidth"
 )
 
 // Entry represents a structural element (function, type, etc.)
 type Entry struct {
-	StartLine int    // 1-based line number
-	EndLine   int    // 1-based line number (inclusive)
-	Name      string // e.g., "MyStruct", "myMethod"
-	Kind      string // e.g., "type", "func"
-	Signature string // e.g., "(m Model) myMethod(ctx)" - includes receiver and params, empty if N/A
+	StartLine  int      // 1-based line number
+	EndLine    int      // 1-based line number (inclusive)
+	Name       string   // e.g., "MyStruct", "myMethod"
+	Kind       string   // e.g., "type", "func", "def", "class"
+	Receiver   string   // Go only: e.g., "(m *Model)" - empty for functions and non-Go
+	Params     []string // Function parameters: ["ctx context.Context", "request *Request"]
+	ReturnType string   // Return type: "error", "User | None", etc. - empty if none
+}
+
+// FormatSignature formats the entry's signature for display, adapting to available width.
+// Priority order: name > return type > params (filled in from left until space runs out).
+// maxWidth of 0 means use compact format (no params shown).
+func (e *Entry) FormatSignature(maxWidth int) string {
+	// Types/classes have no signature
+	if len(e.Params) == 0 && e.ReturnType == "" && e.Receiver == "" {
+		return ""
+	}
+
+	// Build the name prefix (with receiver if present)
+	name := e.Name
+	if e.Receiver != "" {
+		name = e.Receiver + " " + e.Name
+	}
+
+	// Compact format (maxWidth=0): name(...) -> ReturnType
+	// Prioritizes return type, shows no params
+	if maxWidth <= 0 {
+		return e.formatWithParams(name, 0)
+	}
+
+	// Try progressively adding more params until it doesn't fit
+	// Start with 0 params (compact), then add params one by one
+	lastFit := e.formatWithParams(name, 0)
+
+	for numParams := 1; numParams <= len(e.Params); numParams++ {
+		sig := e.formatWithParams(name, numParams)
+		if runewidth.StringWidth(sig) > maxWidth {
+			// This doesn't fit, return the last one that did
+			return lastFit
+		}
+		lastFit = sig
+	}
+
+	// All params fit
+	return lastFit
+}
+
+// formatWithParams formats with the specified number of params, adding ... if truncated.
+// numParams=0 shows (...) if there are params, or () if no params.
+func (e *Entry) formatWithParams(name string, numParams int) string {
+	var params string
+	if len(e.Params) == 0 {
+		params = "()"
+	} else if numParams == 0 {
+		params = "(...)"
+	} else if numParams >= len(e.Params) {
+		params = "(" + strings.Join(e.Params, ", ") + ")"
+	} else {
+		params = "(" + strings.Join(e.Params[:numParams], ", ") + ", ...)"
+	}
+
+	if e.ReturnType != "" {
+		return name + params + " -> " + e.ReturnType
+	}
+	return name + params
 }
 
 // Map holds sorted structure entries for fast lookup.

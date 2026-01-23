@@ -1,8 +1,6 @@
 package structure
 
 import (
-	"strings"
-
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -41,19 +39,12 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 		if defNode != nil {
 			defType := defNode.Kind()
 			if kind, ok := pythonStructuralTypes[defType]; ok {
-				name, signature := p.extractNameAndSignature(defNode, content)
-				if name != "" {
+				entry := p.extractEntry(defNode, kind, content)
+				if entry != nil {
 					// Use the decorated_definition's span (includes decorators)
-					startPos := node.StartPosition()
-					endPos := node.EndPosition()
-
-					*entries = append(*entries, Entry{
-						StartLine: int(startPos.Row) + 1,
-						EndLine:   int(endPos.Row) + 1,
-						Name:      name,
-						Kind:      kind,
-						Signature: signature,
-					})
+					entry.StartLine = int(node.StartPosition().Row) + 1
+					entry.EndLine = int(node.EndPosition().Row) + 1
+					*entries = append(*entries, *entry)
 				}
 			}
 			// Recurse into the definition to find nested structures (e.g., methods in decorated classes)
@@ -77,18 +68,9 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 			return
 		}
 
-		name, signature := p.extractNameAndSignature(node, content)
-		if name != "" {
-			startPos := node.StartPosition()
-			endPos := node.EndPosition()
-
-			*entries = append(*entries, Entry{
-				StartLine: int(startPos.Row) + 1,
-				EndLine:   int(endPos.Row) + 1,
-				Name:      name,
-				Kind:      kind,
-				Signature: signature,
-			})
+		entry := p.extractEntry(node, kind, content)
+		if entry != nil {
+			*entries = append(*entries, *entry)
 		}
 	}
 
@@ -100,31 +82,46 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 	}
 }
 
-// extractNameAndSignature extracts the name and signature from a structural node.
-func (p *pythonExtractor) extractNameAndSignature(node *tree_sitter.Node, content []byte) (string, string) {
+// extractEntry extracts an Entry from a structural node.
+func (p *pythonExtractor) extractEntry(node *tree_sitter.Node, kind string, content []byte) *Entry {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {
-		return "", ""
+		return nil
 	}
 	name := nameNode.Utf8Text(content)
 
-	// Only functions have parameters
-	if node.Kind() == "function_definition" {
-		params := p.extractParams(node, content)
-		return name, name + params
+	entry := &Entry{
+		StartLine: int(node.StartPosition().Row) + 1,
+		EndLine:   int(node.EndPosition().Row) + 1,
+		Name:      name,
+		Kind:      kind,
 	}
 
-	// Classes don't have a signature
-	return name, ""
+	// Only functions have parameters and return types
+	if node.Kind() == "function_definition" {
+		entry.Params = p.extractParams(node, content)
+		entry.ReturnType = p.extractReturnType(node, content)
+	}
+
+	return entry
+}
+
+// extractReturnType extracts the return type annotation from a function definition.
+// Returns e.g., "None" or "" if no return type is specified.
+func (p *pythonExtractor) extractReturnType(node *tree_sitter.Node, content []byte) string {
+	returnTypeNode := node.ChildByFieldName("return_type")
+	if returnTypeNode == nil {
+		return ""
+	}
+	return normalizeWhitespace(returnTypeNode.Utf8Text(content))
 }
 
 // extractParams extracts the parameters from a function definition.
-// Walks the AST to extract only parameter nodes, filtering out comments
-// and trailing commas for a clean signature.
-func (p *pythonExtractor) extractParams(node *tree_sitter.Node, content []byte) string {
+// Walks the AST to extract only parameter nodes, filtering out comments.
+func (p *pythonExtractor) extractParams(node *tree_sitter.Node, content []byte) []string {
 	paramsNode := node.ChildByFieldName("parameters")
 	if paramsNode == nil {
-		return "()"
+		return nil
 	}
 
 	var params []string
@@ -142,5 +139,5 @@ func (p *pythonExtractor) extractParams(node *tree_sitter.Node, content []byte) 
 		params = append(params, normalizeWhitespace(child.Utf8Text(content)))
 	}
 
-	return "(" + strings.Join(params, ", ") + ")"
+	return params
 }

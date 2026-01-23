@@ -752,13 +752,6 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	shadeStyle := hunkSeparatorStyle
 	lineNumWidth := m.lineNumWidth()
 
-	// Try to get breadcrumb for the chunk start line (new/left side only)
-	var breadcrumb string
-	if row.chunkStartLine > 0 {
-		entries := m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
-		breadcrumb = formatBreadcrumbs(entries)
-	}
-
 	// Gutter width: indicator(1) + space(1) + lineNumWidth (one less than content lines for tighter breadcrumb)
 	gutterWidth := 2 + lineNumWidth
 
@@ -766,6 +759,13 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	leftContentWidth := leftHalfWidth - gutterWidth
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
+	}
+
+	// Try to get breadcrumb for the chunk start line (new/left side only)
+	var breadcrumb string
+	if row.chunkStartLine > 0 {
+		entries := m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
+		breadcrumb = formatBreadcrumbs(entries, leftContentWidth)
 	}
 	rightContentWidth := rightHalfWidth - gutterWidth
 	if rightContentWidth < 0 {

@@ -57,9 +57,11 @@ type PairsHighlightReadyMsg struct {
 // StructureEntry represents a structural code element for breadcrumbs.
 // This mirrors structure.Entry to avoid import in messages.
 type StructureEntry struct {
-	StartLine int    // 1-based line number
-	EndLine   int    // 1-based line number (inclusive)
-	Name      string // e.g., "MyStruct", "myMethod"
-	Kind      string // e.g., "type", "func"
-	Signature string // e.g., "(m Model) myMethod(ctx)" - includes receiver and params
+	StartLine  int      // 1-based line number
+	EndLine    int      // 1-based line number (inclusive)
+	Name       string   // e.g., "MyStruct", "myMethod"
+	Kind       string   // e.g., "type", "func", "def", "class"
+	Receiver   string   // Go only: e.g., "(m *Model)"
+	Params     []string // Function parameters
+	ReturnType string   // Return type annotation
 }

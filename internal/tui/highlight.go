@@ -250,11 +250,13 @@ func convertStructure(m *structure.Map) []StructureEntry {
 	result := make([]StructureEntry, len(m.Entries))
 	for i, e := range m.Entries {
 		result[i] = StructureEntry{
-			StartLine: e.StartLine,
-			EndLine:   e.EndLine,
-			Name:      e.Name,
-			Kind:      e.Kind,
-			Signature: e.Signature,
+			StartLine:  e.StartLine,
+			EndLine:    e.EndLine,
+			Name:       e.Name,
+			Kind:       e.Kind,
+			Receiver:   e.Receiver,
+			Params:     e.Params,
+			ReturnType: e.ReturnType,
 		}
 	}
 	return result
@@ -311,11 +313,13 @@ func unconvertStructure(entries []StructureEntry) *structure.Map {
 	structEntries := make([]structure.Entry, len(entries))
 	for i, e := range entries {
 		structEntries[i] = structure.Entry{
-			StartLine: e.StartLine,
-			EndLine:   e.EndLine,
-			Name:      e.Name,
-			Kind:      e.Kind,
-			Signature: e.Signature,
+			StartLine:  e.StartLine,
+			EndLine:    e.EndLine,
+			Name:       e.Name,
+			Kind:       e.Kind,
+			Receiver:   e.Receiver,
+			Params:     e.Params,
+			ReturnType: e.ReturnType,
 		}
 	}
 	return structure.NewMap(structEntries)

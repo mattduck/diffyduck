@@ -37,19 +37,9 @@ func (g *goExtractor) walkNode(node *tree_sitter.Node, content []byte, entries *
 
 	// Check if this is a structural node type
 	if kind, ok := goStructuralTypes[nodeType]; ok {
-		name, signature := g.extractNameAndSignature(node, nodeType, content)
-		if name != "" {
-			// tree-sitter positions are 0-based, we want 1-based
-			startPos := node.StartPosition()
-			endPos := node.EndPosition()
-
-			*entries = append(*entries, Entry{
-				StartLine: int(startPos.Row) + 1,
-				EndLine:   int(endPos.Row) + 1,
-				Name:      name,
-				Kind:      kind,
-				Signature: signature,
-			})
+		entry := g.extractEntry(node, nodeType, kind, content)
+		if entry != nil {
+			*entries = append(*entries, *entry)
 		}
 	}
 
@@ -61,30 +51,37 @@ func (g *goExtractor) walkNode(node *tree_sitter.Node, content []byte, entries *
 	}
 }
 
-// extractNameAndSignature extracts the name and signature from a structural node.
-// Returns (name, signature) where signature includes receiver and params for functions.
-func (g *goExtractor) extractNameAndSignature(node *tree_sitter.Node, nodeType string, content []byte) (string, string) {
+// extractEntry extracts an Entry from a structural node.
+func (g *goExtractor) extractEntry(node *tree_sitter.Node, nodeType, kind string, content []byte) *Entry {
 	switch nodeType {
 	case "function_declaration":
 		nameNode := node.ChildByFieldName("name")
 		if nameNode == nil {
-			return "", ""
+			return nil
 		}
-		name := nameNode.Utf8Text(content)
-		params := g.extractParams(node, content)
-		signature := name + params
-		return name, signature
+		return &Entry{
+			StartLine:  int(node.StartPosition().Row) + 1,
+			EndLine:    int(node.EndPosition().Row) + 1,
+			Name:       nameNode.Utf8Text(content),
+			Kind:       kind,
+			Params:     g.extractParams(node, content),
+			ReturnType: g.extractReturnType(node, content),
+		}
 
 	case "method_declaration":
 		nameNode := node.ChildByFieldName("name")
 		if nameNode == nil {
-			return "", ""
+			return nil
 		}
-		name := nameNode.Utf8Text(content)
-		receiver := g.extractReceiver(node, content)
-		params := g.extractParams(node, content)
-		signature := receiver + name + params
-		return name, signature
+		return &Entry{
+			StartLine:  int(node.StartPosition().Row) + 1,
+			EndLine:    int(node.EndPosition().Row) + 1,
+			Name:       nameNode.Utf8Text(content),
+			Kind:       kind,
+			Receiver:   g.extractReceiver(node, content),
+			Params:     g.extractParams(node, content),
+			ReturnType: g.extractReturnType(node, content),
+		}
 
 	case "type_declaration":
 		// type_declaration contains one or more type_spec children
@@ -94,40 +91,56 @@ func (g *goExtractor) extractNameAndSignature(node *tree_sitter.Node, nodeType s
 			if child != nil && child.Kind() == "type_spec" {
 				nameNode := child.ChildByFieldName("name")
 				if nameNode != nil {
-					return nameNode.Utf8Text(content), ""
+					return &Entry{
+						StartLine: int(node.StartPosition().Row) + 1,
+						EndLine:   int(node.EndPosition().Row) + 1,
+						Name:      nameNode.Utf8Text(content),
+						Kind:      kind,
+					}
 				}
 			}
 		}
 	}
 
-	return "", ""
+	return nil
 }
 
 // extractReceiver extracts the receiver from a method declaration.
-// Returns e.g., "(m Model) " or "(m *Model) "
-// Walks the AST to filter out trailing commas.
+// Returns e.g., "(m Model)" or "(m *Model)".
 func (g *goExtractor) extractReceiver(node *tree_sitter.Node, content []byte) string {
 	receiverNode := node.ChildByFieldName("receiver")
 	if receiverNode == nil {
 		return ""
 	}
-	return g.extractParamList(receiverNode, content) + " "
+	// Receiver is a parameter_list with typically one parameter
+	params := g.extractParamSlice(receiverNode, content)
+	if len(params) == 0 {
+		return ""
+	}
+	return "(" + params[0] + ")"
 }
 
 // extractParams extracts the parameters from a function/method declaration.
-// Returns e.g., "(ctx, name string)" or "()"
-// Walks the AST to filter out trailing commas.
-func (g *goExtractor) extractParams(node *tree_sitter.Node, content []byte) string {
+func (g *goExtractor) extractParams(node *tree_sitter.Node, content []byte) []string {
 	paramsNode := node.ChildByFieldName("parameters")
 	if paramsNode == nil {
-		return "()"
+		return nil
 	}
-	return g.extractParamList(paramsNode, content)
+	return g.extractParamSlice(paramsNode, content)
 }
 
-// extractParamList extracts parameters from a parameter_list node.
-// Walks children to skip commas and normalize each parameter.
-func (g *goExtractor) extractParamList(node *tree_sitter.Node, content []byte) string {
+// extractReturnType extracts the return type from a function/method declaration.
+// Returns e.g., "error", "(string, error)", "*User", or "" if no return type.
+func (g *goExtractor) extractReturnType(node *tree_sitter.Node, content []byte) string {
+	resultNode := node.ChildByFieldName("result")
+	if resultNode == nil {
+		return ""
+	}
+	return normalizeWhitespace(resultNode.Utf8Text(content))
+}
+
+// extractParamSlice extracts parameters from a parameter_list node as a slice.
+func (g *goExtractor) extractParamSlice(node *tree_sitter.Node, content []byte) []string {
 	var params []string
 	childCount := node.ChildCount()
 	for i := uint(0); i < uint(childCount); i++ {
@@ -146,5 +159,5 @@ func (g *goExtractor) extractParamList(node *tree_sitter.Node, content []byte) s
 		params = append(params, paramText)
 	}
 
-	return "(" + strings.Join(params, ", ") + ")"
+	return params
 }
