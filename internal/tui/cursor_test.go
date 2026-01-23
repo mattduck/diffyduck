@@ -1315,6 +1315,84 @@ func TestResize_CursorOnTruncationIndicator_StaysOnTruncation(t *testing.T) {
 		"after resize, cursor should still be on truncation indicator (got cursorPos=%d)", cursorPos)
 }
 
+// Test: Cursor on second hunk separator should stay there after resize.
+// Resize uses absolute row index (row list is stable), so this should work.
+// This test verifies that multiple separators in the same file are handled correctly.
+func TestResize_CursorOnSecondSeparator_StaysOnSecondSeparator(t *testing.T) {
+	// Setup: single file with multiple hunks (gaps in line numbers create separators)
+	// Lines 1-2 form first chunk, then gap, lines 10-11 form second chunk,
+	// then gap, lines 20-21 form third chunk.
+	// This creates two separators: one before line 10, one before line 20.
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					// First chunk: lines 1-2
+					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
+					{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
+					// Gap here (lines 3-9 missing) - creates first separator
+					// Second chunk: lines 10-11
+					{Old: sidebyside.Line{Num: 10, Content: "line10"}, New: sidebyside.Line{Num: 10, Content: "line10"}},
+					{Old: sidebyside.Line{Num: 11, Content: "line11"}, New: sidebyside.Line{Num: 11, Content: "line11"}},
+					// Gap here (lines 12-19 missing) - creates second separator
+					// Third chunk: lines 20-21
+					{Old: sidebyside.Line{Num: 20, Content: "line20"}, New: sidebyside.Line{Num: 20, Content: "line20"}},
+					{Old: sidebyside.Line{Num: 21, Content: "line21"}, New: sidebyside.Line{Num: 21, Content: "line21"}},
+				},
+				FoldLevel: sidebyside.FoldNormal,
+			},
+		},
+		width:  80,
+		height: 30, // Tall enough to see all content
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find the separators
+	rows := m.buildRows()
+	var separatorIndices []int
+	for i, row := range rows {
+		if row.isSeparator {
+			separatorIndices = append(separatorIndices, i)
+		}
+	}
+	require.Len(t, separatorIndices, 2, "should have exactly 2 separators")
+
+	// Position cursor on the SECOND separator
+	secondSepIdx := separatorIndices[1]
+	m.scroll = secondSepIdx - m.cursorOffset()
+	cursorPos := m.cursorLine()
+	require.Equal(t, secondSepIdx, cursorPos, "cursor should be on second separator")
+
+	// Verify we're on the second separator (not the first)
+	require.True(t, rows[cursorPos].isSeparator, "cursor should be on a separator row")
+	require.Equal(t, secondSepIdx, cursorPos, "should be on index %d", secondSepIdx)
+
+	// Resize the terminal
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 35})
+	model := newM.(Model)
+
+	// Cursor should still be on the SECOND separator, not the first
+	rows = model.buildRows()
+	cursorPos = model.cursorLine()
+
+	// Find separators again after resize (indices should be unchanged)
+	separatorIndices = nil
+	for i, row := range rows {
+		if row.isSeparator {
+			separatorIndices = append(separatorIndices, i)
+		}
+	}
+	require.Len(t, separatorIndices, 2, "should still have 2 separators after resize")
+
+	// Using absolute row index for resize (row list is stable) handles this correctly.
+	assert.Equal(t, separatorIndices[1], cursorPos,
+		"after resize, cursor should still be on SECOND separator (index %d), but got cursorPos=%d (first separator is at %d)",
+		separatorIndices[1], cursorPos, separatorIndices[0])
+}
+
 // Test: Cursor on top border should stay there after fold toggle
 func TestFoldToggle_CursorOnTopBorder_StaysOnTopBorder(t *testing.T) {
 	// Setup: cursor on top border, toggle fold

@@ -12,8 +12,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case tea.WindowSizeMsg:
-		// Capture cursor identity before resize changes cursorOffset()
-		identity := m.getCursorRowIdentity()
+		// Capture cursor row index before resize changes cursorOffset()
+		// Row list is stable on resize (only rendering widths change, not row count),
+		// so we can restore to the same absolute row index.
+		savedRowIdx := m.cursorLine()
 
 		m.width = msg.Width
 		m.height = msg.Height
@@ -35,9 +37,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.calculateTotalLines()
 		}
 
-		// Restore cursor to same row
-		newRowIdx := m.findRowOrNearestAbove(identity)
-		m.adjustScrollToRow(newRowIdx)
+		// Restore cursor to same row index
+		m.adjustScrollToRow(savedRowIdx)
 		return m, nil
 
 	case FileContentLoadedMsg:
