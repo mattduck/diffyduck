@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // handleCommentInput handles keypresses while in comment input mode.
@@ -146,7 +145,7 @@ func (m *Model) cancelComment() {
 }
 
 // canComment returns true if the given row can have a comment attached.
-// Only lines with Added type on the new side are commentable.
+// Any line with a valid line number on the new side is commentable.
 func (m Model) canComment(row displayRow) bool {
 	// Must be a content row
 	if row.kind != RowKindContent {
@@ -154,12 +153,7 @@ func (m Model) canComment(row displayRow) bool {
 	}
 
 	// Must have a line number on the new side
-	if row.pair.New.Num <= 0 {
-		return false
-	}
-
-	// Line must be Added (includes pure additions and the new side of changed lines)
-	return row.pair.New.Type == sidebyside.Added
+	return row.pair.New.Num > 0
 }
 
 // insertCommentRune inserts a rune at the cursor position.

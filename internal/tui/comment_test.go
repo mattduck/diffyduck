@@ -32,6 +32,199 @@ func makeCommentableTestModel(numLines int) Model {
 	return m
 }
 
+// makeMixedLineTypeTestModel creates a model with a mix of Added, Context, and Removed lines.
+func makeMixedLineTypeTestModel() Model {
+	pairs := []sidebyside.LinePair{
+		// Context line (unchanged)
+		{
+			Old: sidebyside.Line{Num: 1, Content: "context line 1", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 1, Content: "context line 1", Type: sidebyside.Context},
+		},
+		// Added line (new content)
+		{
+			Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+			New: sidebyside.Line{Num: 2, Content: "added line", Type: sidebyside.Added},
+		},
+		// Removed line (deleted content - no new line number)
+		{
+			Old: sidebyside.Line{Num: 2, Content: "removed line", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+		},
+		// Changed line (modified)
+		{
+			Old: sidebyside.Line{Num: 3, Content: "old version", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 3, Content: "new version", Type: sidebyside.Added},
+		},
+		// Another context line
+		{
+			Old: sidebyside.Line{Num: 4, Content: "context line 2", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 4, Content: "context line 2", Type: sidebyside.Context},
+		},
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+	})
+	m.width = 80
+	m.height = 30
+	m.comments = make(map[commentKey]string)
+	return m
+}
+
+// =============================================================================
+// Comment Line Type Tests
+// =============================================================================
+
+// Test: Context lines (unchanged lines) should be commentable
+func TestComment_ContextLinesAreCommentable(t *testing.T) {
+	m := makeMixedLineTypeTestModel()
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find a context line row
+	var contextRow displayRow
+	foundContext := false
+	for _, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Type == sidebyside.Context {
+			contextRow = r
+			foundContext = true
+			break
+		}
+	}
+	require.True(t, foundContext, "should have a context line in the test model")
+
+	// Context lines should be commentable
+	assert.True(t, m.canComment(contextRow),
+		"context lines should be commentable (have valid new line number)")
+}
+
+// Test: Added lines should be commentable
+func TestComment_AddedLinesAreCommentable(t *testing.T) {
+	m := makeMixedLineTypeTestModel()
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find an added line row
+	var addedRow displayRow
+	foundAdded := false
+	for _, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Type == sidebyside.Added {
+			addedRow = r
+			foundAdded = true
+			break
+		}
+	}
+	require.True(t, foundAdded, "should have an added line in the test model")
+
+	// Added lines should be commentable
+	assert.True(t, m.canComment(addedRow),
+		"added lines should be commentable")
+}
+
+// Test: Removed-only lines (no new line number) should NOT be commentable
+func TestComment_RemovedOnlyLinesNotCommentable(t *testing.T) {
+	m := makeMixedLineTypeTestModel()
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find a removed-only line (New.Num == 0)
+	var removedRow displayRow
+	foundRemoved := false
+	for _, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Num == 0 {
+			removedRow = r
+			foundRemoved = true
+			break
+		}
+	}
+	require.True(t, foundRemoved, "should have a removed-only line in the test model")
+
+	// Removed-only lines should NOT be commentable (no new line number)
+	assert.False(t, m.canComment(removedRow),
+		"removed-only lines should not be commentable (no new line number)")
+}
+
+// Test: Adding and viewing a comment on a context line
+func TestComment_AddCommentOnContextLine(t *testing.T) {
+	m := makeMixedLineTypeTestModel()
+	m.calculateTotalLines()
+
+	// Add a comment on context line 1 (first line in our test model)
+	key := commentKey{fileIndex: 0, newLineNum: 1}
+	m.comments[key] = "Comment on context line"
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	rows := m.buildRows()
+
+	// Find comment rows
+	foundCommentRow := false
+	for _, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 1 {
+			foundCommentRow = true
+			break
+		}
+	}
+
+	assert.True(t, foundCommentRow,
+		"comment on context line should appear in buildRows")
+}
+
+// Test: Starting a comment on a context line via Enter key
+func TestComment_StartCommentOnContextLine(t *testing.T) {
+	m := makeMixedLineTypeTestModel()
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find the row index for context line 1
+	contextRowIdx := -1
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Num == 1 && r.pair.New.Type == sidebyside.Context {
+			contextRowIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, contextRowIdx, "should find context line row")
+
+	// Position cursor on the context line
+	m.scroll = contextRowIdx - m.cursorOffset()
+	cursorPos := m.cursorLine()
+	require.Equal(t, contextRowIdx, cursorPos, "cursor should be on context line row")
+
+	// Try to start a comment
+	success := m.startComment()
+	require.True(t, success, "should be able to start a comment on context line")
+
+	// Verify the comment key is for line 1
+	assert.Equal(t, 1, m.commentKey.newLineNum,
+		"comment should be attached to line 1")
+	assert.True(t, m.commentMode, "should be in comment mode")
+}
+
+// Test: canComment returns false for non-content rows
+func TestComment_CanCommentRequiresContentRow(t *testing.T) {
+	m := makeMixedLineTypeTestModel()
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find a header row
+	var headerRow displayRow
+	for _, r := range rows {
+		if r.kind == RowKindHeader {
+			headerRow = r
+			break
+		}
+	}
+
+	assert.False(t, m.canComment(headerRow),
+		"header rows should not be commentable")
+}
+
 // Test: Adding a comment should increase totalLines to account for comment rows
 func TestComment_AddingCommentIncreasesTotalLines(t *testing.T) {
 	m := makeCommentableTestModel(10)
