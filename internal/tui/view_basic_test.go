@@ -402,7 +402,7 @@ func TestView_InlineDiffSkippedForDissimilar(t *testing.T) {
 }
 
 func TestView_ScrolledToMax(t *testing.T) {
-	// When scrolled to max, the summary row should be visible, rest is padding
+	// When scrolled to max, the last content row should be visible
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
@@ -425,7 +425,7 @@ func TestView_ScrolledToMax(t *testing.T) {
 		height: 5, // Small viewport
 		keys:   DefaultKeyMap(),
 	}
-	m.calculateTotalLines() // 4 lines: header + 2 pairs + summary
+	m.calculateTotalLines()
 	m.scroll = m.maxScroll()
 
 	output := m.View()
@@ -434,15 +434,8 @@ func TestView_ScrolledToMax(t *testing.T) {
 	assert.Equal(t, 5, len(lines), "should have exactly height lines")
 
 	// Layout: [topBar, divider, content[0..contentH-1], bottomBar]
-	// lines[0] = top bar (no file name when on summary)
-	assert.NotContains(t, lines[0], "foo.go", "top bar should not show file name when on summary")
-
-	// lines[1] = divider
-	// lines[2] = summary row (last content line at maxScroll)
-	assert.Contains(t, lines[2], "file changed")
-
-	// lines[3] should be empty padding (contentH = height - 3 = 2, only 1 content row visible)
-	assert.Equal(t, "", lines[3], "line 3 should be empty padding")
+	// lines[0] = top bar (still shows file name since cursor is on file content)
+	assert.Contains(t, lines[0], "foo.go", "top bar should show file name")
 
 	// lines[4] = bottom bar with END
 	assert.Contains(t, lines[4], "END")
@@ -466,7 +459,7 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 			},
 		},
 		width:  80,
-		height: 10, // Much taller than content (7 lines: header + 1 pair + 4 blank + summary)
+		height: 10, // Much taller than content (6 lines: header + 1 pair + 4 blank)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
@@ -480,15 +473,12 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	assert.Equal(t, 10, len(lines), "view should fill entire viewport height")
 
 	// Layout: [topBar, divider, content..., bottomBar]
-	// Top bar should not show file name when cursor is on summary
-	assert.NotContains(t, lines[0], "foo.go", "top bar should not show file name when on summary")
+	// Top bar shows file name since cursor is still on file content
+	assert.Contains(t, lines[0], "foo.go", "top bar should show file name")
 
 	// Bottom bar should show END
 	lastLine := lines[len(lines)-1]
 	assert.Contains(t, lastLine, "END")
-
-	// The summary row should be visible somewhere in the output
-	assert.Contains(t, output, "file changed", "summary should be visible when scrolled to end")
 }
 
 func TestContentHeight_ReservesThreeLines(t *testing.T) {
@@ -551,8 +541,8 @@ func TestView_Layout_TopBarFirst_BottomBarLast(t *testing.T) {
 }
 
 func TestView_GutterAlignmentConsistency(t *testing.T) {
-	// Test that file headers, content lines, hunk separators, and summary
-	// all have consistent gutter alignment based on lineNumWidth
+	// Test that file headers and content lines have consistent gutter alignment
+	// based on lineNumWidth
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
@@ -583,7 +573,6 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 	// Find the file header line (contains "test.go")
 	var headerLine string
 	var contentLine string
-	var summaryLine string
 	for _, line := range lines {
 		// FoldExpanded shows ● even when content is pending (falls through to normal rendering)
 		if strings.Contains(line, "test.go") && strings.Contains(line, "●") {
@@ -592,14 +581,10 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 		if strings.Contains(line, "line content") {
 			contentLine = line
 		}
-		if strings.Contains(line, "file changed") || strings.Contains(line, "files changed") {
-			summaryLine = line
-		}
 	}
 
 	require.NotEmpty(t, headerLine, "should find file header line")
 	require.NotEmpty(t, contentLine, "should find content line")
-	require.NotEmpty(t, summaryLine, "should find summary line")
 
 	// All row types should have content starting at the same column position
 	// The gutter area is: indicator(1) + space(1) + lineNum(N) + space(1)

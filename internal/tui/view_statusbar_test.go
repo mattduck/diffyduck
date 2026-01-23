@@ -468,38 +468,6 @@ func TestBottomBar_SearchMode_ShowsSearchPrompt(t *testing.T) {
 	assert.Contains(t, bottomBar, "/test", "bottom bar should show search prompt")
 }
 
-func TestTopBar_NoFileInfo_WhenOnSummary(t *testing.T) {
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath: "a/foo.go",
-				NewPath: "b/foo.go",
-				Pairs: []sidebyside.LinePair{
-					{
-						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-					},
-				},
-			},
-		},
-		width:  80,
-		height: 10,
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
-	// Position cursor on summary row (last row at index totalLines-1)
-	// cursorLine = scroll + cursorOffset
-	// totalLines-1 = scroll + cursorOffset
-	// scroll = totalLines - 1 - cursorOffset
-	m.scroll = m.totalLines - 1 - m.cursorOffset()
-
-	topBar := m.renderTopBar()
-
-	// When cursor is on summary (not a file), top bar should be empty or minimal
-	assert.NotContains(t, topBar, "foo.go", "top bar should not show file name when on summary")
-}
-
 func TestStatusBar_PagerIndicator(t *testing.T) {
 	m := Model{
 		focused: true,

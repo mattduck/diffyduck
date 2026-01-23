@@ -271,17 +271,6 @@ index 0000000..e69de29
 	}
 	assert.True(t, foundAddedHeader, "should find empty.txt with + status in output")
 
-	// Verify blank rows use shader characters (░) not just spaces
-	var foundShaderRow bool
-	for _, line := range lines {
-		stripped := stripANSI(line)
-		// Look for lines with cursor arrows and shader fill
-		if strings.Contains(stripped, "▶") && strings.Contains(stripped, "░") {
-			foundShaderRow = true
-		}
-	}
-	assert.True(t, foundShaderRow, "blank cursor rows should have shader characters")
-
 	goldenPath := filepath.Join("testdata", "integration_added_empty_file.golden")
 	if *update {
 		err := os.WriteFile(goldenPath, []byte(output), 0644)

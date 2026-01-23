@@ -38,8 +38,8 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	// cursorLine = scroll(0) + cursorOffset(3) = 3
 	// CurrentLine = cursorLine + 1 = 4
 	assert.Equal(t, 4, info.CurrentLine)
-	assert.Equal(t, 59, info.TotalLines) // 1 top border + 1 header + 1 bottom border + 50 pairs + 4 blank + 1 trailing border + 1 summary
-	// Percentage: cursorLine(3) / maxCursor(58) * 100 = 5%
+	assert.Equal(t, 53, info.TotalLines) // 1 top border + 1 header + 1 bottom border + 50 pairs (no trailing blank/border for last file)
+	// Percentage: cursorLine(3) / maxCursor(52) * 100 = 5%
 	assert.Equal(t, 5, info.Percentage)
 	assert.False(t, info.AtEnd)
 }
@@ -196,16 +196,16 @@ func TestStatusInfo_ScrollPastAllContent(t *testing.T) {
 		},
 		width:  80,
 		height: 10,
-		scroll: 100, // Way past the content (only 7 lines: 1 header + 5 pairs + 1 summary)
+		scroll: 100, // Way past the content (only 6 lines: 1 header + 5 pairs)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 	m.clampScroll() // This should clamp to maxScroll
 
 	info := m.StatusInfo()
-	// When scrolled to the very end, cursor lands on summary row which has no file info
-	assert.Equal(t, 0, info.CurrentFile)
-	assert.Equal(t, "", info.FileName)
+	// When scrolled to the very end, cursor lands on the file content (no summary row)
+	assert.Equal(t, 1, info.CurrentFile)
+	assert.Equal(t, "test.go", info.FileName)
 	assert.True(t, info.AtEnd)
 }
 
@@ -228,8 +228,8 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 		height: 11, // 10 content lines + 1 status bar
 		keys:   DefaultKeyMap(),
 	}
-	m.calculateTotalLines() // 109 lines total (1 top + 1 header + 1 bottom + 100 pairs + 4 blank + 1 trailing + 1 summary)
-	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 108
+	m.calculateTotalLines() // 103 lines total (1 top + 1 header + 1 bottom + 100 pairs, no trailing blank/border for last file)
+	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 102
 
 	// At minScroll, cursor is at line 0, percentage should be 0
 	m.scroll = m.minScroll()
@@ -237,11 +237,11 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 	assert.Equal(t, 0, info.Percentage)
 	assert.False(t, info.AtEnd)
 
-	// At scroll that puts cursor at approx line 50, percentage should be ~46
-	// (50/108 * 100 = 46.3, rounded to 46)
+	// At scroll that puts cursor at approx line 50, percentage should be ~49
+	// (50/102 * 100 = 49.0, rounded to 49)
 	m.scroll = 50 - m.cursorOffset() // cursor at 50
 	info = m.StatusInfo()
-	assert.Equal(t, 46, info.Percentage)
+	assert.Equal(t, 49, info.Percentage)
 	assert.False(t, info.AtEnd)
 
 	// At maxScroll, cursor is at last line, percentage should be 100

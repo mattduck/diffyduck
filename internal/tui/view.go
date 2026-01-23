@@ -111,7 +111,6 @@ const (
 	RowKindSeparatorTop        // top shader line above hunk separator
 	RowKindSeparator           // hunk separator with breadcrumb
 	RowKindSeparatorBottom     // bottom shader line below hunk separator
-	RowKindSummary             // summary row at the end
 	RowKindTruncationIndicator // truncation message row
 	RowKindBinaryIndicator     // binary file message row
 )
@@ -130,7 +129,6 @@ type displayRow struct {
 	isBlank               bool
 	isHeaderSpacer        bool // bottom border line after header
 	isHeaderTopBorder     bool // top border line before header
-	isSummary             bool // summary row at the end showing total stats
 	isTruncationIndicator bool // true if this row shows a truncation message
 
 	borderVisible  bool // whether border should use normal color (true) or fg=0 (false)
@@ -147,10 +145,6 @@ type displayRow struct {
 	maxRemWidth    int // max removal count width across all files (for column alignment)
 	maxCountWidth  int // max stats count width across all files (for bar alignment)
 	headerBoxWidth int // width of the box around header content (for border alignment)
-	// Summary row fields
-	totalFiles   int // total number of files changed
-	totalAdded   int // total insertions across all files
-	totalRemoved int // total deletions across all files
 	// Truncation indicator fields
 	truncationMessage string // message to display
 	truncateOld       bool   // show truncation on left (old) side
@@ -282,14 +276,18 @@ func (m Model) buildRows() []displayRow {
 					})
 				}
 
-				// Add 4 blank lines after expanded content
-				for i := 0; i < 4; i++ {
-					rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
-				}
+				// Add blank lines and trailing border only if there is a next file
+				isLastFile := fileIdx == len(m.files)-1
+				if !isLastFile {
+					// Add 4 blank lines after expanded content
+					for i := 0; i < 4; i++ {
+						rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
+					}
 
-				// Trailing top border (visually looks like top of next file, but belongs to this file)
-				// Only visible if next file is also unfolded
-				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+					// Trailing top border (visually looks like top of next file, but belongs to this file)
+					// Only visible if next file is also unfolded
+					rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+				}
 				continue // Skip the normal view below
 			}
 			// Fall through to normal view if content not loaded
@@ -396,14 +394,18 @@ func (m Model) buildRows() []displayRow {
 				}
 			}
 
-			// Add 4 blank lines after normal content
-			for i := 0; i < 4; i++ {
-				rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
-			}
+			// Add blank lines and trailing border only if there is a next file
+			isLastFile := fileIdx == len(m.files)-1
+			if !isLastFile {
+				// Add 4 blank lines after normal content
+				for i := 0; i < 4; i++ {
+					rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
+				}
 
-			// Trailing top border (visually looks like top of next file, but belongs to this file)
-			// Only visible if next file is also unfolded
-			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+				// Trailing top border (visually looks like top of next file, but belongs to this file)
+				// Only visible if next file is also unfolded
+				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+			}
 		}
 	}
 
@@ -414,26 +416,6 @@ func (m Model) buildRows() []displayRow {
 			fileIndex:             -1,
 			isTruncationIndicator: true,
 			truncationMessage:     fmt.Sprintf("[%d files truncated]", m.truncatedFileCount),
-		})
-	}
-
-	// Add summary row at the end
-	if len(m.files) > 0 {
-		totalAdded := 0
-		totalRemoved := 0
-		for _, fp := range m.files {
-			added, removed := countFileStats(fp)
-			totalAdded += added
-			totalRemoved += removed
-		}
-		rows = append(rows, displayRow{
-			kind:           RowKindSummary,
-			fileIndex:      -1, // No file association
-			isSummary:      true,
-			totalFiles:     len(m.files),
-			totalAdded:     totalAdded,
-			totalRemoved:   totalRemoved,
-			maxHeaderWidth: maxHeaderWidth,
 		})
 	}
 
@@ -773,8 +755,6 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			visible = append(visible, m.renderHunkSeparator(row, leftHalfWidth, rightHalfWidth, isCursorRow))
 		} else if row.isSeparatorBottom {
 			visible = append(visible, m.renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth, isCursorRow)) // same as top
-		} else if row.isSummary {
-			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
 		} else if row.isTruncationIndicator {
 			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew))
 		} else if row.isBinaryIndicator {
@@ -1102,14 +1082,22 @@ func (m Model) renderTopBar() string {
 	fileCounter := fileCounterStyle.Render(counterText) + " "
 	counterDisplayWidth := len(counterText) + 1 // +1 for trailing space
 
-	// Right section: total stats +123 -123 (only if there are changes)
+	// Right section: N files +123 -123
 	var rightText string
 	var rightSection string
+	fileCount := len(m.files)
+	if fileCount == 1 {
+		rightText = "1 file"
+	} else {
+		rightText = fmt.Sprintf("%d files", fileCount)
+	}
 	if totalAdded > 0 || totalRemoved > 0 {
 		addedText := fmt.Sprintf("+%d", totalAdded)
 		removedText := fmt.Sprintf("-%d", totalRemoved)
-		rightText = addedText + " " + removedText
-		rightSection = addedStyle.Render(addedText) + " " + removedStyle.Render(removedText)
+		rightText += " " + addedText + " " + removedText
+		rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText[:len(rightText)-len(addedText)-len(removedText)-2]) + " " + addedStyle.Render(addedText) + " " + removedStyle.Render(removedText)
+	} else {
+		rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText)
 	}
 
 	// Calculate widths for padding
@@ -1637,43 +1625,6 @@ func statsBarDisplayWidth(maxAddWidth, maxRemWidth int) int {
 	return width
 }
 
-// formatSummaryStats returns a git-style summary string like "2 files changed, 5 insertions(+), 3 deletions(-)".
-// Handles singular/plural and omits zero-count sections.
-func formatSummaryStats(files, added, removed int) string {
-	var parts []string
-
-	// Files changed
-	if files == 1 {
-		parts = append(parts, "1 file changed")
-	} else {
-		parts = append(parts, fmt.Sprintf("%d files changed", files))
-	}
-
-	// Insertions
-	if added > 0 {
-		if added == 1 {
-			parts = append(parts, "1 insertion(+)")
-		} else {
-			parts = append(parts, fmt.Sprintf("%d insertions(+)", added))
-		}
-	}
-
-	// Deletions
-	if removed > 0 {
-		if removed == 1 {
-			parts = append(parts, "1 deletion(-)")
-		} else {
-			parts = append(parts, fmt.Sprintf("%d deletions(-)", removed))
-		}
-	}
-
-	return strings.Join(parts, ", ")
-}
-
-// renderSummary renders the summary row at the bottom of the diff view.
-// Format: "▶ ━━━ ●   N files changed, N insertions(+), N deletions(-)" (when cursor)
-// Uses expanded icon (●) since there's no additional content to show.
-// Text is not bold, unlike file headers.
 // renderTruncationIndicator renders a row indicating content was truncated.
 // Shows truncation on left side if truncateOld is true, right side if truncateNew is true.
 func (m Model) renderTruncationIndicator(message string, isCursorRow bool, truncateOld, truncateNew bool) string {
@@ -1847,29 +1798,6 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 	return left + " " + separator + " " + right
 }
 
-func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidth int, isCursorRow bool) string {
-	lineNumWidth := m.lineNumWidth()
-	equalsGutter := strings.Repeat("━", lineNumWidth)
-	icon := m.foldLevelIcon(sidebyside.FoldExpanded) // Always use expanded icon
-	// Space where status indicator would be (empty for summary)
-	iconPart := " " + icon + "   " // icon + 3 spaces (status position + space)
-
-	summary := formatSummaryStats(totalFiles, totalAdded, totalRemoved)
-
-	// Use non-bold style for summary (just the foreground color)
-	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-
-	if isCursorRow && m.focused {
-		// Format: arrow + space + gutter(━━━ with bg) + space + icon + summary
-		return cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
-	}
-	if isCursorRow && !m.focused {
-		// Unfocused: outline arrow, no background highlight
-		return unfocusedCursorArrowStyle.Render("▷") + " " + headerLineStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
-	}
-	// Format: space + space + gutter(━━━ dim) + space + icon + summary
-	return "  " + headerLineStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
-}
 
 func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borderVisible bool, status FileStatus, added, removed, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth, fileIndex, rowIdx int, isCursorRow bool) string {
 	// Calculate header width BEFORE applying search highlighting (ANSI codes affect width calculation)

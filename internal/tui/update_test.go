@@ -228,33 +228,25 @@ func TestUpdate_NextHeading_gj(t *testing.T) {
 	info = m.StatusInfo()
 	assert.Equal(t, 3, info.CurrentFile, "gj should move to third file")
 
-	// gj at last file should go to summary row
+	// gj at last file should stay (no more files to go to)
 	m = sendKeys(m, "g", "j")
-	// Verify we're on the summary row by checking cursor position
-	rows := m.buildRows()
-	cursorPos := m.cursorLine()
-	assert.True(t, cursorPos >= 0 && cursorPos < len(rows), "cursor should be in valid range")
-	assert.True(t, rows[cursorPos].isSummary, "gj at last file should go to summary")
-
-	// gj at summary should stay there
-	m = sendKeys(m, "g", "j")
-	cursorPos = m.cursorLine()
-	assert.True(t, rows[cursorPos].isSummary, "gj at summary should stay")
+	info = m.StatusInfo()
+	assert.Equal(t, 3, info.CurrentFile, "gj at last file should stay")
 }
 
 func TestUpdate_PrevHeading_gk(t *testing.T) {
 	m := makeMultiFileTestModel()
-	// Go to summary row (bottom)
+	// Go to bottom (last file)
 	m = sendKeys(m, "G")
 	info := m.StatusInfo()
-	assert.Equal(t, 0, info.CurrentFile, "summary row should show no file")
+	assert.Equal(t, 3, info.CurrentFile, "G should go to last file")
 
-	// gk from summary should go to last file's header
+	// gk from last file content should go to last file's header
 	m = sendKeys(m, "g", "k")
 	info = m.StatusInfo()
-	assert.Equal(t, 3, info.CurrentFile, "gk from summary should go to third file")
+	assert.Equal(t, 3, info.CurrentFile, "gk should stay on third file (go to header)")
 
-	// gk should move to previous file header
+	// gk from header should move to previous file header
 	m = sendKeys(m, "g", "k")
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile, "gk should move to second file")
@@ -355,26 +347,6 @@ func TestUpdate_WindowResize_SmallContent(t *testing.T) {
 
 	// Cursor should stay on same row after resize
 	assert.Equal(t, cursorRowBefore, model.cursorLine())
-}
-
-func TestUpdate_WindowResize_PreservesCursorOnSummaryRow(t *testing.T) {
-	m := makeMultiFileTestModel()
-
-	// Navigate to summary row (last row)
-	rows := m.buildRows()
-	summaryIdx := len(rows) - 1
-	require.True(t, rows[summaryIdx].isSummary, "last row should be summary")
-
-	// Position cursor on summary row
-	m.adjustScrollToRow(summaryIdx)
-	require.Equal(t, summaryIdx, m.cursorLine(), "cursor should be on summary row")
-
-	// Resize terminal
-	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	model := newM.(Model)
-
-	// Cursor should still be on summary row after resize
-	assert.Equal(t, summaryIdx, model.cursorLine(), "cursor should stay on summary row after resize")
 }
 
 func TestUpdate_WindowResize_PreservesCursorOnInterFileBlank(t *testing.T) {
@@ -784,48 +756,6 @@ func TestUpdate_AllContentLoadedMsg_PerSideTruncation(t *testing.T) {
 	// Second file: new truncated only
 	assert.False(t, model.files[1].OldContentTruncated, "file 1 OldContentTruncated should be false")
 	assert.True(t, model.files[1].NewContentTruncated, "file 1 NewContentTruncated should be true")
-}
-
-func TestUpdate_ScrollToEnd_SummaryHasNoFileInfo(t *testing.T) {
-	// Create two files with different amounts of content
-	pairs1 := make([]sidebyside.LinePair, 5)
-	pairs2 := make([]sidebyside.LinePair, 5)
-	for i := range pairs1 {
-		pairs1[i] = sidebyside.LinePair{
-			Old: sidebyside.Line{Num: i + 1, Content: "file1"},
-			New: sidebyside.Line{Num: i + 1, Content: "file1"},
-		}
-	}
-	for i := range pairs2 {
-		pairs2[i] = sidebyside.LinePair{
-			Old: sidebyside.Line{Num: i + 1, Content: "file2"},
-			New: sidebyside.Line{Num: i + 1, Content: "file2"},
-		}
-	}
-
-	m := New([]sidebyside.FilePair{
-		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1},
-		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2},
-	})
-	m.width = 80
-	m.height = 10 // viewport height
-
-	// Total lines: 2 headers + 10 pairs + 1 blank line + 1 summary = 14 lines
-	// With cursor-based scrolling:
-	// - height=10, contentHeight=9, cursorOffset=1
-	// - maxScroll = 14 - 1 - 1 = 12 (cursor at line 13, the summary row)
-
-	// Go to bottom
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	model := newM.(Model)
-
-	// maxScroll allows cursor to reach last line (summary row)
-	assert.Equal(t, m.maxScroll(), model.scroll, "should scroll to maxScroll")
-
-	// At this scroll position, the cursor is on the summary row which has no file info
-	info := model.StatusInfo()
-	assert.Equal(t, 0, info.CurrentFile, "summary row should have no file")
-	assert.Equal(t, "", info.FileName, "summary row should have no file name")
 }
 
 // Pager mode tests - fold toggle should skip FoldExpanded

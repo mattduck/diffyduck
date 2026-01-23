@@ -131,8 +131,8 @@ func TestStartup_ScrollIsZero_NoBlankSpaceAtTop(t *testing.T) {
 func TestScrollDown_CanGoBeyondContent(t *testing.T) {
 	// Scrolling down should allow scroll to exceed totalLines
 	// so the cursor can reach the last line of content
-	// With new row structure for unfolded files:
-	// top border (1) + header (1) + bottom border (1) + 10 pairs + 4 blank + trailing top border (1) + summary (1) = 19 total lines
+	// With new row structure for unfolded files (last file has no trailing blank/border):
+	// top border (1) + header (1) + bottom border (1) + 10 pairs = 13 total lines
 	m := makeTestModel(10)
 	m.height = 50 // cursor at line 9
 	m.scroll = 0
@@ -141,11 +141,11 @@ func TestScrollDown_CanGoBeyondContent(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
-	// Last content line is at index 18 (0-indexed) - the summary row
-	// Cursor is at offset 9, so scroll should be 18 - 9 = 9
-	// We want cursor (at scroll + cursorOffset) to be on line 18
-	// So scroll + 9 = 18, scroll = 9
-	assert.Equal(t, 9, model.scroll, "G should put cursor on last line")
+	// Last content line is at index 12 (0-indexed) - the last content pair
+	// Cursor is at offset 9, so scroll should be 12 - 9 = 3
+	// We want cursor (at scroll + cursorOffset) to be on line 12
+	// So scroll + 9 = 12, scroll = 3
+	assert.Equal(t, 3, model.scroll, "G should put cursor on last line")
 }
 
 func TestMaxScroll_AllowsCursorOnLastLine(t *testing.T) {
@@ -1202,7 +1202,6 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	// alpha.go: lines 0-17 (top border + header + bottom border + 10 pairs + 4 blank + trailing border = 18 lines)
 	// beta.go:  lines 18-34 (header + bottom border + 10 pairs + 4 blank + trailing border = 17 lines)
 	// gamma.go: lines 35-51 (header + bottom border + 10 pairs + 4 blank + trailing border = 17 lines)
-	// summary:  line 52
 
 	// Scroll through and verify status bar matches cursor position
 	for scroll := m.minScroll(); scroll <= m.maxScroll(); scroll++ {
@@ -1212,14 +1211,11 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 
 		// Determine expected file based on cursor position
 		// Note: blank lines and trailing border count as the file above
-		// Summary row (last line) has no file info
 		expectedFile := "alpha.go"
 		if cursorPos >= 18 && cursorPos < 35 { // Line 18 is beta header
 			expectedFile = "beta.go"
-		} else if cursorPos >= 35 && cursorPos < m.totalLines-1 { // Line 35 is gamma header
+		} else if cursorPos >= 35 { // Line 35 is gamma header
 			expectedFile = "gamma.go"
-		} else if cursorPos == m.totalLines-1 { // Summary row
-			expectedFile = ""
 		}
 
 		if cursorPos >= 0 && cursorPos < m.totalLines {

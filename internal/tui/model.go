@@ -415,7 +415,7 @@ func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
 	// Only show breadcrumbs for content rows and certain separator rows
 	// (not headers, separator tops, etc.)
 	if row.isHeader || row.isSeparatorTop ||
-		row.isBlank || row.isHeaderSpacer || row.isHeaderTopBorder || row.isSummary {
+		row.isBlank || row.isHeaderSpacer || row.isHeaderTopBorder {
 		return ""
 	}
 

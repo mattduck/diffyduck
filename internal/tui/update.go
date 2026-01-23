@@ -337,12 +337,7 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 // rowMatchesIdentity checks if a row matches the given identity.
 // For blank rows, blanksSeen tracks how many blanks we've seen for this file.
 func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, blanksSeen int) bool {
-	// Summary row: only matches other summary rows (no file index check needed)
-	if identity.kind == RowKindSummary {
-		return row.kind == RowKindSummary
-	}
-
-	// File index must match for non-summary rows
+	// File index must match
 	if row.fileIndex != identity.fileIndex {
 		return false
 	}
@@ -510,15 +505,7 @@ func (m Model) currentFileIndex() int {
 		return -1
 	}
 
-	// Use cached rows if valid, otherwise rebuild
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
-		rows = m.buildRows()
-	}
 	cursorLine := m.cursorLine()
-	if cursorLine >= 0 && cursorLine < len(rows) && rows[cursorLine].isSummary {
-		return -1 // Summary row has no associated file
-	}
 
 	// Use cursor position, not scroll position
 	// This ensures Tab acts on the file shown in the status bar
@@ -574,32 +561,20 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// goToNextHeading moves the cursor to the next file header or summary row.
+// goToNextHeading moves the cursor to the next file header.
 func (m *Model) goToNextHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
 
-	// Find the current file index and whether we're on summary
+	// Find the current file index
 	currentFileIdx := -1
-	onSummary := false
 	if cursorPos >= 0 && cursorPos < len(rows) {
 		currentFileIdx = rows[cursorPos].fileIndex
-		onSummary = rows[cursorPos].isSummary
 	}
 
-	// If already on summary, nowhere to go
-	if onSummary {
-		return
-	}
-
-	// Find the next file header or summary row after the current file
+	// Find the next file header after the current file
 	for i, row := range rows {
 		if row.isHeader && row.fileIndex > currentFileIdx {
-			m.adjustScrollToRow(i)
-			return
-		}
-		if row.isSummary && currentFileIdx >= 0 {
-			// On a file, can jump to summary
 			m.adjustScrollToRow(i)
 			return
 		}
@@ -612,29 +587,15 @@ func (m *Model) goToPrevHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
 
-	// Find the current file index and whether we're on summary or header
+	// Find the current file index and whether we're on header
 	currentFileIdx := 0
-	onSummary := false
 	onHeader := false
 	if cursorPos >= 0 && cursorPos < len(rows) {
 		fi := rows[cursorPos].fileIndex
-		onSummary = rows[cursorPos].isSummary
 		onHeader = rows[cursorPos].isHeader
 		if fi >= 0 {
 			currentFileIdx = fi
 		}
-	}
-
-	// From summary row, go to the last file's header
-	if onSummary {
-		targetFileIdx := len(m.files) - 1
-		for i, row := range rows {
-			if row.isHeader && row.fileIndex == targetFileIdx {
-				m.adjustScrollToRow(i)
-				return
-			}
-		}
-		return
 	}
 
 	// If not on header, jump to current file's header first

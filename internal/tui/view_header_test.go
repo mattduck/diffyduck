@@ -436,13 +436,12 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Should have: header + summary = 2 rows
+	// Should have: header only = 1 row
 	// No top border, no bottom border, no content for folded files
-	require.Len(t, rows, 2, "folded file should only have header + summary")
+	require.Len(t, rows, 1, "folded file should only have header")
 	assert.True(t, rows[0].isHeader, "first row should be header")
 	assert.False(t, rows[0].isHeaderTopBorder, "should not have top border")
 	assert.False(t, rows[0].isHeaderSpacer, "should not have bottom border")
-	assert.True(t, rows[1].isSummary, "second row should be summary")
 }
 
 // Test: First file unfolded has leading top border with borderVisible=true
@@ -621,43 +620,6 @@ func TestBuildRows_TrailingTopBorderHiddenWhenNextFolded(t *testing.T) {
 	}
 	require.NotNil(t, trailingBorder, "should find trailing top border of first file")
 	assert.False(t, trailingBorder.borderVisible, "trailing border should be hidden when next file is folded")
-}
-
-// Test: Trailing top border visibility - last file (no next file)
-func TestBuildRows_TrailingTopBorderHiddenForLastFile(t *testing.T) {
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "a/foo.go",
-				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldNormal,
-				Pairs: []sidebyside.LinePair{
-					{
-						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-						New: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
-					},
-				},
-			},
-		},
-		width:  80,
-		height: 20,
-		keys:   DefaultKeyMap(),
-	}
-
-	rows := m.buildRows()
-
-	// Find the trailing top border (after the blank rows, before summary)
-	var trailingBorder *displayRow
-	for i := range rows {
-		if rows[i].fileIndex == 0 && rows[i].isHeaderTopBorder {
-			if i > 0 && rows[i-1].isBlank {
-				trailingBorder = &rows[i]
-			}
-		}
-	}
-	require.NotNil(t, trailingBorder, "should find trailing top border")
-	assert.False(t, trailingBorder.borderVisible, "trailing border should be hidden for last file (no next file)")
 }
 
 // Test: Header borderVisible - first file

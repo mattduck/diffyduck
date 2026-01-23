@@ -280,9 +280,8 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 
 	// Normal file: 1 top border + 1 header + 1 bottom border + 10 pairs + 4 blank + 1 trailing border = 18 lines
 	// Folded file: 1 header only (no borders, no blank lines after since it's folded)
-	// Summary row: 1 line
-	// Total should be 18 + 1 + 1 = 20
-	assert.Equal(t, 20, m.totalLines, "totalLines should account for fold states and summary")
+	// Total should be 18 + 1 = 19
+	assert.Equal(t, 19, m.totalLines, "totalLines should account for fold states")
 }
 
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
