@@ -344,7 +344,11 @@ func (m Model) contentHeight() int {
 	if m.hasCommitInfo() {
 		reserved++ // commit info line in top bar
 	}
-	reserved += m.commentPromptHeight() // comment input area
+	// Only add extra space for comment prompt when in comment mode
+	// (bottom bar is already counted in reserved)
+	if m.commentMode {
+		reserved += m.commentPromptHeight() - 1 // -1 since bottom bar already counted
+	}
 	h := m.height - reserved
 	if h < 1 {
 		return 1
