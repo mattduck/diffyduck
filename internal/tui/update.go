@@ -324,8 +324,12 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 	case RowKindBlank:
 		// Match the specific blank row by index within the file
 		return row.kind == RowKindBlank && blanksSeen == identity.blankIndex
+	case RowKindSeparatorTop:
+		return row.kind == RowKindSeparatorTop
 	case RowKindSeparator:
 		return row.kind == RowKindSeparator
+	case RowKindSeparatorBottom:
+		return row.kind == RowKindSeparatorBottom
 	case RowKindTruncationIndicator:
 		return row.kind == RowKindTruncationIndicator
 	case RowKindContent:

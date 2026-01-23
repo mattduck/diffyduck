@@ -99,7 +99,9 @@ const (
 	RowKindHeaderSpacer    // bottom border line after header
 	RowKindHeaderTopBorder // top border line before header
 	RowKindBlank
-	RowKindSeparator           // hunk separator (┈┈┈)
+	RowKindSeparatorTop        // top shader line above hunk separator
+	RowKindSeparator           // hunk separator with breadcrumb
+	RowKindSeparatorBottom     // bottom shader line below hunk separator
 	RowKindSummary             // summary row at the end
 	RowKindTruncationIndicator // truncation message row
 )
@@ -112,7 +114,9 @@ type displayRow struct {
 	// Legacy boolean flags - kept for backward compatibility during refactor.
 	// These are derived from 'kind' and will be removed in a future cleanup.
 	isHeader              bool
+	isSeparatorTop        bool // top shader line above hunk separator
 	isSeparator           bool
+	isSeparatorBottom     bool // bottom shader line below hunk separator
 	isBlank               bool
 	isHeaderSpacer        bool // bottom border line after header
 	isHeaderTopBorder     bool // top border line before header
@@ -297,7 +301,10 @@ func (m Model) buildRows() []displayRow {
 				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
 					// Find first non-zero New.Num in this chunk for breadcrumb lookup
 					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
+					// Add three-line separator: top shader + breadcrumb + bottom shader
+					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
 					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
+					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true})
 				}
 
 				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair}
@@ -709,8 +716,12 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			}
 		} else if row.isHeader {
 			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.borderVisible, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow))
+		} else if row.isSeparatorTop {
+			visible = append(visible, m.renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth, isCursorRow))
 		} else if row.isSeparator {
 			visible = append(visible, m.renderHunkSeparator(row, leftHalfWidth, rightHalfWidth, isCursorRow))
+		} else if row.isSeparatorBottom {
+			visible = append(visible, m.renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth, isCursorRow)) // same as top
 		} else if row.isSummary {
 			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
 		} else if row.isTruncationIndicator {
@@ -825,6 +836,60 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	}
 
 	return leftArrow + leftContent + shadeStyle.Render("░░░") + rightArrow + rightContent
+}
+
+// renderHunkSeparatorTop renders the top line of a hunk separator (faint shader for visual separation).
+func (m Model) renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth int, isCursorRow bool) string {
+	// Faint shader style - less visible than the main separator
+	faintShadeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
+	lineNumWidth := m.lineNumWidth()
+
+	// Arrow column width: indicator(1) + space(1) = 2
+	arrowWidth := 2
+
+	leftContentWidth := leftHalfWidth - arrowWidth
+	if leftContentWidth < 0 {
+		leftContentWidth = 0
+	}
+	rightContentWidth := rightHalfWidth - arrowWidth
+	if rightContentWidth < 0 {
+		rightContentWidth = 0
+	}
+
+	if !isCursorRow {
+		// Non-cursor: all faint shading
+		leftArrow := faintShadeStyle.Render("░░")
+		rightArrow := faintShadeStyle.Render("░░")
+		leftContent := faintShadeStyle.Render(strings.Repeat("░", leftContentWidth))
+		rightContent := faintShadeStyle.Render(strings.Repeat("░", rightContentWidth))
+		return leftArrow + leftContent + faintShadeStyle.Render("░░░") + rightArrow + rightContent
+	}
+
+	// Cursor row: arrow + faint shade, then lineNumWidth chars with cursor bg, rest is faint shading
+	leftArrow := cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
+	rightArrow := cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
+
+	// Left side: lineNumWidth chars with cursor bg, rest faint
+	cursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	leftRestWidth := leftContentWidth - lineNumWidth
+	var leftContent string
+	if leftRestWidth > 0 {
+		leftContent = cursorPart + faintShadeStyle.Render(strings.Repeat("░", leftRestWidth))
+	} else {
+		leftContent = cursorPart
+	}
+
+	// Right side: lineNumWidth chars with cursor bg, rest faint
+	rightCursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	rightRestWidth := rightContentWidth - lineNumWidth
+	var rightContent string
+	if rightRestWidth > 0 {
+		rightContent = rightCursorPart + faintShadeStyle.Render(strings.Repeat("░", rightRestWidth))
+	} else {
+		rightContent = rightCursorPart
+	}
+
+	return leftArrow + leftContent + faintShadeStyle.Render("░░░") + rightArrow + rightContent
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.

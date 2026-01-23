@@ -3722,14 +3722,15 @@ func TestView_HunkSeparatorNoCrossInMiddle(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the hunk separator line (blank line between content, not file header)
-	// Hunk separator is row 4 in this test (after header area at rows 0-2, and first content at row 3)
+	// Find the hunk separator line (shaded line with ░, not the blank line above it)
+	// Hunk separator is row 5 in this test (after header area at rows 0-2, first content at row 3, blank at row 4)
 	var hunkLine string
 	for i, line := range lines {
 		// Skip header area (rows 0-2) and content lines with file name, line numbers, or content
-		if i > 2 && !strings.Contains(line, "test.go") && !strings.Contains(line, "100") &&
-			!strings.Contains(line, "first") && !strings.Contains(line, "second") &&
-			!strings.Contains(line, "─") && !strings.Contains(line, "│") {
+		// Look for line with shading (░) that's not a content line
+		if i > 2 && strings.Contains(line, "░") &&
+			!strings.Contains(line, "test.go") && !strings.Contains(line, "100") &&
+			!strings.Contains(line, "first") && !strings.Contains(line, "second") {
 			hunkLine = line
 			break
 		}
@@ -3846,10 +3847,10 @@ func TestView_HunkSeparatorBreadcrumbs_NoBreadcrumbWithoutStructure(t *testing.T
 	// It's between rows 3 (line 1 content) and row 5 (line 100 content)
 	var hunkLine string
 	for i, line := range lines {
-		// Skip header area and content lines
-		if i > 2 && !strings.Contains(line, "test.go") && !strings.Contains(line, "line") &&
-			!strings.Contains(line, " 1 ") && !strings.Contains(line, " 100 ") &&
-			!strings.Contains(line, "─") && !strings.Contains(line, "│") {
+		// Skip header area and content lines - look for line with shading (░)
+		if i > 2 && strings.Contains(line, "░") &&
+			!strings.Contains(line, "test.go") && !strings.Contains(line, "line") &&
+			!strings.Contains(line, " 1 ") && !strings.Contains(line, " 100 ") {
 			hunkLine = line
 			break
 		}
@@ -5670,8 +5671,8 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	}
 
 	// Render with cursor on content line (line 100)
-	// Row layout: top_border=0, header=1, bottom_border=2, line1=3, hunksep=4, line100=5
-	m.scroll = 5 - m.cursorOffset()
+	// Row layout: top_border=0, header=1, bottom_border=2, line1=3, hunksep_top=4, hunksep=5, hunksep_bottom=6, line100=7
+	m.scroll = 7 - m.cursorOffset()
 	contentOutput := m.View()
 	contentLines := strings.Split(contentOutput, "\n")
 
@@ -5687,8 +5688,8 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	contentArrowPositions := findArrowDisplayPositions(contentLineWithCursor)
 	require.Len(t, contentArrowPositions, 2, "content line should have 2 arrows (left and right)")
 
-	// Now render with cursor on hunk separator
-	m.scroll = 4 - m.cursorOffset()
+	// Now render with cursor on hunk separator (the line with breadcrumbs, not the top shader line)
+	m.scroll = 5 - m.cursorOffset()
 	hunkOutput := m.View()
 	hunkLines := strings.Split(hunkOutput, "\n")
 
