@@ -48,6 +48,12 @@ func (h *Highlighter) Theme() Theme {
 	return h.theme
 }
 
+// SupportsFile returns true if the highlighter supports the given filename
+// (based on extension or exact filename match).
+func (h *Highlighter) SupportsFile(filename string) bool {
+	return h.registry.ForFile(filename) != nil
+}
+
 // Highlight returns spans for the given source code.
 // Returns nil if the language is not supported.
 func (h *Highlighter) Highlight(filename string, content []byte) ([]Span, error) {
@@ -237,9 +243,4 @@ func (h *Highlighter) Close() {
 	}
 	h.parsers = nil
 	h.queries = nil
-}
-
-// SupportsFile returns true if the highlighter can highlight the given file.
-func (h *Highlighter) SupportsFile(filename string) bool {
-	return h.registry.ForFile(filename) != nil
 }

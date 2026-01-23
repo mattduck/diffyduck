@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
@@ -39,7 +40,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Restore cursor to same row index
 		m.adjustScrollToRow(savedRowIdx)
-		return m, nil
+
+		// Start loading supported files on first window size
+		cmd := m.initStartupQueue()
+		return m, cmd
 
 	case FileContentLoadedMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
@@ -59,6 +63,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.refreshSearch()
 
+			// File content loaded, but still loading until highlight is ready
+			// (loading state will be cleared when HighlightReadyMsg arrives)
+
 			// Trigger syntax highlighting for this file
 			return m, m.RequestHighlight(msg.FileIndex)
 		}
@@ -66,11 +73,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case HighlightReadyMsg:
 		m.storeHighlightSpans(msg)
-		return m, nil
+		// Clear loading state - file is fully loaded now
+		m.clearFileLoading(msg.FileIndex)
+
+		// Check if there are more files to load from startup queue
+		var cmds []tea.Cmd
+		if cmd := m.onStartupFileComplete(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		if cmd := m.startSpinnerIfNeeded(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
 
 	case PairsHighlightReadyMsg:
 		m.storePairsHighlightSpans(msg)
 		return m, nil
+
+	case spinner.TickMsg:
+		cmd := m.handleSpinnerTick(msg)
+		return m, cmd
 
 	case AllContentLoadedMsg:
 		if len(msg.Contents) > 0 {

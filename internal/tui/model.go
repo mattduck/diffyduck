@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"time"
+
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/highlight"
@@ -81,6 +84,16 @@ type Model struct {
 
 	// Inline diff cache - avoids recomputing Myers diff on every render
 	inlineDiffCache map[inlineDiffKey]inlineDiffResult
+
+	// Loading indicator - shows spinner while files are being fetched/parsed
+	spinner        spinner.Model     // animated spinner for loading state
+	loadingFiles   map[int]time.Time // file index -> time loading started
+	spinnerTicking bool              // true if a spinner tick chain is already running
+
+	// Startup loading - prefetch content for all supported files on startup
+	startupQueue      []int // file indices waiting to be loaded on startup
+	startupInFlight   int   // number of files currently being fetched
+	startupQueuedInit bool  // true once startup queue has been initialized
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
@@ -147,6 +160,11 @@ func WithTruncatedFileCount(count int) Option {
 
 // New creates a new Model with the given file pairs.
 func New(files []sidebyside.FilePair, opts ...Option) Model {
+	// Initialize spinner with compact style and slower speed
+	s := spinner.New()
+	s.Spinner = spinner.MiniDot
+	s.Spinner.FPS = time.Second / 6 // 6 fps
+
 	m := Model{
 		files:               files,
 		keys:                DefaultKeyMap(),
@@ -157,6 +175,8 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 		structureMaps:       make(map[int]*FileStructure),
 		pairsStructureMaps:  make(map[int]*FileStructure),
 		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		spinner:             s,
+		loadingFiles:        make(map[int]time.Time),
 	}
 	for _, opt := range opts {
 		opt(&m)
@@ -560,12 +580,6 @@ func (m *Model) updateMaxNewContentWidth() {
 			}
 		}
 	}
-}
-
-// invalidateRowsCache marks the row cache as needing rebuild.
-// Call this after any change that affects the row structure (fold changes, content load, etc).
-func (m *Model) invalidateRowsCache() {
-	m.rowsCacheValid = false
 }
 
 // rebuildRowsCache unconditionally rebuilds the cached rows.

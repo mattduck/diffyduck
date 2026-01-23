@@ -266,11 +266,10 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 		OldSpans: unconvertSpans(msg.OldSpans),
 		NewSpans: unconvertSpans(msg.NewSpans),
 	}
-	// Also store structure if available (new side only, for breadcrumbs)
-	if len(msg.NewStructure) > 0 {
-		m.structureMaps[msg.FileIndex] = &FileStructure{
-			NewStructure: unconvertStructure(msg.NewStructure),
-		}
+	// Store structure (even if empty) to mark file as processed.
+	// This prevents filesNeedingStructure from re-processing already-loaded files.
+	m.structureMaps[msg.FileIndex] = &FileStructure{
+		NewStructure: unconvertStructure(msg.NewStructure),
 	}
 }
 

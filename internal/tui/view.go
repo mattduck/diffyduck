@@ -1037,6 +1037,15 @@ func (m Model) renderStatusBar() string {
 	// Apply reverse style to the less indicator portion
 	styledLessIndicator := statusStyle.Render(" " + lessIndicator)
 
+	// Loading indicator (grey, shown when any files are loading)
+	var loadingIndicator string
+	var loadingWidth int
+	if m.hasAnyLoadingFiles() {
+		loadingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		loadingIndicator = " " + loadingStyle.Render(m.spinner.View()+" Loading...")
+		loadingWidth = 1 + 1 + len(" Loading...") // space + spinner + text
+	}
+
 	// When there's an active search query, show search info
 	var searchInfo string
 	if m.searchQuery != "" {
@@ -1060,9 +1069,9 @@ func (m Model) renderStatusBar() string {
 		debugStats, debugWidth = m.formatDebugStats()
 	}
 
-	// Combine: reversed_less_indicator + search_info + padding + debug_stats + pager_indicator
-	content := styledLessIndicator + searchInfo
-	contentWidth := displayWidth(" "+lessIndicator) + displayWidth(searchInfo)
+	// Combine: reversed_less_indicator + loading + search_info + padding + debug_stats + pager_indicator
+	content := styledLessIndicator + loadingIndicator + searchInfo
+	contentWidth := displayWidth(" "+lessIndicator) + loadingWidth + displayWidth(searchInfo)
 	pagerWidth := displayWidth(pagerIndicator)
 
 	// Calculate padding between content and right-side indicators
@@ -1116,9 +1125,9 @@ func (m Model) formatStatusFileInfo(info StatusInfo) string {
 	// Get fold level icon
 	icon := m.foldLevelIcon(info.FoldLevel)
 
-	// Get status indicator
-	statusSymbol, statusStyle := fileStatusIndicator(FileStatus(info.FileStatus))
-	styledStatus := statusStyle.Render(statusSymbol)
+	// Get status indicator - shows spinner if file is loading
+	fileIndex := info.CurrentFile - 1 // CurrentFile is 1-based
+	styledStatus := m.fileStatusSymbolStyled(fileIndex, FileStatus(info.FileStatus))
 
 	// Format stats (only show if there are changes)
 	var stats string
@@ -1699,9 +1708,10 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	}
 
 	// Get fold level icon and file status indicator
+	// Shows spinner if file is loading
 	icon := m.foldLevelIcon(foldLevel)
-	statusSymbol, statusStyle := fileStatusIndicator(status)
-	styledStatus := statusStyle.Render(statusSymbol)
+	_, fileStatusStyle := fileStatusIndicator(status) // for coloring file number and trailing fill
+	styledStatus := m.fileStatusSymbolStyled(fileIndex, status)
 
 	lineNumWidth := m.lineNumWidth()
 
@@ -1724,7 +1734,8 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	}
 
 	// Calculate content width and pad to match headerBoxWidth
-	iconPartWidth := 1 + len(icon) + 1 + len(statusSymbol) + 1 // " icon status "
+	// Status symbol is always 1 character (or spinner which is also 1 char)
+	iconPartWidth := 1 + len(icon) + 1 + 1 + 1 // " icon status "
 	contentWidth := lineNumWidth + iconPartWidth + headerTextWidth + len(headerPadding) + statsBarWidth
 	boxPadding := ""
 	if headerBoxWidth > contentWidth {
@@ -1740,7 +1751,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	}
 	trailingFill := ""
 	if trailing > 0 {
-		trailingFill = statusStyle.Render(strings.Repeat("▒", trailing+1))
+		trailingFill = fileStatusStyle.Render(strings.Repeat("▒", trailing+1))
 	}
 
 	// Use darker color for border when not visible (file above is folded)
@@ -1757,7 +1768,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 
 	// Normal rendering
 	// Format: space + space + fileNum + space + icon + status + header + padding + stats + boxPadding + space + │ + trailing
-	return "  " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+	return "  " + fileStatusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool) string {
