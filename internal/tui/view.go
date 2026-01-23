@@ -897,41 +897,65 @@ func (m Model) renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth int, isCurso
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
+// Uses shader characters (░) consistent with other row types like hunk separators.
 func (m Model) renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth int) string {
-	// Highlight both gutter areas (left and right) - only when focused
-	var leftGutter, rightGutter string
-	if m.focused {
-		leftGutter = cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-		rightGutter = cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-	} else {
-		leftGutter = strings.Repeat(" ", lineNumWidth)
-		rightGutter = strings.Repeat(" ", lineNumWidth)
-	}
+	// Use faint shader style consistent with hunk separator rows
+	faintShadeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 
-	// Content areas (accounting for indicator + space + gutter + space)
-	leftContentWidth := leftHalfWidth - lineNumWidth - 3
+	// Arrow column width: indicator(1) + space(1) = 2
+	arrowWidth := 2
+
+	leftContentWidth := leftHalfWidth - arrowWidth
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
-	rightContentWidth := rightHalfWidth - lineNumWidth - 3
+	rightContentWidth := rightHalfWidth - arrowWidth
 	if rightContentWidth < 0 {
 		rightContentWidth = 0
 	}
-	leftContent := strings.Repeat(" ", leftContentWidth)
-	rightContent := strings.Repeat(" ", rightContentWidth)
 
-	// Format: arrow + space + gutter + space + content
-	// Use outline arrow when unfocused
+	// Cursor row: arrow + faint shade, then lineNumWidth chars with cursor bg, rest is faint shading
+	// When unfocused, use outline arrow and no background highlighting
 	var leftArrow, rightArrow string
 	if m.focused {
-		leftArrow = cursorArrowStyle.Render("▶")
-		rightArrow = cursorArrowStyle.Render("▶")
+		leftArrow = cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
+		rightArrow = cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
 	} else {
-		leftArrow = unfocusedCursorArrowStyle.Render("▷")
-		rightArrow = unfocusedCursorArrowStyle.Render("▷")
+		leftArrow = unfocusedCursorArrowStyle.Render("▷") + faintShadeStyle.Render("░")
+		rightArrow = unfocusedCursorArrowStyle.Render("▷") + faintShadeStyle.Render("░")
 	}
-	return leftArrow + " " + leftGutter + " " + leftContent + " " + " " + " " +
-		rightArrow + " " + rightGutter + " " + rightContent
+
+	// Left side: lineNumWidth chars with cursor bg (only when focused), rest faint
+	var cursorPart string
+	if m.focused {
+		cursorPart = cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	} else {
+		cursorPart = faintShadeStyle.Render(strings.Repeat("░", lineNumWidth))
+	}
+	leftRestWidth := leftContentWidth - lineNumWidth
+	var leftContent string
+	if leftRestWidth > 0 {
+		leftContent = cursorPart + faintShadeStyle.Render(strings.Repeat("░", leftRestWidth))
+	} else {
+		leftContent = cursorPart
+	}
+
+	// Right side: lineNumWidth chars with cursor bg (only when focused), rest faint
+	var rightCursorPart string
+	if m.focused {
+		rightCursorPart = cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	} else {
+		rightCursorPart = faintShadeStyle.Render(strings.Repeat("░", lineNumWidth))
+	}
+	rightRestWidth := rightContentWidth - lineNumWidth
+	var rightContent string
+	if rightRestWidth > 0 {
+		rightContent = rightCursorPart + faintShadeStyle.Render(strings.Repeat("░", rightRestWidth))
+	} else {
+		rightContent = rightCursorPart
+	}
+
+	return leftArrow + leftContent + faintShadeStyle.Render("░░░") + rightArrow + rightContent
 }
 
 // renderInterFileBlank renders a blank line between files.
@@ -1598,7 +1622,8 @@ func statsCountWidth(added, removed, maxAddWidth int) int {
 // Returns empty string if no changes. Format: " +N -M"
 // maxAddWidth/maxRemWidth are used to pad columns so they align across files.
 func formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth int) string {
-	if added == 0 && removed == 0 {
+	// If no stats columns needed at all (no files have changes), return empty
+	if maxAddWidth == 0 && maxRemWidth == 0 {
 		return ""
 	}
 
@@ -1635,8 +1660,9 @@ func formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth int) string 
 
 // statsBarDisplayWidth returns the display width of the stats counts (without ANSI codes).
 // This matches formatColoredStatsBar's output width with fixed column widths.
-func statsBarDisplayWidth(added, removed, maxAddWidth, maxRemWidth int) int {
-	if added == 0 && removed == 0 {
+func statsBarDisplayWidth(maxAddWidth, maxRemWidth int) int {
+	// If no stats columns needed at all (no files have changes), return 0
+	if maxAddWidth == 0 && maxRemWidth == 0 {
 		return 0
 	}
 
@@ -1826,7 +1852,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 
 	// All headers use same format: gutter + icon + status + header + stats + │ + trailing
 	statsBar := formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth)
-	statsBarWidth := statsBarDisplayWidth(added, removed, maxAddWidth, maxRemWidth)
+	statsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 
 	// Pad header to align stats across all files
 	headerTextWidth := displayWidth(header)

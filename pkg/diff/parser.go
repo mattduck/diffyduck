@@ -86,6 +86,16 @@ func Parse(input string) (*Diff, error) {
 
 		// Git metadata lines (between diff header and ---/+++ lines)
 		if currentFile != nil {
+			// New file mode - mark OldPath as /dev/null for proper status display
+			if strings.HasPrefix(line, "new file mode") {
+				currentFile.OldPath = "/dev/null"
+				continue
+			}
+			// Deleted file mode - mark NewPath as /dev/null for proper status display
+			if strings.HasPrefix(line, "deleted file mode") {
+				currentFile.NewPath = "/dev/null"
+				continue
+			}
 			// Rename metadata
 			if m := renameFromRe.FindStringSubmatch(line); m != nil {
 				currentFile.IsRename = true

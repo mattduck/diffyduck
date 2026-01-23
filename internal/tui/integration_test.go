@@ -235,6 +235,128 @@ index 0000000..abc1234
 	assert.Equal(t, string(expected), output)
 }
 
+// TestFullPipeline_AddedEmptyFile tests display of a new file with no content.
+// Git outputs no hunk header for empty files, so this tests that edge case.
+func TestFullPipeline_AddedEmptyFile(t *testing.T) {
+	// This is what git outputs for an empty new file - no --- or +++ lines, no hunk
+	input := `diff --git a/empty.txt b/empty.txt
+new file mode 100644
+index 0000000..e69de29
+`
+	d, err := diff.Parse(input)
+	require.NoError(t, err)
+
+	// Verify the parser correctly identifies this as a new file
+	require.Len(t, d.Files, 1)
+	assert.Equal(t, "/dev/null", d.Files[0].OldPath, "new file should have /dev/null as OldPath")
+
+	files, _ := sidebyside.TransformDiff(d)
+	unfoldAll(files) // Tests expect normal (unfolded) view
+
+	m := New(files)
+	m.width = 80
+	m.height = 20
+
+	output := m.View()
+
+	// Verify the file is parsed and shows as added (+) with correct stats
+	lines := strings.Split(output, "\n")
+	var foundAddedHeader bool
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		// Look for the file header with empty.txt and + status indicator
+		if strings.Contains(stripped, "empty.txt") && strings.Contains(stripped, "+") {
+			foundAddedHeader = true
+		}
+	}
+	assert.True(t, foundAddedHeader, "should find empty.txt with + status in output")
+
+	// Verify blank rows use shader characters (░) not just spaces
+	var foundShaderRow bool
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		// Look for lines with cursor arrows and shader fill
+		if strings.Contains(stripped, "▶") && strings.Contains(stripped, "░") {
+			foundShaderRow = true
+		}
+	}
+	assert.True(t, foundShaderRow, "blank cursor rows should have shader characters")
+
+	goldenPath := filepath.Join("testdata", "integration_added_empty_file.golden")
+	if *update {
+		err := os.WriteFile(goldenPath, []byte(output), 0644)
+		require.NoError(t, err)
+		return
+	}
+
+	expected, err := os.ReadFile(goldenPath)
+	require.NoError(t, err, "Run with -update to create golden file")
+	assert.Equal(t, string(expected), output)
+}
+
+// TestFullPipeline_EmptyFileWithOtherFiles tests that empty files align correctly
+// when shown alongside files that have changes (stats column alignment).
+func TestFullPipeline_EmptyFileWithOtherFiles(t *testing.T) {
+	// Two new files: one empty, one with content
+	input := `diff --git a/empty.txt b/empty.txt
+new file mode 100644
+index 0000000..e69de29
+diff --git a/content.txt b/content.txt
+new file mode 100644
+index 0000000..abc1234
+--- /dev/null
++++ b/content.txt
+@@ -0,0 +1 @@
++hello
+`
+	d, err := diff.Parse(input)
+	require.NoError(t, err)
+	require.Len(t, d.Files, 2)
+
+	files, _ := sidebyside.TransformDiff(d)
+	unfoldAll(files)
+
+	m := New(files)
+	m.width = 80
+	m.height = 24
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Find the two header lines and verify they have the same width before the shaded area
+	var emptyHeader, contentHeader string
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		if strings.Contains(stripped, "empty.txt") && strings.Contains(stripped, "#") {
+			emptyHeader = stripped
+		}
+		if strings.Contains(stripped, "content.txt") && strings.Contains(stripped, "#") {
+			contentHeader = stripped
+		}
+	}
+
+	require.NotEmpty(t, emptyHeader, "should find empty.txt header")
+	require.NotEmpty(t, contentHeader, "should find content.txt header")
+
+	// Both headers should have │ at the same position (stats column aligned)
+	emptyDividerPos := findRuneIndex(emptyHeader, "│")
+	contentDividerPos := findRuneIndex(contentHeader, "│")
+	assert.Equal(t, contentDividerPos, emptyDividerPos,
+		"divider should be at same position for both files\nempty:   %q\ncontent: %q",
+		emptyHeader, contentHeader)
+
+	goldenPath := filepath.Join("testdata", "integration_empty_with_other_files.golden")
+	if *update {
+		err := os.WriteFile(goldenPath, []byte(output), 0644)
+		require.NoError(t, err)
+		return
+	}
+
+	expected, err := os.ReadFile(goldenPath)
+	require.NoError(t, err, "Run with -update to create golden file")
+	assert.Equal(t, string(expected), output)
+}
+
 // TestFullPipeline_TabsInContent tests that tabs are expanded correctly
 // so that column alignment is preserved.
 func TestFullPipeline_TabsInContent(t *testing.T) {

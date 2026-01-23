@@ -170,6 +170,40 @@ index abc1234..0000000
 	assert.Equal(t, Removed, file.Hunks[0].Lines[0].Type)
 }
 
+func TestParse_NewEmptyFile(t *testing.T) {
+	// Empty new file has no --- or +++ lines, no hunks
+	// Must detect "new file mode" to set OldPath correctly
+	input := `diff --git a/empty.txt b/empty.txt
+new file mode 100644
+index 0000000..e69de29
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.Equal(t, "/dev/null", file.OldPath, "new file should have /dev/null as OldPath")
+	assert.Equal(t, "b/empty.txt", file.NewPath)
+	assert.Len(t, file.Hunks, 0, "empty file should have no hunks")
+}
+
+func TestParse_DeletedEmptyFile(t *testing.T) {
+	// Empty deleted file has no --- or +++ lines, no hunks
+	// Must detect "deleted file mode" to set NewPath correctly
+	input := `diff --git a/empty.txt b/empty.txt
+deleted file mode 100644
+index e69de29..0000000
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.Equal(t, "a/empty.txt", file.OldPath)
+	assert.Equal(t, "/dev/null", file.NewPath, "deleted file should have /dev/null as NewPath")
+	assert.Len(t, file.Hunks, 0, "empty file should have no hunks")
+}
+
 func TestParse_RenamedFile_PureRename(t *testing.T) {
 	// Pure rename with 100% similarity - no --- or +++ lines, no hunks
 	input := `diff --git a/old.go b/new.go
