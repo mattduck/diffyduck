@@ -103,21 +103,23 @@ func (g *goExtractor) extractNameAndSignature(node *tree_sitter.Node, nodeType s
 
 // extractReceiver extracts the receiver from a method declaration.
 // Returns e.g., "(m Model) " or "(m *Model) "
+// Normalizes multiline receivers to a single line.
 func (g *goExtractor) extractReceiver(node *tree_sitter.Node, content []byte) string {
 	receiverNode := node.ChildByFieldName("receiver")
 	if receiverNode == nil {
 		return ""
 	}
 	// Get the full receiver text including parens
-	return receiverNode.Utf8Text(content) + " "
+	return normalizeWhitespace(receiverNode.Utf8Text(content)) + " "
 }
 
 // extractParams extracts the parameters from a function/method declaration.
 // Returns e.g., "(ctx, name string)" or "()"
+// Normalizes multiline parameters to a single line.
 func (g *goExtractor) extractParams(node *tree_sitter.Node, content []byte) string {
 	paramsNode := node.ChildByFieldName("parameters")
 	if paramsNode == nil {
 		return "()"
 	}
-	return paramsNode.Utf8Text(content)
+	return normalizeWhitespace(paramsNode.Utf8Text(content))
 }

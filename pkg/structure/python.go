@@ -117,10 +117,11 @@ func (p *pythonExtractor) extractNameAndSignature(node *tree_sitter.Node, conten
 }
 
 // extractParams extracts the parameters from a function definition.
+// Normalizes multiline parameters to a single line.
 func (p *pythonExtractor) extractParams(node *tree_sitter.Node, content []byte) string {
 	paramsNode := node.ChildByFieldName("parameters")
 	if paramsNode == nil {
 		return "()"
 	}
-	return paramsNode.Utf8Text(content)
+	return normalizeWhitespace(paramsNode.Utf8Text(content))
 }

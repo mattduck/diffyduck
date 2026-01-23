@@ -3,7 +3,11 @@
 // breadcrumb navigation showing the code hierarchy at a given position.
 package structure
 
-import "sort"
+import (
+	"regexp"
+	"sort"
+	"strings"
+)
 
 // Entry represents a structural element (function, type, etc.)
 type Entry struct {
@@ -64,4 +68,21 @@ func NewMap(entries []Entry) *Map {
 		return sorted[i].StartLine < sorted[j].StartLine
 	})
 	return &Map{Entries: sorted}
+}
+
+// whitespaceRegex matches one or more whitespace characters (spaces, tabs, newlines).
+var whitespaceRegex = regexp.MustCompile(`\s+`)
+
+// bracketSpaceRegex matches spaces after opening brackets or before closing brackets.
+var bracketSpaceRegex = regexp.MustCompile(`([(\[])\s+|\s+([)\]])`)
+
+// normalizeWhitespace collapses all whitespace sequences (including newlines)
+// into single spaces, and removes spaces adjacent to parentheses and brackets.
+// This ensures multiline function signatures render properly in breadcrumbs.
+func normalizeWhitespace(s string) string {
+	// First collapse all whitespace to single spaces
+	s = whitespaceRegex.ReplaceAllString(s, " ")
+	// Then remove spaces after ([  and before ])
+	s = bracketSpaceRegex.ReplaceAllString(s, "$1$2")
+	return strings.TrimSpace(s)
 }
