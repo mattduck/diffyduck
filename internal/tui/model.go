@@ -94,6 +94,9 @@ type Model struct {
 	startupQueue      []int // file indices waiting to be loaded on startup
 	startupInFlight   int   // number of files currently being fetched
 	startupQueuedInit bool  // true once startup queue has been initialized
+
+	// Focus state - true when terminal has focus
+	focused bool
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
@@ -177,6 +180,7 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
 		spinner:             s,
 		loadingFiles:        make(map[int]time.Time),
+		focused:             true,
 	}
 	for _, opt := range opts {
 		opt(&m)

@@ -41,6 +41,12 @@ var (
 	// Cursor arrow style (fg=15 bright white, no background)
 	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 
+	// Unfocused cursor arrow style (fg=8 gray) - outline arrow when terminal loses focus
+	unfocusedCursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	// Unfocused status bar style (inverted from normal: fg=8 gray on default bg)
+	unfocusedStatusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
 	// Inter-file area style (dim shading for blank lines between files)
 	interFileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 
@@ -792,8 +798,15 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	}
 
 	// Cursor row: arrow in gutter, lineNumWidth chars with cursor bg, then breadcrumb in content area
-	leftGutter := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
-	rightGutter := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	// When unfocused, use outline arrow and no background highlighting
+	var leftGutter, rightGutter string
+	if m.focused {
+		leftGutter = cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+		rightGutter = cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	} else {
+		leftGutter = unfocusedCursorArrowStyle.Render("▷") + shadeStyle.Render("░") + shadeStyle.Render(strings.Repeat("░", lineNumWidth))
+		rightGutter = unfocusedCursorArrowStyle.Render("▷") + shadeStyle.Render("░") + shadeStyle.Render(strings.Repeat("░", lineNumWidth))
+	}
 
 	// Left side: breadcrumb in content area
 	var leftContent string
@@ -840,11 +853,23 @@ func (m Model) renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth int, isCurso
 	}
 
 	// Cursor row: arrow + faint shade, then lineNumWidth chars with cursor bg, rest is faint shading
-	leftArrow := cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
-	rightArrow := cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
+	// When unfocused, use outline arrow and no background highlighting
+	var leftArrow, rightArrow string
+	if m.focused {
+		leftArrow = cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
+		rightArrow = cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
+	} else {
+		leftArrow = unfocusedCursorArrowStyle.Render("▷") + faintShadeStyle.Render("░")
+		rightArrow = unfocusedCursorArrowStyle.Render("▷") + faintShadeStyle.Render("░")
+	}
 
-	// Left side: lineNumWidth chars with cursor bg, rest faint
-	cursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	// Left side: lineNumWidth chars with cursor bg (only when focused), rest faint
+	var cursorPart string
+	if m.focused {
+		cursorPart = cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	} else {
+		cursorPart = faintShadeStyle.Render(strings.Repeat("░", lineNumWidth))
+	}
 	leftRestWidth := leftContentWidth - lineNumWidth
 	var leftContent string
 	if leftRestWidth > 0 {
@@ -853,8 +878,13 @@ func (m Model) renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth int, isCurso
 		leftContent = cursorPart
 	}
 
-	// Right side: lineNumWidth chars with cursor bg, rest faint
-	rightCursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	// Right side: lineNumWidth chars with cursor bg (only when focused), rest faint
+	var rightCursorPart string
+	if m.focused {
+		rightCursorPart = cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	} else {
+		rightCursorPart = faintShadeStyle.Render(strings.Repeat("░", lineNumWidth))
+	}
 	rightRestWidth := rightContentWidth - lineNumWidth
 	var rightContent string
 	if rightRestWidth > 0 {
@@ -868,9 +898,15 @@ func (m Model) renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth int, isCurso
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
 func (m Model) renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth int) string {
-	// Highlight both gutter areas (left and right)
-	leftGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-	rightGutter := cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+	// Highlight both gutter areas (left and right) - only when focused
+	var leftGutter, rightGutter string
+	if m.focused {
+		leftGutter = cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+		rightGutter = cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+	} else {
+		leftGutter = strings.Repeat(" ", lineNumWidth)
+		rightGutter = strings.Repeat(" ", lineNumWidth)
+	}
 
 	// Content areas (accounting for indicator + space + gutter + space)
 	leftContentWidth := leftHalfWidth - lineNumWidth - 3
@@ -885,8 +921,17 @@ func (m Model) renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth
 	rightContent := strings.Repeat(" ", rightContentWidth)
 
 	// Format: arrow + space + gutter + space + content
-	return cursorArrowStyle.Render("▶") + " " + leftGutter + " " + leftContent + " " + " " + " " +
-		cursorArrowStyle.Render("▶") + " " + rightGutter + " " + rightContent
+	// Use outline arrow when unfocused
+	var leftArrow, rightArrow string
+	if m.focused {
+		leftArrow = cursorArrowStyle.Render("▶")
+		rightArrow = cursorArrowStyle.Render("▶")
+	} else {
+		leftArrow = unfocusedCursorArrowStyle.Render("▷")
+		rightArrow = unfocusedCursorArrowStyle.Render("▷")
+	}
+	return leftArrow + " " + leftGutter + " " + leftContent + " " + " " + " " +
+		rightArrow + " " + rightGutter + " " + rightContent
 }
 
 // renderInterFileBlank renders a blank line between files.
@@ -912,14 +957,21 @@ func (m Model) renderHeaderTopBorder(headerBoxWidth int, borderVisible bool, sta
 	}
 
 	if isCursorRow {
-		// Arrow at position 0, then ─ for position 1, then gutter area highlighted
+		// Arrow at position 0, then ─ for position 1, then gutter area highlighted (when focused)
 		// +1 at end for the space gap before the border corner
-		styledGutter := cursorStyle.Render(strings.Repeat("─", lineNumWidth))
+		var styledGutter, arrow string
+		if m.focused {
+			styledGutter = cursorStyle.Render(strings.Repeat("─", lineNumWidth))
+			arrow = cursorArrowStyle.Render("▶")
+		} else {
+			styledGutter = borderStyle.Render(strings.Repeat("─", lineNumWidth))
+			arrow = unfocusedCursorArrowStyle.Render("▷")
+		}
 		restWidth := innerWidth - lineNumWidth + 1
 		if restWidth < 0 {
 			restWidth = 0
 		}
-		return cursorArrowStyle.Render("▶") + borderStyle.Render("─") + styledGutter + borderStyle.Render(strings.Repeat("─", restWidth)+"┐")
+		return arrow + borderStyle.Render("─") + styledGutter + borderStyle.Render(strings.Repeat("─", restWidth)+"┐")
 	}
 
 	border := strings.Repeat("─", 2+innerWidth+1) // +1 for space gap before corner
@@ -944,14 +996,21 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 	}
 
 	if isCursorRow {
-		// Arrow at position 0, then ─ for position 1, then gutter area highlighted
+		// Arrow at position 0, then ─ for position 1, then gutter area highlighted (when focused)
 		// +1 at end for the space gap before the border corner
-		styledGutter := cursorStyle.Render(strings.Repeat("─", lineNumWidth))
+		var styledGutter, arrow string
+		if m.focused {
+			styledGutter = cursorStyle.Render(strings.Repeat("─", lineNumWidth))
+			arrow = cursorArrowStyle.Render("▶")
+		} else {
+			styledGutter = borderStyle.Render(strings.Repeat("─", lineNumWidth))
+			arrow = unfocusedCursorArrowStyle.Render("▷")
+		}
 		restWidth := innerWidth - lineNumWidth + 1
 		if restWidth < 0 {
 			restWidth = 0
 		}
-		return cursorArrowStyle.Render("▶") + borderStyle.Render("─") + styledGutter + borderStyle.Render(strings.Repeat("─", restWidth)+"┘")
+		return arrow + borderStyle.Render("─") + styledGutter + borderStyle.Render(strings.Repeat("─", restWidth)+"┘")
 	}
 
 	border := strings.Repeat("─", 2+innerWidth+1) // +1 for space gap before corner
@@ -1005,11 +1064,20 @@ func (m Model) renderTopBar() string {
 	}
 
 	// Leading arrow indicator (matches cursor arrow in gutter)
-	prefix := cursorArrowStyle.Render("▶") + " "
+	// Use outline arrow when unfocused
+	var prefix string
+	if m.focused {
+		prefix = cursorArrowStyle.Render("▶") + " "
+	} else {
+		prefix = unfocusedCursorArrowStyle.Render("▷") + " "
+	}
 	topLine := prefix + fileCounter + content + strings.Repeat(" ", padding) + rightSection
 
-	// Divider line using upper 1/8 block (dim)
+	// Divider line using upper 1/8 block (dim, faint when unfocused)
 	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	if !m.focused {
+		dividerStyle = dividerStyle.Faint(true)
+	}
 	divider := dividerStyle.Render(strings.Repeat("▔", m.width))
 
 	return topLine + "\n" + divider
@@ -1035,7 +1103,13 @@ func (m Model) renderStatusBar() string {
 	}
 
 	// Apply reverse style to the less indicator portion
-	styledLessIndicator := statusStyle.Render(" " + lessIndicator)
+	// Use unfocused style when terminal loses focus
+	var styledLessIndicator string
+	if m.focused {
+		styledLessIndicator = statusStyle.Render(" " + lessIndicator)
+	} else {
+		styledLessIndicator = unfocusedStatusStyle.Render(" " + lessIndicator)
+	}
 
 	// Loading indicator (grey, shown when any files are loading)
 	var loadingIndicator string
@@ -1637,16 +1711,20 @@ func (m Model) renderTruncationIndicator(message string, isCursorRow bool, trunc
 		}
 		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
 
-		if isCursorRow {
+		if isCursorRow && m.focused {
 			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + truncStyle.Render(msgText) + msgPadding
+		} else if isCursorRow && !m.focused {
+			left = unfocusedCursorArrowStyle.Render("▷") + " " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
 		} else {
 			left = "  " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
 		}
 	} else {
 		// Blank left side
 		blankContent := strings.Repeat(" ", contentWidth)
-		if isCursorRow {
+		if isCursorRow && m.focused {
 			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+		} else if isCursorRow && !m.focused {
+			left = unfocusedCursorArrowStyle.Render("▷") + " " + blankGutter + " " + blankContent
 		} else {
 			left = "  " + blankGutter + " " + blankContent
 		}
@@ -1662,16 +1740,20 @@ func (m Model) renderTruncationIndicator(message string, isCursorRow bool, trunc
 		}
 		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
 
-		if isCursorRow {
+		if isCursorRow && m.focused {
 			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + truncStyle.Render(msgText) + msgPadding
+		} else if isCursorRow && !m.focused {
+			right = unfocusedCursorArrowStyle.Render("▷") + " " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
 		} else {
 			right = "  " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
 		}
 	} else {
 		// Blank right side
 		blankContent := strings.Repeat(" ", contentWidth)
-		if isCursorRow {
+		if isCursorRow && m.focused {
 			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+		} else if isCursorRow && !m.focused {
+			right = unfocusedCursorArrowStyle.Render("▷") + " " + blankGutter + " " + blankContent
 		} else {
 			right = "  " + blankGutter + " " + blankContent
 		}
@@ -1693,9 +1775,13 @@ func (m Model) renderSummary(totalFiles, totalAdded, totalRemoved, maxHeaderWidt
 	// Use non-bold style for summary (just the foreground color)
 	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 
-	if isCursorRow {
+	if isCursorRow && m.focused {
 		// Format: arrow + space + gutter(━━━ with bg) + space + icon + summary
 		return cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
+	}
+	if isCursorRow && !m.focused {
+		// Unfocused: outline arrow, no background highlight
+		return unfocusedCursorArrowStyle.Render("▷") + " " + headerLineStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
 	}
 	// Format: space + space + gutter(━━━ dim) + space + icon + summary
 	return "  " + headerLineStyle.Render(equalsGutter) + summaryStyle.Render(iconPart+summary)
@@ -1760,10 +1846,15 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
 	}
 
-	if isCursorRow {
+	if isCursorRow && m.focused {
 		// Format: arrow + space + fileNum(with bg) + space + icon + status + header + padding + stats + boxPadding + space + │ + trailing
 		styledFileNum := cursorStyle.Render(fileNumPadded)
 		return cursorArrowStyle.Render("▶") + " " + styledFileNum + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+	}
+
+	if isCursorRow && !m.focused {
+		// Unfocused: outline arrow, no background highlight
+		return unfocusedCursorArrowStyle.Render("▷") + " " + statusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + headerStyle.Render(" "+header+headerPadding) + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 	}
 
 	// Normal rendering
@@ -1804,11 +1895,13 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 
 func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, rowIdx, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool) string {
 	// Diff indicator (+/-/~/space) before line number
-	// On cursor row, show arrowhead instead
+	// On cursor row, show arrowhead instead (outline arrow when unfocused)
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
 	var indicator string
-	if isCursorRow {
+	if isCursorRow && m.focused {
 		indicator = cursorArrowStyle.Render("▶")
+	} else if isCursorRow && !m.focused {
+		indicator = unfocusedCursorArrowStyle.Render("▷")
 	} else if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		indicator = changedStyle.Render("~")
 	} else {
@@ -1824,12 +1917,14 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 	// Line number (fixed, not affected by horizontal scroll)
 	// Color matches the +/- indicator: green for added, red for removed, blue for changed, dim for context
+	// When focused and on cursor row, highlight with cursor background
+	// When unfocused, show normal colors (no background highlight)
 	var numStr string
 	numContent := fmt.Sprintf("%*d", lineNumWidth, line.Num)
 	if line.Num == 0 {
 		numContent = strings.Repeat(" ", lineNumWidth)
 	}
-	if isCursorRow {
+	if isCursorRow && m.focused {
 		numStr = cursorStyle.Render(numContent)
 	} else {
 		switch line.Type {

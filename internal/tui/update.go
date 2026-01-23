@@ -9,6 +9,14 @@ import (
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.FocusMsg:
+		m.focused = true
+		return m, nil
+
+	case tea.BlurMsg:
+		m.focused = false
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
 

@@ -24,6 +24,7 @@ func init() {
 
 func TestView_BasicRender(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -75,6 +76,7 @@ func TestView_WithScroll(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
 		},
@@ -101,6 +103,7 @@ func TestView_WithScroll(t *testing.T) {
 
 func TestView_AddedAndRemovedLines(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -141,6 +144,7 @@ func TestView_AddedAndRemovedLines(t *testing.T) {
 
 func TestView_MultipleFiles(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/one.go",
@@ -185,10 +189,11 @@ func TestView_MultipleFiles(t *testing.T) {
 
 func TestView_EmptyModel(t *testing.T) {
 	m := Model{
-		files:  nil,
-		width:  80,
-		height: 10,
-		keys:   DefaultKeyMap(),
+		focused: true,
+		files:   nil,
+		width:   80,
+		height:  10,
+		keys:    DefaultKeyMap(),
 	}
 
 	output := m.View()
@@ -198,6 +203,7 @@ func TestView_EmptyModel(t *testing.T) {
 
 func TestView_ZeroSize(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/foo.go", NewPath: "b/foo.go"},
 		},
@@ -213,6 +219,7 @@ func TestView_ZeroSize(t *testing.T) {
 func TestView_HorizontalScroll(t *testing.T) {
 	// Create content with long lines to test horizontal scrolling
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -265,6 +272,7 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
 		},
@@ -300,6 +308,7 @@ func TestStatusInfo_AtEnd(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/small.go", NewPath: "b/small.go", Pairs: pairs},
 		},
@@ -335,6 +344,7 @@ func TestStatusInfo_MultipleFiles(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1},
 			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2},
@@ -369,6 +379,7 @@ func TestView_StatusBarContent(t *testing.T) {
 		}
 	}
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -398,6 +409,7 @@ func TestView_StatusBarContent(t *testing.T) {
 func TestStatusInfo_DeletedFile(t *testing.T) {
 	// When a file is deleted, newPath is /dev/null, so we should show oldPath
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/deleted.go",
@@ -432,6 +444,7 @@ func TestStatusInfo_ScrollPastAllContent(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
 		},
@@ -461,6 +474,7 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
 		},
@@ -502,6 +516,7 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-17 (top border + header + bottom + 10 pairs + 4 blank + trailing)
 			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 18 is header
@@ -541,6 +556,7 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 func TestView_ScrolledToMax(t *testing.T) {
 	// When scrolled to max, the summary row should be visible, rest is padding
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -587,6 +603,7 @@ func TestView_ScrolledToMax(t *testing.T) {
 func TestView_InlineDiffRendering(t *testing.T) {
 	// Test that inline diff is computed for modified line pairs
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -618,6 +635,7 @@ func TestView_InlineDiffRendering(t *testing.T) {
 func TestView_InlineDiffSkippedForDissimilar(t *testing.T) {
 	// When lines are too different, inline diff should be skipped
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -647,6 +665,7 @@ func TestView_InlineDiffSkippedForDissimilar(t *testing.T) {
 func TestView_HunkSeparator(t *testing.T) {
 	// When there's a gap in line numbers, a separator should be shown
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -692,6 +711,7 @@ func TestView_HunkSeparator(t *testing.T) {
 func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 	// Second and subsequent file headers should have a blank line before them
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/first.go",
@@ -747,6 +767,7 @@ func TestView_BlankLineBeforeFileHeader(t *testing.T) {
 func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 	// First file should start with top border (not blank) and then header
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/only.go",
@@ -788,6 +809,7 @@ func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
 	// When lines are consecutive, no separator should be shown
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -876,6 +898,7 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := Model{
+				focused: true,
 				files: []sidebyside.FilePair{
 					{
 						OldPath:    "a/test.go",
@@ -914,6 +937,7 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 
 func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -950,6 +974,7 @@ func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
 	// When the file ABOVE is folded, there should be no blank lines between them
 	// Blank lines are added AFTER expanded/normal content, not before headers
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/first.go",
@@ -1005,6 +1030,7 @@ func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
 
 func TestView_MixedFoldLevels(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/normal.go",
@@ -1064,6 +1090,7 @@ func TestView_MixedFoldLevels(t *testing.T) {
 func TestView_TotalLines_WithFolding(t *testing.T) {
 	// Test that totalLines is calculated correctly with different fold states
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/normal.go",
@@ -1094,6 +1121,7 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
 	// Expanded view should show ALL lines from the full file content
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -1154,6 +1182,7 @@ func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
 func TestView_ExpandedFile_NoContent_FallsBackToNormal(t *testing.T) {
 	// If expanded but content not loaded yet, fall back to normal view
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -1183,6 +1212,7 @@ func TestView_ExpandedFile_NoContent_FallsBackToNormal(t *testing.T) {
 func TestView_ExpandedFile_DeletedFile(t *testing.T) {
 	// For deleted files, only left side should show content
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/deleted.go",
@@ -1214,6 +1244,7 @@ func TestView_ExpandedFile_DeletedFile(t *testing.T) {
 func TestView_ExpandedFile_NewFile(t *testing.T) {
 	// For new files, only right side should show content
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "/dev/null",
@@ -1262,6 +1293,7 @@ func TestView_ExpandedFile_AlignmentWithAddedLines(t *testing.T) {
 	// Bug behavior: old line3 pairs with new line3 (INSERTED) - wrong!
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -1332,6 +1364,7 @@ func TestView_ExpandedFile_AlignmentWithRemovedLines(t *testing.T) {
 	//   old line5 | new line4 (same content "line4")
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -1387,6 +1420,7 @@ func TestView_ExpandedFile_AlignmentWithRemovedLines(t *testing.T) {
 func TestView_GutterIndicators(t *testing.T) {
 	// Test that +/- indicators appear in the gutter for added/removed lines
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -1447,6 +1481,7 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := Model{
+				focused: true,
 				files: []sidebyside.FilePair{
 					{
 						OldPath: "a/test.go",
@@ -1523,6 +1558,7 @@ func TestView_LineNumberColorMatchesIndicator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := Model{
+				focused: true,
 				files: []sidebyside.FilePair{
 					{
 						OldPath: "a/test.go",
@@ -1560,6 +1596,7 @@ func TestView_LargeLineNumbers(t *testing.T) {
 	// Test that line numbers up to 10000 are displayed correctly
 	// This requires dynamic gutter width calculation
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/large.go",
@@ -1604,6 +1641,7 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 	// Test that all line numbers in a diff are right-aligned to the same width
 	// when some lines have 5-digit numbers (consecutive to avoid hunk separator)
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/large.go",
@@ -1665,6 +1703,7 @@ func TestView_LineNumberTruncation(t *testing.T) {
 	// hardcoded 4-digit width. This test documents the current (broken) behavior
 	// and should be updated when dynamic width is implemented.
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -1696,6 +1735,7 @@ func TestView_GutterWidthNotShrinkOnFold(t *testing.T) {
 	// Test that gutter width doesn't shrink when folding a file with large line numbers
 	// This ensures the cached maxLineNumSeen is preserved
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/small.go",
@@ -1770,6 +1810,7 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	// When content is shorter than viewport, status bar should still be at
 	// the bottom of the terminal (not immediately after content)
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -1969,6 +2010,7 @@ func TestFormatStatsBar(t *testing.T) {
 func TestFileHeaderWithStats_FoldedOnly(t *testing.T) {
 	// Stats should only appear in folded view, not in normal/expanded
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/main.go",
@@ -1999,6 +2041,7 @@ func TestFileHeaderWithStats_FoldedOnly(t *testing.T) {
 
 func TestFileHeaderWithStats_Folded(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/main.go",
@@ -2043,6 +2086,7 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 	// Multiple folded files should have aligned stats columns
 	// The addition column (+N) should be padded so that the removal column (-M) starts at the same position
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/short.go",
@@ -2124,6 +2168,7 @@ func TestFileHeaderWithStats_ShadingAlignment(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/view.go",
@@ -2172,6 +2217,7 @@ func TestFileHeaderWithStats_ShadingAlignment(t *testing.T) {
 
 func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "/dev/null",
@@ -2207,6 +2253,7 @@ func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 
 func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/deleted.go",
@@ -2367,6 +2414,7 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := Model{
+				focused: true,
 				files: []sidebyside.FilePair{
 					{
 						OldPath:    tt.oldPath,
@@ -2410,6 +2458,7 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 
 func TestBuildRows_IncludesSummaryRow(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2438,6 +2487,7 @@ func TestBuildRows_IncludesSummaryRow(t *testing.T) {
 
 func TestBuildRows_SummaryRowHasCorrectStats(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -2483,6 +2533,7 @@ func TestBuildRows_SummaryRowHasCorrectStats(t *testing.T) {
 
 func TestBuildRows_SummaryRowNoFile(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2512,6 +2563,7 @@ func TestBuildRows_SummaryRowNoFile(t *testing.T) {
 func TestBuildRows_BlankLinesBeforeSummary(t *testing.T) {
 	// When last file is expanded/normal, there should be 4 blank lines before summary
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2559,6 +2611,7 @@ func TestBuildRows_BlankLinesBeforeSummary(t *testing.T) {
 
 func TestView_SummaryRowFormat(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2588,6 +2641,7 @@ func TestView_SummaryRowFormat(t *testing.T) {
 
 func TestView_SummaryRowPluralFormat(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -2632,6 +2686,7 @@ func TestView_SummaryRowPluralFormat(t *testing.T) {
 
 func TestView_SummaryRowHasEqualsPrefix(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2670,6 +2725,7 @@ func TestView_SummaryRowHasEqualsPrefix(t *testing.T) {
 
 func TestView_SummaryRowIsSelectable(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2708,6 +2764,7 @@ func TestView_SummaryRowAppearsInAllModes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := Model{
+				focused: true,
 				files: []sidebyside.FilePair{
 					{
 						OldPath:    "a/foo.go",
@@ -2790,6 +2847,7 @@ func TestFormatSummaryStats(t *testing.T) {
 
 func TestCurrentFileIndex_ReturnsMinusOneForSummaryRow(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2872,6 +2930,7 @@ func TestFormatLessIndicator_Basic(t *testing.T) {
 
 func TestStatusBar_NewFormat_Basic(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2923,6 +2982,7 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 
 func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2954,6 +3014,7 @@ func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
 
 func TestStatusBar_NewFormat_ExpandedFile(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -2983,6 +3044,7 @@ func TestStatusBar_NewFormat_ExpandedFile(t *testing.T) {
 
 func TestStatusBar_NewFormat_AddedFile(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "/dev/null",
@@ -3013,6 +3075,7 @@ func TestStatusBar_NewFormat_AddedFile(t *testing.T) {
 
 func TestStatusBar_NewFormat_DeletedFile(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/deleted.go",
@@ -3043,6 +3106,7 @@ func TestStatusBar_NewFormat_DeletedFile(t *testing.T) {
 
 func TestStatusBar_NewFormat_AtEnd(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -3075,6 +3139,7 @@ func TestStatusBar_NewFormat_AtEnd(t *testing.T) {
 func TestStatusBar_NewFormat_NoStats(t *testing.T) {
 	// A file with no actual changes (just context) should not show stats
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -3116,6 +3181,7 @@ func TestStatusBar_NonShrinkingWidth(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -3149,6 +3215,7 @@ func TestStatusBar_NonShrinkingWidth(t *testing.T) {
 
 func TestTopBar_ContainsFileInfo(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -3182,6 +3249,7 @@ func TestTopBar_ContainsFileInfo(t *testing.T) {
 
 func TestTopBar_LeftAligned(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -3214,6 +3282,7 @@ func TestTopBar_LeftAligned(t *testing.T) {
 
 func TestBottomBar_OnlyLessStyle(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -3248,6 +3317,7 @@ func TestBottomBar_OnlyLessStyle(t *testing.T) {
 
 func TestView_Layout_TopBarFirst_BottomBarLast(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -3306,6 +3376,7 @@ func TestContentHeight_MinimumOne(t *testing.T) {
 
 func TestTopBar_SearchMode_StillShowsFileInfo(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -3336,6 +3407,7 @@ func TestTopBar_SearchMode_StillShowsFileInfo(t *testing.T) {
 
 func TestBottomBar_SearchMode_ShowsSearchPrompt(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -3367,6 +3439,7 @@ func TestBottomBar_SearchMode_ShowsSearchPrompt(t *testing.T) {
 
 func TestTopBar_NoFileInfo_WhenOnSummary(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -3400,6 +3473,7 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 	// Test that file headers, content lines, hunk separators, and summary
 	// all have consistent gutter alignment based on lineNumWidth
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -3471,6 +3545,7 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -3516,6 +3591,7 @@ func TestView_CursorArrowOnSummaryRow(t *testing.T) {
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -3560,6 +3636,7 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -3606,6 +3683,7 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 func TestView_HeaderFileNumWidthMatchesLineNumWidth(t *testing.T) {
 	// Test that file header file number section width matches the dynamic lineNumWidth
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -3651,6 +3729,7 @@ func TestView_FileHeaderNoVerticalDivider(t *testing.T) {
 	// File headers should span full width without a │ divider in the middle
 	// This applies to both cursor and non-cursor states
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -3693,6 +3772,7 @@ func TestView_HunkSeparatorNoCrossInMiddle(t *testing.T) {
 	// Hunk separator should NOT have a vertical divider (no ┼ cross)
 	// This creates visual separation between chunks
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -3745,6 +3825,7 @@ func TestView_HunkSeparatorBreadcrumbs(t *testing.T) {
 	// Hunk separator should show breadcrumbs (function/type name) on the left side
 	// when structure data is available (file was expanded and parsed)
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -3815,6 +3896,7 @@ func TestView_HunkSeparatorBreadcrumbs(t *testing.T) {
 func TestView_HunkSeparatorBreadcrumbs_NoBreadcrumbWithoutStructure(t *testing.T) {
 	// When structure data is not available, hunk separator should just show shading
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -3967,6 +4049,7 @@ func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -4057,6 +4140,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -4128,6 +4212,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 
 func TestStatusBar_PagerIndicator(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -4157,6 +4242,7 @@ func TestStatusBar_PagerIndicator(t *testing.T) {
 
 func TestStatusBar_NoPagerIndicator_WhenNotPagerMode(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -4191,6 +4277,7 @@ func TestStatusBar_NoPagerIndicator_WhenNotPagerMode(t *testing.T) {
 // Test: Folded file produces only header row (no border rows)
 func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -4223,6 +4310,7 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 // Test: First file unfolded has leading top border with borderVisible=true
 func TestBuildRows_FirstFileUnfoldedHasTopBorder(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -4252,6 +4340,7 @@ func TestBuildRows_FirstFileUnfoldedHasTopBorder(t *testing.T) {
 // Test: Non-first file unfolded has no leading top border (comes from file above)
 func TestBuildRows_NonFirstFileNoLeadingTopBorder(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -4301,6 +4390,7 @@ func TestBuildRows_NonFirstFileNoLeadingTopBorder(t *testing.T) {
 // Test: Trailing top border visibility - next file unfolded
 func TestBuildRows_TrailingTopBorderVisibleWhenNextUnfolded(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -4350,6 +4440,7 @@ func TestBuildRows_TrailingTopBorderVisibleWhenNextUnfolded(t *testing.T) {
 // Test: Trailing top border visibility - next file folded
 func TestBuildRows_TrailingTopBorderHiddenWhenNextFolded(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -4397,6 +4488,7 @@ func TestBuildRows_TrailingTopBorderHiddenWhenNextFolded(t *testing.T) {
 // Test: Trailing top border visibility - last file (no next file)
 func TestBuildRows_TrailingTopBorderHiddenForLastFile(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -4433,6 +4525,7 @@ func TestBuildRows_TrailingTopBorderHiddenForLastFile(t *testing.T) {
 // Test: Header borderVisible - first file
 func TestBuildRows_HeaderBorderVisibleFirstFile(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/foo.go",
@@ -4468,6 +4561,7 @@ func TestBuildRows_HeaderBorderVisibleFirstFile(t *testing.T) {
 // Test: Header borderVisible - previous file unfolded
 func TestBuildRows_HeaderBorderVisibleWhenPrevUnfolded(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -4514,6 +4608,7 @@ func TestBuildRows_HeaderBorderVisibleWhenPrevUnfolded(t *testing.T) {
 // Test: Header borderVisible - previous file folded
 func TestBuildRows_HeaderBorderHiddenWhenPrevFolded(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -4579,6 +4674,7 @@ func TestBuildRows_BottomBorderMatchesHeaderVisibility(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := Model{
+				focused: true,
 				files: []sidebyside.FilePair{
 					{
 						OldPath:   "a/one.go",
@@ -4634,6 +4730,7 @@ func TestBuildRows_BottomBorderMatchesHeaderVisibility(t *testing.T) {
 // Test: renderHeaderTopBorder uses correct style based on borderVisible
 func TestRenderHeaderTopBorder_BorderVisibility(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -4665,6 +4762,7 @@ func TestRenderHeaderTopBorder_BorderVisibility(t *testing.T) {
 // Test: renderHeaderTopBorder cursor highlighting
 func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -4694,6 +4792,7 @@ func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
 // Test: renderHeaderBottomBorder uses correct corner character
 func TestRenderHeaderBottomBorder_CorrectCorner(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -4719,6 +4818,7 @@ func TestRenderHeaderBottomBorder_CorrectCorner(t *testing.T) {
 // Test: renderHeaderBottomBorder border visibility styling
 func TestRenderHeaderBottomBorder_BorderVisibility(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -4747,6 +4847,7 @@ func TestRenderHeaderBottomBorder_BorderVisibility(t *testing.T) {
 // Test: Integration - all files folded (no borders visible)
 func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -4814,6 +4915,7 @@ func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 // Test: Integration - all files unfolded (all borders visible)
 func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -4892,6 +4994,7 @@ func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
 // Test: Integration - mixed fold states
 func TestBuildRows_MixedFoldStates(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/one.go",
@@ -4984,6 +5087,7 @@ func filterRowsByFileIndex(rows []displayRow, fileIndex int) []displayRow {
 // Test: Border width matches headerBoxWidth
 func TestRenderHeaderTopBorder_WidthAlignment(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/foo.go",
@@ -5027,6 +5131,7 @@ func TestRenderHeaderTopBorder_WidthAlignment(t *testing.T) {
 func TestBuildRows_TruncationIndicator_OldSideOnly(t *testing.T) {
 	// When only old (left) side is truncated, indicator should have truncateOld=true, truncateNew=false
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "a/test.go",
@@ -5068,6 +5173,7 @@ func TestBuildRows_TruncationIndicator_OldSideOnly(t *testing.T) {
 func TestBuildRows_TruncationIndicator_NewSideOnly(t *testing.T) {
 	// When only new (right) side is truncated, indicator should have truncateOld=false, truncateNew=true
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "a/test.go",
@@ -5109,6 +5215,7 @@ func TestBuildRows_TruncationIndicator_NewSideOnly(t *testing.T) {
 func TestBuildRows_TruncationIndicator_BothSides(t *testing.T) {
 	// When both sides are truncated, indicator should have both flags true
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "a/test.go",
@@ -5150,6 +5257,7 @@ func TestBuildRows_TruncationIndicator_BothSides(t *testing.T) {
 func TestBuildRows_TruncationIndicator_NotTruncated(t *testing.T) {
 	// When file is not truncated, should have no truncation indicator
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "a/test.go",
@@ -5183,6 +5291,7 @@ func TestBuildRows_TruncationIndicator_NotTruncated(t *testing.T) {
 func TestBuildRows_TruncationIndicator_ExpandedView_OldSideOnly(t *testing.T) {
 	// In expanded view, ContentTruncated fields should be used
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:             "a/test.go",
@@ -5221,6 +5330,7 @@ func TestBuildRows_TruncationIndicator_ExpandedView_OldSideOnly(t *testing.T) {
 func TestBuildRows_TruncationIndicator_ExpandedView_NewSideOnly(t *testing.T) {
 	// In expanded view with only new side truncated
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:             "a/test.go",
@@ -5259,6 +5369,7 @@ func TestBuildRows_TruncationIndicator_ExpandedView_NewSideOnly(t *testing.T) {
 func TestBuildRows_TruncationIndicator_NewFile(t *testing.T) {
 	// For a new file (OldPath=/dev/null), only new side can be truncated
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "/dev/null",
@@ -5299,6 +5410,7 @@ func TestBuildRows_TruncationIndicator_NewFile(t *testing.T) {
 func TestBuildRows_TruncationIndicator_DeletedFile(t *testing.T) {
 	// For a deleted file (NewPath=/dev/null), only old side can be truncated
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "a/deleted.go",
@@ -5339,6 +5451,7 @@ func TestBuildRows_TruncationIndicator_DeletedFile(t *testing.T) {
 func TestRenderTruncationIndicator_LeftSideOnly(t *testing.T) {
 	// Verify rendering shows truncation on left side only
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -5380,6 +5493,7 @@ func TestRenderTruncationIndicator_LeftSideOnly(t *testing.T) {
 func TestRenderTruncationIndicator_RightSideOnly(t *testing.T) {
 	// Verify rendering shows truncation on right side only
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -5417,6 +5531,7 @@ func TestRenderTruncationIndicator_RightSideOnly(t *testing.T) {
 func TestRenderTruncationIndicator_BothSides(t *testing.T) {
 	// Verify rendering shows truncation on both sides
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -5458,6 +5573,7 @@ func TestRenderTruncationIndicator_BothSides(t *testing.T) {
 func TestBuildRows_TruncationIndicator_PagerMode_OldSideOnly(t *testing.T) {
 	// Pager mode with only old side truncated from diff parsing
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "a/test.go",
@@ -5499,6 +5615,7 @@ func TestBuildRows_TruncationIndicator_PagerMode_OldSideOnly(t *testing.T) {
 func TestBuildRows_TruncationIndicator_PagerMode_NewSideOnly(t *testing.T) {
 	// Pager mode with only new side truncated from diff parsing
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "a/test.go",
@@ -5540,6 +5657,7 @@ func TestBuildRows_TruncationIndicator_PagerMode_NewSideOnly(t *testing.T) {
 func TestBuildRows_TruncationIndicator_PagerMode_BothSides(t *testing.T) {
 	// Pager mode with both sides truncated from diff parsing
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "a/test.go",
@@ -5581,6 +5699,7 @@ func TestBuildRows_TruncationIndicator_PagerMode_BothSides(t *testing.T) {
 func TestBuildRows_TruncationIndicator_PagerMode_NotTruncated(t *testing.T) {
 	// Pager mode with no truncation
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:      "a/test.go",
@@ -5618,6 +5737,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",

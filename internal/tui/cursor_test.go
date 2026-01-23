@@ -189,6 +189,7 @@ func TestStatusInfo_UseCursorPosition_NotScrollPosition(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // top border + header + bottom border + 20 pairs = 23 lines (0-22)
 			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // starts after 4 blanks + trailing top border
@@ -225,6 +226,7 @@ func TestStatusInfo_CursorOnBlankLine_CountsAsFileAbove(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-5 (header + 5 pairs), then 4 blank lines (6-9)
 			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 10 is header
@@ -252,6 +254,7 @@ func TestStatusInfo_CursorOnLastBlankLine_CountsAsLastFile(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/only.go", NewPath: "b/only.go", Pairs: pairs},
 		},
@@ -292,6 +295,7 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 	// Highlight = bg color 7, fg color 0
 	withANSIColors(t, func() {
 		m := Model{
+			focused: true,
 			files: []sidebyside.FilePair{
 				{
 					OldPath: "a/test.go",
@@ -333,6 +337,7 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 	// The fold icon (◐/○/●) should NOT be highlighted, only the file number prefix
 	withANSIColors(t, func() {
 		m := Model{
+			focused: true,
 			files: []sidebyside.FilePair{
 				{
 					OldPath: "a/test.go",
@@ -372,6 +377,7 @@ func TestView_FileHeader_SpansFullWidth(t *testing.T) {
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -422,6 +428,7 @@ func TestView_CursorHighlight_OnDiffLine(t *testing.T) {
 	// When cursor is on a diff line, the gutter areas should be highlighted
 	withANSIColors(t, func() {
 		m := Model{
+			focused: true,
 			files: []sidebyside.FilePair{
 				{
 					OldPath: "a/test.go",
@@ -459,6 +466,7 @@ func TestView_CursorHighlight_OnBlankSeparator(t *testing.T) {
 	// When cursor is on a blank separator line, the gutter areas should be highlighted
 	withANSIColors(t, func() {
 		m := Model{
+			focused: true,
 			files: []sidebyside.FilePair{
 				{
 					OldPath: "a/first.go",
@@ -507,6 +515,7 @@ func TestView_CursorHighlight_OnHunkSeparator(t *testing.T) {
 	// When cursor is on a hunk separator (┈┈┈), the gutter areas should be highlighted
 	withANSIColors(t, func() {
 		m := Model{
+			focused: true,
 			files: []sidebyside.FilePair{
 				{
 					OldPath: "a/test.go",
@@ -551,6 +560,7 @@ func TestView_CursorHighlight_BothGuttersOnAddedLine(t *testing.T) {
 	// For an added line (left side empty), both gutter areas should be highlighted
 	withANSIColors(t, func() {
 		m := Model{
+			focused: true,
 			files: []sidebyside.FilePair{
 				{
 					OldPath: "a/test.go",
@@ -593,6 +603,7 @@ func TestFoldToggle_CursorOnHeader_StaysOnHeader(t *testing.T) {
 	// Setup: cursor on file header (line 1, after top border at line 0)
 	// For unfolded files: row 0 = top border, row 1 = header
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -640,6 +651,7 @@ func TestFoldToggle_CursorOnHeader_StaysOnHeader(t *testing.T) {
 func TestFoldToggle_CursorOnDiffLine_StaysOnDiffLine(t *testing.T) {
 	// Setup: cursor on diff line (line 2 = first diff line after header + spacer)
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -675,6 +687,7 @@ func TestFoldToggle_CursorOnDiffLine_StaysOnDiffLine(t *testing.T) {
 func TestFoldToggle_CursorOnDiffLine_FoldToHeader(t *testing.T) {
 	// Setup: cursor on diff line, then fold to Folded
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -712,6 +725,7 @@ func TestFoldToggle_CursorOnBlankLine_StaysOnBlankLine(t *testing.T) {
 	// With new layout for unfolded files:
 	// Row 0 = top border, Row 1 = header, Row 2 = bottom border, Row 3 = first diff, Rows 4-7 = blank, Row 8 = trailing top border
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/first.go",
@@ -759,6 +773,7 @@ func TestFoldToggle_CursorOnBlankLine_BlankDisappears(t *testing.T) {
 	// Setup: two files at same level, cursor on blank line between them
 	// Use Shift+Tab to fold ALL files to Folded - this removes the blank lines
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/first.go",
@@ -812,6 +827,7 @@ func TestFoldToggle_CursorOnBlankLine_BlankDisappears(t *testing.T) {
 func TestFoldToggle_CursorOnHunkSeparator_FoldToHeader(t *testing.T) {
 	// Setup: file with gap between hunks, cursor on hunk separator
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -857,6 +873,7 @@ func TestFoldToggle_CursorOnHunkSeparator_FoldToHeader(t *testing.T) {
 func TestFoldToggleAll_PreservesScrollPosition(t *testing.T) {
 	// Setup: multiple files, cursor in middle of second file
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/first.go",
@@ -898,6 +915,7 @@ func TestFoldToggleAll_PreservesScrollPosition(t *testing.T) {
 // Test: When all files folded, cursor on a file header stays there
 func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/first.go",
@@ -954,6 +972,7 @@ func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
 	// Setup: 3 files, all folded
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/first.go",
@@ -1015,6 +1034,7 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	// Setup: file in Normal view with cursor on a specific diff line
 	// The diff shows lines 10-15 of the file
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -1123,6 +1143,7 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	}
 
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{OldPath: "a/alpha.go", NewPath: "b/alpha.go", Pairs: pairs},
 			{OldPath: "a/beta.go", NewPath: "b/beta.go", Pairs: pairs},
@@ -1176,6 +1197,7 @@ func TestResize_CursorOnHeaderTopBorder_StaysOnTopBorder(t *testing.T) {
 	// Setup: single unfolded file, cursor on top border (line 0)
 	// Layout: row 0 = top border, row 1 = header, row 2 = bottom border, row 3+ = content
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -1219,6 +1241,7 @@ func TestResize_CursorOnTrailingTopBorder_StaysOnTrailingBorder(t *testing.T) {
 	//                        4 blanks (4-7), trailing top border (8)
 	// Then second file: header (9), bottom border (10), ...
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/first.go",
@@ -1276,6 +1299,7 @@ func TestResize_CursorOnTrailingTopBorder_StaysOnTrailingBorder(t *testing.T) {
 func TestResize_CursorOnTruncationIndicator_StaysOnTruncation(t *testing.T) {
 	// Setup: file with truncation indicator
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath:   "a/test.go",
@@ -1327,6 +1351,7 @@ func TestResize_CursorOnSecondSeparator_StaysOnSecondSeparator(t *testing.T) {
 	// then gap, lines 20-21 form third chunk.
 	// This creates two separators: one before line 10, one before line 20.
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",
@@ -1400,6 +1425,7 @@ func TestResize_CursorOnSecondSeparator_StaysOnSecondSeparator(t *testing.T) {
 func TestFoldToggle_CursorOnTopBorder_StaysOnTopBorder(t *testing.T) {
 	// Setup: cursor on top border, toggle fold
 	m := Model{
+		focused: true,
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go",

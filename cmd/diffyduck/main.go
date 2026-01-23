@@ -177,7 +177,7 @@ func run() error {
 		opts = append(opts, tui.WithDebugMode())
 	}
 	model := tui.New(files, opts...)
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)
@@ -214,7 +214,7 @@ func runPagerMode(debugMode bool) error {
 		opts = append(opts, tui.WithDebugMode())
 	}
 	model := tui.New(files, opts...)
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)
