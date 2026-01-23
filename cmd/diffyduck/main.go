@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/internal/tui"
@@ -117,12 +118,22 @@ func isPath(arg string) bool {
 	return false
 }
 
+// extractDebugFlag removes --debug from args and returns (remaining args, debugMode).
+func extractDebugFlag(args []string) ([]string, bool) {
+	idx := slices.Index(args, "--debug")
+	if idx == -1 {
+		return args, false
+	}
+	return slices.Delete(slices.Clone(args), idx, idx+1), true
+}
+
 func run() error {
-	args := parseArgs(os.Args[1:])
+	rawArgs, debugMode := extractDebugFlag(os.Args[1:])
+	args := parseArgs(rawArgs)
 
 	// Check for pager mode: explicit "pager" command or piped stdin
 	if args.cmd == "pager" || pager.IsStdinPipe() {
-		return runPagerMode()
+		return runPagerMode(debugMode)
 	}
 
 	g := git.New()
@@ -161,7 +172,11 @@ func run() error {
 	fetcher := content.NewFetcher(g, args.mode, args.ref1, args.ref2)
 
 	// Create and run the TUI
-	model := tui.New(files, tui.WithFetcher(fetcher), tui.WithTruncatedFileCount(truncatedFileCount))
+	opts := []tui.Option{tui.WithFetcher(fetcher), tui.WithTruncatedFileCount(truncatedFileCount)}
+	if debugMode {
+		opts = append(opts, tui.WithDebugMode())
+	}
+	model := tui.New(files, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
@@ -172,7 +187,7 @@ func run() error {
 }
 
 // runPagerMode handles pager mode where diff input comes from stdin.
-func runPagerMode() error {
+func runPagerMode(debugMode bool) error {
 	// Read and strip ANSI codes from stdin
 	input, err := pager.ReadStdin()
 	if err != nil {
@@ -194,7 +209,11 @@ func runPagerMode() error {
 	files, truncatedFileCount := sidebyside.TransformDiff(d)
 
 	// Create and run the TUI in pager mode (no fetcher available)
-	model := tui.New(files, tui.WithPagerMode(), tui.WithTruncatedFileCount(truncatedFileCount))
+	opts := []tui.Option{tui.WithPagerMode(), tui.WithTruncatedFileCount(truncatedFileCount)}
+	if debugMode {
+		opts = append(opts, tui.WithDebugMode())
+	}
+	model := tui.New(files, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

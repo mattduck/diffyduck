@@ -32,6 +32,9 @@ type Model struct {
 	// Pager mode
 	pagerMode bool // true when running as a pager (stdin input, no fetcher)
 
+	// Debug mode
+	debugMode bool // true when --debug flag is passed, shows memory/goroutine stats
+
 	// Syntax highlighting
 	highlighter         *highlight.Highlighter
 	highlightSpans      map[int]*FileHighlight      // file index -> full content highlight spans
@@ -124,6 +127,14 @@ func WithFetcher(f *content.Fetcher) Option {
 func WithPagerMode() Option {
 	return func(m *Model) {
 		m.pagerMode = true
+	}
+}
+
+// WithDebugMode enables debug mode, which displays memory and goroutine
+// stats in the status bar.
+func WithDebugMode() Option {
+	return func(m *Model) {
+		m.debugMode = true
 	}
 }
 

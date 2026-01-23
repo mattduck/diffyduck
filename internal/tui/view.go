@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -42,6 +43,10 @@ var (
 
 	// Inter-file area style (dim shading for blank lines between files)
 	interFileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
+
+	// Debug mode styles
+	debugLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5")) // magenta for labels
+	debugValueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan for values
 )
 
 // View implements tea.Model.
@@ -1009,18 +1014,61 @@ func (m Model) renderStatusBar() string {
 		pagerIndicator = "PAGER"
 	}
 
-	// Combine: reversed_less_indicator + search_info + padding + pager_indicator
+	// Debug stats (right-aligned, before pager indicator)
+	var debugStats string
+	var debugWidth int
+	if m.debugMode {
+		debugStats, debugWidth = m.formatDebugStats()
+	}
+
+	// Combine: reversed_less_indicator + search_info + padding + debug_stats + pager_indicator
 	content := styledLessIndicator + searchInfo
 	contentWidth := displayWidth(" "+lessIndicator) + displayWidth(searchInfo)
 	pagerWidth := displayWidth(pagerIndicator)
 
-	// Calculate padding between content and pager indicator
-	padding := m.width - contentWidth - pagerWidth
+	// Calculate padding between content and right-side indicators
+	rightWidth := debugWidth + pagerWidth
+	if debugWidth > 0 && pagerWidth > 0 {
+		rightWidth++ // space between debug and pager
+	}
+	padding := m.width - contentWidth - rightWidth
 	if padding < 0 {
 		padding = 0
 	}
 
-	return content + strings.Repeat(" ", padding) + pagerIndicator
+	// Build right side
+	var rightSide string
+	if debugStats != "" && pagerIndicator != "" {
+		rightSide = debugStats + " " + pagerIndicator
+	} else {
+		rightSide = debugStats + pagerIndicator
+	}
+
+	return content + strings.Repeat(" ", padding) + rightSide
+}
+
+// formatDebugStats returns formatted memory and goroutine stats for debug mode.
+// Returns (styled string, display width).
+func (m Model) formatDebugStats() (string, int) {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	heapMB := float64(mem.Alloc) / 1024 / 1024
+	goroutines := runtime.NumGoroutine()
+
+	// Build raw values for width calculation
+	heapVal := fmt.Sprintf("%.1fMB", heapMB)
+	grVal := fmt.Sprintf("%d", goroutines)
+	// "Heap: XXX GR: YYY"
+	rawWidth := displayWidth("Heap: " + heapVal + " GR: " + grVal)
+
+	// Build styled output
+	heapLabel := debugLabelStyle.Render("Heap:")
+	heapValue := debugValueStyle.Render(heapVal)
+	grLabel := debugLabelStyle.Render("GR:")
+	grValue := debugValueStyle.Render(grVal)
+
+	return heapLabel + " " + heapValue + " " + grLabel + " " + grValue, rawWidth
 }
 
 // formatStatusFileInfo formats the file info for the status bar.
