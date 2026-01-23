@@ -756,23 +756,23 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 		breadcrumb = formatBreadcrumbs(entries)
 	}
 
-	// Arrow column width: indicator(1) + space(1) = 2
-	arrowWidth := 2
+	// Gutter width: indicator(1) + space(1) + lineNumWidth (one less than content lines for tighter breadcrumb)
+	gutterWidth := 2 + lineNumWidth
 
-	// Content width after arrow (breadcrumb starts here, overlapping where line numbers would be)
-	leftContentWidth := leftHalfWidth - arrowWidth
+	// Content width after gutter (breadcrumb starts here, aligned with code content)
+	leftContentWidth := leftHalfWidth - gutterWidth
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
-	rightContentWidth := rightHalfWidth - arrowWidth
+	rightContentWidth := rightHalfWidth - gutterWidth
 	if rightContentWidth < 0 {
 		rightContentWidth = 0
 	}
 
 	if !isCursorRow {
 		// Non-cursor: all shading
-		leftArrow := shadeStyle.Render("░░")
-		rightArrow := shadeStyle.Render("░░")
+		leftGutter := shadeStyle.Render(strings.Repeat("░", gutterWidth))
+		rightGutter := shadeStyle.Render(strings.Repeat("░", gutterWidth))
 
 		var leftContent string
 		if breadcrumb != "" && leftContentWidth > 0 {
@@ -785,66 +785,28 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 		}
 		rightContent := shadeStyle.Render(strings.Repeat("░", rightContentWidth))
 
-		return leftArrow + leftContent + shadeStyle.Render("░░░") + rightArrow + rightContent
+		return leftGutter + leftContent + shadeStyle.Render("░░░") + rightGutter + rightContent
 	}
 
-	// Cursor row: arrow + shade, then lineNumWidth chars with cursor bg (showing breadcrumb or shading)
-	leftArrow := cursorArrowStyle.Render("▶") + shadeStyle.Render("░")
-	rightArrow := cursorArrowStyle.Render("▶") + shadeStyle.Render("░")
+	// Cursor row: arrow in gutter, lineNumWidth chars with cursor bg, then breadcrumb in content area
+	leftGutter := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+	rightGutter := cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
 
-	// Left side: first lineNumWidth chars get cursor bg (breadcrumb text or shading), rest is normal
+	// Left side: breadcrumb in content area
 	var leftContent string
 	if breadcrumb != "" && leftContentWidth > 0 {
 		breadcrumb = runewidth.Truncate(breadcrumb, leftContentWidth, "")
 		displayWidth := runewidth.StringWidth(breadcrumb)
-
-		// Split breadcrumb: first lineNumWidth chars with cursor bg, rest with shade style
-		if displayWidth <= lineNumWidth {
-			// Entire breadcrumb fits in cursor area
-			padding := lineNumWidth - displayWidth
-			cursorPart := cursorStyle.Render(breadcrumb + strings.Repeat("░", padding))
-			restWidth := leftContentWidth - lineNumWidth
-			if restWidth > 0 {
-				leftContent = cursorPart + shadeStyle.Render(strings.Repeat("░", restWidth))
-			} else {
-				leftContent = cursorPart
-			}
-		} else {
-			// Breadcrumb extends beyond cursor area
-			cursorPart := cursorStyle.Render(runewidth.Truncate(breadcrumb, lineNumWidth, ""))
-			restBreadcrumb := truncateLeft(breadcrumb, lineNumWidth)
-			restWidth := leftContentWidth - lineNumWidth
-			if restWidth > 0 {
-				restBreadcrumb = runewidth.Truncate(restBreadcrumb, restWidth, "")
-				restDisplayWidth := runewidth.StringWidth(restBreadcrumb)
-				padding := restWidth - restDisplayWidth
-				leftContent = cursorPart + shadeStyle.Render(restBreadcrumb+strings.Repeat("░", padding))
-			} else {
-				leftContent = cursorPart
-			}
-		}
+		padding := leftContentWidth - displayWidth
+		leftContent = shadeStyle.Render(breadcrumb + strings.Repeat("░", padding))
 	} else {
-		// No breadcrumb: cursor bg shading for lineNumWidth, then normal shading
-		cursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
-		restWidth := leftContentWidth - lineNumWidth
-		if restWidth > 0 {
-			leftContent = cursorPart + shadeStyle.Render(strings.Repeat("░", restWidth))
-		} else {
-			leftContent = cursorPart
-		}
+		leftContent = shadeStyle.Render(strings.Repeat("░", leftContentWidth))
 	}
 
-	// Right side: lineNumWidth chars with cursor bg shading, rest normal
-	rightCursorPart := cursorStyle.Render(strings.Repeat("░", lineNumWidth))
-	rightRestWidth := rightContentWidth - lineNumWidth
-	var rightContent string
-	if rightRestWidth > 0 {
-		rightContent = rightCursorPart + shadeStyle.Render(strings.Repeat("░", rightRestWidth))
-	} else {
-		rightContent = rightCursorPart
-	}
+	// Right side: all shading
+	rightContent := shadeStyle.Render(strings.Repeat("░", rightContentWidth))
 
-	return leftArrow + leftContent + shadeStyle.Render("░░░") + rightArrow + rightContent
+	return leftGutter + leftContent + shadeStyle.Render("░░░") + rightGutter + rightContent
 }
 
 // renderHunkSeparatorTop renders the top line of a hunk separator (faint shader for visual separation).

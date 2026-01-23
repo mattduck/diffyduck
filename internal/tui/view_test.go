@@ -3962,8 +3962,7 @@ func AnotherFunction() {
 
 func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
 	// Test that breadcrumbs appear on the left side (new content side) of the hunk separator,
-	// starting after the arrow column (position 2), and that cursor styling only affects
-	// the gutter area while preserving the breadcrumb text.
+	// starting after the gutter (indicator + lineNum), aligned near code content.
 	lipgloss.SetColorProfile(termenv.ANSI)
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
