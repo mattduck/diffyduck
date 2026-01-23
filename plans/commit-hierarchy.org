@@ -405,8 +405,46 @@ These items came up during initial implementation and need addressing:
 
 *** Commit Header Row Improvements
 
-- [ ] Show parts dynamically based on available width
-  - Priority: +/- files count first, then message, then date, then author
+- [X] Redesign commit header row layout with fixed and dynamic columns
+
+  **** Layout Structure
+
+  Format: ~[cursor] [fold] [sha] [files] [+added] [-removed] [time] [author] [subject]~
+
+  Example: ~▶ ◐ a1b2c3d 4 +327 -6 4m Matt Duck Fix the bug in parser~
+
+  **** Fixed Columns (left side, always shown)
+
+  These columns have minimum widths but expand to align across all visible commits:
+
+  | Column   | Example   | Notes |
+  |----------+-----------+-------|
+  | SHA      | a1b2c3d   | 7 chars, yellow |
+  | Files    | 4         | Just the number, grey (fg=8) |
+  | Added    | +327      | Green, width expands for larger numbers |
+  | Removed  | -6        | Red, width expands for larger numbers |
+  | Time     | 4m        | Abbreviated: 1h, 4m, 2d, 3w, 1mo, 1y (no "ago") |
+  | Author   | Matt Duck | Max 15 chars, truncate with "...", cyan (fg=6) |
+
+  Column spacing: 1 space minimum between columns. Columns expand (never shrink)
+  based on the max width needed across all commits being displayed.
+
+  **** Dynamic Column (right side, fills remaining space)
+
+  | Column  | Notes |
+  |---------+-------|
+  | Subject | Max 120 chars, truncate with "..." if longer or doesn't fit |
+
+  Rules:
+  - Use full available width (no right-alignment that wastes space)
+  - Author is part of fixed columns (always shown, max 15 chars)
+  - Subject fills remaining width, truncated if needed
+
+  **** Top Bar vs Content Row
+
+  The top bar commit line keeps its current format with "N files" text.
+  This layout change applies to the commit header row in the content area.
+
 - [ ] Search should work on commit header rows (match SHA, subject)
 - [X] When expanded (level 2), pull in and display commit body message
   - Shows full SHA, author, date, subject, body (like git log)

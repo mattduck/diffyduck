@@ -1092,6 +1092,10 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 
 // renderCommitHeaderRow renders a commit header row in the content area.
 // This is shown when viewing a commit and can be folded/unfolded.
+//
+// Layout: [cursor] [fold] [sha] [files] [+added] [-removed] [time] [author] [subject]
+// Fixed columns (left): sha, files, +added, -removed, time, author (max 15 chars)
+// Dynamic column (right): subject (max 120 chars)
 func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	commit := m.currentCommit()
 	if commit == nil {
@@ -1103,19 +1107,20 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	authorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
-	// Fold icon - similar to file fold icons
+	// Fold icon
 	var foldIcon string
 	switch row.commitFoldLevel {
 	case sidebyside.CommitFolded:
-		foldIcon = "◯" // hollow circle = folded (no content visible)
+		foldIcon = "◯"
 	case sidebyside.CommitNormal:
-		foldIcon = "◐" // half-filled = normal view
+		foldIcon = "◐"
 	case sidebyside.CommitExpanded:
-		foldIcon = "●" // filled = expanded
+		foldIcon = "●"
 	}
 
-	// Calculate file stats for display
+	// Calculate file stats
 	totalAdded := 0
 	totalRemoved := 0
 	for _, fp := range m.files {
@@ -1123,9 +1128,9 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		totalAdded += added
 		totalRemoved += removed
 	}
+	fileCount := len(m.files)
 
-	// Build the row content
-	// Format: [cursor] [fold] sha  author  date  subject  [+N -M] [N files]
+	// Cursor prefix
 	var prefix string
 	if isCursorRow {
 		if m.focused {
@@ -1137,59 +1142,67 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		prefix = "  "
 	}
 
-	// Fold icon - always fg=8, no faint
-	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	// Build fixed columns
+	// Format: [prefix][fold] [sha] [files] [+added] [-removed] [time] [author] [subject]
 
-	sha := shaStyle.Render(commitInfo.ShortSHA())
-	author := authorStyle.Render(commitInfo.Author)
-	date := dimStyle.Render(formatRelativeDate(commitInfo.Date))
-	sep := dimStyle.Render("  ")
+	shaText := commitInfo.ShortSHA()
+	filesText := fmt.Sprintf("%d", fileCount)
+	addedText := fmt.Sprintf("+%d", totalAdded)
+	removedText := fmt.Sprintf("-%d", totalRemoved)
+	timeText := formatShortRelativeDate(commitInfo.Date)
 
-	// Right side: stats and file count
-	var rightParts []string
-	if totalAdded > 0 || totalRemoved > 0 {
-		rightParts = append(rightParts, addedStyle.Render(fmt.Sprintf("+%d", totalAdded)))
-		rightParts = append(rightParts, removedStyle.Render(fmt.Sprintf("-%d", totalRemoved)))
-	}
-	fileCount := len(m.files)
-	if fileCount == 1 {
-		rightParts = append(rightParts, dimStyle.Render("1 file"))
-	} else {
-		rightParts = append(rightParts, dimStyle.Render(fmt.Sprintf("%d files", fileCount)))
-	}
-	rightSection := strings.Join(rightParts, " ")
-	rightWidth := displayWidth(rightSection)
-
-	// Calculate available width for subject
-	fixedWidth := 2 + 1 + 1 + 7 + 2 + len(commitInfo.Author) + 2 + len(formatRelativeDate(commitInfo.Date)) + 2
-	availableWidth := m.width - fixedWidth - rightWidth - 2 // -2 for padding before right section
-	if availableWidth < 0 {
-		availableWidth = 0
+	// Author: max 15 chars, truncate with "..." if longer
+	author := commitInfo.Author
+	maxAuthorLen := 15
+	if len(author) > maxAuthorLen {
+		author = author[:maxAuthorLen-3] + "..."
 	}
 
-	// Truncate subject if needed
+	// Calculate fixed width using raw text lengths (not styled)
+	// prefix(2) + fold(1) + space(1) + sha(7) + space(1) + files + space(1) + added + space(1) + removed + space(1) + time + space(1) + author
+	fixedWidth := 2 + 1 + 1 + len(shaText) + 1 + len(filesText) + 1 + len(addedText) + 1 + len(removedText) + 1 + len(timeText) + 1 + len(author)
+
+	// Build the fixed part with styling
+	fixedPart := prefix +
+		foldIconStyle.Render(foldIcon) + " " +
+		shaStyle.Render(shaText) + " " +
+		dimStyle.Render(filesText) + " " +
+		addedStyle.Render(addedText) + " " +
+		removedStyle.Render(removedText) + " " +
+		dimStyle.Render(timeText) + " " +
+		authorStyle.Render(author)
+
+	// Calculate remaining width for subject
+	remainingWidth := m.width - fixedWidth - 1 // -1 for space before subject
+	if remainingWidth < 0 {
+		remainingWidth = 0
+	}
+
+	// Subject: max 120 chars, truncate with "..." if longer
 	subject := commitInfo.Subject
-	if len(subject) > availableWidth {
-		if availableWidth > 3 {
-			subject = subject[:availableWidth-3] + "..."
-		} else if availableWidth > 0 {
-			subject = subject[:availableWidth]
+	maxSubjectLen := 120
+	if len(subject) > maxSubjectLen {
+		subject = subject[:maxSubjectLen-3] + "..."
+	}
+
+	// Truncate subject if it doesn't fit in remaining width
+	if len(subject) > remainingWidth {
+		if remainingWidth > 3 {
+			subject = subject[:remainingWidth-3] + "..."
+		} else if remainingWidth > 0 {
+			subject = subject[:remainingWidth]
 		} else {
 			subject = ""
 		}
 	}
 
-	// Build left side content - no background highlight, just the arrow indicates cursor
-	leftContent := prefix + foldIconStyle.Render(foldIcon) + " " + sha + sep + author + sep + date + sep + subject
-
-	// Calculate padding to right-align the stats
-	leftWidth := displayWidth(leftContent)
-	padding := m.width - leftWidth - rightWidth
-	if padding < 0 {
-		padding = 0
+	// Build the dynamic part
+	var dynamicPart string
+	if subject != "" {
+		dynamicPart = " " + subject
 	}
 
-	return leftContent + strings.Repeat(" ", padding) + rightSection
+	return fixedPart + dynamicPart
 }
 
 // buildCommitBodyRows creates display rows for the commit body (shown when expanded).
@@ -1589,6 +1602,49 @@ func formatRelativeDate(isoDate string) string {
 			return "1y ago"
 		}
 		return fmt.Sprintf("%dy ago", years)
+	}
+}
+
+// formatShortRelativeDate returns abbreviated relative time without "ago".
+// Used in commit header rows for compact display.
+// Format: "now", "1m", "4h", "2d", "3w", "1mo", "1y"
+func formatShortRelativeDate(isoDate string) string {
+	if isoDate == "" {
+		return ""
+	}
+
+	// Try to parse ISO 8601 format
+	t, err := time.Parse(time.RFC3339, isoDate)
+	if err != nil {
+		// Try without timezone
+		t, err = time.Parse("2006-01-02T15:04:05", isoDate)
+		if err != nil {
+			// Try git log format: "Mon Jan 15 10:30:00 2024 -0500"
+			t, err = time.Parse("Mon Jan 2 15:04:05 2006 -0700", isoDate)
+			if err != nil {
+				return isoDate // Return as-is if can't parse
+			}
+		}
+	}
+
+	now := time.Now()
+	diff := now.Sub(t)
+
+	switch {
+	case diff < time.Minute:
+		return "now"
+	case diff < time.Hour:
+		return fmt.Sprintf("%dm", int(diff.Minutes()))
+	case diff < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(diff.Hours()))
+	case diff < 7*24*time.Hour:
+		return fmt.Sprintf("%dd", int(diff.Hours()/24))
+	case diff < 30*24*time.Hour:
+		return fmt.Sprintf("%dw", int(diff.Hours()/24/7))
+	case diff < 365*24*time.Hour:
+		return fmt.Sprintf("%dmo", int(diff.Hours()/24/30))
+	default:
+		return fmt.Sprintf("%dy", int(diff.Hours()/24/365))
 	}
 }
 
