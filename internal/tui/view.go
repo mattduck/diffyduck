@@ -1153,10 +1153,10 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		totalRemoved += removed
 	}
 
-	// Left section: file counter [01/27] - colored to match current file's status
+	// Left section: file counter #01 - colored to match current file's status
 	_, fileCounterStyle := fileStatusIndicator(FileStatus(info.FileStatus))
 	totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
-	counterText := fmt.Sprintf("[%0*d/%d]", totalWidth, info.CurrentFile, info.TotalFiles)
+	counterText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
 	fileCounter := fileCounterStyle.Render(counterText) + " "
 	counterDisplayWidth := len(counterText) + 1 // +1 for trailing space
 

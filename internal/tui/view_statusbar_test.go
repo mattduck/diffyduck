@@ -109,8 +109,8 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 	assert.Contains(t, topBar, "+1")
 	assert.Contains(t, topBar, "-1")
 
-	// Top bar should contain file counter [1/1]
-	assert.Contains(t, topBar, "[1/1]")
+	// Top bar should contain file counter #1
+	assert.Contains(t, topBar, "#1")
 }
 
 func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
