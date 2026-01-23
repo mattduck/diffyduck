@@ -4121,9 +4121,9 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	contentArrowCount := strings.Count(contentLine, "▶")
 	assert.Equal(t, 2, contentArrowCount, "content line with cursor should have two arrows")
 
-	// Content line should have a separator (╏ heavy double dash vertical)
-	hasSeparator := strings.Contains(contentLine, "╏")
-	assert.True(t, hasSeparator, "content line should have center separator (╏)")
+	// Content line should have a separator (┃ box drawings heavy vertical)
+	hasSeparator := strings.Contains(contentLine, "┃")
+	assert.True(t, hasSeparator, "content line should have center separator (┃)")
 }
 
 func TestStatusBar_PagerIndicator(t *testing.T) {

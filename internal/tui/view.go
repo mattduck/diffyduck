@@ -44,6 +44,9 @@ var (
 	// Inter-file area style (dim shading for blank lines between files)
 	interFileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 
+	// Center divider style (between left and right sides)
+	centerDividerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
+
 	// Debug mode styles
 	debugLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5")) // magenta for labels
 	debugValueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan for values
@@ -1761,8 +1764,8 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 	leftContentWidth := leftHalfWidth - lineNumWidth - 3   // -3 for indicator, space after indicator, and space after line num
 	rightContentWidth := rightHalfWidth - lineNumWidth - 3 // same layout on right side
 
-	// Vertical divider between left and right sides (heavy double dash, fg=8)
-	separatorChar := "╏"
+	// Vertical divider between left and right sides
+	separatorChar := "┃"
 
 	// Check if this is a modified pair where we should show inline diff
 	isModifiedPair := pair.Old.Type == sidebyside.Removed && pair.New.Type == sidebyside.Added
@@ -1784,7 +1787,7 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, rowIdx, 0, isCursorRow, hasWordDiff, false)
 	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, rowIdx, 1, isCursorRow, hasWordDiff, hideRightTrailingGutter)
 
-	separator := hunkSeparatorStyle.Render(separatorChar)
+	separator := centerDividerStyle.Render(separatorChar)
 	return left + " " + separator + " " + right
 }
 
