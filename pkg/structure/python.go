@@ -1,6 +1,8 @@
 package structure
 
 import (
+	"strings"
+
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -117,11 +119,28 @@ func (p *pythonExtractor) extractNameAndSignature(node *tree_sitter.Node, conten
 }
 
 // extractParams extracts the parameters from a function definition.
-// Normalizes multiline parameters to a single line.
+// Walks the AST to extract only parameter nodes, filtering out comments
+// and trailing commas for a clean signature.
 func (p *pythonExtractor) extractParams(node *tree_sitter.Node, content []byte) string {
 	paramsNode := node.ChildByFieldName("parameters")
 	if paramsNode == nil {
 		return "()"
 	}
-	return normalizeWhitespace(paramsNode.Utf8Text(content))
+
+	var params []string
+	childCount := paramsNode.ChildCount()
+	for i := uint(0); i < uint(childCount); i++ {
+		child := paramsNode.Child(i)
+		kind := child.Kind()
+
+		// Skip punctuation and comments
+		if kind == "(" || kind == ")" || kind == "," || kind == "comment" {
+			continue
+		}
+
+		// Extract the parameter text, normalized for multiline cases
+		params = append(params, normalizeWhitespace(child.Utf8Text(content)))
+	}
+
+	return "(" + strings.Join(params, ", ") + ")"
 }

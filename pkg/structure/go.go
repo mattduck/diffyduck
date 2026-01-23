@@ -1,6 +1,8 @@
 package structure
 
 import (
+	"strings"
+
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -103,23 +105,46 @@ func (g *goExtractor) extractNameAndSignature(node *tree_sitter.Node, nodeType s
 
 // extractReceiver extracts the receiver from a method declaration.
 // Returns e.g., "(m Model) " or "(m *Model) "
-// Normalizes multiline receivers to a single line.
+// Walks the AST to filter out trailing commas.
 func (g *goExtractor) extractReceiver(node *tree_sitter.Node, content []byte) string {
 	receiverNode := node.ChildByFieldName("receiver")
 	if receiverNode == nil {
 		return ""
 	}
-	// Get the full receiver text including parens
-	return normalizeWhitespace(receiverNode.Utf8Text(content)) + " "
+	return g.extractParamList(receiverNode, content) + " "
 }
 
 // extractParams extracts the parameters from a function/method declaration.
 // Returns e.g., "(ctx, name string)" or "()"
-// Normalizes multiline parameters to a single line.
+// Walks the AST to filter out trailing commas.
 func (g *goExtractor) extractParams(node *tree_sitter.Node, content []byte) string {
 	paramsNode := node.ChildByFieldName("parameters")
 	if paramsNode == nil {
 		return "()"
 	}
-	return normalizeWhitespace(paramsNode.Utf8Text(content))
+	return g.extractParamList(paramsNode, content)
+}
+
+// extractParamList extracts parameters from a parameter_list node.
+// Walks children to skip commas and normalize each parameter.
+func (g *goExtractor) extractParamList(node *tree_sitter.Node, content []byte) string {
+	var params []string
+	childCount := node.ChildCount()
+	for i := uint(0); i < uint(childCount); i++ {
+		child := node.Child(i)
+		kind := child.Kind()
+
+		// Skip punctuation
+		if kind == "(" || kind == ")" || kind == "," {
+			continue
+		}
+
+		// Extract parameter text, normalized
+		paramText := normalizeWhitespace(child.Utf8Text(content))
+		// Clean trailing commas in nested structures like generics: [K, V,] -> [K, V]
+		paramText = strings.ReplaceAll(paramText, ",]", "]")
+		params = append(params, paramText)
+	}
+
+	return "(" + strings.Join(params, ", ") + ")"
 }
