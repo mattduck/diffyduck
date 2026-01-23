@@ -242,7 +242,7 @@ func TestDynamicDivider_WideContentExpandsLeft(t *testing.T) {
 	// indicator(1) + space(1) + lineNum(4) + space(1) + left gutter(2) = 9
 	minRightWidth := 1 + 1 + lineNumWidth + 1 + 2
 
-	// targetLeftContent = min(80, 68) = 68
+	// targetLeftContent = min(90, 68) = 68
 	// targetLeftWidth = 11 + 68 = 79
 	// maxLeftWidth = 80 - 3 - 9 = 68
 	// leftHalfWidth = min(79, 68) = 68
@@ -257,7 +257,7 @@ func TestDynamicDivider_WideContentExpandsLeft(t *testing.T) {
 func TestDynamicDivider_WideTerminalUses5050(t *testing.T) {
 	// On a wide terminal, even with wide content, use 50/50 if both sides have room
 	m := Model{
-		width:  200, // wide terminal
+		width:  210, // wide terminal
 		height: 24,
 		files: []sidebyside.FilePair{
 			{
@@ -281,13 +281,13 @@ func TestDynamicDivider_WideTerminalUses5050(t *testing.T) {
 	lineNumWidth := m.lineNumWidth()               // 4
 	gutterOverhead := 1 + 1 + lineNumWidth + 1 + 4 // 11
 
-	// At width 200, defaultHalf = 98, leftContentAt50 = 98 - 11 = 87
-	// targetLeftContent = min(80, 35) = 35
-	// Since 87 >= 35, use 50/50
-	defaultHalf := (m.width - 3) / 2                // 98
-	leftContentAt50 := defaultHalf - gutterOverhead // 87
+	// At width 210, defaultHalf = 103, leftContentAt50 = 103 - 11 = 92
+	// targetLeftContent = min(90, 35) = 35
+	// Since 92 >= 35, use 50/50
+	defaultHalf := (m.width - 3) / 2                // 103
+	leftContentAt50 := defaultHalf - gutterOverhead // 92
 
-	assert.GreaterOrEqual(t, leftContentAt50, 80, "50/50 gives left side enough room for 80 chars")
+	assert.GreaterOrEqual(t, leftContentAt50, 90, "50/50 gives left side enough room for 90 chars")
 	// Both sides should be at ~50%
 }
 
@@ -321,7 +321,7 @@ func TestDynamicDivider_VeryNarrowTerminal(t *testing.T) {
 	minRightWidth := gutterOverhead
 
 	// At width 50, defaultHalf = 23, leftContentAt50 = 23 - 11 = 12
-	// targetLeftContent = min(80, 16) = 16
+	// targetLeftContent = min(90, 16) = 16
 	// Since 12 < 16, prioritize left side
 	// targetLeftWidth = 11 + 16 = 27
 	// maxLeftWidth = 50 - 3 - 11 = 36

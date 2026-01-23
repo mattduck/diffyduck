@@ -633,9 +633,9 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	// indicator(1) + space(1) + lineNum + space(1) + leftGutter(2) = 5 + lineNumWidth
 	minRightWidth := 1 + 1 + lineNumWidth + 1 + 2
 
-	// Left side wants up to 80 chars of content (or actual max content width if smaller)
+	// Left side wants up to 90 chars of content (or actual max content width if smaller)
 	// If there's no new content (e.g., deleted file), use 50/50
-	targetLeftContent := 80
+	targetLeftContent := 90
 	if m.maxNewContentWidth < targetLeftContent {
 		targetLeftContent = m.maxNewContentWidth
 	}
