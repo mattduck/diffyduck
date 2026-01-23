@@ -413,10 +413,24 @@ func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
 
 	row := rows[cursorPos]
 
-	// Only show breadcrumbs for content rows (not headers, separators, etc.)
-	if row.isHeader || row.isSeparatorTop || row.isSeparator || row.isSeparatorBottom ||
+	// Only show breadcrumbs for content rows and certain separator rows
+	// (not headers, separator tops, etc.)
+	if row.isHeader || row.isSeparatorTop ||
 		row.isBlank || row.isHeaderSpacer || row.isHeaderTopBorder || row.isSummary {
 		return ""
+	}
+
+	// For separator and separator bottom rows, use the chunk's start line for breadcrumbs
+	// This shows the breadcrumb when cursor is on or below the breadcrumb line in the separator
+	if row.isSeparator || row.isSeparatorBottom {
+		if row.chunkStartLine <= 0 {
+			return ""
+		}
+		entries := m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
+		if len(entries) == 0 {
+			return ""
+		}
+		return formatBreadcrumbs(entries)
 	}
 
 	// Get source line number from the new side only

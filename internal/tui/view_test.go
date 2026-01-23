@@ -4132,6 +4132,77 @@ func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
 	assert.Contains(t, cursorHunkLine, "MyFunction", "cursor row should preserve breadcrumb text")
 }
 
+func TestStatusInfo_BreadcrumbsOnChunkSeparator(t *testing.T) {
+	// When cursor is on chunk separator (middle) or separator bottom rows,
+	// StatusInfo should show breadcrumbs for that chunk's first line.
+	// When cursor is on separator top (above the breadcrumb line), no breadcrumb should appear.
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					// First hunk
+					{
+						Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					},
+					// Gap creates hunk separator - next chunk is inside MyFunction (lines 10-50)
+					{
+						Old: sidebyside.Line{Num: 20, Content: "    code", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 20, Content: "    code", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  100,
+		height: 30,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 10, EndLine: 50, Name: "MyFunction", Kind: "func"},
+				}),
+			},
+		},
+	}
+	m.calculateTotalLines()
+	m.rebuildRowsCache()
+
+	// Find separator rows
+	rows := m.buildRows()
+	var sepTopIdx, sepIdx, sepBottomIdx int
+	for i, row := range rows {
+		if row.isSeparatorTop {
+			sepTopIdx = i
+		}
+		if row.isSeparator {
+			sepIdx = i
+		}
+		if row.isSeparatorBottom {
+			sepBottomIdx = i
+		}
+	}
+	require.NotZero(t, sepIdx, "should find hunk separator row")
+
+	// Test 1: Cursor on separator top - no breadcrumb
+	m.scroll = sepTopIdx - m.cursorOffset()
+	info := m.StatusInfo()
+	assert.Empty(t, info.Breadcrumbs, "cursor on separator top should NOT show breadcrumb")
+
+	// Test 2: Cursor on separator (middle/breadcrumb line) - should show breadcrumb
+	m.scroll = sepIdx - m.cursorOffset()
+	info = m.StatusInfo()
+	assert.Contains(t, info.Breadcrumbs, "func MyFunction", "cursor on separator should show breadcrumb")
+
+	// Test 3: Cursor on separator bottom - should show breadcrumb
+	m.scroll = sepBottomIdx - m.cursorOffset()
+	info = m.StatusInfo()
+	assert.Contains(t, info.Breadcrumbs, "func MyFunction", "cursor on separator bottom should show breadcrumb")
+}
+
 func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	// Test that the bottom border with cursor has proper layout:
 	// - Single arrow at start

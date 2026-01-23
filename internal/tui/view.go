@@ -312,7 +312,7 @@ func (m Model) buildRows() []displayRow {
 					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
 					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
 					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
-					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true})
+					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
 				}
 
 				// Check for gap in line numbers (hunk boundary)
@@ -322,7 +322,7 @@ func (m Model) buildRows() []displayRow {
 					// Add three-line separator: top shader + breadcrumb + bottom shader
 					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
 					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
-					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true})
+					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
 				}
 
 				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair}
