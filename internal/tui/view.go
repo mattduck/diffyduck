@@ -1798,7 +1798,6 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 	return left + " " + separator + " " + right
 }
 
-
 func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borderVisible bool, status FileStatus, added, removed, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth, fileIndex, rowIdx int, isCursorRow bool) string {
 	// Calculate header width BEFORE applying search highlighting (ANSI codes affect width calculation)
 	headerTextWidth := displayWidth(header)

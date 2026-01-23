@@ -93,3 +93,77 @@ type FilePair struct {
 func (fp FilePair) HasContent() bool {
 	return fp.OldContent != nil || fp.NewContent != nil
 }
+
+// CommitFoldLevel represents the fold state of a commit in the view.
+type CommitFoldLevel int
+
+const (
+	CommitFolded   CommitFoldLevel = iota // summary line only (sha, message preview, file count)
+	CommitNormal                          // file headers visible, hunks shown per-file fold level
+	CommitExpanded                        // all files expanded (full diffs visible)
+)
+
+// NextLevel returns the next fold level in the cycle.
+// Cycles: Folded -> Normal -> Expanded -> Folded
+func (c CommitFoldLevel) NextLevel() CommitFoldLevel {
+	return (c + 1) % 3
+}
+
+// String returns the human-readable name of the commit fold level.
+func (c CommitFoldLevel) String() string {
+	switch c {
+	case CommitFolded:
+		return "Folded"
+	case CommitNormal:
+		return "Normal"
+	case CommitExpanded:
+		return "Expanded"
+	default:
+		return "Unknown"
+	}
+}
+
+// CommitInfo contains metadata about a commit.
+// All fields are optional - for plain diffs without commit context,
+// this will be empty.
+type CommitInfo struct {
+	SHA     string // full commit hash (empty for plain diffs)
+	Author  string // author name
+	Email   string // author email
+	Date    string // commit date as string (format varies)
+	Subject string // first line of commit message
+	Body    string // rest of commit message (may be empty)
+}
+
+// ShortSHA returns the first 7 characters of the SHA, or empty if no SHA.
+func (c CommitInfo) ShortSHA() string {
+	if len(c.SHA) >= 7 {
+		return c.SHA[:7]
+	}
+	return c.SHA
+}
+
+// HasMetadata returns true if any commit metadata is present.
+func (c CommitInfo) HasMetadata() bool {
+	return c.SHA != "" || c.Author != "" || c.Subject != ""
+}
+
+// CommitSet represents a single commit or diff-set containing files.
+// For log view, there are multiple CommitSets.
+// For diff view, there is one CommitSet (possibly with empty CommitInfo).
+type CommitSet struct {
+	// Commit metadata (may be empty for plain diffs)
+	Info CommitInfo
+
+	// Files in this commit/diff
+	Files []FilePair
+
+	// Fold state for this commit
+	FoldLevel CommitFoldLevel
+
+	// Loading state
+	FilesLoaded bool // true once files have been parsed (for async loading)
+
+	// Truncation
+	TruncatedFileCount int // number of files omitted due to limit
+}

@@ -138,19 +138,34 @@ func run() error {
 
 	g := git.New()
 
-	// Get diff from git
+	// Get diff from git, with optional commit metadata
 	var output string
+	var commitInfo sidebyside.CommitInfo
 	var err error
+
 	switch args.cmd {
 	case "diff":
 		output, err = g.Diff(args.gitArgs...)
 		if err != nil {
 			return fmt.Errorf("git diff: %w", err)
 		}
+		// diff command has no commit metadata
 	case "show":
-		output, err = g.Show(args.gitArgs...)
+		var meta *git.CommitMeta
+		meta, output, err = g.ShowWithMeta(args.gitArgs...)
 		if err != nil {
 			return fmt.Errorf("git show: %w", err)
+		}
+		// Convert git metadata to sidebyside format
+		if meta != nil {
+			commitInfo = sidebyside.CommitInfo{
+				SHA:     meta.SHA,
+				Author:  meta.Author,
+				Email:   meta.Email,
+				Date:    meta.Date,
+				Subject: meta.Subject,
+				Body:    meta.Body,
+			}
 		}
 	}
 
@@ -171,12 +186,21 @@ func run() error {
 	// Create content fetcher for lazy file loading
 	fetcher := content.NewFetcher(g, args.mode, args.ref1, args.ref2)
 
+	// Build commit set with files and optional metadata
+	commit := sidebyside.CommitSet{
+		Info:               commitInfo,
+		Files:              files,
+		FoldLevel:          sidebyside.CommitNormal,
+		FilesLoaded:        true,
+		TruncatedFileCount: truncatedFileCount,
+	}
+
 	// Create and run the TUI
-	opts := []tui.Option{tui.WithFetcher(fetcher), tui.WithTruncatedFileCount(truncatedFileCount)}
+	opts := []tui.Option{tui.WithFetcher(fetcher)}
 	if debugMode {
 		opts = append(opts, tui.WithDebugMode())
 	}
-	model := tui.New(files, opts...)
+	model := tui.NewWithCommits([]sidebyside.CommitSet{commit}, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
 
 	if _, err := p.Run(); err != nil {

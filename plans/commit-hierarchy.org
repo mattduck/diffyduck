@@ -1,0 +1,399 @@
+* Commit Hierarchy Mode
+
+** Overview
+
+Add a hierarchical structure where commits (or diff-sets) become the top-level
+container, with files nested underneath. This enables:
+
+1. A log view showing multiple commits with their diffs
+2. Unified navigation through folding at both commit and file levels
+3. Future extensibility for zooming into specific commits/files
+
+Currently, files are the root objects. This change introduces a parent layer:
+
+#+begin_example
+Current:     File → Hunks
+New:         Commit → File → Hunks
+#+end_example
+
+** Goals
+
+- Add ~diffyduck log~ command to view commit history with diffs
+- Wrap all views (diff, show, log) in a commit container for consistency
+- Enable fold/unfold at both commit and file levels
+- Support context expansion within hunks via Enter key
+- Maintain performance with lazy loading per commit
+
+** Key Design Decisions
+
+*** Unified Hierarchy for All Modes
+
+Even for simple diff views (e.g., ~git diff | diffyduck~), wrap content in a
+"virtual" commit container. This avoids feature divergence between modes and
+simplifies the codebase. The commit layer can be visually minimal when there's
+only one commit with no interesting metadata.
+
+*** Fold Levels
+
+| Level | Commit | File |
+|-------+--------+------|
+| Folded | Summary line only (sha, message preview, file count) | Header only |
+| Normal | File headers visible, hunks collapsed per-file | Hunk-based view with gaps |
+| Expanded | Full file diffs visible | N/A (use context expansion instead) |
+
+Commits have 3 fold levels. Files have 2 fold levels (Folded/Normal).
+
+The current FoldExpanded for files (showing full file content) is being
+replaced by a context expansion feature on hunks, which provides more
+granular control.
+
+*** Context Expansion
+
+Rather than expanding entire files, users can expand context around hunks:
+
+- Press Enter on a chunk separator to fill in missing context lines
+- Position-aware: if cursor is on the middle of a separator, expand fully
+  between hunks; if on top/bottom edge, expand incrementally in that direction
+- Expansion resets when file is folded/unfolded
+
+*** No Visual Indentation
+
+Hierarchy is NOT represented through indentation. File content stays at its
+current horizontal position. The hierarchy is expressed through:
+
+- Circle icons (○/◐/●) for fold state on commit lines
+- Commit header lines above their files
+- Navigation that respects the hierarchy
+
+*** Top Bar
+
+The top bar becomes two lines:
+
+1. Commit line: sha, author, date, message (or diff summary if no commit info)
+2. File line: current file path, stats, fold indicator
+
+For simple diff mode with one commit and no metadata, this could collapse to
+one line (open question).
+
+*** Navigation
+
+New keybindings for hierarchical navigation:
+
+| Key | Action |
+|-----+--------|
+| j/k | Line-by-line scroll (unchanged) |
+| gj/gk | Jump to next/previous file |
+| gJ/gK | Jump to next/previous commit |
+| Tab | Toggle fold on item at cursor (commit or file) |
+| Shift+Tab | Toggle all items at current level |
+
+Note: Tab behavior changes - it now requires cursor to be on the item to fold.
+
+*** Async Loading
+
+Loading happens per-commit:
+
+1. On startup (or when entering log view), load commit metadata for ~1000 commits
+2. Commit fold state starts as Folded (summary only)
+3. When a commit is unfolded, async load all its files (respecting per-commit file limit)
+4. File content caching remains as-is for the content fetcher
+
+** Data Model Changes
+
+*** New Types
+
+#+begin_src go
+// CommitSet represents a single commit or diff-set.
+// For log view, there are multiple CommitSets.
+// For diff view, there is one CommitSet (possibly "virtual" with no metadata).
+type CommitSet struct {
+    // Metadata (may be empty for plain diffs)
+    SHA       string
+    Author    string
+    Date      time.Time
+    Subject   string    // first line of commit message
+    Body      string    // rest of commit message
+
+    // Files in this commit
+    Files []sidebyside.FilePair
+
+    // Fold state
+    FoldLevel CommitFoldLevel
+
+    // Loading state
+    FilesLoaded bool // true once files have been parsed
+}
+
+type CommitFoldLevel int
+
+const (
+    CommitFolded   CommitFoldLevel = iota // Summary line only
+    CommitNormal                           // File headers visible
+    CommitExpanded                         // Full file diffs visible
+)
+#+end_src
+
+*** Model Changes
+
+#+begin_src go
+type Model struct {
+    // Replace files with commits
+    commits []CommitSet
+
+    // Track which commit cursor is in
+    currentCommit int
+
+    // ... existing fields ...
+}
+#+end_src
+
+*** Migration Path
+
+The existing ~[]sidebyside.FilePair~ becomes nested inside ~CommitSet~.
+Transform at load time:
+
+#+begin_src go
+// Old
+model := tui.New(files, opts...)
+
+// New
+commit := CommitSet{Files: files}
+model := tui.New([]CommitSet{commit}, opts...)
+#+end_src
+
+** Phases
+
+*** Phase 1: Data Model Restructure
+
+Introduce CommitSet wrapper without changing visible behavior.
+
+- [ ] Add CommitSet type to pkg/sidebyside/types.go
+- [ ] Update Model to hold []CommitSet instead of []FilePair
+- [ ] Update all file iteration to go through commits
+- [ ] Keep single implicit commit for diff mode
+- [ ] All existing tests should pass unchanged
+
+*** Phase 2: Commit Fold Levels
+
+Add fold state to commits.
+
+- [ ] Add CommitFoldLevel to CommitSet
+- [ ] Update buildRows() to respect commit fold level
+- [ ] Folded commit: render single summary row
+- [ ] Normal commit: render file headers only
+- [ ] Expanded commit: render full file content (current behavior)
+- [ ] Update Tab to toggle commit fold when cursor on commit row
+
+*** Phase 3: Log Command & Parsing
+
+Add ~diffyduck log~ command.
+
+- [ ] Add "log" subcommand to cmd/diffyduck/main.go
+- [ ] Parse ~git log -p~ output into multiple CommitSets
+- [ ] Extract commit metadata (sha, author, date, message)
+- [ ] Initial display with commits folded
+- [ ] Async unfold loads file content per commit
+
+*** Phase 4: Navigation Keys
+
+Implement hierarchical navigation.
+
+- [ ] Add NextFile/PrevFile keys (gj/gk)
+- [ ] Add NextCommit/PrevCommit keys (gJ/gK)
+- [ ] Update cursor movement to respect hierarchy
+- [ ] Jump lands on header row of target item
+
+*** Phase 5: Top Bar Changes
+
+Update status bar to show commit + file info.
+
+- [ ] Two-line top bar (commit line + file line)
+- [ ] Commit line: sha (short), author, relative date, subject
+- [ ] File line: path, +/- stats, fold icon
+- [ ] Handle edge cases (no commit info, cursor between files)
+
+*** Phase 6: Context Expansion
+
+Replace full-file expand with chunk context expansion.
+
+- [ ] Remove FoldExpanded from files (now only Folded/Normal)
+- [ ] Add Enter key handler on chunk separators
+- [ ] Track expanded context per hunk (not per file)
+- [ ] Reset expansion on file fold toggle
+- [ ] Update view rendering for partial context fill
+
+*** Phase 7: Pager Mode Integration
+
+Detect log format in pager mode.
+
+- [ ] Detect multiple commits in piped input
+- [ ] Parse commit boundaries in pager mode
+- [ ] Apply same hierarchy display
+
+** File Changes Summary
+
+*** New Files
+
+| File | Description |
+|------+-------------|
+| pkg/sidebyside/commit.go | CommitSet type, CommitFoldLevel, parsing helpers |
+| pkg/git/log.go | Git log parsing, commit metadata extraction |
+| internal/tui/commit_rows.go | Row building for commit hierarchy |
+
+*** Modified Files
+
+| File | Changes |
+|------+---------|
+| pkg/sidebyside/types.go | Add CommitSet if not separate file |
+| internal/tui/model.go | Replace files with commits, add currentCommit |
+| internal/tui/view.go | Two-line top bar, commit row rendering |
+| internal/tui/update.go | Commit fold toggle, navigation keys |
+| internal/tui/keys.go | Add gj/gk, gJ/gK bindings |
+| cmd/diffyduck/main.go | Add "log" subcommand |
+
+** Open Questions
+
+*** Single-line vs Two-line Top Bar for Simple Diffs
+
+When viewing a simple diff with no commit metadata, should the top bar:
+(a) Collapse to one line like current behavior
+(b) Always show two lines for consistency
+
+Arguments for (a): cleaner for simple use cases
+Arguments for (b): simpler code, consistent UI
+
+*** Context Expansion Mechanics
+
+Several options for how Enter expands context:
+
+1. *Cursor position aware*: middle of separator = full expand, edges = incremental
+2. *Always incremental*: Enter always adds N lines in cursor direction
+3. *+/- keys*: dedicated keys for add/remove context
+
+Need to prototype to see what feels natural.
+
+*** Binding for "Next Git Change"
+
+Should there be a binding to jump to the next actual diff line (skipping
+context)? This would complement gj/gk (files) and gJ/gK (commits).
+
+Candidates: ]c / [c (vim-inspired), or something else?
+
+*** Behavior of Tab When Not on Foldable Item
+
+Current Tab toggles the file containing the cursor. New behavior requires
+cursor to be on the item. What happens when Tab is pressed on a content line?
+
+Options:
+(a) No-op
+(b) Find and toggle containing item
+(c) Toggle containing file (but not commit)
+
+*** Zooming / Focus Mode
+
+Future idea mentioned: ability to "zoom in" to view only one commit or file,
+hiding the rest. How would this interact with search?
+
+*** Commit Display When Folded
+
+What information to show on the single folded commit line?
+- Short sha (7 chars)
+- Author name
+- Relative date ("3 days ago")
+- Subject (first line, truncated)
+- File count ("5 files")
+- +/- stats total
+
+Format: ~○ a1b2c3d John Doe 3d ago  Add new feature (5 files, +100 -50)~
+
+** Future Ideas
+
+These are mentioned but explicitly out of scope for initial implementation:
+
+*** Zoom Mode
+
+Press a key to "zoom in" on current commit/file, hiding others. Press again
+to zoom out. Search would be scoped to zoomed item.
+
+*** Commit Range Selection
+
+In log view, select a range of commits to diff together.
+
+*** Interactive Rebase Integration
+
+Show commits in a way that could support interactive rebase operations.
+
+*** Commit Graph
+
+Show branch/merge graph alongside commit list (like ~git log --graph~).
+
+*** Blame Integration
+
+From a line in the diff, jump to blame view showing when that line was added.
+
+** Testing Strategy
+
+*** Unit Tests
+
+1. CommitSet creation and fold level transitions
+2. Log output parsing (multiple commits, various formats)
+3. Row building with commit hierarchy
+4. Navigation key handlers (gj/gk, gJ/gK)
+
+*** State Transition Tests
+
+1. Commit fold toggle updates correct commit
+2. File fold toggle within commit
+3. Navigation respects fold states
+4. Context expansion state management
+
+*** Golden File Tests
+
+1. Folded commit rendering
+2. Multi-commit log view
+3. Two-line top bar variations
+4. Context expansion visuals
+
+*** Integration Tests
+
+1. ~diffyduck log~ end-to-end
+2. Pager mode with log input
+3. Navigation through large commit list
+4. Async loading behavior
+
+** Performance Considerations
+
+*** Initial Load
+
+For log view with many commits:
+- Load commit metadata only (sha, author, date, subject)
+- Cap at ~1000 commits initially
+- Show "load more" indicator if truncated
+
+*** Unfolding Commits
+
+When a commit is unfolded:
+- Parse its diff output async
+- Show loading indicator
+- Respect per-commit file limit (existing MaxFiles)
+
+*** Memory
+
+With many commits, memory could grow. Consider:
+- LRU cache for parsed file content
+- Fold commits when scrolling far away
+- Maximum total file limit across all commits
+
+*** Rendering
+
+Current view rendering iterates all files. With hierarchy:
+- Skip rendering for folded commits entirely
+- Cache row structure when possible
+- Avoid re-parsing on every render
+
+** References
+
+- Current fold implementation: internal/tui/update.go (~handleFoldToggle~)
+- File pair structure: pkg/sidebyside/types.go
+- Row building: internal/tui/view.go (~buildRows~)
+- Pager mode plan: plans/pager-mode.org

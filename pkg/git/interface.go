@@ -9,6 +9,10 @@ type Git interface {
 	// Args are passed through to git show.
 	Show(args ...string) (string, error)
 
+	// ShowWithMeta returns commit metadata and diff output for git show.
+	// The first return is parsed commit metadata, the second is the diff.
+	ShowWithMeta(args ...string) (*CommitMeta, string, error)
+
 	// Diff returns the diff output for git diff.
 	// Args are passed through to git diff.
 	Diff(args ...string) (string, error)

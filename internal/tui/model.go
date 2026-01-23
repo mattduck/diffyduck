@@ -27,10 +27,14 @@ type inlineDiffResult struct {
 
 // Model represents the application state.
 type Model struct {
-	// Data
-	files              []sidebyside.FilePair
-	fetcher            *content.Fetcher // for fetching full file contents (lazy)
-	truncatedFileCount int              // number of files omitted due to limit
+	// Data - hierarchical: commits contain files
+	commits []sidebyside.CommitSet
+
+	// Legacy field for single-commit access (will be removed)
+	// Use commits[0].Files or helper methods instead
+	files              []sidebyside.FilePair // points to commits[0].Files
+	fetcher            *content.Fetcher      // for fetching full file contents (lazy)
+	truncatedFileCount int                   // number of files omitted due to limit
 
 	// Pager mode
 	pagerMode bool // true when running as a pager (stdin input, no fetcher)
@@ -157,18 +161,35 @@ func WithDebugMode() Option {
 func WithTruncatedFileCount(count int) Option {
 	return func(m *Model) {
 		m.truncatedFileCount = count
+		// Also update the commit set if present
+		if len(m.commits) > 0 {
+			m.commits[0].TruncatedFileCount = count
+		}
 	}
 }
 
 // New creates a new Model with the given file pairs.
+// This wraps files in a single CommitSet for backward compatibility.
 func New(files []sidebyside.FilePair, opts ...Option) Model {
+	// Wrap files in a CommitSet
+	commit := sidebyside.CommitSet{
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal, // Start with files visible
+		FilesLoaded: true,                    // Files are already provided
+	}
+	return NewWithCommits([]sidebyside.CommitSet{commit}, opts...)
+}
+
+// NewWithCommits creates a new Model with the given commit sets.
+// Use this for log view or when commit metadata is available.
+func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 	// Initialize spinner with compact style and slower speed
 	s := spinner.New()
 	s.Spinner = spinner.MiniDot
 	s.Spinner.FPS = time.Second / 6 // 6 fps
 
 	m := Model{
-		files:               files,
+		commits:             commits,
 		keys:                DefaultKeyMap(),
 		hscrollStep:         DefaultHScrollStep,
 		highlighter:         highlight.New(),
@@ -181,6 +202,13 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 		loadingFiles:        make(map[int]time.Time),
 		focused:             true,
 	}
+
+	// Set up legacy files pointer for backward compatibility
+	if len(commits) > 0 {
+		m.files = commits[0].Files
+		m.truncatedFileCount = commits[0].TruncatedFileCount
+	}
+
 	for _, opt := range opts {
 		opt(&m)
 	}
@@ -188,7 +216,7 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 
 	// Synchronously highlight the first file so initial render has highlighting.
 	// The rest will be highlighted async in Init().
-	if len(files) > 0 {
+	if len(m.files) > 0 {
 		m.highlightPairsSync(0)
 	}
 
@@ -662,4 +690,21 @@ func (m *Model) getRows() []displayRow {
 		m.rebuildRowsCache()
 	}
 	return m.cachedRows
+}
+
+// currentCommit returns the commit set the cursor is currently in.
+// For now, always returns the first (and only) commit.
+// Will be expanded for log view with multiple commits.
+func (m Model) currentCommit() *sidebyside.CommitSet {
+	if len(m.commits) == 0 {
+		return nil
+	}
+	// TODO: When log view is implemented, track which commit the cursor is in
+	return &m.commits[0]
+}
+
+// hasCommitInfo returns true if the current view has commit metadata.
+func (m Model) hasCommitInfo() bool {
+	commit := m.currentCommit()
+	return commit != nil && commit.Info.HasMetadata()
 }

@@ -10,6 +10,7 @@ import (
 type MockGit struct {
 	ShowOutput string
 	ShowError  error
+	ShowMeta   *CommitMeta // optional metadata for ShowWithMeta
 	DiffOutput string
 	DiffError  error
 	// FileContents maps "ref:path" to file content for GetFileContent.
@@ -20,6 +21,18 @@ type MockGit struct {
 // Show returns the preconfigured output or error.
 func (m *MockGit) Show(args ...string) (string, error) {
 	return m.ShowOutput, m.ShowError
+}
+
+// ShowWithMeta returns the preconfigured metadata and output.
+func (m *MockGit) ShowWithMeta(args ...string) (*CommitMeta, string, error) {
+	if m.ShowError != nil {
+		return nil, "", m.ShowError
+	}
+	meta := m.ShowMeta
+	if meta == nil {
+		meta = &CommitMeta{} // return empty metadata if not set
+	}
+	return meta, m.ShowOutput, nil
 }
 
 // Diff returns the preconfigured output or error.

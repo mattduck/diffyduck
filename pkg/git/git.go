@@ -23,6 +23,39 @@ func NewWithDir(dir string) *RealGit {
 	return &RealGit{Dir: dir}
 }
 
+// CommitMeta contains metadata about a git commit.
+type CommitMeta struct {
+	SHA     string // full commit hash
+	Author  string // author name
+	Email   string // author email
+	Date    string // author date in ISO 8601 format
+	Subject string // first line of commit message
+	Body    string // rest of commit message
+}
+
+// Delimiters used in custom format output for reliable parsing.
+const (
+	metaSHA       = "DIFFYDUCK_SHA:"
+	metaAuthor    = "DIFFYDUCK_AUTHOR:"
+	metaEmail     = "DIFFYDUCK_EMAIL:"
+	metaDate      = "DIFFYDUCK_DATE:"
+	metaSubject   = "DIFFYDUCK_SUBJECT:"
+	metaBodyStart = "DIFFYDUCK_BODY_START"
+	metaBodyEnd   = "DIFFYDUCK_BODY_END"
+)
+
+// showMetaFormat is the git format string for extracting commit metadata.
+var showMetaFormat = strings.Join([]string{
+	metaSHA + "%H",
+	metaAuthor + "%an",
+	metaEmail + "%ae",
+	metaDate + "%aI",
+	metaSubject + "%s",
+	metaBodyStart,
+	"%b",
+	metaBodyEnd,
+}, "%n") + "%n"
+
 // Show returns the diff output for a given commit reference.
 // Args are passed through to git show (e.g., ref, paths).
 func (g *RealGit) Show(args ...string) (string, error) {
@@ -44,6 +77,79 @@ func (g *RealGit) Show(args ...string) (string, error) {
 	}
 
 	return string(out), nil
+}
+
+// ShowWithMeta returns both commit metadata and diff output for a given commit.
+// The first return value is the parsed commit metadata.
+// The second return value is the diff output (starting from "diff --git").
+func (g *RealGit) ShowWithMeta(args ...string) (*CommitMeta, string, error) {
+	gitArgs := append([]string{"show", "--format=" + showMetaFormat}, args...)
+	cmd := exec.Command("git", gitArgs...)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, "", &GitError{
+				Command: "git show",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, "", err
+	}
+
+	meta, diff := parseShowOutput(string(out))
+	return meta, diff, nil
+}
+
+// parseShowOutput splits git show output into metadata and diff portions.
+func parseShowOutput(output string) (*CommitMeta, string) {
+	meta := &CommitMeta{}
+	lines := strings.Split(output, "\n")
+
+	var bodyLines []string
+	inBody := false
+	diffStartIdx := -1
+
+	for i, line := range lines {
+		// Check for diff start
+		if strings.HasPrefix(line, "diff --git") {
+			diffStartIdx = i
+			break
+		}
+
+		// Parse metadata fields
+		switch {
+		case strings.HasPrefix(line, metaSHA):
+			meta.SHA = strings.TrimPrefix(line, metaSHA)
+		case strings.HasPrefix(line, metaAuthor):
+			meta.Author = strings.TrimPrefix(line, metaAuthor)
+		case strings.HasPrefix(line, metaEmail):
+			meta.Email = strings.TrimPrefix(line, metaEmail)
+		case strings.HasPrefix(line, metaDate):
+			meta.Date = strings.TrimPrefix(line, metaDate)
+		case strings.HasPrefix(line, metaSubject):
+			meta.Subject = strings.TrimPrefix(line, metaSubject)
+		case line == metaBodyStart:
+			inBody = true
+		case line == metaBodyEnd:
+			inBody = false
+		case inBody:
+			bodyLines = append(bodyLines, line)
+		}
+	}
+
+	meta.Body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
+
+	// Extract diff portion
+	var diff string
+	if diffStartIdx >= 0 {
+		diff = strings.Join(lines[diffStartIdx:], "\n")
+	}
+
+	return meta, diff
 }
 
 // Diff returns the diff output.
