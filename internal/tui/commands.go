@@ -8,6 +8,7 @@ import (
 
 // FetchFileContent returns a command that fetches content for one file.
 // Content is fetched with limits applied (max lines, max line length, max bytes).
+// Returns nil for binary files since they have no viewable text content.
 func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 	if m.fetcher == nil {
 		return nil
@@ -17,6 +18,11 @@ func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 	}
 
 	fp := m.files[fileIndex]
+
+	// Skip fetching content for binary files
+	if fp.IsBinary {
+		return nil
+	}
 	fetcher := m.fetcher
 
 	return func() tea.Msg {

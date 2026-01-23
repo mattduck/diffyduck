@@ -205,6 +205,22 @@ func TestTransformFile(t *testing.T) {
 	require.Len(t, fp.Pairs, 2) // one pair from each hunk
 }
 
+func TestTransformFile_Binary(t *testing.T) {
+	file := diff.File{
+		OldPath:  "/dev/null",
+		NewPath:  "b/image.png",
+		IsBinary: true,
+		Hunks:    nil, // Binary files have no hunks
+	}
+
+	fp := TransformFile(file)
+
+	assert.Equal(t, "/dev/null", fp.OldPath)
+	assert.Equal(t, "b/image.png", fp.NewPath)
+	assert.True(t, fp.IsBinary)
+	assert.Len(t, fp.Pairs, 0)
+}
+
 func TestTransformDiff(t *testing.T) {
 	d := &diff.Diff{
 		Files: []diff.File{

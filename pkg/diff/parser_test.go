@@ -277,6 +277,61 @@ index abc123..def456 100644
 	assert.Equal(t, 90, file.Similarity)
 }
 
+func TestParse_BinaryFile_New(t *testing.T) {
+	// New binary file
+	input := `diff --git a/image.png b/image.png
+new file mode 100644
+index 0000000..abc1234
+Binary files /dev/null and b/image.png differ
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	// Paths come from "Binary files" line, not "diff --git"
+	assert.Equal(t, "/dev/null", file.OldPath)
+	assert.Equal(t, "b/image.png", file.NewPath)
+	assert.True(t, file.IsBinary)
+	assert.Len(t, file.Hunks, 0) // Binary files have no hunks
+}
+
+func TestParse_BinaryFile_Deleted(t *testing.T) {
+	// Deleted binary file
+	input := `diff --git a/image.png b/image.png
+deleted file mode 100644
+index abc1234..0000000
+Binary files a/image.png and /dev/null differ
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	// Paths come from "Binary files" line
+	assert.Equal(t, "a/image.png", file.OldPath)
+	assert.Equal(t, "/dev/null", file.NewPath)
+	assert.True(t, file.IsBinary)
+	assert.Len(t, file.Hunks, 0)
+}
+
+func TestParse_BinaryFile_Modified(t *testing.T) {
+	// Modified binary file
+	input := `diff --git a/image.png b/image.png
+index abc1234..def5678 100644
+Binary files a/image.png and b/image.png differ
+`
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.Equal(t, "a/image.png", file.OldPath)
+	assert.Equal(t, "b/image.png", file.NewPath)
+	assert.True(t, file.IsBinary)
+	assert.Len(t, file.Hunks, 0)
+}
+
 func TestParse_EmptyInput(t *testing.T) {
 	diff, err := Parse("")
 	require.NoError(t, err)

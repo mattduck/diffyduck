@@ -186,6 +186,84 @@ func TestView_MultipleFiles(t *testing.T) {
 	assert.Equal(t, string(expected), output)
 }
 
+func TestView_BinaryFile_Created(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:  "/dev/null",
+				NewPath:  "b/image.png",
+				IsBinary: true,
+				Pairs:    nil, // Binary files have no pairs
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should show binary file message
+	assert.Contains(t, output, "Binary file created")
+	// Should show +1 in stats (creation)
+	assert.Contains(t, output, "+1")
+	// Should NOT show -1 (not a deletion)
+	assert.NotContains(t, output, "-1")
+}
+
+func TestView_BinaryFile_Deleted(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:  "a/image.png",
+				NewPath:  "/dev/null",
+				IsBinary: true,
+				Pairs:    nil,
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should show binary file message
+	assert.Contains(t, output, "Binary file deleted")
+	// Should show -1 in stats (deletion)
+	assert.Contains(t, output, "-1")
+}
+
+func TestView_BinaryFile_Changed(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:  "a/image.png",
+				NewPath:  "b/image.png",
+				IsBinary: true,
+				Pairs:    nil,
+			},
+		},
+		width:  80,
+		height: 10,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	// Should show binary file message
+	assert.Contains(t, output, "Binary file changed")
+	// Should show +1 -1 in stats (modification)
+	assert.Contains(t, output, "+1")
+	assert.Contains(t, output, "-1")
+}
+
 func TestView_EmptyModel(t *testing.T) {
 	m := Model{
 		focused: true,

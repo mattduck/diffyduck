@@ -84,6 +84,9 @@ type FilePair struct {
 	IsRename   bool // true if "rename from/to" was present
 	IsCopy     bool // true if "copy from/to" was present
 	Similarity int  // similarity index percentage (0-100), -1 if not present
+
+	// Binary file indicator
+	IsBinary bool // true if "Binary files ... differ" was present
 }
 
 // HasContent returns true if full file content has been loaded.

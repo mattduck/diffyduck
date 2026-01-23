@@ -17,6 +17,7 @@ var (
 	copyToRe       = regexp.MustCompile(`^copy to (.+)$`)
 	similarityRe   = regexp.MustCompile(`^similarity index (\d+)%`)
 	diffGitPathsRe = regexp.MustCompile(`^diff --git a/(.+) b/(.+)$`)
+	binaryFilesRe  = regexp.MustCompile(`^Binary files (.+) and (.+) differ$`)
 )
 
 // Parse parses a unified diff string into a Diff structure.
@@ -121,6 +122,14 @@ func Parse(input string) (*Diff, error) {
 			// Similarity index
 			if m := similarityRe.FindStringSubmatch(line); m != nil {
 				currentFile.Similarity = mustAtoi(m[1])
+				continue
+			}
+			// Binary file indicator - also extract paths which may differ from diff --git
+			// (e.g., "/dev/null" for new/deleted files)
+			if m := binaryFilesRe.FindStringSubmatch(line); m != nil {
+				currentFile.IsBinary = true
+				currentFile.OldPath = m[1]
+				currentFile.NewPath = m[2]
 				continue
 			}
 		}

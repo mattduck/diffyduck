@@ -98,6 +98,7 @@ func TransformFile(file diff.File) FilePair {
 		IsRename:     file.IsRename,
 		IsCopy:       file.IsCopy,
 		Similarity:   file.Similarity,
+		IsBinary:     file.IsBinary,
 	}
 
 	// Set per-side truncation flags based on which sides exist

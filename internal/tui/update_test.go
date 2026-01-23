@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -928,4 +929,65 @@ func TestNextFoldLevel_NormalMode(t *testing.T) {
 
 	// Folded -> Normal
 	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevel(sidebyside.FoldFolded))
+}
+
+func TestNextFoldLevelForFile_BinaryFile(t *testing.T) {
+	m := Model{pagerMode: false}
+
+	// Binary file should skip FoldExpanded, same as pager mode
+	binaryFile := sidebyside.FilePair{
+		OldPath:   "a/image.png",
+		NewPath:   "b/image.png",
+		IsBinary:  true,
+		FoldLevel: sidebyside.FoldNormal,
+	}
+
+	// Normal -> Folded (skip Expanded)
+	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevelForFile(binaryFile))
+
+	// Folded -> Normal
+	binaryFile.FoldLevel = sidebyside.FoldFolded
+	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevelForFile(binaryFile))
+}
+
+func TestNextFoldLevelForFile_NonBinaryFile(t *testing.T) {
+	m := Model{pagerMode: false}
+
+	// Non-binary file should go through all levels
+	normalFile := sidebyside.FilePair{
+		OldPath:   "a/foo.go",
+		NewPath:   "b/foo.go",
+		IsBinary:  false,
+		FoldLevel: sidebyside.FoldNormal,
+	}
+
+	// Normal -> Expanded
+	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevelForFile(normalFile))
+
+	// Expanded -> Folded
+	normalFile.FoldLevel = sidebyside.FoldExpanded
+	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevelForFile(normalFile))
+
+	// Folded -> Normal
+	normalFile.FoldLevel = sidebyside.FoldFolded
+	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevelForFile(normalFile))
+}
+
+func TestFetchFileContent_SkipsBinaryFiles(t *testing.T) {
+	// Use a real fetcher (with nil git, which won't be called)
+	fetcher := &content.Fetcher{}
+	m := Model{
+		fetcher: fetcher,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:  "/dev/null",
+				NewPath:  "b/image.png",
+				IsBinary: true,
+			},
+		},
+	}
+
+	// Should return nil for binary files (no fetch attempt)
+	cmd := m.FetchFileContent(0)
+	assert.Nil(t, cmd, "FetchFileContent should return nil for binary files")
 }

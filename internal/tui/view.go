@@ -113,6 +113,7 @@ const (
 	RowKindSeparatorBottom     // bottom shader line below hunk separator
 	RowKindSummary             // summary row at the end
 	RowKindTruncationIndicator // truncation message row
+	RowKindBinaryIndicator     // binary file message row
 )
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
@@ -154,6 +155,11 @@ type displayRow struct {
 	truncationMessage string // message to display
 	truncateOld       bool   // show truncation on left (old) side
 	truncateNew       bool   // show truncation on right (new) side
+	// Binary file indicator fields
+	isBinaryIndicator bool   // true if this row shows a binary file message
+	binaryMessage     string // message to display (e.g., "Binary file created")
+	binaryOld         bool   // show binary message on left (old) side
+	binaryNew         bool   // show binary message on right (new) side
 	// Hunk separator fields
 	chunkStartLine int // first line of the following chunk (new/right side), for breadcrumbs
 }
@@ -303,64 +309,91 @@ func (m Model) buildRows() []displayRow {
 			// Bottom border of header box (visible only if previous file is also unfolded)
 			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
-			// Line pairs with hunk separators
-			var prevLeft, prevRight int
-			for i, pair := range fp.Pairs {
-				// Add separator before first chunk if it starts after line 1
-				// (when starting at line 1, user can see they're at the top - no breadcrumb needed)
-				if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
-					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
-					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
-					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
-				}
-
-				// Check for gap in line numbers (hunk boundary)
-				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
-					// Find first non-zero New.Num in this chunk for breadcrumb lookup
-					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-					// Add three-line separator: top shader + breadcrumb + bottom shader
-					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
-					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
-					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
-				}
-
-				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair}
-				if i == 0 {
-					row.isFirstLine = true
-				}
-				if i == len(fp.Pairs)-1 {
-					row.isLastLine = true
-				}
-				rows = append(rows, row)
-
-				// Track previous line numbers (use non-zero values)
-				if pair.Old.Num > 0 {
-					prevLeft = pair.Old.Num
-				}
-				if pair.New.Num > 0 {
-					prevRight = pair.New.Num
-				}
-			}
-
-			// Add file truncation indicator if this file was truncated
-			if fp.Truncated || fp.OldTruncated || fp.NewTruncated {
-				// Determine which sides to show truncation on
-				oldTrunc := fp.OldTruncated
-				newTrunc := fp.NewTruncated
-				// Legacy: if only Truncated is set (old code path), show on both sides
-				if fp.Truncated && !fp.OldTruncated && !fp.NewTruncated {
-					oldTrunc = true
-					newTrunc = true
+			// Binary files: show message instead of content
+			if fp.IsBinary {
+				var msg string
+				var showOld, showNew bool
+				if fp.OldPath == "/dev/null" {
+					msg = "Binary file created"
+					showNew = true
+				} else if fp.NewPath == "/dev/null" {
+					msg = "Binary file deleted"
+					showOld = true
+				} else {
+					msg = "Binary file changed"
+					showOld = true
+					showNew = true
 				}
 				rows = append(rows, displayRow{
-					kind:                  RowKindTruncationIndicator,
-					fileIndex:             fileIdx,
-					isTruncationIndicator: true,
-					truncationMessage:     "[truncated due to file size limit]",
-					truncateOld:           oldTrunc,
-					truncateNew:           newTrunc,
+					kind:              RowKindBinaryIndicator,
+					fileIndex:         fileIdx,
+					isBinaryIndicator: true,
+					binaryMessage:     msg,
+					binaryOld:         showOld,
+					binaryNew:         showNew,
+					isFirstLine:       true,
+					isLastLine:        true,
 				})
+			} else {
+				// Line pairs with hunk separators
+				var prevLeft, prevRight int
+				for i, pair := range fp.Pairs {
+					// Add separator before first chunk if it starts after line 1
+					// (when starting at line 1, user can see they're at the top - no breadcrumb needed)
+					if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
+						chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
+						rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
+						rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
+						rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
+					}
+
+					// Check for gap in line numbers (hunk boundary)
+					if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
+						// Find first non-zero New.Num in this chunk for breadcrumb lookup
+						chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
+						// Add three-line separator: top shader + breadcrumb + bottom shader
+						rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
+						rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
+						rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
+					}
+
+					row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair}
+					if i == 0 {
+						row.isFirstLine = true
+					}
+					if i == len(fp.Pairs)-1 {
+						row.isLastLine = true
+					}
+					rows = append(rows, row)
+
+					// Track previous line numbers (use non-zero values)
+					if pair.Old.Num > 0 {
+						prevLeft = pair.Old.Num
+					}
+					if pair.New.Num > 0 {
+						prevRight = pair.New.Num
+					}
+				}
+
+				// Add file truncation indicator if this file was truncated
+				if fp.Truncated || fp.OldTruncated || fp.NewTruncated {
+					// Determine which sides to show truncation on
+					oldTrunc := fp.OldTruncated
+					newTrunc := fp.NewTruncated
+					// Legacy: if only Truncated is set (old code path), show on both sides
+					if fp.Truncated && !fp.OldTruncated && !fp.NewTruncated {
+						oldTrunc = true
+						newTrunc = true
+					}
+					rows = append(rows, displayRow{
+						kind:                  RowKindTruncationIndicator,
+						fileIndex:             fileIdx,
+						isTruncationIndicator: true,
+						truncationMessage:     "[truncated due to file size limit]",
+						truncateOld:           oldTrunc,
+						truncateNew:           newTrunc,
+					})
+				}
 			}
 
 			// Add 4 blank lines after normal content
@@ -744,6 +777,8 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			visible = append(visible, m.renderSummary(row.totalFiles, row.totalAdded, row.totalRemoved, row.maxHeaderWidth, isCursorRow))
 		} else if row.isTruncationIndicator {
 			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew))
+		} else if row.isBinaryIndicator {
+			visible = append(visible, m.renderBinaryIndicator(row.binaryMessage, isCursorRow, row.binaryOld, row.binaryNew))
 		} else {
 			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter))
 		}
@@ -1327,9 +1362,19 @@ func (m Model) highlightSearchInVisible(visible string, isCursorRow bool, curren
 // Uses pre-computed totals from diff parsing, which are accurate even when
 // the file was truncated due to size limits. Falls back to counting from
 // Pairs if totals aren't set (e.g., in tests).
-// TODO: Handle binary files and renames - they should display differently
-// (e.g., "Binary file changed" or show rename info without line stats).
+// For binary files, returns +1/-1 style counts to indicate presence of changes.
 func countFileStats(fp sidebyside.FilePair) (added, removed int) {
+	// Binary files show +1/-1 to indicate presence of change
+	if fp.IsBinary {
+		if fp.OldPath == "/dev/null" {
+			return 1, 0 // Binary file created
+		}
+		if fp.NewPath == "/dev/null" {
+			return 0, 1 // Binary file deleted
+		}
+		return 1, 1 // Binary file changed
+	}
+
 	// Use pre-computed totals if available
 	if fp.TotalAdded > 0 || fp.TotalRemoved > 0 {
 		return fp.TotalAdded, fp.TotalRemoved
@@ -1698,6 +1743,93 @@ func (m Model) renderTruncationIndicator(message string, isCursorRow bool, trunc
 			right = unfocusedCursorArrowStyle.Render("▷") + " " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
 		} else {
 			right = "  " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
+		}
+	} else {
+		// Blank right side
+		blankContent := strings.Repeat(" ", contentWidth)
+		if isCursorRow && m.focused {
+			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+		} else if isCursorRow && !m.focused {
+			right = unfocusedCursorArrowStyle.Render("▷") + " " + blankGutter + " " + blankContent
+		} else {
+			right = "  " + blankGutter + " " + blankContent
+		}
+	}
+
+	separator := hunkSeparatorStyle.Render("│")
+	return left + " " + separator + " " + right
+}
+
+// renderBinaryIndicator renders a row indicating a binary file.
+// Shows message on left side if binaryOld is true, right side if binaryNew is true.
+// Uses the same visual style as truncation indicator (fg=13, dots in gutter).
+func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld, binaryNew bool) string {
+	lineNumWidth := m.lineNumWidth()
+	halfWidth := m.width / 2
+
+	// Calculate content width (same as renderLinePair)
+	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+
+	// Max 3 dots, right-aligned in gutter
+	numDots := 3
+	if numDots > lineNumWidth {
+		numDots = lineNumWidth
+	}
+	padding := strings.Repeat(" ", lineNumWidth-numDots)
+	dots := strings.Repeat("·", numDots)
+	blankGutter := strings.Repeat(" ", lineNumWidth)
+
+	// Style with fg=13 (magenta) - same as truncation indicator
+	binaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
+
+	// Build left side
+	var left string
+	if binaryOld {
+		// Truncate message to fit content width
+		msgText := message
+		if len(msgText) > contentWidth-1 {
+			msgText = msgText[:contentWidth-1]
+		}
+		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
+
+		if isCursorRow && m.focused {
+			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + binaryStyle.Render(msgText) + msgPadding
+		} else if isCursorRow && !m.focused {
+			left = unfocusedCursorArrowStyle.Render("▷") + " " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
+		} else {
+			left = "  " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
+		}
+	} else {
+		// Blank left side
+		blankContent := strings.Repeat(" ", contentWidth)
+		if isCursorRow && m.focused {
+			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+		} else if isCursorRow && !m.focused {
+			left = unfocusedCursorArrowStyle.Render("▷") + " " + blankGutter + " " + blankContent
+		} else {
+			left = "  " + blankGutter + " " + blankContent
+		}
+	}
+
+	// Build right side
+	var right string
+	if binaryNew {
+		// Truncate message to fit content width
+		msgText := message
+		if len(msgText) > contentWidth-1 {
+			msgText = msgText[:contentWidth-1]
+		}
+		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
+
+		if isCursorRow && m.focused {
+			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + binaryStyle.Render(msgText) + msgPadding
+		} else if isCursorRow && !m.focused {
+			right = unfocusedCursorArrowStyle.Render("▷") + " " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
+		} else {
+			right = "  " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
 		}
 	} else {
 		// Blank right side

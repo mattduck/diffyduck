@@ -407,6 +407,17 @@ func (m Model) nextFoldLevel(current sidebyside.FoldLevel) sidebyside.FoldLevel 
 	return next
 }
 
+// nextFoldLevelForFile returns the next fold level for a specific file.
+// Like nextFoldLevel but also skips FoldExpanded for binary files.
+func (m Model) nextFoldLevelForFile(fp sidebyside.FilePair) sidebyside.FoldLevel {
+	next := fp.FoldLevel.NextLevel()
+	if (m.pagerMode || fp.IsBinary) && next == sidebyside.FoldExpanded {
+		// Skip FoldExpanded in pager mode or for binary files
+		return next.NextLevel() // Returns FoldFolded
+	}
+	return next
+}
+
 // handleFoldToggle cycles the fold level of the current file.
 func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	fileIdx := m.currentFileIndex()
@@ -417,7 +428,7 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	// Capture cursor identity before fold change
 	identity := m.getCursorRowIdentity()
 
-	newLevel := m.nextFoldLevel(m.files[fileIdx].FoldLevel)
+	newLevel := m.nextFoldLevelForFile(m.files[fileIdx])
 	m.files[fileIdx].FoldLevel = newLevel
 	m.calculateTotalLines()
 
