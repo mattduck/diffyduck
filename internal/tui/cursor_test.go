@@ -3049,3 +3049,171 @@ func TestMultiCommit_ManyFilesInOneCommit(t *testing.T) {
 
 	assert.Equal(t, 50, fileHeaderCount, "should have 50 file headers")
 }
+
+// =============================================================================
+// Shift+Tab Commit Cycling Tests
+// =============================================================================
+
+func TestShiftTab_CyclesAllCommitsThroughLevels(t *testing.T) {
+	// Create 2 commits, both starting at level 1 (CommitFolded)
+	commits := []sidebyside.CommitSet{
+		{
+			Info:      sidebyside.CommitInfo{SHA: "aaa1111"},
+			FoldLevel: sidebyside.CommitFolded,
+			Files:     []sidebyside.FilePair{{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldFolded}},
+		},
+		{
+			Info:      sidebyside.CommitInfo{SHA: "bbb2222"},
+			FoldLevel: sidebyside.CommitFolded,
+			Files:     []sidebyside.FilePair{{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldFolded}},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	// Level 1: All commits folded
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should start at level 1")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should start at level 1")
+
+	// Shift+Tab 1: Level 1 -> Level 2 (CommitNormal, files FoldFolded)
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should be CommitNormal")
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should be CommitNormal")
+	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file 0 should be FoldFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "file 1 should be FoldFolded")
+	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "commit 0 should be at level 2")
+	assert.Equal(t, 2, m.commitVisibilityLevelFor(1), "commit 1 should be at level 2")
+
+	// Shift+Tab 2: Level 2 -> Level 3 (CommitNormal, files FoldNormal)
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should still be CommitNormal")
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should still be CommitNormal")
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel, "file 0 should be FoldNormal")
+	assert.Equal(t, sidebyside.FoldNormal, m.files[1].FoldLevel, "file 1 should be FoldNormal")
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "commit 0 should be at level 3")
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(1), "commit 1 should be at level 3")
+
+	// Shift+Tab 3: Level 3 -> Level 1 (CommitFolded, files FoldFolded)
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should be CommitFolded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should be CommitFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file 0 should be FoldFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "file 1 should be FoldFolded")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should be back at level 1")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should be back at level 1")
+}
+
+func TestShiftTab_MixedLevels_ResetsToLevel1(t *testing.T) {
+	// Create 2 commits at different levels
+	commits := []sidebyside.CommitSet{
+		{
+			Info:      sidebyside.CommitInfo{SHA: "aaa1111"},
+			FoldLevel: sidebyside.CommitFolded, // Level 1
+			Files:     []sidebyside.FilePair{{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldFolded}},
+		},
+		{
+			Info:      sidebyside.CommitInfo{SHA: "bbb2222"},
+			FoldLevel: sidebyside.CommitNormal, // Level 2 or 3 depending on files
+			Files:     []sidebyside.FilePair{{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldNormal}},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	// Commit 0 at level 1, commit 1 at level 3
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should be at level 1")
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(1), "commit 1 should be at level 3")
+
+	// Shift+Tab: Mixed levels -> Reset to level 1
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should be CommitFolded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should be CommitFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file 0 should be FoldFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "file 1 should be FoldFolded")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should be at level 1")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should be at level 1")
+}
+
+func TestShiftTab_FileExpanded_TreatedAsLevel3(t *testing.T) {
+	// Create a commit where one file is at FoldExpanded (full content)
+	// This should be treated as level 3 (or higher), not level 2
+	commits := []sidebyside.CommitSet{
+		{
+			Info:      sidebyside.CommitInfo{SHA: "aaa1111"},
+			FoldLevel: sidebyside.CommitNormal,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldExpanded}, // Expanded = level 3+
+			},
+		},
+		{
+			Info:      sidebyside.CommitInfo{SHA: "bbb2222"},
+			FoldLevel: sidebyside.CommitNormal,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldExpanded},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	// Both commits have expanded files, should be level 3
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "commit 0 with expanded file should be at level 3")
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(1), "commit 1 with expanded file should be at level 3")
+
+	// Shift+Tab: Level 3 -> Level 1 (files go to FoldFolded, not stay at FoldExpanded)
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+
+	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should be CommitFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file 0 should be FoldFolded")
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should be at level 1")
+}
+
+func TestShiftTab_SingleCommit_CyclesCorrectly(t *testing.T) {
+	// Single commit (like show command) should also cycle correctly
+	commit := sidebyside.CommitSet{
+		Info:      sidebyside.CommitInfo{SHA: "aaa1111"},
+		FoldLevel: sidebyside.CommitFolded,
+		Files:     []sidebyside.FilePair{{OldPath: "a/f.go", NewPath: "b/f.go", FoldLevel: sidebyside.FoldFolded}},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	// Level 1
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0))
+
+	// Shift+Tab -> Level 2
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, 2, m.commitVisibilityLevelFor(0))
+
+	// Shift+Tab -> Level 3
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(0))
+
+	// Shift+Tab -> Level 1
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, 1, m.commitVisibilityLevelFor(0))
+}

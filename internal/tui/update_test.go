@@ -511,16 +511,18 @@ func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
 	m.width = 80
 	m.height = 20
 
-	// Both at FoldNormal initially
+	// Both files at FoldNormal, commit at CommitNormal = level 3
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
 	assert.Equal(t, sidebyside.FoldNormal, m.files[1].FoldLevel)
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel)
 
-	// Press Shift+Tab - both should advance to FoldExpanded
+	// Press Shift+Tab - should cycle from level 3 to level 1 (all folded)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel)
-	assert.Equal(t, sidebyside.FoldExpanded, model.files[1].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel)
+	assert.Equal(t, sidebyside.CommitFolded, model.commits[0].FoldLevel)
 }
 
 func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
@@ -579,16 +581,17 @@ func TestUpdate_FoldToggleAll_DifferentLevels(t *testing.T) {
 	m.width = 80
 	m.height = 20
 
-	// Files at different levels
+	// Files at different levels = mixed state
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
 	assert.Equal(t, sidebyside.FoldExpanded, m.files[1].FoldLevel)
 
-	// Press Shift+Tab - all should collapse to FoldFolded
+	// Press Shift+Tab - mixed state resets to level 1 (all folded)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
 	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
 	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel)
+	assert.Equal(t, sidebyside.CommitFolded, model.commits[0].FoldLevel)
 }
 
 func TestUpdate_FileContentLoadedMsg(t *testing.T) {

@@ -85,9 +85,15 @@ New keybindings for hierarchical navigation:
 | gj/gk | Jump to next/previous file |
 | gJ/gK | Jump to next/previous commit |
 | Tab | Toggle fold on item at cursor (commit or file) |
-| Shift+Tab | Toggle all items at current level |
+| Shift+Tab | Cycle all commits through levels 1→2→3→1 |
 
 Note: Tab behavior changes - it now requires cursor to be on the item to fold.
+
+Shift+Tab commit levels:
+- Level 1: All commits folded (CommitFolded)
+- Level 2: All commits expanded, files folded (CommitNormal, FoldFolded)
+- Level 3: All commits expanded, files showing hunks (CommitNormal, FoldNormal)
+- Mixed: Any commits at different levels → Reset all to Level 1
 
 *** Async Loading
 
@@ -206,9 +212,7 @@ Simple implementation to validate the multi-commit display:
   - Current upfront fetch won't scale past ~20-30 commits
 - [ ] Command-line arguments (~diffyduck log -n 20~, ~diffyduck log main..feature~)
 - [ ] Path filtering (~diffyduck log -- src/~)
-- [ ] Expand/collapse all commits
-  - Will require reworking Shift+Tab behavior
-  - Currently Shift+Tab cycles file fold levels; need to handle commit level too
+- [X] Expand/collapse all commits (Shift+Tab cycles through levels 1→2→3→1)
 - [ ] Commit-level navigation (gJ/gK to jump between commit headers)
 
 *** Phase 4: Navigation Keys

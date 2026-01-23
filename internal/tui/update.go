@@ -469,10 +469,88 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleFoldToggleAll cycles the fold level for all files.
-// If all files are at the same level, advance to next level.
-// If files are at different levels, collapse all to FoldFolded.
+// handleFoldToggleAll cycles the fold level for all commits.
+// Commit visibility levels:
+//   - Level 1: CommitFolded (just commit header)
+//   - Level 2: CommitNormal with all files at FoldFolded (commit + file headers)
+//   - Level 3: CommitNormal with files at FoldNormal (commit + file headers + hunks)
+//
+// If all commits are at the same level, advance to next level.
+// If commits are at different levels (mixed), collapse all to level 1.
 func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
+	// Fall back to legacy file-based behavior if no commits
+	if len(m.commits) == 0 {
+		return m.handleFoldToggleAllFiles()
+	}
+
+	// Capture cursor identity before fold change
+	identity := m.getCursorRowIdentity()
+
+	// Check the visibility level of all commits
+	firstLevel := m.commitVisibilityLevelFor(0)
+	allSame := true
+	for i := 1; i < len(m.commits); i++ {
+		if m.commitVisibilityLevelFor(i) != firstLevel {
+			allSame = false
+			break
+		}
+	}
+
+	var newLevel int
+	if allSame {
+		// All same - advance to next level (1 -> 2 -> 3 -> 1)
+		newLevel = firstLevel%3 + 1
+	} else {
+		// Mixed levels - reset all to level 1
+		newLevel = 1
+	}
+
+	// Apply the new level to all commits
+	m.setAllCommitsToLevel(newLevel)
+
+	m.calculateTotalLines()
+
+	// Preserve scroll position
+	newRowIdx := m.findRowOrNearestAbove(identity)
+	m.adjustScrollToRow(newRowIdx)
+
+	return m, nil
+}
+
+// setAllCommitsToLevel sets all commits and their files to the specified visibility level.
+// Level 1: CommitFolded, all files FoldFolded
+// Level 2: CommitNormal, all files FoldFolded
+// Level 3: CommitNormal, all files FoldNormal
+func (m *Model) setAllCommitsToLevel(level int) {
+	var commitFold sidebyside.CommitFoldLevel
+	var fileFold sidebyside.FoldLevel
+
+	switch level {
+	case 1:
+		commitFold = sidebyside.CommitFolded
+		fileFold = sidebyside.FoldFolded
+	case 2:
+		commitFold = sidebyside.CommitNormal
+		fileFold = sidebyside.FoldFolded
+	case 3:
+		commitFold = sidebyside.CommitNormal
+		fileFold = sidebyside.FoldNormal
+	default:
+		commitFold = sidebyside.CommitFolded
+		fileFold = sidebyside.FoldFolded
+	}
+
+	for i := range m.commits {
+		m.commits[i].FoldLevel = commitFold
+	}
+	for i := range m.files {
+		m.files[i].FoldLevel = fileFold
+	}
+}
+
+// handleFoldToggleAllFiles is the legacy behavior for toggling all files
+// when there are no commits (e.g., pager mode or tests that bypass commits).
+func (m Model) handleFoldToggleAllFiles() (tea.Model, tea.Cmd) {
 	if len(m.files) == 0 {
 		return m, nil
 	}
