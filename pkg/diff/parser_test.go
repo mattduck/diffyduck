@@ -701,3 +701,45 @@ func TestParse_FileCountTruncation_StandardUnifiedDiff(t *testing.T) {
 	assert.Len(t, diff.Files, MaxFiles, "should have exactly MaxFiles files")
 	assert.Equal(t, extraFiles, diff.TruncatedFileCount, "should report correct truncated file count")
 }
+
+func TestParse_CombinedDiffWithUntrackedFiles(t *testing.T) {
+	// This simulates the output of getDiffAll: git diff HEAD + git diff --no-index for untracked files
+	// The untracked file diff from "git diff --no-index /dev/null <file>" has a slightly different format
+	input := `diff --git a/existing.go b/existing.go
+index abc123..def456 100644
+--- a/existing.go
++++ b/existing.go
+@@ -1,3 +1,4 @@
+ package main
+
++// new comment
+ func main() {}
+diff --git a/untracked.txt b/untracked.txt
+new file mode 100644
+index 0000000..d670460
+--- /dev/null
++++ b/untracked.txt
+@@ -0,0 +1,3 @@
++line 1
++line 2
++line 3
+`
+
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 2)
+
+	// First file: modified existing file
+	existing := diff.Files[0]
+	assert.Equal(t, "a/existing.go", existing.OldPath)
+	assert.Equal(t, "b/existing.go", existing.NewPath)
+	assert.Equal(t, 1, existing.TotalAdded)
+	assert.Equal(t, 0, existing.TotalRemoved)
+
+	// Second file: new untracked file
+	untracked := diff.Files[1]
+	assert.Equal(t, "/dev/null", untracked.OldPath)
+	assert.Equal(t, "b/untracked.txt", untracked.NewPath)
+	assert.Equal(t, 3, untracked.TotalAdded)
+	assert.Equal(t, 0, untracked.TotalRemoved)
+}

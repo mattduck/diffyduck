@@ -30,4 +30,12 @@ type Git interface {
 	// The caller must close the returned ReadCloser when done.
 	// The cleanup function must be called after closing the reader to wait for the git process.
 	GetFileContentReader(ref, path string) (io.ReadCloser, func() error, error)
+
+	// ListUntrackedFiles returns a list of untracked files (excluding ignored files).
+	// Uses git ls-files --others --exclude-standard.
+	ListUntrackedFiles() ([]string, error)
+
+	// DiffNewFile generates a diff showing a file as entirely new.
+	// This is used for untracked files that have no previous version.
+	DiffNewFile(path string) (string, error)
 }

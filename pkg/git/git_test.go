@@ -487,3 +487,17 @@ func TestMockGit_LogWithMeta_Error(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, "git log failed", err.Error())
 }
+
+func TestMockGit_ListUntrackedFiles(t *testing.T) {
+	mock := &MockGit{}
+	files, err := mock.ListUntrackedFiles()
+	require.NoError(t, err)
+	assert.Nil(t, files)
+}
+
+func TestMockGit_DiffNewFile(t *testing.T) {
+	mock := &MockGit{}
+	diff, err := mock.DiffNewFile("test.txt")
+	require.NoError(t, err)
+	assert.Equal(t, "", diff)
+}

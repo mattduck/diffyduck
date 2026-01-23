@@ -78,3 +78,51 @@ func TestParseArgs_UnknownArgPassedToDiff(t *testing.T) {
 	assert.Equal(t, content.ModeDiffRefs, result.mode)
 	assert.Equal(t, "HEAD~3", result.ref1)
 }
+
+func TestExtractAllFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantArgs []string
+		wantAll  bool
+	}{
+		{
+			name:     "no flag",
+			args:     []string{"diff", "HEAD"},
+			wantArgs: []string{"diff", "HEAD"},
+			wantAll:  false,
+		},
+		{
+			name:     "--all flag",
+			args:     []string{"diff", "--all"},
+			wantArgs: []string{"diff"},
+			wantAll:  true,
+		},
+		{
+			name:     "-a flag",
+			args:     []string{"diff", "-a"},
+			wantArgs: []string{"diff"},
+			wantAll:  true,
+		},
+		{
+			name:     "--all with other args",
+			args:     []string{"diff", "--all", "--stat"},
+			wantArgs: []string{"diff", "--stat"},
+			wantAll:  true,
+		},
+		{
+			name:     "-a at start",
+			args:     []string{"-a", "diff"},
+			wantArgs: []string{"diff"},
+			wantAll:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotArgs, gotAll := extractAllFlag(tt.args)
+			assert.Equal(t, tt.wantArgs, gotArgs)
+			assert.Equal(t, tt.wantAll, gotAll)
+		})
+	}
+}

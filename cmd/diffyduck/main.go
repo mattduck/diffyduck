@@ -130,8 +130,21 @@ func extractDebugFlag(args []string) ([]string, bool) {
 	return slices.Delete(slices.Clone(args), idx, idx+1), true
 }
 
+// extractAllFlag removes --all/-a from args and returns (remaining args, allMode).
+// --all mode shows all changes including untracked files.
+func extractAllFlag(args []string) ([]string, bool) {
+	for _, flag := range []string{"--all", "-a"} {
+		idx := slices.Index(args, flag)
+		if idx != -1 {
+			return slices.Delete(slices.Clone(args), idx, idx+1), true
+		}
+	}
+	return args, false
+}
+
 func run() error {
 	rawArgs, debugMode := extractDebugFlag(os.Args[1:])
+	rawArgs, allMode := extractAllFlag(rawArgs)
 	args := parseArgs(rawArgs)
 
 	// Check for pager mode: explicit "pager" command or piped stdin
@@ -153,9 +166,21 @@ func run() error {
 
 	switch args.cmd {
 	case "diff":
-		output, err = g.Diff(args.gitArgs...)
-		if err != nil {
-			return fmt.Errorf("git diff: %w", err)
+		if allMode {
+			// --all mode: diff HEAD (staged + unstaged) and include untracked files
+			output, err = getDiffAll(g, args.gitArgs)
+			if err != nil {
+				return err
+			}
+			// Override mode for content fetching: compare HEAD to working tree
+			args.mode = content.ModeDiffRefs
+			args.ref1 = "HEAD"
+			args.ref2 = ""
+		} else {
+			output, err = g.Diff(args.gitArgs...)
+			if err != nil {
+				return fmt.Errorf("git diff: %w", err)
+			}
 		}
 		// diff command has no commit metadata
 	case "show":
@@ -277,6 +302,41 @@ func runLogMode(debugMode bool) error {
 	}
 
 	return nil
+}
+
+// getDiffAll generates a diff that includes all changes: staged, unstaged, and untracked files.
+// This combines `git diff HEAD` (tracked changes) with diffs for untracked files.
+//
+// TODO: Instead of passing all flags through to git, we should implement our own
+// whitelisted flags. Currently path filters don't apply to untracked file listing,
+// and some git flags may not make sense in this context.
+func getDiffAll(g *git.RealGit, extraArgs []string) (string, error) {
+	// Start with git diff HEAD to get all tracked changes
+	diffArgs := append([]string{"HEAD"}, extraArgs...)
+	output, err := g.Diff(diffArgs...)
+	if err != nil {
+		return "", fmt.Errorf("git diff HEAD: %w", err)
+	}
+
+	// Get list of untracked files
+	untrackedFiles, err := g.ListUntrackedFiles()
+	if err != nil {
+		return "", fmt.Errorf("list untracked files: %w", err)
+	}
+
+	// Generate diffs for each untracked file and append
+	for _, file := range untrackedFiles {
+		newFileDiff, err := g.DiffNewFile(file)
+		if err != nil {
+			// Skip files that fail (e.g., binary files, permission issues)
+			continue
+		}
+		if newFileDiff != "" {
+			output += newFileDiff
+		}
+	}
+
+	return output, nil
 }
 
 // runPagerMode handles pager mode where diff input comes from stdin.

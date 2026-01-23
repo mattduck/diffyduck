@@ -73,3 +73,13 @@ func (m *MockGit) GetFileContentReader(ref, path string) (io.ReadCloser, func() 
 	}
 	return nil, nil, fmt.Errorf("file not found: %s at %s", path, ref)
 }
+
+// ListUntrackedFiles returns an empty list (mock doesn't track untracked files).
+func (m *MockGit) ListUntrackedFiles() ([]string, error) {
+	return nil, nil
+}
+
+// DiffNewFile returns an empty diff (mock doesn't generate diffs for new files).
+func (m *MockGit) DiffNewFile(path string) (string, error) {
+	return "", nil
+}

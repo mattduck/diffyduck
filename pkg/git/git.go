@@ -302,6 +302,59 @@ func (g *RealGit) GetFileContentReader(ref, path string) (io.ReadCloser, func() 
 	return stdout, cleanup, nil
 }
 
+// ListUntrackedFiles returns a list of untracked files (excluding ignored files).
+func (g *RealGit) ListUntrackedFiles() ([]string, error) {
+	cmd := exec.Command("git", "ls-files", "--others", "--exclude-standard")
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git ls-files",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+
+	output := strings.TrimSpace(string(out))
+	if output == "" {
+		return nil, nil
+	}
+
+	return strings.Split(output, "\n"), nil
+}
+
+// DiffNewFile generates a diff showing a file as entirely new.
+// Uses git diff --no-index to compare /dev/null against the file.
+func (g *RealGit) DiffNewFile(path string) (string, error) {
+	cmd := exec.Command("git", "diff", "--no-index", "/dev/null", path)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	// git diff --no-index returns exit code 1 when files differ, which is expected
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// Exit code 1 is normal for diffs with changes
+			if exitErr.ExitCode() == 1 {
+				return string(out), nil
+			}
+			return "", &GitError{
+				Command: "git diff --no-index",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return "", err
+	}
+
+	return string(out), nil
+}
+
 // GitError represents an error from a git command.
 type GitError struct {
 	Command string
