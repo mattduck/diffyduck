@@ -43,10 +43,10 @@
 * Next Actions
 
 ** Cursor Integration
-- [ ] Cursor should track through comment rows when scrolling
-- [ ] Comment rows should count as belonging to the line above for file position
-- [ ] Line caches may need refreshing on comment submit
-- [ ] Tests for cursor behavior with comments
+- [X] Cursor should track through comment rows when scrolling
+- [X] Comment rows should count as belonging to the line above for file position
+- [X] Line caches may need refreshing on comment submit
+- [X] Tests for cursor behavior with comments
 
 ** Search Integration
 - [ ] Search should match text within comments

@@ -498,6 +498,18 @@ func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
 		return formatBreadcrumbs(entries, 0)
 	}
 
+	// For comment rows, use the line number the comment belongs to
+	if row.kind == RowKindComment {
+		if row.commentLineNum <= 0 {
+			return ""
+		}
+		entries := m.getStructureAtLine(row.fileIndex, row.commentLineNum)
+		if len(entries) == 0 {
+			return ""
+		}
+		return formatBreadcrumbs(entries, 0)
+	}
+
 	// Get source line number from the new side only
 	// Don't show breadcrumbs for deleted lines to avoid confusion
 	if row.pair.New.Num <= 0 {

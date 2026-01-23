@@ -59,8 +59,9 @@ var (
 	debugValueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan for values
 
 	// Comment styles
-	commentBorderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for borders
-	commentTextStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for text
+	commentBorderStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for borders
+	commentTextStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for text
+	commentRightDimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 )
 
 // View implements tea.Model.
@@ -120,6 +121,7 @@ const (
 	RowKindBinaryIndicator     // binary file message row
 	RowKindCommitHeader        // commit header row (sha, author, date, subject)
 	RowKindCommitBody          // commit body row (full sha, author, date, message)
+	RowKindComment             // inline comment row (belongs to line above)
 )
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
@@ -171,6 +173,62 @@ type displayRow struct {
 	isCommitBody      bool   // true if this is a commit body row
 	commitBodyLine    string // the text content for this body line
 	commitBodyIsBlank bool   // true if this is a blank line in the body
+	// Comment fields (for RowKindComment rows)
+	commentText      string // text of the comment (for rendering)
+	commentLineNum   int    // line number this comment belongs to (for association)
+	commentRowIndex  int    // index within the comment box (0=top border, 1..n-2=content, n-1=bottom border)
+	commentRowCount  int    // total rows in this comment box
+	commentLineIndex int    // which line of comment content this is (for content rows, -1 for borders)
+}
+
+// buildCommentRows creates displayRow entries for a comment box.
+func buildCommentRows(fileIndex int, lineNum int, comment string) []displayRow {
+	if comment == "" {
+		return nil
+	}
+
+	// Split comment into lines
+	lines := strings.Split(comment, "\n")
+	rowCount := len(lines) + 2 // content lines + top border + bottom border
+
+	rows := make([]displayRow, rowCount)
+
+	// Top border
+	rows[0] = displayRow{
+		kind:             RowKindComment,
+		fileIndex:        fileIndex,
+		commentText:      comment,
+		commentLineNum:   lineNum,
+		commentRowIndex:  0,
+		commentRowCount:  rowCount,
+		commentLineIndex: -1, // border, not content
+	}
+
+	// Content lines
+	for i := range lines {
+		rows[i+1] = displayRow{
+			kind:             RowKindComment,
+			fileIndex:        fileIndex,
+			commentText:      comment,
+			commentLineNum:   lineNum,
+			commentRowIndex:  i + 1,
+			commentRowCount:  rowCount,
+			commentLineIndex: i,
+		}
+	}
+
+	// Bottom border
+	rows[rowCount-1] = displayRow{
+		kind:             RowKindComment,
+		fileIndex:        fileIndex,
+		commentText:      comment,
+		commentLineNum:   lineNum,
+		commentRowIndex:  rowCount - 1,
+		commentRowCount:  rowCount,
+		commentLineIndex: -1, // border, not content
+	}
+
+	return rows
 }
 
 // buildRows creates all displayable rows from the model data.
@@ -387,7 +445,18 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 					expandedRows[i].isLastLine = true
 				}
 			}
-			rows = append(rows, expandedRows...)
+			// Append expanded rows with comment rows interleaved
+			for _, expRow := range expandedRows {
+				rows = append(rows, expRow)
+				// Add comment rows if this is a content row with a comment
+				if expRow.kind == RowKindContent && expRow.pair.New.Num > 0 {
+					key := commentKey{fileIndex: fileIdx, newLineNum: expRow.pair.New.Num}
+					if comment, ok := m.comments[key]; ok {
+						commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, comment)
+						rows = append(rows, commentRows...)
+					}
+				}
+			}
 
 			if fp.Truncated || fp.ContentTruncated || fp.OldContentTruncated || fp.NewContentTruncated {
 				oldTrunc := fp.OldContentTruncated || fp.OldTruncated
@@ -475,6 +544,15 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 					row.isLastLine = true
 				}
 				rows = append(rows, row)
+
+				// Add comment rows if this line has a comment
+				if pair.New.Num > 0 {
+					key := commentKey{fileIndex: fileIdx, newLineNum: pair.New.Num}
+					if comment, ok := m.comments[key]; ok {
+						commentRows := buildCommentRows(fileIdx, pair.New.Num, comment)
+						rows = append(rows, commentRows...)
+					}
+				}
 
 				if pair.Old.Num > 0 {
 					prevLeft = pair.Old.Num
@@ -854,19 +932,10 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew))
 		} else if row.isBinaryIndicator {
 			visible = append(visible, m.renderBinaryIndicator(row.binaryMessage, isCursorRow, row.binaryOld, row.binaryNew))
+		} else if row.kind == RowKindComment {
+			visible = append(visible, m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow))
 		} else {
 			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter))
-
-			// Render inline comment if this row has one
-			if comment, hasComment := m.getCommentForRow(row); hasComment && len(visible) < contentHeight {
-				commentLines := m.renderInlineComment(comment, leftHalfWidth, rightHalfWidth, lineNumWidth)
-				for _, line := range commentLines {
-					if len(visible) >= contentHeight {
-						break
-					}
-					visible = append(visible, line)
-				}
-			}
 		}
 	}
 
@@ -2558,16 +2627,13 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	return "     " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 }
 
-// renderInlineComment renders an inline comment below a content row.
-// Returns a slice of rendered lines with a full box border around the comment.
-func (m Model) renderInlineComment(comment string, leftHalfWidth, rightHalfWidth, lineNumWidth int) []string {
-	var result []string
-
+// renderCommentRow renders a single comment row (part of a comment box).
+// The row knows its position within the box (top border, content, or bottom border).
+func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, lineNumWidth int, isCursorRow bool) string {
 	// Gutter: arrow(1) + space(1) + lineNum area
 	gutterWidth := 2 + lineNumWidth
 
 	// Box spans from after gutter to the left half width
-	// Box structure: │ + space + content + space + │
 	boxWidth := leftHalfWidth - gutterWidth
 	if boxWidth < 6 {
 		boxWidth = 6
@@ -2579,39 +2645,65 @@ func (m Model) renderInlineComment(comment string, leftHalfWidth, rightHalfWidth
 		contentWidth = 1
 	}
 
-	// Right side will be empty with shading
-	rightWidth := rightHalfWidth
-
-	// Wrap comment text into lines
-	commentLines := wrapText(comment, contentWidth)
-	if len(commentLines) == 0 {
-		commentLines = []string{""}
+	// Build left gutter with cursor indicator if applicable
+	var leftGutter string
+	if isCursorRow && m.focused {
+		leftGutter = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+	} else if isCursorRow && !m.focused {
+		leftGutter = unfocusedCursorArrowStyle.Render("▷") + " " + strings.Repeat(" ", lineNumWidth)
+	} else {
+		leftGutter = strings.Repeat(" ", gutterWidth)
 	}
 
-	gutter := strings.Repeat(" ", gutterWidth)
+	// Build right gutter with cursor indicator if applicable
+	var rightGutter string
+	if isCursorRow && m.focused {
+		rightGutter = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
+	} else if isCursorRow && !m.focused {
+		rightGutter = unfocusedCursorArrowStyle.Render("▷") + " " + strings.Repeat(" ", lineNumWidth)
+	} else {
+		rightGutter = strings.Repeat(" ", gutterWidth)
+	}
+
 	sep := centerDividerStyle.Render(" │ ")
-	rightSide := hunkSeparatorStyle.Render(strings.Repeat("░", rightWidth))
 
-	// Top border: ┌────────┐
-	topBorder := "┌" + strings.Repeat("─", boxWidth-2) + "┐"
-	result = append(result, gutter+commentBorderStyle.Render(topBorder)+sep+rightSide)
+	// Right side content area (dim shading)
+	rightContentWidth := rightHalfWidth - gutterWidth
+	if rightContentWidth < 0 {
+		rightContentWidth = 0
+	}
+	rightContent := commentRightDimStyle.Render(strings.Repeat("░", rightContentWidth))
 
-	// Content lines: │ text │
-	for _, line := range commentLines {
-		lineWidth := displayWidth(line)
-		padding := contentWidth - lineWidth
-		if padding < 0 {
-			padding = 0
-		}
-		paddedText := line + strings.Repeat(" ", padding)
-		result = append(result, gutter+commentBorderStyle.Render("│ ")+commentTextStyle.Render(paddedText)+" "+commentBorderStyle.Render("│")+sep+rightSide)
+	// Determine which part of the comment box this row is
+	isTopBorder := row.commentRowIndex == 0
+	isBottomBorder := row.commentRowIndex == row.commentRowCount-1
+
+	if isTopBorder {
+		topBorder := "┌" + strings.Repeat("─", boxWidth-2) + "┐"
+		return leftGutter + commentBorderStyle.Render(topBorder) + sep + rightGutter + rightContent
 	}
 
-	// Bottom border: └────────┘
-	bottomBorder := "└" + strings.Repeat("─", boxWidth-2) + "┘"
-	result = append(result, gutter+commentBorderStyle.Render(bottomBorder)+sep+rightSide)
+	if isBottomBorder {
+		bottomBorder := "└" + strings.Repeat("─", boxWidth-2) + "┘"
+		return leftGutter + commentBorderStyle.Render(bottomBorder) + sep + rightGutter + rightContent
+	}
 
-	return result
+	// Content line - get the specific line from the comment
+	lines := strings.Split(row.commentText, "\n")
+	lineIdx := row.commentLineIndex
+	var lineText string
+	if lineIdx >= 0 && lineIdx < len(lines) {
+		lineText = lines[lineIdx]
+	}
+
+	lineWidth := displayWidth(lineText)
+	padding := contentWidth - lineWidth
+	if padding < 0 {
+		padding = 0
+	}
+	paddedText := lineText + strings.Repeat(" ", padding)
+
+	return leftGutter + commentBorderStyle.Render("│ ") + commentTextStyle.Render(paddedText) + " " + commentBorderStyle.Render("│") + sep + rightGutter + rightContent
 }
 
 // wrapText wraps text to fit within maxWidth, preserving words where possible.

@@ -123,6 +123,9 @@ func (m *Model) submitComment() {
 	m.commentMode = false
 	m.commentInput = ""
 	m.commentCursor = 0
+
+	// Invalidate row cache since comment rows changed
+	m.rowsCacheValid = false
 }
 
 // cancelComment exits comment mode without saving.
@@ -253,19 +256,4 @@ func (m *Model) commentKillToEnd() {
 		// Kill to newline (keep the newline)
 		m.commentInput = m.commentInput[:m.commentCursor] + after[nextNewline:]
 	}
-}
-
-// getCommentForRow returns the comment for a given row, if any.
-func (m Model) getCommentForRow(row displayRow) (string, bool) {
-	if row.kind != RowKindContent || row.pair.New.Num <= 0 {
-		return "", false
-	}
-
-	key := commentKey{
-		fileIndex:  row.fileIndex,
-		newLineNum: row.pair.New.Num,
-	}
-
-	comment, ok := m.comments[key]
-	return comment, ok
 }
