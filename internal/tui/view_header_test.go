@@ -187,11 +187,11 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 			// Get the expected fold icon
 			foldIcon := m.foldLevelIcon(tt.foldLevel)
 
-			// Header format should be: fileNum <foldIcon> <statusIndicator> filename
-			// e.g., "1    ○ + new.go" or "1    ◐ ~ file.go"
-			expectedPattern := foldIcon + " " + tt.wantIndicator + " "
+			// Header format should be: <foldIcon> <#fileNum> <statusIndicator> filename
+			// e.g., "○ #1 + new.go" or "◐ #1 ~ file.go"
+			expectedPattern := foldIcon + " #1 " + tt.wantIndicator + " "
 			assert.Contains(t, header, expectedPattern,
-				"header should contain fold icon followed by status indicator: %s", expectedPattern)
+				"header should contain fold icon, file number, then status indicator: %s", expectedPattern)
 		})
 	}
 }

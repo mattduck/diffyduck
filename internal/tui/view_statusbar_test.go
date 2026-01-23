@@ -109,8 +109,9 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 	assert.Contains(t, topBar, "+1")
 	assert.Contains(t, topBar, "-1")
 
-	// Top bar should contain file counter #1
-	assert.Contains(t, topBar, "#1")
+	// Top bar should contain fold icon and file counter
+	assert.Contains(t, topBar, "◐") // fold icon for normal level
+	assert.Contains(t, topBar, "1") // file counter (no # prefix)
 }
 
 func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {

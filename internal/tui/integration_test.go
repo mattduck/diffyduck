@@ -316,10 +316,11 @@ index 0000000..abc1234
 	var emptyHeader, contentHeader string
 	for _, line := range lines {
 		stripped := stripANSI(line)
-		if strings.Contains(stripped, "empty.txt") && strings.Contains(stripped, "#") {
+		// Header lines have the fold icon and filename
+		if strings.Contains(stripped, "empty.txt") && strings.Contains(stripped, "│") {
 			emptyHeader = stripped
 		}
-		if strings.Contains(stripped, "content.txt") && strings.Contains(stripped, "#") {
+		if strings.Contains(stripped, "content.txt") && strings.Contains(stripped, "│") {
 			contentHeader = stripped
 		}
 	}

@@ -207,9 +207,12 @@ func (m Model) buildRows() []displayRow {
 	}
 
 	// Calculate consistent header box width for borders
-	// Box contains: lineNumWidth + " ◐ ~ " (5 chars) + maxHeaderWidth + maxStatsBarWidth
-	lineNumWidth := m.lineNumWidth()
-	iconPartWidth := 5 // " ◐ ~ " = space + icon(1) + space + status(1) + space
+	// Box contains: indent(3) + icon(1) + space(1) + fileNum(#NN) + space(1) + status(1) + space(1) + header + stats
+	// New layout: "   ◐ #01 ~ filename +N -M"
+	totalFiles := len(m.files)
+	numDigits := len(fmt.Sprintf("%d", totalFiles))
+	fileNumWidth := 1 + numDigits                         // # + digits
+	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1 // "   ◐ #01 ~ "
 	maxStatsBarWidth := 0
 	if maxAddWidth > 0 || maxRemWidth > 0 {
 		maxStatsBarWidth = 1 + maxAddWidth // leading space + add column
@@ -218,7 +221,7 @@ func (m Model) buildRows() []displayRow {
 		}
 		maxStatsBarWidth += maxRemWidth // removal column
 	}
-	headerBoxWidth := lineNumWidth + iconPartWidth + maxHeaderWidth + maxStatsBarWidth
+	headerBoxWidth := iconPartWidth + maxHeaderWidth + maxStatsBarWidth
 
 	for fileIdx, fp := range m.files {
 		// Count stats once per file for header display
@@ -1006,7 +1009,6 @@ func (m Model) renderInterFileBlank() string {
 // renderHeaderTopBorder renders the top border of the file header box.
 // Format: ─────────────────────┐ (horizontal lines on left, corner on right)
 func (m Model) renderHeaderTopBorder(headerBoxWidth int, borderVisible bool, status FileStatus, isCursorRow bool) string {
-	lineNumWidth := m.lineNumWidth()
 	_ = status // status not used for top border (no shading)
 
 	// Use darker color when border should not be visible (fg=0)
@@ -1021,17 +1023,16 @@ func (m Model) renderHeaderTopBorder(headerBoxWidth int, borderVisible bool, sta
 	}
 
 	if isCursorRow {
-		// Arrow at position 0, then ─ for position 1, then gutter area highlighted (when focused)
-		// +1 at end for the space gap before the border corner
+		// Arrow at position 0, then 1 char with cursor bg, then rest of border
 		var styledGutter, arrow string
 		if m.focused {
-			styledGutter = cursorStyle.Render(strings.Repeat("─", lineNumWidth))
+			styledGutter = cursorStyle.Render("─")
 			arrow = cursorArrowStyle.Render("▶")
 		} else {
-			styledGutter = borderStyle.Render(strings.Repeat("─", lineNumWidth))
+			styledGutter = borderStyle.Render("─")
 			arrow = unfocusedCursorArrowStyle.Render("▷")
 		}
-		restWidth := innerWidth - lineNumWidth + 1
+		restWidth := innerWidth + 1 // +1 for space gap before corner
 		if restWidth < 0 {
 			restWidth = 0
 		}
@@ -1045,7 +1046,6 @@ func (m Model) renderHeaderTopBorder(headerBoxWidth int, borderVisible bool, sta
 // renderHeaderBottomBorder renders the bottom border of the file header box.
 // Format: ─────────────────────┘ (horizontal lines on left, corner on right)
 func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, status FileStatus, isCursorRow bool) string {
-	lineNumWidth := m.lineNumWidth()
 	_ = status // status not used for bottom border
 
 	// Use darker color when border should not be visible (fg=0)
@@ -1060,17 +1060,16 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 	}
 
 	if isCursorRow {
-		// Arrow at position 0, then ─ for position 1, then gutter area highlighted (when focused)
-		// +1 at end for the space gap before the border corner
+		// Arrow at position 0, then 1 char with cursor bg, then rest of border
 		var styledGutter, arrow string
 		if m.focused {
-			styledGutter = cursorStyle.Render(strings.Repeat("─", lineNumWidth))
+			styledGutter = cursorStyle.Render("─")
 			arrow = cursorArrowStyle.Render("▶")
 		} else {
-			styledGutter = borderStyle.Render(strings.Repeat("─", lineNumWidth))
+			styledGutter = borderStyle.Render("─")
 			arrow = unfocusedCursorArrowStyle.Render("▷")
 		}
-		restWidth := innerWidth - lineNumWidth + 1
+		restWidth := innerWidth + 1 // +1 for space gap before corner
 		if restWidth < 0 {
 			restWidth = 0
 		}
@@ -1128,11 +1127,8 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		prefix = "  "
 	}
 
-	// Fold icon with appropriate styling
+	// Fold icon - always fg=8, no faint
 	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	if row.commitFoldLevel == sidebyside.CommitFolded {
-		foldIconStyle = foldIconStyle.Faint(true)
-	}
 
 	sha := shaStyle.Render(commitInfo.ShortSHA())
 	author := authorStyle.Render(commitInfo.Author)
@@ -1173,7 +1169,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		}
 	}
 
-	// Build left side content
+	// Build left side content - no background highlight, just the arrow indicates cursor
 	leftContent := prefix + foldIconStyle.Render(foldIcon) + " " + sha + sep + author + sep + date + sep + subject
 
 	// Calculate padding to right-align the stats
@@ -1248,10 +1244,8 @@ func (m Model) renderCommitLine() string {
 	case sidebyside.CommitExpanded:
 		foldIcon = "●"
 	}
+	// Fold icon - always fg=8, no faint
 	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	if commit.FoldLevel == sidebyside.CommitFolded {
-		foldIconStyle = foldIconStyle.Faint(true)
-	}
 	foldIconRendered := foldIconStyle.Render(foldIcon) + " "
 
 	sha := shaStyle.Render(commitInfo.ShortSHA())
@@ -1317,20 +1311,23 @@ func (m Model) renderCommitLine() string {
 func (m Model) renderFileLine(info StatusInfo) string {
 	// Only show file info when cursor is on a file (not on commit header)
 	var content string
+	var foldIcon string
+	var fileNum string
+	var leftSectionWidth int
 	if info.CurrentFile > 0 {
 		content = m.formatStatusFileInfo(info)
-	}
 
-	// Left section: file counter #01 - colored to match current file's status
-	// Hide counter when on commit header (CurrentFile == 0)
-	var fileCounter string
-	var counterDisplayWidth int
-	if info.CurrentFile > 0 {
+		// Fold icon
+		foldIcon = m.foldLevelIcon(info.FoldLevel)
+
+		// File number with # prefix
 		_, fileCounterStyle := fileStatusIndicator(FileStatus(info.FileStatus))
 		totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
-		counterText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
-		fileCounter = fileCounterStyle.Render(counterText) + " "
-		counterDisplayWidth = len(counterText) + 1 // +1 for trailing space
+		fileNumText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
+		fileNum = fileCounterStyle.Render(fileNumText) + " "
+
+		// Layout: indent(3) + icon(1) + space(1) + #fileNum + space(1)
+		leftSectionWidth = 3 + 1 + 1 + 1 + totalWidth + 1
 	}
 
 	// Right section: N files +123 -123 (only when no commit info - stats move to commit line otherwise)
@@ -1378,15 +1375,21 @@ func (m Model) renderFileLine(info StatusInfo) string {
 	}
 
 	// Calculate widths for padding
-	// Layout: prefix + counter + content + padding + rightSection
+	// Layout: prefix(2) + leftSection + content + padding + rightSection
 	prefixWidth := 2 // "▶ " or "  "
 	contentWidth := lipgloss.Width(content)
-	padding := m.width - prefixWidth - counterDisplayWidth - contentWidth - rightWidth
+	padding := m.width - prefixWidth - leftSectionWidth - contentWidth - rightWidth
 	if padding < 0 {
 		padding = 0
 	}
 
-	return prefix + fileCounter + content + strings.Repeat(" ", padding) + rightSection
+	// Build the left section: indent(3) + icon + space + fileNum
+	var leftSection string
+	if info.CurrentFile > 0 {
+		leftSection = "  " + foldIcon + " " + fileNum
+	}
+
+	return prefix + leftSection + content + strings.Repeat(" ", padding) + rightSection
 }
 
 // formatRelativeDate converts an ISO 8601 date string to a relative format like "2d ago".
@@ -1551,11 +1554,8 @@ func (m Model) formatDebugStats() (string, int) {
 }
 
 // formatStatusFileInfo formats the file info for the status bar.
-// Format: foldIcon statusIcon fileName +N -M
+// Format: statusIcon fileName +N -M (icon handled separately by caller)
 func (m Model) formatStatusFileInfo(info StatusInfo) string {
-	// Get fold level icon
-	icon := m.foldLevelIcon(info.FoldLevel)
-
 	// Get status indicator - shows spinner if file is loading
 	fileIndex := info.CurrentFile - 1 // CurrentFile is 1-based
 	styledStatus := m.fileStatusSymbolStyled(fileIndex, FileStatus(info.FileStatus))
@@ -1580,7 +1580,7 @@ func (m Model) formatStatusFileInfo(info StatusInfo) string {
 		breadcrumbs = "  " + breadcrumbStyle.Render(info.Breadcrumbs)
 	}
 
-	return icon + " " + styledStatus + " " + info.FileName + stats + breadcrumbs
+	return styledStatus + " " + info.FileName + stats + breadcrumbs
 }
 
 // renderSearchPrompt renders the status bar as a search input prompt.
@@ -2134,16 +2134,14 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	_, fileStatusStyle := fileStatusIndicator(status) // for coloring file number and trailing fill
 	styledStatus := m.fileStatusSymbolStyled(fileIndex, status)
 
-	lineNumWidth := m.lineNumWidth()
-
-	// File number with hash prefix and leading zeros, left-aligned with padding to match lineNumWidth
+	// File number with # prefix and leading zeros
 	// Color matches the file status (green=added, red=deleted, blue=modified/renamed)
 	totalFiles := len(m.files)
 	numDigits := len(fmt.Sprintf("%d", totalFiles))
 	fileNum := fmt.Sprintf("#%0*d", numDigits, fileIndex+1) // #01
-	fileNumPadded := fileNum + strings.Repeat(" ", lineNumWidth-len(fileNum))
+	fileNumWidth := 1 + numDigits                           // # + digits
 
-	// All headers use same format: gutter + icon + status + header + stats + │ + trailing
+	// All headers use same format: indent + icon + fileNum + status + header + stats + │ + trailing
 	statsBar := formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth)
 	statsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerPadding := ""
@@ -2152,9 +2150,9 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	}
 
 	// Calculate content width and pad to match headerBoxWidth
-	// Status symbol is always 1 character (or spinner which is also 1 char)
-	iconPartWidth := 1 + len(icon) + 1 + 1 + 1 // " icon status "
-	contentWidth := lineNumWidth + iconPartWidth + headerTextWidth + len(headerPadding) + statsBarWidth
+	// Layout: indent(3) + icon(1) + space(1) + fileNum + space(1) + status(1) + space(1) + header
+	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1 // "   ◐ #01 ~ "
+	contentWidth := iconPartWidth + headerTextWidth + len(headerPadding) + statsBarWidth
 	boxPadding := ""
 	if headerBoxWidth > contentWidth {
 		boxPadding = strings.Repeat(" ", headerBoxWidth-contentWidth)
@@ -2186,20 +2184,25 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 		styledHeader = " " + header + headerPadding
 	}
 
+	// Style the fold icon with fg=8 (same as commit header)
+	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	styledIcon := iconStyle.Render(icon)
+
 	if isCursorRow && m.focused {
-		// Format: arrow + space + fileNum(with bg) + space + icon + status + header + padding + stats + boxPadding + space + │ + trailing
-		styledFileNum := cursorStyle.Render(fileNumPadded)
-		return cursorArrowStyle.Render("▶") + " " + styledFileNum + headerStyle.Render(" "+icon+" ") + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+		// Format: arrow + [small gutter](with bg) + indent + icon + fileNum + status + header + padding + stats + boxPadding + space + │ + trailing
+		// Just 1 char of cursor bg, then 2 more spaces to reach the icon position
+		styledGutter := cursorStyle.Render(" ")
+		return cursorArrowStyle.Render("▶") + " " + styledGutter + "  " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 	}
 
 	if isCursorRow && !m.focused {
 		// Unfocused: outline arrow, no background highlight (use same style as non-cursor row)
-		return unfocusedCursorArrowStyle.Render("▷") + " " + fileStatusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+		return unfocusedCursorArrowStyle.Render("▷") + "    " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 	}
 
 	// Normal rendering
-	// Format: space + space + fileNum + space + icon + status + header + padding + stats + boxPadding + space + │ + trailing
-	return "  " + fileStatusStyle.Render(fileNumPadded) + headerStyle.Render(" "+icon+" ") + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+	// Format: prefix(2) + indent(3) + icon + fileNum + status + header + padding + stats + boxPadding + space + │ + trailing
+	return "     " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool) string {

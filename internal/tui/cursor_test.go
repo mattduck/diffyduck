@@ -362,10 +362,10 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 		// lines[0]=topBar, lines[1]=divider, lines[2]=top border, lines[3]=header (with cursor)
 		headerLine := lines[3]
 
-		// The cursor style should end before the space and icon
-		// Pattern: [cursor style]#1  [reset][header style] ◐ filename...
-		// Only the file number area is highlighted, not the space or icon
-		assert.Contains(t, headerLine, ansiCursorStyle+"#1", "file number should be highlighted")
+		// The cursor style applies to a minimal 1-char gutter area (before the icon)
+		// Pattern: [cursor style] [reset]  icon #1 status filename...
+		// Only the gutter space is highlighted, not the icon or file number
+		assert.Contains(t, headerLine, ansiCursorStyle+" ", "gutter should be highlighted")
 		assert.Contains(t, headerLine, ansiReset, "highlighted section should end with reset")
 	})
 }
