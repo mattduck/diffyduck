@@ -53,6 +53,16 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.commentMoveBack()
 		return m, nil
 
+	case tea.KeyUp, tea.KeyCtrlP:
+		// Move up one line
+		m.commentMoveUp()
+		return m, nil
+
+	case tea.KeyDown, tea.KeyCtrlN:
+		// Move down one line
+		m.commentMoveDown()
+		return m, nil
+
 	case tea.KeyCtrlK:
 		// Kill to end of line
 		m.commentKillToEnd()
@@ -256,4 +266,73 @@ func (m *Model) commentKillToEnd() {
 		// Kill to newline (keep the newline)
 		m.commentInput = m.commentInput[:m.commentCursor] + after[nextNewline:]
 	}
+}
+
+// commentMoveUp moves the cursor up one line, preserving column position.
+func (m *Model) commentMoveUp() {
+	before := m.commentInput[:m.commentCursor]
+
+	// Find the start of the current line
+	currentLineStart := strings.LastIndex(before, "\n")
+	if currentLineStart == -1 {
+		// Already on first line, can't go up
+		return
+	}
+
+	// Column position within current line
+	col := m.commentCursor - currentLineStart - 1
+
+	// Find the start of the previous line
+	prevLineStart := strings.LastIndex(before[:currentLineStart], "\n")
+	if prevLineStart == -1 {
+		prevLineStart = -1 // previous line starts at beginning
+	}
+
+	// Length of previous line
+	prevLineLen := currentLineStart - prevLineStart - 1
+
+	// Move cursor to same column on previous line (or end if shorter)
+	if col > prevLineLen {
+		col = prevLineLen
+	}
+	m.commentCursor = prevLineStart + 1 + col
+}
+
+// commentMoveDown moves the cursor down one line, preserving column position.
+func (m *Model) commentMoveDown() {
+	before := m.commentInput[:m.commentCursor]
+	after := m.commentInput[m.commentCursor:]
+
+	// Find where current line starts
+	currentLineStart := strings.LastIndex(before, "\n")
+	if currentLineStart == -1 {
+		currentLineStart = -1 // current line starts at beginning
+	}
+
+	// Column position within current line
+	col := m.commentCursor - currentLineStart - 1
+
+	// Find the next newline (end of current line)
+	nextNewline := strings.Index(after, "\n")
+	if nextNewline == -1 {
+		// Already on last line, can't go down
+		return
+	}
+
+	// Find the end of the next line (or end of input)
+	nextLineStart := m.commentCursor + nextNewline + 1
+	restAfterNextLine := m.commentInput[nextLineStart:]
+	nextLineEnd := strings.Index(restAfterNextLine, "\n")
+	var nextLineLen int
+	if nextLineEnd == -1 {
+		nextLineLen = len(restAfterNextLine)
+	} else {
+		nextLineLen = nextLineEnd
+	}
+
+	// Move cursor to same column on next line (or end if shorter)
+	if col > nextLineLen {
+		col = nextLineLen
+	}
+	m.commentCursor = nextLineStart + col
 }

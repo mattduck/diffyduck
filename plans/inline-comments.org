@@ -27,6 +27,8 @@
 - [X] C-e: End of line
 - [X] C-f / Right: Forward char
 - [X] C-b / Left: Backward char
+- [X] C-p / Up: Move up one line
+- [X] C-n / Down: Move down one line
 - [X] C-k: Kill to end of line
 - [X] C-c / C-g: Cancel comment
 - [X] Backspace: Delete backward

@@ -999,3 +999,520 @@ func TestComment_ExpandedVsNormalView(t *testing.T) {
 	assert.NotEqual(t, normalTotalLines, expandedTotalLines,
 		"expanded view should have different total lines than normal")
 }
+
+// =============================================================================
+// Comment Input Navigation Tests
+// =============================================================================
+
+// Test: Up arrow moves cursor to previous line
+func TestComment_MoveUp_BasicNavigation(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "line1\nline2\nline3"
+	m.commentCursor = 12 // at 'l' of "line3"
+
+	m.commentMoveUp()
+
+	// Should be at same column on line2
+	assert.Equal(t, 6, m.commentCursor, "cursor should move to line2")
+}
+
+// Test: Down arrow moves cursor to next line
+func TestComment_MoveDown_BasicNavigation(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "line1\nline2\nline3"
+	m.commentCursor = 0 // at 'l' of "line1"
+
+	m.commentMoveDown()
+
+	// Should be at same column on line2
+	assert.Equal(t, 6, m.commentCursor, "cursor should move to line2")
+}
+
+// Test: Up arrow on first line does nothing
+func TestComment_MoveUp_FirstLine_NoOp(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "line1\nline2"
+	m.commentCursor = 2 // in middle of "line1"
+
+	m.commentMoveUp()
+
+	assert.Equal(t, 2, m.commentCursor, "cursor should stay on first line")
+}
+
+// Test: Down arrow on last line does nothing
+func TestComment_MoveDown_LastLine_NoOp(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "line1\nline2"
+	m.commentCursor = 8 // in middle of "line2"
+
+	m.commentMoveDown()
+
+	assert.Equal(t, 8, m.commentCursor, "cursor should stay on last line")
+}
+
+// Test: Up arrow preserves column position
+func TestComment_MoveUp_PreservesColumn(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "abcdef\nghijkl"
+	m.commentCursor = 10 // at 'j' in "ghijkl" (col 3)
+
+	m.commentMoveUp()
+
+	// Should be at 'd' in "abcdef" (col 3)
+	assert.Equal(t, 3, m.commentCursor)
+}
+
+// Test: Down arrow preserves column position
+func TestComment_MoveDown_PreservesColumn(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "abcdef\nghijkl"
+	m.commentCursor = 3 // at 'd' in "abcdef" (col 3)
+
+	m.commentMoveDown()
+
+	// Should be at 'j' in "ghijkl" (col 3)
+	assert.Equal(t, 10, m.commentCursor)
+}
+
+// Test: Up arrow clamps to shorter line
+func TestComment_MoveUp_ClampsToShorterLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "short\nvery long line"
+	m.commentCursor = 15 // near end of "very long line"
+
+	m.commentMoveUp()
+
+	// Should clamp to end of "short" (position 5)
+	assert.Equal(t, 5, m.commentCursor)
+}
+
+// Test: Down arrow clamps to shorter line
+func TestComment_MoveDown_ClampsToShorterLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "very long line\nshort"
+	m.commentCursor = 10 // at 'l' in "very long line" (col 10)
+
+	m.commentMoveDown()
+
+	// Should clamp to end of "short" (position 15+5=20)
+	assert.Equal(t, 20, m.commentCursor)
+}
+
+// Test: Up/Down with key message
+func TestComment_UpDownKeys_Integration(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "line1\nline2\nline3"
+	m.commentCursor = 12 // at 'l' of "line3"
+
+	// Press Up
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m2 := newModel.(Model)
+
+	assert.Equal(t, 6, m2.commentCursor, "Up key should move to previous line")
+
+	// Press Down
+	newModel, _ = m2.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m3 := newModel.(Model)
+
+	assert.Equal(t, 12, m3.commentCursor, "Down key should move back to next line")
+}
+
+// Test: Ctrl+P and Ctrl+N also work for up/down
+func TestComment_CtrlPN_Navigation(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "line1\nline2"
+	m.commentCursor = 6 // at 'l' of "line2"
+
+	// Press Ctrl+P (up)
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	m2 := newModel.(Model)
+
+	assert.Equal(t, 0, m2.commentCursor, "Ctrl+P should move to previous line")
+
+	// Press Ctrl+N (down)
+	newModel, _ = m2.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
+	m3 := newModel.(Model)
+
+	assert.Equal(t, 6, m3.commentCursor, "Ctrl+N should move to next line")
+}
+
+// =============================================================================
+// Comment Editing Primitive Tests
+// =============================================================================
+
+// Test: insertCommentRune inserts at cursor
+func TestComment_InsertRune(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 2
+
+	m.insertCommentRune('X')
+
+	assert.Equal(t, "heXllo", m.commentInput)
+	assert.Equal(t, 3, m.commentCursor)
+}
+
+// Test: insertCommentRune handles unicode
+func TestComment_InsertRune_Unicode(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 5
+
+	m.insertCommentRune('世')
+
+	assert.Equal(t, "hello世", m.commentInput)
+}
+
+// Test: commentDeleteBackward at start does nothing
+func TestComment_DeleteBackward_AtStart(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 0
+
+	m.commentDeleteBackward()
+
+	assert.Equal(t, "hello", m.commentInput)
+	assert.Equal(t, 0, m.commentCursor)
+}
+
+// Test: commentDeleteBackward deletes previous char
+func TestComment_DeleteBackward_Middle(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 3
+
+	m.commentDeleteBackward()
+
+	assert.Equal(t, "helo", m.commentInput)
+	assert.Equal(t, 2, m.commentCursor)
+}
+
+// Test: commentDeleteForward at end does nothing
+func TestComment_DeleteForward_AtEnd(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 5
+
+	m.commentDeleteForward()
+
+	assert.Equal(t, "hello", m.commentInput)
+	assert.Equal(t, 5, m.commentCursor)
+}
+
+// Test: commentDeleteForward deletes next char
+func TestComment_DeleteForward_Middle(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 2
+
+	m.commentDeleteForward()
+
+	assert.Equal(t, "helo", m.commentInput)
+	assert.Equal(t, 2, m.commentCursor)
+}
+
+// Test: commentMoveForward at end does nothing
+func TestComment_MoveForward_AtEnd(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 5
+
+	m.commentMoveForward()
+
+	assert.Equal(t, 5, m.commentCursor)
+}
+
+// Test: commentMoveForward moves one char
+func TestComment_MoveForward_Middle(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 2
+
+	m.commentMoveForward()
+
+	assert.Equal(t, 3, m.commentCursor)
+}
+
+// Test: commentMoveBack at start does nothing
+func TestComment_MoveBack_AtStart(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 0
+
+	m.commentMoveBack()
+
+	assert.Equal(t, 0, m.commentCursor)
+}
+
+// Test: commentMoveBack moves one char
+func TestComment_MoveBack_Middle(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello"
+	m.commentCursor = 3
+
+	m.commentMoveBack()
+
+	assert.Equal(t, 2, m.commentCursor)
+}
+
+// Test: commentMoveLineStart on first line
+func TestComment_MoveLineStart_FirstLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello\nworld"
+	m.commentCursor = 3
+
+	m.commentMoveLineStart()
+
+	assert.Equal(t, 0, m.commentCursor)
+}
+
+// Test: commentMoveLineStart on second line
+func TestComment_MoveLineStart_SecondLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello\nworld"
+	m.commentCursor = 9 // in "world"
+
+	m.commentMoveLineStart()
+
+	assert.Equal(t, 6, m.commentCursor) // start of "world"
+}
+
+// Test: commentMoveLineEnd on first line
+func TestComment_MoveLineEnd_FirstLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello\nworld"
+	m.commentCursor = 2
+
+	m.commentMoveLineEnd()
+
+	assert.Equal(t, 5, m.commentCursor) // before newline
+}
+
+// Test: commentMoveLineEnd on last line
+func TestComment_MoveLineEnd_LastLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello\nworld"
+	m.commentCursor = 7
+
+	m.commentMoveLineEnd()
+
+	assert.Equal(t, 11, m.commentCursor) // end of input
+}
+
+// Test: commentKillToEnd kills to newline
+func TestComment_KillToEnd_MiddleLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello\nworld"
+	m.commentCursor = 2
+
+	m.commentKillToEnd()
+
+	assert.Equal(t, "he\nworld", m.commentInput)
+}
+
+// Test: commentKillToEnd kills to end of input
+func TestComment_KillToEnd_LastLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello\nworld"
+	m.commentCursor = 8
+
+	m.commentKillToEnd()
+
+	assert.Equal(t, "hello\nwo", m.commentInput)
+}
+
+// Test: cancelComment exits comment mode
+func TestComment_Cancel(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "some text"
+	m.commentCursor = 5
+
+	m.cancelComment()
+
+	assert.False(t, m.commentMode)
+	assert.Empty(t, m.commentInput)
+	assert.Equal(t, 0, m.commentCursor)
+}
+
+// Test: handleCommentInput dispatches keys correctly
+func TestComment_HandleInput_AllKeys(t *testing.T) {
+	tests := []struct {
+		name       string
+		key        tea.KeyMsg
+		input      string
+		cursor     int
+		wantInput  string
+		wantCursor int
+		wantMode   bool
+	}{
+		{
+			name:       "Ctrl+C cancels",
+			key:        tea.KeyMsg{Type: tea.KeyCtrlC},
+			input:      "test",
+			cursor:     2,
+			wantInput:  "",
+			wantCursor: 0,
+			wantMode:   false,
+		},
+		{
+			name:       "Ctrl+G cancels",
+			key:        tea.KeyMsg{Type: tea.KeyCtrlG},
+			input:      "test",
+			cursor:     2,
+			wantInput:  "",
+			wantCursor: 0,
+			wantMode:   false,
+		},
+		{
+			name:       "Enter inserts newline",
+			key:        tea.KeyMsg{Type: tea.KeyEnter},
+			input:      "ab",
+			cursor:     1,
+			wantInput:  "a\nb",
+			wantCursor: 2,
+			wantMode:   true,
+		},
+		{
+			name:       "Backspace deletes",
+			key:        tea.KeyMsg{Type: tea.KeyBackspace},
+			input:      "abc",
+			cursor:     2,
+			wantInput:  "ac",
+			wantCursor: 1,
+			wantMode:   true,
+		},
+		{
+			name:       "Delete forward",
+			key:        tea.KeyMsg{Type: tea.KeyDelete},
+			input:      "abc",
+			cursor:     1,
+			wantInput:  "ac",
+			wantCursor: 1,
+			wantMode:   true,
+		},
+		{
+			name:       "Ctrl+A moves to line start",
+			key:        tea.KeyMsg{Type: tea.KeyCtrlA},
+			input:      "hello",
+			cursor:     3,
+			wantInput:  "hello",
+			wantCursor: 0,
+			wantMode:   true,
+		},
+		{
+			name:       "Ctrl+E moves to line end",
+			key:        tea.KeyMsg{Type: tea.KeyCtrlE},
+			input:      "hello",
+			cursor:     2,
+			wantInput:  "hello",
+			wantCursor: 5,
+			wantMode:   true,
+		},
+		{
+			name:       "Ctrl+F moves forward",
+			key:        tea.KeyMsg{Type: tea.KeyCtrlF},
+			input:      "hello",
+			cursor:     2,
+			wantInput:  "hello",
+			wantCursor: 3,
+			wantMode:   true,
+		},
+		{
+			name:       "Right moves forward",
+			key:        tea.KeyMsg{Type: tea.KeyRight},
+			input:      "hello",
+			cursor:     2,
+			wantInput:  "hello",
+			wantCursor: 3,
+			wantMode:   true,
+		},
+		{
+			name:       "Ctrl+B moves back",
+			key:        tea.KeyMsg{Type: tea.KeyCtrlB},
+			input:      "hello",
+			cursor:     3,
+			wantInput:  "hello",
+			wantCursor: 2,
+			wantMode:   true,
+		},
+		{
+			name:       "Left moves back",
+			key:        tea.KeyMsg{Type: tea.KeyLeft},
+			input:      "hello",
+			cursor:     3,
+			wantInput:  "hello",
+			wantCursor: 2,
+			wantMode:   true,
+		},
+		{
+			name:       "Ctrl+K kills to end",
+			key:        tea.KeyMsg{Type: tea.KeyCtrlK},
+			input:      "hello",
+			cursor:     2,
+			wantInput:  "he",
+			wantCursor: 2,
+			wantMode:   true,
+		},
+		{
+			name:       "Space inserts space",
+			key:        tea.KeyMsg{Type: tea.KeySpace},
+			input:      "ab",
+			cursor:     1,
+			wantInput:  "a b",
+			wantCursor: 2,
+			wantMode:   true,
+		},
+		{
+			name:       "Runes insert text",
+			key:        tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'X'}},
+			input:      "ab",
+			cursor:     1,
+			wantInput:  "aXb",
+			wantCursor: 2,
+			wantMode:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := makeCommentableTestModel(5)
+			m.commentMode = true
+			m.commentInput = tt.input
+			m.commentCursor = tt.cursor
+
+			newModel, _ := m.Update(tt.key)
+			m2 := newModel.(Model)
+
+			assert.Equal(t, tt.wantInput, m2.commentInput, "input mismatch")
+			assert.Equal(t, tt.wantCursor, m2.commentCursor, "cursor mismatch")
+			assert.Equal(t, tt.wantMode, m2.commentMode, "mode mismatch")
+		})
+	}
+}
