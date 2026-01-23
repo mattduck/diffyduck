@@ -1625,7 +1625,7 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 			},
 		},
 		width:  100,
-		height: 10,
+		height: 15, // Increased to accommodate separator lines
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
@@ -1635,11 +1635,11 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 
 	// Layout: [topBar, content..., bottomBar]
 	// lines[0] = top bar, lines[1] = top border, lines[2] = header, lines[3] = bottom border
-	// Content lines: lines[4] = 9999, lines[5] = 10000, lines[6] = 10001
-	// Note: With cursor offset, visible content starts at row 1, so add 1 to indices
-	line1 := lines[5]
-	line2 := lines[6]
-	line3 := lines[7]
+	// lines[4-6] = separator (3 lines: top + breadcrumb + bottom) since diff starts after line 1
+	// lines[7] = cursor indicator row, Content lines: lines[8] = 9999, lines[9] = 10000, lines[10] = 10001
+	line1 := lines[8]
+	line2 := lines[9]
+	line3 := lines[10]
 
 	// All lines should have their content starting at the same display column position
 	// The gutter width should accommodate 5 digits for consistency
@@ -3414,7 +3414,7 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 			},
 		},
 		width:  100,
-		height: 15,
+		height: 20, // Increased to accommodate separator lines
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()

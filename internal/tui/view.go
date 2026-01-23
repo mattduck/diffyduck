@@ -297,6 +297,15 @@ func (m Model) buildRows() []displayRow {
 			// Line pairs with hunk separators
 			var prevLeft, prevRight int
 			for i, pair := range fp.Pairs {
+				// Add separator before first chunk if it starts after line 1
+				// (when starting at line 1, user can see they're at the top - no breadcrumb needed)
+				if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
+					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
+					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
+					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
+					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true})
+				}
+
 				// Check for gap in line numbers (hunk boundary)
 				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
 					// Find first non-zero New.Num in this chunk for breadcrumb lookup

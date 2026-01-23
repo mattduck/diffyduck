@@ -1041,19 +1041,22 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	// Line 0: top border
 	// Line 1: header
 	// Line 2: bottom border (header spacer)
-	// Line 3: diff line (file line 10)
-	// Line 4: diff line (file line 11)
-	// Line 5: diff line (file line 12) <- cursor here
-	// Line 6: diff line (file line 13)
+	// Line 3: separator top (since diff starts at line 10, not line 1)
+	// Line 4: separator (breadcrumb)
+	// Line 5: separator bottom
+	// Line 6: diff line (file line 10)
+	// Line 7: diff line (file line 11)
+	// Line 8: diff line (file line 12) <- cursor here
+	// Line 9: diff line (file line 13)
 	// ...
 
-	// Position cursor on line 5 (file line 12)
-	m.scroll = 2 // cursor offset is 3, so cursor at line 5
-	assert.Equal(t, 5, m.cursorLine(), "cursor should be on line 5")
+	// Position cursor on line 8 (file line 12)
+	m.scroll = 5 // cursor offset is 3, so cursor at line 8
+	assert.Equal(t, 8, m.cursorLine(), "cursor should be on line 8")
 
 	// Verify we're on the line with content "line12"
 	rows := m.buildRows()
-	assert.Equal(t, 12, rows[5].pair.Old.Num, "cursor should be on file line 12")
+	assert.Equal(t, 12, rows[8].pair.Old.Num, "cursor should be on file line 12")
 
 	// Press Tab to expand
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
