@@ -430,7 +430,8 @@ func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
 		if len(entries) == 0 {
 			return ""
 		}
-		return formatBreadcrumbs(entries)
+		// Use 0 for compact default (status bar will truncate as needed)
+		return formatBreadcrumbs(entries, 0)
 	}
 
 	// Get source line number from the new side only
