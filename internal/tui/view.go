@@ -365,8 +365,8 @@ func (m Model) buildRows() []displayRow {
 		if tw > maxCommitTimeWidth {
 			maxCommitTimeWidth = tw
 		}
-		// Subject width (capped at 120)
-		sw := len(m.commits[commitIdx].Info.Subject)
+		// Subject width (capped at 120) - use displayWidth for Unicode
+		sw := displayWidth(m.commits[commitIdx].Info.Subject)
 		if sw > 120 {
 			sw = 120
 		}
@@ -1590,16 +1590,19 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		timeText = strings.Repeat(" ", row.maxCommitTimeWidth-len(timeText)) + timeText
 	}
 
-	// Author: max 15 chars, truncate with "..." if longer
+	// Author: max 15 display columns, truncate with "..." if longer
+	// Use displayWidth for Unicode-aware width calculation
 	author := commitInfo.Author
 	maxAuthorLen := 15
-	if len(author) > maxAuthorLen {
-		author = author[:maxAuthorLen-3] + "..."
+	authorWidth := displayWidth(author)
+	if authorWidth > maxAuthorLen {
+		author = runewidth.Truncate(author, maxAuthorLen, "...")
+		authorWidth = maxAuthorLen
 	}
 
-	// Calculate fixed width using raw text lengths (not styled)
+	// Calculate fixed width using display widths (not byte lengths)
 	// prefix(2) + fold(1) + space(1) + sha(7) + space(1) + files + space(1) + added + space(1) + removed + space(1) + time + space(1) + author
-	fixedWidth := 2 + 1 + 1 + len(shaText) + 1 + row.maxCommitFilesWidth + 1 + row.maxCommitAddWidth + 1 + row.maxCommitRemWidth + 1 + row.maxCommitTimeWidth + 1 + len(author)
+	fixedWidth := 2 + 1 + 1 + len(shaText) + 1 + row.maxCommitFilesWidth + 1 + row.maxCommitAddWidth + 1 + row.maxCommitRemWidth + 1 + row.maxCommitTimeWidth + 1 + authorWidth
 
 	// Build the fixed part with styling
 	fixedPart := prefix +
@@ -1611,30 +1614,31 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		dimStyle.Render(timeText) + " " +
 		authorStyle.Render(author)
 
-	// Subject: max 120 chars, truncate with "..." if longer
+	// Subject: truncate to subjectDisplayWidth with Unicode-aware width
 	subject := commitInfo.Subject
-	maxSubjectLen := 120
-	if len(subject) > maxSubjectLen {
-		subject = subject[:maxSubjectLen-3] + "..."
-	}
-
-	// Use maxCommitSubjectWidth to align all commit headers at the same column
-	// Truncate subject if it exceeds the max width
 	subjectDisplayWidth := row.maxCommitSubjectWidth
-	if len(subject) > subjectDisplayWidth {
+	subjectWidth := displayWidth(subject)
+
+	// Truncate if needed (capped at 120 display columns, then to subjectDisplayWidth)
+	if subjectWidth > 120 {
+		subject = runewidth.Truncate(subject, 120, "...")
+		subjectWidth = displayWidth(subject)
+	}
+	if subjectWidth > subjectDisplayWidth {
 		if subjectDisplayWidth > 3 {
-			subject = subject[:subjectDisplayWidth-3] + "..."
+			subject = runewidth.Truncate(subject, subjectDisplayWidth, "...")
 		} else if subjectDisplayWidth > 0 {
-			subject = subject[:subjectDisplayWidth]
+			subject = runewidth.Truncate(subject, subjectDisplayWidth, "")
 		} else {
 			subject = ""
 		}
+		subjectWidth = displayWidth(subject)
 	}
 
 	// Pad subject to max width for alignment
 	subjectPadding := ""
-	if len(subject) < subjectDisplayWidth {
-		subjectPadding = strings.Repeat(" ", subjectDisplayWidth-len(subject))
+	if subjectWidth < subjectDisplayWidth {
+		subjectPadding = strings.Repeat(" ", subjectDisplayWidth-subjectWidth)
 	}
 
 	// Build the dynamic part with padding

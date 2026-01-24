@@ -3,7 +3,10 @@ package tui
 import (
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func TestTruncateOrPad_ASCII(t *testing.T) {
@@ -168,6 +171,74 @@ func TestHorizontalSlice_WithOffset(t *testing.T) {
 			assert.Equal(t, tt.width, displayWidth(result), "result should have exact display width")
 		})
 	}
+}
+
+// TestCommitHeaderSubject_UnicodeWidthAlignment verifies that commit subjects
+// containing Unicode characters (like box-drawing │ or emoji) produce headers
+// with consistent visual alignment. The bug was that len() was used instead of
+// displayWidth(), causing subjects with multi-byte characters to be under-padded.
+func TestCommitHeaderSubject_UnicodeWidthAlignment(t *testing.T) {
+	// Create commits with subjects that have different byte lengths but same display width
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "aaa1111111111111111111111111111111111111",
+				Author:  "Test",
+				Subject: "fix: align header box │ with corners", // │ is 3 bytes, 1 display width
+			},
+			FoldLevel: sidebyside.CommitFolded,
+			Files: []sidebyside.FilePair{{
+				OldPath: "a/test.go", NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{{
+					Old: sidebyside.Line{Type: sidebyside.Empty},
+					New: sidebyside.Line{Type: sidebyside.Added},
+				}},
+			}},
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "bbb2222222222222222222222222222222222222",
+				Author:  "Test",
+				Subject: "fix: align header box | with corners", // | is 1 byte, 1 display width
+			},
+			FoldLevel: sidebyside.CommitFolded,
+			Files: []sidebyside.FilePair{{
+				OldPath: "a/test2.go", NewPath: "b/test2.go",
+				Pairs: []sidebyside.LinePair{{
+					Old: sidebyside.Line{Type: sidebyside.Empty},
+					New: sidebyside.Line{Type: sidebyside.Added},
+				}},
+			}},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find commit header rows and render them
+	var renderedHeaders []string
+	for _, row := range rows {
+		if row.isCommitHeader {
+			rendered := m.renderCommitHeaderRow(row, false)
+			renderedHeaders = append(renderedHeaders, rendered)
+		}
+	}
+
+	require.Len(t, renderedHeaders, 2, "should have 2 commit headers")
+
+	// Both headers should have the same display width since subjects have same visual length
+	width0 := displayWidth(ansi.Strip(renderedHeaders[0]))
+	width1 := displayWidth(ansi.Strip(renderedHeaders[1]))
+
+	assert.Equal(t, width0, width1,
+		"commit headers should have same display width regardless of Unicode encoding.\n"+
+			"Header 0 (with │): width=%d\nHeader 1 (with |): width=%d",
+		width0, width1)
 }
 
 func TestHorizontalSlice_Unicode(t *testing.T) {
