@@ -3608,8 +3608,8 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 		// Don't search these (shouldSearch will be false for old side context)
 		styledContent = contextDimStyle.Render(visible)
 	} else if len(inlineSpans) > 0 && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
-		// Apply inline diff highlighting (with search highlighting taking precedence)
-		styledContent = m.applyInlineSpans(expanded, visible, inlineSpans, line.Type, isCursorRow, shouldSearch, m.currentMatchIdx(), side, m.currentMatchSide())
+		// Apply inline diff highlighting with syntax as base layer, search on top
+		styledContent = m.applyInlineSpans(line.Content, expanded, visible, inlineSpans, syntaxSpans, line.Type, isCursorRow, shouldSearch, m.currentMatchIdx(), side, m.currentMatchSide())
 	} else if len(syntaxSpans) > 0 {
 		// Apply syntax highlighting as base, with search on top
 		styledContent = m.applySyntaxHighlight(line.Content, expanded, visible, syntaxSpans, isCursorRow, shouldSearch, m.currentMatchIdx(), side, m.currentMatchSide())
@@ -3648,10 +3648,8 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 // isCursorRow indicates if this is the cursor row (for "current match" styling).
 // shouldSearch indicates if search highlighting should be applied to this content.
 // side is which side is being rendered, currentSide is which side has the current match.
-func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Span, lineType sidebyside.LineType, isCursorRow, shouldSearch bool, currentIdx, side, currentSide int) string {
-	// Base style is context (no color) since gutter shows +/- indicators
+func (m Model) applyInlineSpans(original, expanded, visible string, spans []inlinediff.Span, syntaxSpans []highlight.Span, lineType sidebyside.LineType, isCursorRow, shouldSearch bool, currentIdx, side, currentSide int) string {
 	// Highlight style matches the line type (green for added, red for removed)
-	baseStyle := contextStyle
 	var highlightStyle lipgloss.Style
 	if lineType == sidebyside.Added {
 		highlightStyle = inlineAddedStyle
@@ -3670,6 +3668,25 @@ func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Spa
 		bytePos += len(string(r))
 	}
 	byteToCol[len(expanded)] = col
+
+	// Map byte positions from ORIGINAL content to display columns for syntax spans
+	// Syntax spans have offsets into the original (non-tab-expanded) content
+	syntaxByteToCol := make([]int, len(original)+1)
+	col = 0
+	bytePos = 0
+	for _, r := range original {
+		syntaxByteToCol[bytePos] = col
+		var rw int
+		if r == '\t' {
+			// Tab expands to next tab stop
+			rw = TabWidth - (col % TabWidth)
+		} else {
+			rw = runewidth.RuneWidth(r)
+		}
+		col += rw
+		bytePos += len(string(r))
+	}
+	syntaxByteToCol[len(original)] = col
 
 	// Build search match ranges (in visible coordinates) if search is active
 	type searchRange struct {
@@ -3708,6 +3725,13 @@ func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Spa
 			pos = start + 1
 			matchIdx++
 		}
+	}
+
+	// Get theme for syntax coloring (used as base layer for non-diff chars)
+	var theme highlight.Theme
+	hasTheme := m.highlighter != nil
+	if hasTheme {
+		theme = m.highlighter.Theme()
 	}
 
 	// Build styled output for each visible column
@@ -3755,7 +3779,32 @@ func (m Model) applyInlineSpans(expanded, visible string, spans []inlinediff.Spa
 			if inHighlight {
 				result.WriteString(highlightStyle.Render(string(vr)))
 			} else {
-				result.WriteString(baseStyle.Render(string(vr)))
+				// Use syntax highlighting as base layer
+				foundStyle := false
+				if hasTheme {
+					for _, span := range syntaxSpans {
+						spanStartCol := 0
+						spanEndCol := 0
+						if span.Start < len(syntaxByteToCol) {
+							spanStartCol = syntaxByteToCol[span.Start]
+						}
+						if span.End < len(syntaxByteToCol) {
+							spanEndCol = syntaxByteToCol[span.End]
+						} else if span.End >= len(syntaxByteToCol) {
+							spanEndCol = syntaxByteToCol[len(syntaxByteToCol)-1]
+						}
+
+						if actualCol >= spanStartCol && actualCol < spanEndCol {
+							style := theme.Style(span.Category)
+							result.WriteString(style.Render(string(vr)))
+							foundStyle = true
+							break
+						}
+					}
+				}
+				if !foundStyle {
+					result.WriteString(string(vr))
+				}
 			}
 		}
 
