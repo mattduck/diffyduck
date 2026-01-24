@@ -2122,6 +2122,15 @@ func TestComment_HandleInput_AllKeys(t *testing.T) {
 			wantMode:   false,
 		},
 		{
+			name:       "Escape cancels",
+			key:        tea.KeyMsg{Type: tea.KeyEsc},
+			input:      "test",
+			cursor:     2,
+			wantInput:  "",
+			wantCursor: 0,
+			wantMode:   false,
+		},
+		{
 			name:       "Enter inserts newline",
 			key:        tea.KeyMsg{Type: tea.KeyEnter},
 			input:      "ab",

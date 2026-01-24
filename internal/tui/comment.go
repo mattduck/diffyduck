@@ -24,7 +24,7 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.Type {
-	case tea.KeyCtrlC, tea.KeyCtrlG:
+	case tea.KeyCtrlC, tea.KeyCtrlG, tea.KeyEsc:
 		// Cancel comment editing
 		m.cancelComment()
 		return m, nil
