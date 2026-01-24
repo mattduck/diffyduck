@@ -2280,10 +2280,37 @@ func (m Model) renderCommentPrompt() string {
 		pos = lineEnd
 	}
 
+	// Calculate visible range based on scroll
+	maxVisible := m.commentMaxVisibleLines()
+	startLine := m.commentScroll
+	endLine := startLine + maxVisible
+	if endLine > len(lines) {
+		endLine = len(lines)
+	}
+
+	// Check if there's content above/below the visible area
+	hasMoreAbove := startLine > 0
+	hasMoreBelow := endLine < len(lines)
+
 	var result []string
 
-	// Render each line of input
-	for i, line := range lines {
+	// Show scroll indicator if there's content above
+	if hasMoreAbove {
+		indicator := fmt.Sprintf(" ↑ %d more line", startLine)
+		if startLine > 1 {
+			indicator += "s"
+		}
+		indicatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		indicatorPadding := m.width - lipgloss.Width(indicator)
+		if indicatorPadding < 0 {
+			indicatorPadding = 0
+		}
+		result = append(result, indicatorStyle.Render(indicator)+strings.Repeat(" ", indicatorPadding))
+	}
+
+	// Render visible lines of input
+	for i := startLine; i < endLine; i++ {
+		line := lines[i]
 		var prefix string
 		if i == cursorLine {
 			prefix = " > " // cursor line gets the main prompt
@@ -2324,6 +2351,21 @@ func (m Model) renderCommentPrompt() string {
 			padding = 0
 		}
 		result = append(result, renderedLine+strings.Repeat(" ", padding))
+	}
+
+	// Show scroll indicator if there's content below
+	if hasMoreBelow {
+		remaining := len(lines) - endLine
+		indicator := fmt.Sprintf(" ↓ %d more line", remaining)
+		if remaining > 1 {
+			indicator += "s"
+		}
+		indicatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		indicatorPadding := m.width - lipgloss.Width(indicator)
+		if indicatorPadding < 0 {
+			indicatorPadding = 0
+		}
+		result = append(result, indicatorStyle.Render(indicator)+strings.Repeat(" ", indicatorPadding))
 	}
 
 	// Add help line at the bottom

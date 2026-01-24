@@ -1812,6 +1812,175 @@ func TestComment_PromptHeight_MultiLine(t *testing.T) {
 	assert.Equal(t, 4, m.commentPromptHeight()) // 3 lines (including empty) + 1 help line
 }
 
+// Test: commentMaxVisibleLines returns max(10, 20% of height)
+func TestComment_MaxVisibleLines(t *testing.T) {
+	m := makeCommentableTestModel(5)
+
+	// Small viewport - should return 10 (minimum)
+	m.height = 30 // 20% = 6, so min is 10
+	assert.Equal(t, 10, m.commentMaxVisibleLines())
+
+	// Large viewport - should return 20% of height
+	m.height = 100 // 20% = 20
+	assert.Equal(t, 20, m.commentMaxVisibleLines())
+
+	// Exactly at threshold
+	m.height = 50 // 20% = 10
+	assert.Equal(t, 10, m.commentMaxVisibleLines())
+}
+
+// Test: comment scrolling with many lines
+func TestComment_Scrolling_ManyLines(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.height = 30 // maxVisible = 10
+	m.commentMode = true
+
+	// Create 15 lines of content
+	lines := make([]string, 15)
+	for i := range lines {
+		lines[i] = "line" + string(rune('A'+i))
+	}
+	m.commentInput = strings.Join(lines, "\n")
+
+	// Initially scroll is 0, cursor at end
+	m.commentCursor = len(m.commentInput)
+	m.commentScroll = 0
+	m.commentEnsureCursorVisible()
+
+	// Cursor is on line 14 (0-indexed), maxVisible is 10
+	// Scroll should be at least 14 - 10 + 1 = 5
+	assert.GreaterOrEqual(t, m.commentScroll, 5)
+
+	// commentPromptHeight should include scroll indicators
+	// We have 15 lines, showing 10, scroll > 0 so indicator above
+	// scroll + 10 < 15 so indicator below
+	height := m.commentPromptHeight()
+	// 10 visible lines + up to 2 indicators + 1 help line
+	assert.LessOrEqual(t, height, 13)
+	assert.GreaterOrEqual(t, height, 11) // at least 10 lines + 1 help
+
+	// Move cursor to beginning
+	m.commentCursor = 0
+	m.commentEnsureCursorVisible()
+
+	// Scroll should be 0 now
+	assert.Equal(t, 0, m.commentScroll)
+}
+
+// Test: cursor movement keeps cursor visible in scroll window
+func TestComment_CursorMovement_KeepsVisible(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.height = 30 // maxVisible = 10
+	m.commentMode = true
+
+	// Create 20 lines of content
+	lines := make([]string, 20)
+	for i := range lines {
+		lines[i] = "content"
+	}
+	m.commentInput = strings.Join(lines, "\n")
+	m.commentCursor = 0
+	m.commentScroll = 0
+
+	// Move down repeatedly
+	for i := 0; i < 15; i++ {
+		m.commentMoveDown()
+	}
+
+	// Cursor should be on line 15
+	assert.Equal(t, 15, m.commentCursorLineIndex())
+
+	// Scroll should have adjusted to keep cursor visible
+	// With maxVisible=10, scroll should be at least 15 - 10 + 1 = 6
+	assert.GreaterOrEqual(t, m.commentScroll, 6)
+
+	// Move back up
+	for i := 0; i < 15; i++ {
+		m.commentMoveUp()
+	}
+
+	// Cursor should be on line 0
+	assert.Equal(t, 0, m.commentCursorLineIndex())
+
+	// Scroll should be 0
+	assert.Equal(t, 0, m.commentScroll)
+}
+
+// Test: scroll indicators appear when content is scrolled
+func TestComment_ScrollIndicators_Rendering(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.height = 30 // maxVisible = 10
+	m.width = 80
+	m.commentMode = true
+
+	// Create 15 lines of content
+	lines := make([]string, 15)
+	for i := range lines {
+		lines[i] = "line" + string(rune('A'+i))
+	}
+	m.commentInput = strings.Join(lines, "\n")
+
+	// Scroll to middle (show both indicators)
+	m.commentScroll = 3
+	m.commentCursor = 50 // somewhere in middle
+
+	output := m.renderCommentPrompt()
+
+	// Should have "more lines" indicator at top
+	assert.Contains(t, output, "↑")
+	assert.Contains(t, output, "more line")
+
+	// Should have "more lines" indicator at bottom
+	assert.Contains(t, output, "↓")
+
+	// Should still have the help line
+	assert.Contains(t, output, "C-j to submit")
+
+	// Scroll to top - only down indicator
+	m.commentScroll = 0
+	output = m.renderCommentPrompt()
+	assert.NotContains(t, output, "↑")
+	assert.Contains(t, output, "↓")
+
+	// Scroll to bottom - only up indicator
+	m.commentScroll = 5 // 15 lines - 10 visible = 5 max scroll
+	output = m.renderCommentPrompt()
+	assert.Contains(t, output, "↑")
+	assert.NotContains(t, output, "↓ ")
+}
+
+// Test: cursor position stays stable as comment prompt grows
+func TestComment_CursorPosition_StableWithGrowingPrompt(t *testing.T) {
+	m := makeCommentableTestModel(20)
+	m.height = 40
+	m.width = 80
+	m.scroll = 5
+
+	// Record cursor position before entering comment mode
+	cursorLineBefore := m.cursorLine()
+	cursorOffsetBefore := m.cursorOffset()
+
+	// Enter comment mode
+	m.commentMode = true
+	m.commentInput = "short"
+
+	// Cursor calculations should use baseContentHeight, so they stay stable
+	assert.Equal(t, cursorOffsetBefore, m.cursorOffset(), "cursorOffset should not change with small comment")
+	assert.Equal(t, cursorLineBefore, m.cursorLine(), "cursorLine should not change with small comment")
+
+	// Grow the comment significantly
+	m.commentInput = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8"
+
+	// Cursor calculations should STILL be stable
+	assert.Equal(t, cursorOffsetBefore, m.cursorOffset(), "cursorOffset should not change with large comment")
+	assert.Equal(t, cursorLineBefore, m.cursorLine(), "cursorLine should not change with large comment")
+
+	// But contentHeight (for rendering) should have shrunk
+	baseHeight := m.baseContentHeight()
+	renderHeight := m.contentHeight()
+	assert.Less(t, renderHeight, baseHeight, "contentHeight should be smaller than baseContentHeight when comment prompt is large")
+}
+
 // Test: paste normalizes line endings and removes problematic characters
 func TestComment_Paste_SanitizesText(t *testing.T) {
 	tests := []struct {

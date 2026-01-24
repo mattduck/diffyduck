@@ -17,7 +17,8 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			after := m.commentInput[m.commentCursor:]
 			m.commentInput = before + text + after
 			m.commentCursor += len(text)
-			m.clampScroll()
+			m.commentEnsureCursorVisible()
+			m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		}
 		return m, nil
 	}
@@ -36,16 +37,20 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter:
 		// Enter inserts newline
 		m.insertCommentRune('\n')
-		// Clamp scroll since contentHeight changed
-		m.clampScroll()
+		m.commentEnsureCursorVisible()
+		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		return m, nil
 
 	case tea.KeyBackspace:
 		m.commentDeleteBackward()
+		m.commentEnsureCursorVisible()
+		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		return m, nil
 
 	case tea.KeyDelete:
 		m.commentDeleteForward()
+		m.commentEnsureCursorVisible()
+		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		return m, nil
 
 	case tea.KeyCtrlA:
@@ -81,11 +86,15 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlK:
 		// Kill to end of line
 		m.commentKillToEnd()
+		m.commentEnsureCursorVisible()
+		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		return m, nil
 
 	case tea.KeyCtrlU:
 		// Kill to beginning of line
 		m.commentKillToStart()
+		m.commentEnsureCursorVisible()
+		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		return m, nil
 
 	case tea.KeyCtrlV:
@@ -100,7 +109,8 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		after := m.commentInput[m.commentCursor:]
 		m.commentInput = before + text + after
 		m.commentCursor += len(text)
-		m.clampScroll()
+		m.commentEnsureCursorVisible()
+		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		return m, nil
 
 	case tea.KeySpace:
@@ -152,6 +162,8 @@ func (m *Model) startComment() bool {
 	}
 
 	m.commentMode = true
+	m.commentScroll = 0
+	m.commentEnsureCursorVisible()
 	return true
 }
 
@@ -168,6 +180,7 @@ func (m *Model) submitComment() {
 	m.commentMode = false
 	m.commentInput = ""
 	m.commentCursor = 0
+	m.commentScroll = 0
 
 	// Invalidate row cache since comment rows changed
 	m.rowsCacheValid = false
@@ -178,6 +191,7 @@ func (m *Model) cancelComment() {
 	m.commentMode = false
 	m.commentInput = ""
 	m.commentCursor = 0
+	m.commentScroll = 0
 }
 
 // canComment returns true if the given row can have a comment attached.
@@ -366,6 +380,41 @@ func isProblematicUnicode(r rune) bool {
 	return false
 }
 
+// commentCursorLineIndex returns the 0-based line index where the cursor is.
+func (m *Model) commentCursorLineIndex() int {
+	before := m.commentInput[:m.commentCursor]
+	return strings.Count(before, "\n")
+}
+
+// commentEnsureCursorVisible adjusts commentScroll to keep the cursor visible.
+func (m *Model) commentEnsureCursorVisible() {
+	cursorLine := m.commentCursorLineIndex()
+	maxVisible := m.commentMaxVisibleLines()
+
+	// If cursor is above visible area, scroll up
+	if cursorLine < m.commentScroll {
+		m.commentScroll = cursorLine
+	}
+
+	// If cursor is below visible area, scroll down
+	if cursorLine >= m.commentScroll+maxVisible {
+		m.commentScroll = cursorLine - maxVisible + 1
+	}
+
+	// Clamp scroll to valid range
+	totalLines := strings.Count(m.commentInput, "\n") + 1
+	maxScroll := totalLines - maxVisible
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.commentScroll > maxScroll {
+		m.commentScroll = maxScroll
+	}
+	if m.commentScroll < 0 {
+		m.commentScroll = 0
+	}
+}
+
 // commentMoveUp moves the cursor up one line, preserving column position.
 func (m *Model) commentMoveUp() {
 	before := m.commentInput[:m.commentCursor]
@@ -394,6 +443,7 @@ func (m *Model) commentMoveUp() {
 		col = prevLineLen
 	}
 	m.commentCursor = prevLineStart + 1 + col
+	m.commentEnsureCursorVisible()
 }
 
 // commentMoveDown moves the cursor down one line, preserving column position.
@@ -433,4 +483,5 @@ func (m *Model) commentMoveDown() {
 		col = nextLineLen
 	}
 	m.commentCursor = nextLineStart + col
+	m.commentEnsureCursorVisible()
 }

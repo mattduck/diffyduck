@@ -115,6 +115,7 @@ type Model struct {
 	commentMode   bool                  // true when editing a comment
 	commentInput  string                // text being edited
 	commentCursor int                   // cursor position in commentInput (byte offset)
+	commentScroll int                   // vertical scroll offset within comment editor
 	commentKey    commentKey            // which line is being commented
 	comments      map[commentKey]string // stored comments
 
@@ -326,6 +327,16 @@ func (m Model) Init() tea.Cmd {
 	return m.RequestHighlightFromPairsExcept(map[int]bool{0: true})
 }
 
+// commentMaxVisibleLines returns the maximum number of input lines to show.
+// This is max(10, 20% of viewport height).
+func (m Model) commentMaxVisibleLines() int {
+	twentyPercent := m.height * 20 / 100
+	if twentyPercent < 10 {
+		return 10
+	}
+	return twentyPercent
+}
+
 // commentPromptHeight returns the number of lines needed for the comment prompt.
 // Returns 1 when not in comment mode (for normal status bar).
 func (m Model) commentPromptHeight() int {
@@ -333,21 +344,38 @@ func (m Model) commentPromptHeight() int {
 		return 1
 	}
 	// Count newlines in the input, plus 1 for the current line
-	lines := strings.Count(m.commentInput, "\n") + 1
+	totalLines := strings.Count(m.commentInput, "\n") + 1
+	maxVisible := m.commentMaxVisibleLines()
+
+	// Calculate visible content lines
+	visibleLines := totalLines
+	if visibleLines > maxVisible {
+		visibleLines = maxVisible
+	}
+
+	// Add scroll indicators if content exceeds visible area
+	extraLines := 0
+	if totalLines > maxVisible {
+		// Check if there's content above (scroll > 0)
+		if m.commentScroll > 0 {
+			extraLines++
+		}
+		// Check if there's content below
+		if m.commentScroll+maxVisible < totalLines {
+			extraLines++
+		}
+	}
+
 	// Add 1 for the help line at the bottom
-	return lines + 1
+	return visibleLines + extraLines + 1
 }
 
-// contentHeight returns the height available for content (minus top bar, divider, and bottom bar).
-func (m Model) contentHeight() int {
+// baseContentHeight returns the height available for content without the comment prompt.
+// This is used for cursor calculations to keep them stable when comment mode is active.
+func (m Model) baseContentHeight() int {
 	reserved := 3 // file line + divider + bottom bar
 	if m.hasCommitInfo() {
 		reserved++ // commit info line in top bar
-	}
-	// Only add extra space for comment prompt when in comment mode
-	// (bottom bar is already counted in reserved)
-	if m.commentMode {
-		reserved += m.commentPromptHeight() - 1 // -1 since bottom bar already counted
 	}
 	h := m.height - reserved
 	if h < 1 {
@@ -356,10 +384,25 @@ func (m Model) contentHeight() int {
 	return h
 }
 
+// contentHeight returns the height available for rendering content.
+// This accounts for the comment prompt when in comment mode.
+func (m Model) contentHeight() int {
+	h := m.baseContentHeight()
+	// Subtract space for comment prompt when in comment mode
+	// (bottom bar is already counted in baseContentHeight)
+	if m.commentMode {
+		h -= m.commentPromptHeight() - 1 // -1 since bottom bar already counted
+	}
+	if h < 1 {
+		return 1
+	}
+	return h
+}
+
 // cursorOffset returns the fixed offset from the top of the viewport where the cursor sits.
-// This is 20% of the content height.
+// This is 20% of the base content height (ignores comment prompt to keep cursor stable).
 func (m Model) cursorOffset() int {
-	return m.contentHeight() * 20 / 100
+	return m.baseContentHeight() * 20 / 100
 }
 
 // cursorLine returns the display row index that the cursor points to.
