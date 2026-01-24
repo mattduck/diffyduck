@@ -315,3 +315,20 @@ so two more indented than the symbol on the filename"
 line before the last folded item -- to explore that"
 #+end_quote
 - [ ] Experiment with adding blank line separator in folded mode
+
+**** Per-element diff stats
+#+begin_quote
+"the diff columns in the fileline could be shoved over to take account for the
+length of the code item name, and then the code items could have their own +/-
+values but in grey, so we can see more easily if the changes are concentrated
+in a particular function or not"
+#+end_quote
+#+begin_quote
+"we could also SORT the items so we just show the top N (say 5) by their change
+count"
+#+end_quote
+- [ ] Calculate +/- line counts per structural element (using line ranges)
+- [ ] Display grey +N -M after each element name
+- [ ] Adjust file header diff column position to align with longest element line
+- [ ] Sort elements by total change count (added + removed lines)
+- [ ] Show only top N (e.g. 5) most-changed elements in folded view
