@@ -52,7 +52,8 @@ func (m *Model) initStartupQueue() tea.Cmd {
 // processStartupQueue starts loading files from the startup queue.
 // Returns commands for up to MaxStartupConcurrent files.
 func (m *Model) processStartupQueue() tea.Cmd {
-	if m.fetcher == nil {
+	// Need either a fetcher (diff/show) or git object (log mode, creates on-demand fetchers)
+	if m.fetcher == nil && m.git == nil {
 		return nil
 	}
 
