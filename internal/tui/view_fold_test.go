@@ -726,14 +726,13 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 		"commit header should show full-fill icon ● when file is expanded")
 }
 
-func TestCommitBorder_CursorRendersYellowGapAndGreyBgBorderChar(t *testing.T) {
-	// When cursor is on a commit border line, it should render:
+func TestCommitBorder_CursorRendersArrowOnEmptyLine(t *testing.T) {
+	// When cursor is on a commit bottom border line, it should render:
 	// - Arrow (▶)
-	// - Yellow border char (━) as gap
-	// - Grey bg border char (━) as cursor indicator
-	// - Rest of yellow border
+	// - Space
+	// - Highlighted gutter space (cursor indicator)
 	//
-	// This matches the pattern used for file headers.
+	// The border line itself is empty (no border characters).
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
 			SHA:     "abc1234",
@@ -778,19 +777,18 @@ func TestCommitBorder_CursorRendersYellowGapAndGreyBgBorderChar(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the border line by looking for the light border character with arrow
-	var borderLine string
+	// Find the line with the cursor arrow (should be the empty border line)
+	var cursorLine string
 	for _, line := range lines {
-		// Bottom border line should contain ─ and start with arrow when cursor is on it
-		if strings.Contains(line, "─") && strings.HasPrefix(line, "▶") {
-			borderLine = line
+		if strings.HasPrefix(line, "▶") {
+			cursorLine = line
 			break
 		}
 	}
 
-	require.NotEmpty(t, borderLine, "should find commit bottom border line with arrow and ─")
+	require.NotEmpty(t, cursorLine, "should find line with cursor arrow")
 
-	// Should start with arrow followed immediately by border char (no space gap)
-	assert.True(t, strings.HasPrefix(borderLine, "▶─"),
-		"commit bottom border with cursor should be: arrow + border char (no space), got: %s", borderLine)
+	// Should start with arrow followed by space (no border characters)
+	assert.True(t, strings.HasPrefix(cursorLine, "▶ "),
+		"commit bottom border with cursor should be: arrow + space, got: %s", cursorLine)
 }

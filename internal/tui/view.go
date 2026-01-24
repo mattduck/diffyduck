@@ -1476,42 +1476,24 @@ func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) str
 }
 
 // renderCommitHeaderBottomBorder renders the bottom border of the commit header.
-// Uses light box drawing character ─ full-width (no corner).
+// Currently renders as an empty line (border line disabled), but preserves cursor display.
 func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) string {
-	// Use yellow color for commit borders (Color 3) when visible
-	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	if !row.commitBorderVisible {
-		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
-	}
-
-	// Full width border with light line character
-	borderWidth := m.width
-	if borderWidth < 0 {
-		borderWidth = 0
-	}
+	_ = row // unused while border is disabled
 
 	if isCursorRow && m.focused {
-		// Format: arrow + gap (yellow border) + cursor char (grey bg, fg=0) + rest of border
+		// Focused cursor: arrow + space + highlighted gutter char
 		arrow := cursorArrowStyle.Render("▶")
-		styledGutter := cursorStyle.Render("─")
-		restWidth := borderWidth - 3 // arrow(1) + gap(1) + gutter(1)
-		if restWidth < 0 {
-			restWidth = 0
-		}
-		return arrow + borderStyle.Render("─") + styledGutter + borderStyle.Render(strings.Repeat("─", restWidth))
+		styledGutter := cursorStyle.Render(" ")
+		return arrow + " " + styledGutter
 	}
 
 	if isCursorRow && !m.focused {
-		// Unfocused: outline arrow, no background highlight
+		// Unfocused cursor: outline arrow only
 		arrow := unfocusedCursorArrowStyle.Render("▷")
-		restWidth := borderWidth - 1
-		if restWidth < 0 {
-			restWidth = 0
-		}
-		return arrow + borderStyle.Render(strings.Repeat("─", restWidth))
+		return arrow
 	}
 
-	return borderStyle.Render(strings.Repeat("─", borderWidth))
+	return ""
 }
 
 // renderCommitHeaderRow renders a commit header row in the content area.

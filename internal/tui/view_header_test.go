@@ -1351,8 +1351,8 @@ func TestCommitBorder_FirstCommit_TopBorderInFileLine(t *testing.T) {
 	}
 	assert.False(t, hasBorderWhenFolded, "folded commit should not have ━ border")
 
-	// Test with first commit UNFOLDED - should have both ▔ divider AND ─ border
-	// The ─ border appears in the file line (which replaces what would be empty space)
+	// Test with first commit UNFOLDED - should have ▔ divider but NO ─ border
+	// (commit header bottom border is now an empty line)
 	mUnfolded := Model{
 		commits: []sidebyside.CommitSet{
 			{
@@ -1377,7 +1377,7 @@ func TestCommitBorder_FirstCommit_TopBorderInFileLine(t *testing.T) {
 	outputUnfolded := mUnfolded.View()
 	linesUnfolded := strings.Split(outputUnfolded, "\n")
 
-	// Should have ─ bottom border (in file line position) when unfolded
+	// Should NOT have ─ bottom border (it's now an empty line)
 	var hasBorder bool
 	for _, line := range linesUnfolded {
 		if strings.Contains(line, "─") {
@@ -1385,7 +1385,7 @@ func TestCommitBorder_FirstCommit_TopBorderInFileLine(t *testing.T) {
 			break
 		}
 	}
-	assert.True(t, hasBorder, "unfolded commit should have ─ bottom border in file line")
+	assert.False(t, hasBorder, "unfolded commit should NOT have ─ bottom border (now empty line)")
 
 	// Should still have ▔ divider (unchanged)
 	var hasDividerUnfolded bool
