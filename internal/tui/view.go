@@ -1576,18 +1576,18 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	removedText := fmt.Sprintf("-%d", totalRemoved)
 	timeText := formatShortRelativeDate(commitInfo.Date)
 
-	// Pad columns to max widths for alignment across commits
+	// Pad columns to max widths for alignment across commits (right-align numbers)
 	if len(filesText) < row.maxCommitFilesWidth {
-		filesText += strings.Repeat(" ", row.maxCommitFilesWidth-len(filesText))
+		filesText = strings.Repeat(" ", row.maxCommitFilesWidth-len(filesText)) + filesText
 	}
 	if len(addedText) < row.maxCommitAddWidth {
-		addedText += strings.Repeat(" ", row.maxCommitAddWidth-len(addedText))
+		addedText = strings.Repeat(" ", row.maxCommitAddWidth-len(addedText)) + addedText
 	}
 	if len(removedText) < row.maxCommitRemWidth {
-		removedText += strings.Repeat(" ", row.maxCommitRemWidth-len(removedText))
+		removedText = strings.Repeat(" ", row.maxCommitRemWidth-len(removedText)) + removedText
 	}
 	if len(timeText) < row.maxCommitTimeWidth {
-		timeText += strings.Repeat(" ", row.maxCommitTimeWidth-len(timeText))
+		timeText = strings.Repeat(" ", row.maxCommitTimeWidth-len(timeText)) + timeText
 	}
 
 	// Author: max 15 chars, truncate with "..." if longer
