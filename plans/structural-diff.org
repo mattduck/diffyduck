@@ -179,3 +179,139 @@ When cursor is on structural diff rows:
 - Top bar shows file info (same as being on file header)
 - No line number or breadcrumbs shown
 - fileIndex is set to the actual file (unlike commit body which uses -1)
+
+** Phase 1.5: Move structural diff into file header [IN PROGRESS]
+
+Move structural diff from being content below the header to being part of the
+header itself - visible even in folded mode.
+
+*** Requirements (from discussion)
+
+#+begin_quote
+"I'd like to try making it part of the file header itself -- even the folded
+view. Essentially making the folded version of the header occupy multiple lines.
+when the header enters its border/expand mode, that syntax content would be
+included within the border contents -- so the border essentially gets drawn
+around the whole lot. but the blue shader line would continue to only affect
+the same line as the filename"
+#+end_quote
+
+#+begin_quote
+"DONT include the left border -- the current design only has borders on the
+other three sides. You may need to increase the width of the bordered area if
+the code structure items are wider than the file line. You should enforce some
+sensible limit (eg. anything more than 80% of the screen width gets truncated)"
+#+end_quote
+
+#+begin_quote
+"let's have the first icon (+/-/~) align with the same icon on the filename --
+so we start two characters before the filename starts"
+#+end_quote
+
+*** Visual design
+
+**** FoldFolded (no borders):
+#+begin_example
+     ◐ #01 ~ internal/tui/view.go  +3 -1   │▒▒▒▒
+           ~ func BuildRows
+           + func NewHelper
+#+end_example
+
+**** FoldNormal/FoldExpanded (with borders):
+#+begin_example
+────────────────────────────────────────────┐
+     ◐ #01 ~ internal/tui/view.go  +3 -1   │▒▒▒▒
+           ~ func BuildRows                 │
+           + func NewHelper                 │
+────────────────────────────────────────────┘
+#+end_example
+
+Key visual rules:
+- Structural diff symbol (+/-/~) aligns with file status symbol
+- Blue shading (▒) only on filename line, not structural diff lines
+- Box width expands if structural diff lines are wider (max 80% screen width)
+- Each structural diff line remains a separate cursor target
+- No structural diff = single-line header as before
+
+*** Implementation plan
+
+**** Step 1: Calculate box width considering structural diff [DONE]
+In ~buildAllRows~:
+- [X] Add helper function to compute max structural diff content width for a file
+- [X] After computing ~headerBoxWidth~, also consider max structural diff line width
+- [X] Take ~max(headerBoxWidth, maxStructuralDiffWidth)~
+- [X] Clamp to 80% of ~m.width~ (only when width would exceed limit)
+
+**** Step 2: Modify row ordering in buildFileRows [DONE]
+- [X] FoldFolded: header row -> structural diff rows (no borders)
+- [X] FoldNormal/FoldExpanded: top border -> header -> structural diff -> bottom border -> content
+- [X] Pass ~headerBoxWidth~ and ~borderVisible~ to structural diff rows
+- [X] Remove trailing blank separator (bottom border serves this purpose)
+
+**** Step 3: Update buildStructuralDiffRows formatting [DONE]
+- [X] Calculate numDigits from total file count inside function
+- [X] Calculate proper indentation: ~9 + numDigits~ chars before symbol
+- [X] Child items get additional 2-space indent before symbol
+- [X] Set ~headerBoxWidth~ and ~borderVisible~ on each row (done in step 2)
+
+**** Step 4: Add fields to displayRow struct [DONE]
+- [X] ~headerBoxWidth~ field already exists, reused for structural diff
+- [X] ~borderVisible~ field already exists, reused for structural diff
+
+**** Step 5: Rewrite renderStructuralDiffRow [DONE]
+- [X] Parse content to extract prefix, symbol, and rest
+- [X] Style symbol based on change kind (+/-/~)
+- [X] Add box padding to reach headerBoxWidth
+- [X] Add │ border at right edge (no trailing fill ▒)
+- [X] Handle cursor: replace first 5 chars of prefix with cursor elements
+- [X] Border uses darker style when previous file is folded
+
+**** Step 6: Handle nested items (methods under types) [DONE]
+- [X] Child items already have 2-char extra indent (handled in step 3)
+- [X] Same border handling as parent items (same renderStructuralDiffRow)
+
+*** Files to modify
+- ~internal/tui/view.go~ - buildAllRows, buildFileRows, buildStructuralDiffRows, renderStructuralDiffRow
+
+*** Follow-up improvements
+
+**** Bug: Border alignment
+#+begin_quote
+"bug with border display -- items are not indented enough to align with the
+right border"
+#+end_quote
+- [ ] Fix structural diff line width calculation to properly align with │ border
+
+**** Truncate folded view to 10 items
+#+begin_quote
+"let's truncate to 10 items max for fold view. any more than that we show '...'
+as a line. when the content is unfolded, we'll show the wider list. this means
+the node header can essentially have the folded extra representation and then
+even more for the border representation"
+#+end_quote
+- [ ] In FoldFolded mode, limit to 10 structural diff items
+- [ ] Show "..." line when truncated
+- [ ] In FoldNormal/FoldExpanded, show full list
+
+**** Update colours
+#+begin_quote
+"let's change the colours: the func/type/class part becomes colour 8 and the
+identifier part becomes colour 7"
+#+end_quote
+- [ ] Style "func"/"type"/"class" keyword with fg=8
+- [ ] Style identifier name with fg=7
+
+**** Add indentation
+#+begin_quote
+"let's add two spaces indentation for our list to start under the filename --
+so two more indented than the symbol on the filename"
+#+end_quote
+- [ ] Add 2 more spaces to symbolPrefix (11 + numDigits instead of 9 + numDigits)
+- [ ] Update width calculations accordingly
+
+**** Explore blank line before last folded item
+#+begin_quote
+"when we have this preview in folded mode available, let's MAYBE add a blank
+line before the last folded item -- to explore that"
+#+end_quote
+- [ ] Experiment with adding blank line separator in folded mode

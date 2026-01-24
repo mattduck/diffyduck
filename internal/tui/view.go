@@ -303,7 +303,28 @@ func (m Model) buildRows() []displayRow {
 		}
 		maxStatsBarWidth += maxRemWidth
 	}
-	headerBoxWidth := iconPartWidth + maxHeaderWidth + maxStatsBarWidth
+	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
+
+	// Check if structural diff content is wider than header content
+	maxStructuralDiffWidth := 0
+	for fileIdx := range m.files {
+		w := m.structuralDiffMaxContentWidth(fileIdx)
+		if w > maxStructuralDiffWidth {
+			maxStructuralDiffWidth = w
+		}
+	}
+	if maxStructuralDiffWidth > headerContentWidth {
+		headerContentWidth = maxStructuralDiffWidth
+	}
+
+	// Calculate final box width, clamped to 80% of screen width
+	headerBoxWidth := iconPartWidth + headerContentWidth
+	if m.width > 0 {
+		maxAllowedWidth := m.width * 80 / 100
+		if headerBoxWidth > maxAllowedWidth && maxAllowedWidth > iconPartWidth {
+			headerBoxWidth = maxAllowedWidth
+		}
+	}
 
 	// Calculate max commit header column widths for alignment
 	maxCommitFilesWidth := 0
@@ -509,7 +530,28 @@ func (m Model) buildRowsLegacy() []displayRow {
 		}
 		maxStatsBarWidth += maxRemWidth
 	}
-	headerBoxWidth := iconPartWidth + maxHeaderWidth + maxStatsBarWidth
+	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
+
+	// Check if structural diff content is wider than header content
+	maxStructuralDiffWidth := 0
+	for fileIdx := range m.files {
+		w := m.structuralDiffMaxContentWidth(fileIdx)
+		if w > maxStructuralDiffWidth {
+			maxStructuralDiffWidth = w
+		}
+	}
+	if maxStructuralDiffWidth > headerContentWidth {
+		headerContentWidth = maxStructuralDiffWidth
+	}
+
+	// Calculate final box width, clamped to 80% of screen width
+	headerBoxWidth := iconPartWidth + headerContentWidth
+	if m.width > 0 {
+		maxAllowedWidth := m.width * 80 / 100
+		if headerBoxWidth > maxAllowedWidth && maxAllowedWidth > iconPartWidth {
+			headerBoxWidth = maxAllowedWidth
+		}
+	}
 
 	// Add first file's top border slot (always present, renders as blank or border)
 	// This ensures content doesn't shift when first file is unfolded
@@ -572,6 +614,9 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		header := formatFileHeader(fp)
 		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth})
 
+		// Add structural diff rows (no borders in folded mode)
+		rows = append(rows, m.buildStructuralDiffRows(fileIdx, headerBoxWidth, false)...)
+
 	case sidebyside.FoldExpanded:
 		if fp.HasContent() {
 			// Note: First file's top border is added after commit body rows, not here
@@ -580,10 +625,10 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			header := formatFileHeader(fp)
 			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
-			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+			// Add structural diff rows BEFORE bottom border (inside the header box)
+			rows = append(rows, m.buildStructuralDiffRows(fileIdx, headerBoxWidth, prevFileUnfolded)...)
 
-			// Add structural diff rows if available
-			rows = append(rows, m.buildStructuralDiffRows(fileIdx)...)
+			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 			expandedRows := m.buildExpandedRows(fp)
 			for i := range expandedRows {
@@ -643,10 +688,10 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		header := formatFileHeader(fp)
 		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
-		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+		// Add structural diff rows BEFORE bottom border (inside the header box)
+		rows = append(rows, m.buildStructuralDiffRows(fileIdx, headerBoxWidth, prevFileUnfolded)...)
 
-		// Add structural diff rows if available
-		rows = append(rows, m.buildStructuralDiffRows(fileIdx)...)
+		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 		if fp.IsBinary {
 			var msg string
@@ -1759,9 +1804,94 @@ func (m Model) buildCommitBodyRowsSkipFirstBlank(commit *sidebyside.CommitSet, c
 	return rows
 }
 
+// structuralDiffMaxContentWidth calculates the maximum content width needed for
+// structural diff lines for a file. This is used to expand the header box width
+// if structural diff entries are wider than the filename. Returns 0 if no
+// structural diff or no changes. The width is the content after the icon prefix
+// (i.e., space + kind + space + name, plus 2 more for child items).
+func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
+	fs := m.structureMaps[fileIdx]
+	if fs == nil || fs.StructuralDiff == nil {
+		return 0
+	}
+
+	diff := fs.StructuralDiff
+	if !diff.HasChanges() {
+		return 0
+	}
+
+	changes := diff.ChangedOnly()
+	if len(changes) == 0 {
+		return 0
+	}
+
+	maxWidth := 0
+
+	// Build tree structure to identify children (same logic as buildStructuralDiffRows)
+	methodsAssigned := make(map[int]bool)
+
+	// First pass: find types and their children
+	for i, c := range changes {
+		entry := c.Entry()
+		if entry == nil {
+			continue
+		}
+		if entry.Kind == "type" || entry.Kind == "class" {
+			// Width for parent: space + kind + space + name
+			width := 1 + len(entry.Kind) + 1 + len(entry.Name)
+			if width > maxWidth {
+				maxWidth = width
+			}
+
+			// Find children
+			for j, other := range changes {
+				if i == j {
+					continue
+				}
+				otherEntry := other.Entry()
+				if otherEntry == nil {
+					continue
+				}
+				if otherEntry.Kind == "func" || otherEntry.Kind == "def" {
+					typeStart, typeEnd := entry.StartLine, entry.EndLine
+					otherStart := otherEntry.StartLine
+					if otherStart >= typeStart && otherStart <= typeEnd {
+						// Width for child: space + 2 (child indent) + kind + space + name
+						childWidth := 1 + 2 + len(otherEntry.Kind) + 1 + len(otherEntry.Name)
+						if childWidth > maxWidth {
+							maxWidth = childWidth
+						}
+						methodsAssigned[j] = true
+					}
+				}
+			}
+			methodsAssigned[i] = true
+		}
+	}
+
+	// Second pass: remaining top-level items
+	for i, c := range changes {
+		if !methodsAssigned[i] {
+			entry := c.Entry()
+			if entry == nil {
+				continue
+			}
+			// Width for top-level: space + kind + space + name
+			width := 1 + len(entry.Kind) + 1 + len(entry.Name)
+			if width > maxWidth {
+				maxWidth = width
+			}
+		}
+	}
+
+	return maxWidth
+}
+
 // buildStructuralDiffRows creates display rows for the structural diff summary.
 // Shows which functions, methods, and types were added, modified, or deleted.
-func (m Model) buildStructuralDiffRows(fileIdx int) []displayRow {
+// The rows are rendered inside the file header box, so they receive the same
+// headerBoxWidth and borderVisible settings as the header line.
+func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVisible bool) []displayRow {
 	fs := m.structureMaps[fileIdx]
 	if fs == nil || fs.StructuralDiff == nil {
 		return nil
@@ -1772,13 +1902,20 @@ func (m Model) buildStructuralDiffRows(fileIdx int) []displayRow {
 		return nil
 	}
 
-	var rows []displayRow
-
 	// Get only the changed elements
 	changes := diff.ChangedOnly()
 	if len(changes) == 0 {
 		return nil
 	}
+
+	var rows []displayRow
+
+	// Calculate prefix to align symbol with file status symbol in header
+	// Header layout: indent(5) + icon(1) + space(1) + fileNum(1+numDigits) + space(1) = 9 + numDigits
+	totalFiles := len(m.files)
+	numDigits := len(fmt.Sprintf("%d", totalFiles))
+	symbolPrefix := strings.Repeat(" ", 9+numDigits)
+	childPrefix := strings.Repeat(" ", 9+numDigits+2) // 2 extra spaces for child indent
 
 	// Build a tree structure: top-level items and their children
 	// Types/classes can contain methods
@@ -1840,45 +1977,40 @@ func (m Model) buildStructuralDiffRows(fileIdx int) []displayRow {
 			continue
 		}
 
-		// Format: "  ~ type MyStruct" or "  + func NewFunc"
+		// Format: "<prefix>~ type MyStruct" where symbol aligns with file status
 		symbol := c.Kind.Symbol()
-		line := "  " + symbol + " " + entry.Kind + " " + entry.Name
+		line := symbolPrefix + symbol + " " + entry.Kind + " " + entry.Name
 
 		rows = append(rows, displayRow{
 			kind:               RowKindStructuralDiff,
 			fileIndex:          fileIdx,
 			isStructuralDiff:   true,
 			structuralDiffLine: line,
+			headerBoxWidth:     headerBoxWidth,
+			borderVisible:      borderVisible,
 		})
 
-		// Add children (methods within types)
+		// Add children (methods within types) with extra indentation
 		for _, child := range node.children {
 			childEntry := child.Entry()
 			if childEntry == nil {
 				continue
 			}
 			childSymbol := child.Kind.Symbol()
-			childLine := "    " + childSymbol + " " + childEntry.Kind + " " + childEntry.Name
+			childLine := childPrefix + childSymbol + " " + childEntry.Kind + " " + childEntry.Name
 
 			rows = append(rows, displayRow{
 				kind:               RowKindStructuralDiff,
 				fileIndex:          fileIdx,
 				isStructuralDiff:   true,
 				structuralDiffLine: childLine,
+				headerBoxWidth:     headerBoxWidth,
+				borderVisible:      borderVisible,
 			})
 		}
 	}
 
-	// Add trailing blank line for separation
-	if len(rows) > 0 {
-		rows = append(rows, displayRow{
-			kind:                  RowKindStructuralDiff,
-			fileIndex:             fileIdx,
-			isStructuralDiff:      true,
-			structuralDiffLine:    "",
-			structuralDiffIsBlank: true,
-		})
-	}
+	// No trailing blank line needed - the bottom border serves as separation
 
 	return rows
 }
@@ -1913,38 +2045,76 @@ func (m Model) renderCommitBodyRow(row displayRow, isCursorRow bool) string {
 }
 
 // renderStructuralDiffRow renders a single line of the structural diff summary.
+// The row is rendered inside the header box with proper padding and border.
 func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string {
 	content := row.structuralDiffLine
+	headerBoxWidth := row.headerBoxWidth
+	borderVisible := row.borderVisible
 
-	// Color the symbol based on change kind
-	if len(content) >= 3 {
-		symbol := content[2:3] // Get the symbol at position 2 (after "  ")
-		var styledLine string
-		switch symbol {
-		case "+":
-			styledLine = content[:2] + addedStyle.Render("+") + content[3:]
-		case "-":
-			styledLine = content[:2] + removedStyle.Render("-") + content[3:]
-		case "~":
-			styledLine = content[:2] + changedStyle.Render("~") + content[3:]
-		default:
-			styledLine = content
-		}
-		content = styledLine
+	// Calculate symbol position (aligned with file status symbol in header)
+	totalFiles := len(m.files)
+	numDigits := len(fmt.Sprintf("%d", totalFiles))
+	symbolPos := 9 + numDigits
+
+	// Extract parts: prefix (spaces), symbol, rest (kind + name)
+	var prefix, symbol, rest string
+	if len(content) > symbolPos {
+		prefix = content[:symbolPos]
+		symbol = string(content[symbolPos])
+		rest = content[symbolPos+1:]
+	} else {
+		// Fallback for malformed content
+		prefix = content
+		symbol = ""
+		rest = ""
 	}
 
-	// Cursor handling with 1-char bg highlight (like file headers)
+	// Style the symbol based on change kind
+	var styledSymbol string
+	switch symbol {
+	case "+":
+		styledSymbol = addedStyle.Render("+")
+	case "-":
+		styledSymbol = removedStyle.Render("-")
+	case "~":
+		styledSymbol = changedStyle.Render("~")
+	default:
+		styledSymbol = symbol
+	}
+
+	// Calculate padding to reach headerBoxWidth (based on original content width)
+	originalWidth := len(content) // All ASCII so len() works
+	padding := ""
+	if headerBoxWidth > originalWidth {
+		padding = strings.Repeat(" ", headerBoxWidth-originalWidth)
+	}
+
+	// Border style (darker when previous file is folded)
+	borderStyle := headerLineStyle
+	if !borderVisible {
+		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
+	}
+
+	// Build the line content
+	var result string
 	if isCursorRow && m.focused {
+		// Replace first 5 chars of prefix with cursor elements: ▶ + space + gutter(bg) + 2 spaces
 		styledGutter := cursorStyle.Render(" ")
-		return cursorArrowStyle.Render("▶") + " " + styledGutter + " " + content
+		cursorPrefix := cursorArrowStyle.Render("▶") + " " + styledGutter + "  "
+		result = cursorPrefix + prefix[5:] + styledSymbol + rest + padding
+	} else if isCursorRow && !m.focused {
+		// Unfocused: outline arrow + 4 spaces
+		cursorPrefix := unfocusedCursorArrowStyle.Render("▷") + "    "
+		result = cursorPrefix + prefix[5:] + styledSymbol + rest + padding
+	} else {
+		// Non-cursor: use prefix as-is
+		result = prefix + styledSymbol + rest + padding
 	}
 
-	if isCursorRow && !m.focused {
-		return unfocusedCursorArrowStyle.Render("▷") + "   " + content
-	}
+	// Add border (│) - always present but no trailing fill unlike header
+	result += " " + borderStyle.Render("│")
 
-	// Non-cursor: 2-space prefix + 2-space indent
-	return "    " + content
+	return result
 }
 
 // renderTopBar renders the top bar showing file info with a divider line below.
