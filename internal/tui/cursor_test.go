@@ -678,8 +678,8 @@ func TestFoldToggle_CursorOnHeader_StaysOnHeader(t *testing.T) {
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model = newM.(Model)
 
-	// Cursor should be on header (line 0 now, since folded has no borders)
-	assert.Equal(t, 0, model.cursorLine(), "after Expanded->Folded, cursor should be on header")
+	// Cursor should be on header (line 1, border slot at line 0 renders blank when folded)
+	assert.Equal(t, 1, model.cursorLine(), "after Expanded->Folded, cursor should be on header")
 
 	// Toggle fold again: Folded -> Normal
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -756,9 +756,9 @@ func TestFoldToggle_CursorOnDiffLine_FoldToHeader(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	// In Folded mode, only line 0 (header) exists
-	// Cursor should be adjusted to point to it
-	assert.Equal(t, 0, model.cursorLine(), "after folding, cursor should jump to header")
+	// In Folded mode, header is at line 1 (border slot at line 0)
+	// Cursor should be adjusted to point to header
+	assert.Equal(t, 1, model.cursorLine(), "after folding, cursor should jump to header")
 }
 
 // Test: When cursor is on blank separator line between files, and that line still exists
@@ -861,8 +861,8 @@ func TestFoldToggle_CursorOnBlankLine_BlankDisappears(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
 	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel)
 
-	// The blank line is gone - cursor should jump to first file header (nearest above)
-	assert.Equal(t, 0, model.cursorLine(), "cursor should jump to header when blank line disappears")
+	// The blank line is gone - cursor should jump to first file header (at line 1, border slot at 0)
+	assert.Equal(t, 1, model.cursorLine(), "cursor should jump to header when blank line disappears")
 }
 
 // Test: Cursor on hunk separator line that disappears when folding
@@ -908,7 +908,7 @@ func TestFoldToggle_CursorOnHunkSeparator_FoldToHeader(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	assert.Equal(t, 0, model.cursorLine(), "cursor should jump to header when separator disappears")
+	assert.Equal(t, 1, model.cursorLine(), "cursor should jump to header when separator disappears")
 }
 
 // Test: Shift+Tab (all files) preserves scroll position appropriately
@@ -995,11 +995,11 @@ func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 	newM, _ = m.handleFoldToggleAll() // -> Folded
 	m = newM.(Model)
 
-	// In Folded mode: line 0 = first header, line 1 = second header
-	// Cursor should now be on second header (line 1)
-	assert.Equal(t, 1, m.cursorLine(), "cursor should be on second file header after fold all")
+	// In Folded mode: line 0 = first file border slot (blank), line 1 = first header, line 2 = second header
+	// Cursor should now be on second header (line 2)
+	assert.Equal(t, 2, m.cursorLine(), "cursor should be on second file header after fold all")
 	rows = m.buildRows()
-	assert.True(t, rows[1].isHeader, "line 1 should be second file header")
+	assert.True(t, rows[2].isHeader, "line 2 should be second file header")
 }
 
 // =============================================================================
@@ -1041,16 +1041,16 @@ func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// When all folded, layout is compact:
-	// Line 0: first header
-	// Line 1: second header
-	// Line 2: third header
-	// (no blank lines between folded files)
+	// When all folded, layout is:
+	// Line 0: first file border slot (blank)
+	// Line 1: first header
+	// Line 2: second header
+	// Line 3: third header
 
-	// Position cursor on second file's header (line 1)
-	// With cursorOffset=3, to get cursor on line 1: scroll = 1 - 3 = -2
-	m.scroll = -2
-	assert.Equal(t, 1, m.cursorLine(), "cursor should be on line 1 (second file header)")
+	// Position cursor on second file's header (line 2)
+	// With cursorOffset=3, to get cursor on line 2: scroll = 2 - 3 = -1
+	m.scroll = -1
+	assert.Equal(t, 2, m.cursorLine(), "cursor should be on line 2 (second file header)")
 
 	// Verify status bar shows second file
 	info := m.StatusInfo()

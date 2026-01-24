@@ -86,13 +86,9 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 			lines := strings.Split(output, "\n")
 
 			// Layout: [topBar, divider, content..., bottomBar]
-			// For unfolded files (Normal/Expanded): lines[2] = top border, lines[3] = header
-			// For folded files: lines[2] = header (no borders)
-			headerIdx := 2
-			if tt.level != sidebyside.FoldFolded {
-				headerIdx = 3 // Skip the top border row
-			}
-			headerLine := lines[headerIdx]
+			// lines[2] = first file border slot (blank when folded, border when unfolded)
+			// lines[3] = header (always at this position now)
+			headerLine := lines[3]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
 			// Header format is: <foldIcon> <fileNum> <statusIndicator> filename [stats]
 			// For modified files (a/test.go -> b/test.go with same name), status is "~"
@@ -127,10 +123,10 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 	lines := strings.Split(output, "\n")
 
 	// Layout: [topBar, divider, content..., bottomBar]
-	// lines[0] = top bar, lines[1] = divider, lines[2] = first content line (header)
+	// lines[0] = top bar, lines[1] = divider, lines[2] = border slot (blank), lines[3] = header
 	// Folded view should only show the header and then padding
-	assert.Contains(t, lines[2], "foo.go", "first content line should be the header")
-	assert.Contains(t, lines[2], "○", "header should have folded icon")
+	assert.Contains(t, lines[3], "foo.go", "first content line should be the header")
+	assert.Contains(t, lines[3], "○", "header should have folded icon")
 
 	// Line pairs should NOT be shown
 	assert.NotContains(t, output, "line content", "folded view should not show line pairs")

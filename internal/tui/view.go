@@ -166,13 +166,14 @@ type displayRow struct {
 	// Hunk separator fields
 	chunkStartLine int // first line of the following chunk (new/right side), for breadcrumbs
 	// Commit header fields
-	isCommitHeader      bool                       // true if this is a commit header row
-	commitFoldLevel     sidebyside.CommitFoldLevel // fold level for commit headers
-	commitIndex         int                        // which commit this header belongs to
-	maxCommitFilesWidth int                        // max width for file count column across all commits
-	maxCommitAddWidth   int                        // max width for additions column across all commits
-	maxCommitRemWidth   int                        // max width for removals column across all commits
-	maxCommitTimeWidth  int                        // max width for relative time column across all commits
+	isCommitHeader        bool                       // true if this is a commit header row
+	commitFoldLevel       sidebyside.CommitFoldLevel // fold level for commit headers
+	commitIndex           int                        // which commit this header belongs to
+	maxCommitFilesWidth   int                        // max width for file count column across all commits
+	maxCommitAddWidth     int                        // max width for additions column across all commits
+	maxCommitRemWidth     int                        // max width for removals column across all commits
+	maxCommitTimeWidth    int                        // max width for relative time column across all commits
+	maxCommitSubjectWidth int                        // max width for subject column across all commits
 	// Commit body fields (shown when commit is expanded)
 	isCommitBody      bool   // true if this is a commit body row
 	commitBodyLine    string // the text content for this body line
@@ -298,6 +299,7 @@ func (m Model) buildRows() []displayRow {
 	maxCommitAddWidth := 0
 	maxCommitRemWidth := 0
 	maxCommitTimeWidth := 0
+	maxCommitSubjectWidth := 0
 	for commitIdx := range m.commits {
 		// Get file range for this commit
 		startIdx := m.commitFileStarts[commitIdx]
@@ -331,6 +333,14 @@ func (m Model) buildRows() []displayRow {
 		if tw > maxCommitTimeWidth {
 			maxCommitTimeWidth = tw
 		}
+		// Subject width (capped at 120)
+		sw := len(m.commits[commitIdx].Info.Subject)
+		if sw > 120 {
+			sw = 120
+		}
+		if sw > maxCommitSubjectWidth {
+			maxCommitSubjectWidth = sw
+		}
 	}
 
 	// Build rows for each commit
@@ -338,15 +348,16 @@ func (m Model) buildRows() []displayRow {
 		// Add commit header row if commit has metadata
 		if commit.Info.HasMetadata() {
 			rows = append(rows, displayRow{
-				kind:                RowKindCommitHeader,
-				fileIndex:           -1,
-				isCommitHeader:      true,
-				commitFoldLevel:     commit.FoldLevel,
-				commitIndex:         commitIdx,
-				maxCommitFilesWidth: maxCommitFilesWidth,
-				maxCommitAddWidth:   maxCommitAddWidth,
-				maxCommitRemWidth:   maxCommitRemWidth,
-				maxCommitTimeWidth:  maxCommitTimeWidth,
+				kind:                  RowKindCommitHeader,
+				fileIndex:             -1,
+				isCommitHeader:        true,
+				commitFoldLevel:       commit.FoldLevel,
+				commitIndex:           commitIdx,
+				maxCommitFilesWidth:   maxCommitFilesWidth,
+				maxCommitAddWidth:     maxCommitAddWidth,
+				maxCommitRemWidth:     maxCommitRemWidth,
+				maxCommitTimeWidth:    maxCommitTimeWidth,
+				maxCommitSubjectWidth: maxCommitSubjectWidth,
 			})
 
 			// If commit is folded, skip its files
@@ -363,6 +374,21 @@ func (m Model) buildRows() []displayRow {
 		endIdx := len(m.files)
 		if commitIdx+1 < len(m.commits) {
 			endIdx = m.commitFileStarts[commitIdx+1]
+		}
+
+		// Add first file's top border slot (always present, renders as blank or border)
+		// This ensures content doesn't shift when first file is unfolded
+		if startIdx < endIdx {
+			firstFileUnfolded := m.files[startIdx].FoldLevel != sidebyside.FoldFolded
+			rows = append(rows, displayRow{
+				kind:              RowKindHeaderTopBorder,
+				fileIndex:         startIdx,
+				isHeaderTopBorder: true,
+				foldLevel:         sidebyside.FoldNormal,
+				status:            fileStatusFromPair(m.files[startIdx]),
+				headerBoxWidth:    headerBoxWidth,
+				borderVisible:     firstFileUnfolded,
+			})
 		}
 
 		// Add file rows for this commit
@@ -439,6 +465,21 @@ func (m Model) buildRowsLegacy() []displayRow {
 	}
 	headerBoxWidth := iconPartWidth + maxHeaderWidth + maxStatsBarWidth
 
+	// Add first file's top border slot (always present, renders as blank or border)
+	// This ensures content doesn't shift when first file is unfolded
+	if len(m.files) > 0 {
+		firstFileUnfolded := m.files[0].FoldLevel != sidebyside.FoldFolded
+		rows = append(rows, displayRow{
+			kind:              RowKindHeaderTopBorder,
+			fileIndex:         0,
+			isHeaderTopBorder: true,
+			foldLevel:         sidebyside.FoldNormal,
+			status:            fileStatusFromPair(m.files[0]),
+			headerBoxWidth:    headerBoxWidth,
+			borderVisible:     firstFileUnfolded,
+		})
+	}
+
 	// Add file rows (no commit headers in legacy mode)
 	for fileIdx, fp := range m.files {
 		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth)
@@ -462,9 +503,9 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	added, removed := countFileStats(fp)
 	status := fileStatusFromPair(fp)
 
-	// Check if this is the first file in the commit and if it's unfolded
+	// Check if this is the first file in the commit
 	isFirstFile := fileIdx == commitStartIdx
-	isUnfolded := fp.FoldLevel != sidebyside.FoldFolded
+	_ = isFirstFile // Used for documentation, first file's border handled elsewhere
 
 	// Check if previous file is unfolded (for header/bottom border visibility)
 	prevFileUnfolded := isFirstFile
@@ -487,9 +528,8 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 
 	case sidebyside.FoldExpanded:
 		if fp.HasContent() {
-			if isFirstFile && isUnfolded {
-				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
-			}
+			// Note: First file's top border is added after commit body rows, not here
+			// This prevents content shift when first file is unfolded
 
 			header := formatFileHeader(fp)
 			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
@@ -547,9 +587,8 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		fallthrough
 
 	default: // FoldNormal
-		if isFirstFile && isUnfolded {
-			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: true})
-		}
+		// Note: First file's top border is added after commit body rows, not here
+		// This prevents content shift when first file is unfolded
 
 		header := formatFileHeader(fp)
 		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
@@ -1390,12 +1429,6 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		dimStyle.Render(timeText) + " " +
 		authorStyle.Render(author)
 
-	// Calculate remaining width for subject
-	remainingWidth := m.width - fixedWidth - 1 // -1 for space before subject
-	if remainingWidth < 0 {
-		remainingWidth = 0
-	}
-
 	// Subject: max 120 chars, truncate with "..." if longer
 	subject := commitInfo.Subject
 	maxSubjectLen := 120
@@ -1403,24 +1436,45 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		subject = subject[:maxSubjectLen-3] + "..."
 	}
 
-	// Truncate subject if it doesn't fit in remaining width
-	if len(subject) > remainingWidth {
-		if remainingWidth > 3 {
-			subject = subject[:remainingWidth-3] + "..."
-		} else if remainingWidth > 0 {
-			subject = subject[:remainingWidth]
+	// Use maxCommitSubjectWidth to align all commit headers at the same column
+	// Truncate subject if it exceeds the max width
+	subjectDisplayWidth := row.maxCommitSubjectWidth
+	if len(subject) > subjectDisplayWidth {
+		if subjectDisplayWidth > 3 {
+			subject = subject[:subjectDisplayWidth-3] + "..."
+		} else if subjectDisplayWidth > 0 {
+			subject = subject[:subjectDisplayWidth]
 		} else {
 			subject = ""
 		}
 	}
 
-	// Build the dynamic part
-	var dynamicPart string
-	if subject != "" {
-		dynamicPart = " " + subject
+	// Pad subject to max width for alignment
+	subjectPadding := ""
+	if len(subject) < subjectDisplayWidth {
+		subjectPadding = strings.Repeat(" ", subjectDisplayWidth-len(subject))
 	}
 
-	return fixedPart + dynamicPart
+	// Build the dynamic part with padding
+	var dynamicPart string
+	if subjectDisplayWidth > 0 {
+		dynamicPart = " " + subject + subjectPadding
+	}
+
+	// Calculate trailing fill to extend to full width
+	// Use commit-yellow color (Color 3) for the fill
+	commitFillStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	contentWidth := fixedWidth + 1 + subjectDisplayWidth // +1 for space before subject
+	trailingWidth := m.width - contentWidth
+	if trailingWidth < 0 {
+		trailingWidth = 0
+	}
+	trailingFill := ""
+	if trailingWidth > 0 {
+		trailingFill = " " + commitFillStyle.Render(strings.Repeat("░", trailingWidth-1))
+	}
+
+	return fixedPart + dynamicPart + trailingFill
 }
 
 // buildCommitBodyRows creates display rows for the commit body (shown when expanded).

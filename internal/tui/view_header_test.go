@@ -176,13 +176,9 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 			output := m.View()
 			lines := strings.Split(output, "\n")
 			// Layout: [topBar, divider, content..., bottomBar]
-			// For unfolded files (Normal/Expanded): lines[2] = top border, lines[3] = header
-			// For folded files: lines[2] = header (no borders)
-			headerIdx := 2
-			if tt.foldLevel != sidebyside.FoldFolded {
-				headerIdx = 3 // Skip the top border row
-			}
-			header := lines[headerIdx]
+			// lines[2] = first file border slot (blank when folded, border when unfolded)
+			// lines[3] = header (always at this position)
+			header := lines[3]
 
 			// Get the expected fold icon
 			foldIcon := m.foldLevelIcon(tt.foldLevel)
@@ -436,12 +432,12 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Should have: header only = 1 row
-	// No top border, no bottom border, no content for folded files
-	require.Len(t, rows, 1, "folded file should only have header")
-	assert.True(t, rows[0].isHeader, "first row should be header")
-	assert.False(t, rows[0].isHeaderTopBorder, "should not have top border")
-	assert.False(t, rows[0].isHeaderSpacer, "should not have bottom border")
+	// Should have: border slot + header = 2 rows
+	// Border slot renders as blank when folded
+	require.Len(t, rows, 2, "folded file should have border slot + header")
+	assert.True(t, rows[0].isHeaderTopBorder, "first row should be border slot")
+	assert.False(t, rows[0].borderVisible, "border slot should not be visible when folded")
+	assert.True(t, rows[1].isHeader, "second row should be header")
 }
 
 // Test: First file unfolded has leading top border with borderVisible=true
@@ -1008,7 +1004,8 @@ func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 	}
 
 	assert.Equal(t, 3, headerCount, "should have 3 header rows")
-	assert.Equal(t, 0, topBorderCount, "should have no top border rows when all folded")
+	// First file always has a border slot (but renders as blank when folded)
+	assert.Equal(t, 1, topBorderCount, "should have 1 border slot (for first file, renders blank when folded)")
 	assert.Equal(t, 0, bottomBorderCount, "should have no bottom border rows when all folded")
 }
 
@@ -1137,10 +1134,11 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// File 0: just header (folded)
+	// File 0: border slot + header (folded)
 	file0Rows := filterRowsByFileIndex(rows, 0)
-	assert.Equal(t, 1, len(file0Rows), "file 0 should have only 1 row (header)")
-	assert.True(t, file0Rows[0].isHeader, "file 0's row should be header")
+	assert.Equal(t, 2, len(file0Rows), "file 0 should have 2 rows (border slot + header)")
+	assert.True(t, file0Rows[0].isHeaderTopBorder, "file 0's first row should be border slot")
+	assert.True(t, file0Rows[1].isHeader, "file 0's second row should be header")
 
 	// File 1: has header, bottom border, content, blanks, trailing border
 	// But borders should have borderVisible=false (prev file folded)

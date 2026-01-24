@@ -232,9 +232,9 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, divider, content..., bottomBar]
-	// Folded header should contain filename and stats counts
-	header := lines[2]
+	// Layout: [topBar, divider, borderSlot, header, bottomBar]
+	// lines[2] = border slot (blank when folded), lines[3] = header
+	header := lines[3]
 	assert.Contains(t, header, "main.go", "header should contain filename")
 	assert.Contains(t, header, "+3", "header should show addition count")
 	assert.Contains(t, header, "-2", "header should show deletion count")
@@ -293,8 +293,9 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 
 	// Layout: [topBar, divider, content..., bottomBar]
 	// Find display column position of - in the stats section of each header
-	header1 := lines[2]
-	header2 := lines[3] // second header is at lines[3] (folded files have no content between them)
+	// lines[2] = border slot (blank), lines[3] = first header, lines[4] = second header
+	header1 := lines[3]
+	header2 := lines[4]
 
 	// Find position of removal count (-N) in each header
 	// The first file has +1 -1, second has +100 -1
@@ -351,9 +352,9 @@ func TestFileHeaderWithStats_ShadingAlignment(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, divider, content..., bottomBar]
-	header1 := lines[2] // +100
-	header2 := lines[3] // +5
+	// Layout: [topBar, divider, borderSlot, header1, header2, bottomBar]
+	header1 := lines[3] // +100
+	header2 := lines[4] // +5
 
 	// Find the display column position of the shading (▒ character)
 	findShadingStart := func(s string) int {
@@ -402,8 +403,8 @@ func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	// Layout: [topBar, divider, content..., bottomBar]
-	header := lines[2]
+	// Layout: [topBar, divider, borderSlot, header, bottomBar]
+	header := lines[3]
 
 	assert.Contains(t, header, "newfile.go", "header should contain filename")
 	assert.Contains(t, header, "+2", "header should show addition count")
@@ -442,8 +443,8 @@ func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	// Layout: [topBar, divider, content..., bottomBar]
-	header := lines[2]
+	// Layout: [topBar, divider, borderSlot, header, bottomBar]
+	header := lines[3]
 
 	assert.Contains(t, header, "deleted.go", "header should contain filename")
 	assert.Contains(t, header, "-3", "header should show deletion count")
