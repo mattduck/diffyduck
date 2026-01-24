@@ -1500,7 +1500,7 @@ func TestFocusProximity_NearbyHunksIncluded(t *testing.T) {
 	require.NotZero(t, hunk1ContentIdx, "should find hunk 1 content")
 
 	// Position cursor on hunk 1
-	m.scroll = hunk1ContentIdx - m.cursorOffset()
+	m.scroll = hunk1ContentIdx
 	m.clampScroll()
 
 	predicate := m.getFocusPredicate()

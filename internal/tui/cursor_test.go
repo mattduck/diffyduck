@@ -3262,7 +3262,7 @@ func TestFoldToggleAll_CursorOnCommitBody_StaysOnSameCommit_SingleCommit(t *test
 	require.NotZero(t, authorRowIdx, "should find Author: row in commit body")
 
 	// Position cursor on the Author: row
-	m.scroll = authorRowIdx - m.cursorOffset()
+	m.scroll = authorRowIdx
 	m.clampScroll()
 
 	// Verify cursor is on commit body
@@ -3348,7 +3348,7 @@ func TestFoldToggleAll_CursorOnCommitBody_StaysOnSameCommit_MultiCommit(t *testi
 	require.NotZero(t, secondCommitAuthorRowIdx, "should find Second Author row in second commit body")
 
 	// Position cursor on the second commit's Author: row
-	m.scroll = secondCommitAuthorRowIdx - m.cursorOffset()
+	m.scroll = secondCommitAuthorRowIdx
 	m.clampScroll()
 
 	// Verify cursor is on second commit's body
@@ -3422,7 +3422,7 @@ func TestFoldToggleAll_CursorOnCommitBodyDate_StaysOnDateLine(t *testing.T) {
 	require.NotZero(t, dateRowIdx, "should find Date: row in commit body")
 
 	// Position cursor on the Date: row
-	m.scroll = dateRowIdx - m.cursorOffset()
+	m.scroll = dateRowIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()
@@ -3506,7 +3506,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_StaysOnSameRow(t *testing.T) {
 	require.NotZero(t, funcBRowIdx, "should find FuncB structural diff row")
 
 	// Position cursor on the FuncB row
-	m.scroll = funcBRowIdx - m.cursorOffset()
+	m.scroll = funcBRowIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()
@@ -3601,7 +3601,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_MultiFile_StaysOnSameFile(t *testi
 	require.NotZero(t, secondFileStructDiffIdx, "should find SecondFunc structural diff row")
 
 	// Position cursor on the second file's structural diff row
-	m.scroll = secondFileStructDiffIdx - m.cursorOffset()
+	m.scroll = secondFileStructDiffIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()
@@ -3680,7 +3680,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_StaysOnSpecificRow(t *testing.T) {
 	require.NotZero(t, funcBRowIdx, "should find FuncB structural diff row")
 
 	// Position cursor on FuncB row
-	m.scroll = funcBRowIdx - m.cursorOffset()
+	m.scroll = funcBRowIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()
@@ -3800,7 +3800,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_WithCommit_StaysOnSameFile(t *test
 	require.NotZero(t, secondStructDiffIdx, "should find SecondFunc structural diff row")
 
 	// Position cursor on second file's structural diff
-	m.scroll = secondStructDiffIdx - m.cursorOffset()
+	m.scroll = secondStructDiffIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()
