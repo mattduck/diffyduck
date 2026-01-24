@@ -1206,11 +1206,12 @@ func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
 	require.NotEqual(t, -1, secondCommitHeaderIdx, "should find second commit header")
 	require.Greater(t, secondCommitHeaderIdx, 1, "second commit header should not be at start")
 
-	// The row before the second commit header should be a blank separator
+	// The row before the second commit header should be a top border (when both commits unfolded)
+	// When both commits are unfolded, the separator row becomes a top border for the second commit
 	separatorRow := rows[secondCommitHeaderIdx-1]
-	assert.True(t, separatorRow.isCommitBody, "separator should be a commit body row")
-	assert.True(t, separatorRow.commitBodyIsBlank, "separator should be blank")
-	assert.Equal(t, 0, separatorRow.commitIndex, "separator should belong to first commit (index 0)")
+	assert.True(t, separatorRow.isCommitHeaderTopBorder, "separator should be a top border when both commits unfolded")
+	assert.True(t, separatorRow.commitBorderVisible, "border should be visible when both commits unfolded")
+	assert.Equal(t, 1, separatorRow.commitIndex, "border should belong to second commit (index 1)")
 }
 
 func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {

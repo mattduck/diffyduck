@@ -114,14 +114,16 @@ const (
 	RowKindHeaderSpacer    // bottom border line after header
 	RowKindHeaderTopBorder // top border line before header
 	RowKindBlank
-	RowKindSeparatorTop        // top shader line above hunk separator
-	RowKindSeparator           // hunk separator with breadcrumb
-	RowKindSeparatorBottom     // bottom shader line below hunk separator
-	RowKindTruncationIndicator // truncation message row
-	RowKindBinaryIndicator     // binary file message row
-	RowKindCommitHeader        // commit header row (sha, author, date, subject)
-	RowKindCommitBody          // commit body row (full sha, author, date, message)
-	RowKindComment             // inline comment row (belongs to line above)
+	RowKindSeparatorTop             // top shader line above hunk separator
+	RowKindSeparator                // hunk separator with breadcrumb
+	RowKindSeparatorBottom          // bottom shader line below hunk separator
+	RowKindTruncationIndicator      // truncation message row
+	RowKindBinaryIndicator          // binary file message row
+	RowKindCommitHeader             // commit header row (sha, author, date, subject)
+	RowKindCommitHeaderTopBorder    // top border line before commit header
+	RowKindCommitHeaderBottomBorder // bottom border line after commit header
+	RowKindCommitBody               // commit body row (full sha, author, date, message)
+	RowKindComment                  // inline comment row (belongs to line above)
 )
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
@@ -166,14 +168,17 @@ type displayRow struct {
 	// Hunk separator fields
 	chunkStartLine int // first line of the following chunk (new/right side), for breadcrumbs
 	// Commit header fields
-	isCommitHeader        bool                       // true if this is a commit header row
-	commitFoldLevel       sidebyside.CommitFoldLevel // fold level for commit headers
-	commitIndex           int                        // which commit this header belongs to
-	maxCommitFilesWidth   int                        // max width for file count column across all commits
-	maxCommitAddWidth     int                        // max width for additions column across all commits
-	maxCommitRemWidth     int                        // max width for removals column across all commits
-	maxCommitTimeWidth    int                        // max width for relative time column across all commits
-	maxCommitSubjectWidth int                        // max width for subject column across all commits
+	isCommitHeader             bool                       // true if this is a commit header row
+	isCommitHeaderTopBorder    bool                       // true if this is a commit header top border row
+	isCommitHeaderBottomBorder bool                       // true if this is a commit header bottom border row
+	commitBorderVisible        bool                       // whether commit border should use normal color (true) or fg=0 (false)
+	commitFoldLevel            sidebyside.CommitFoldLevel // fold level for commit headers
+	commitIndex                int                        // which commit this header belongs to
+	maxCommitFilesWidth        int                        // max width for file count column across all commits
+	maxCommitAddWidth          int                        // max width for additions column across all commits
+	maxCommitRemWidth          int                        // max width for removals column across all commits
+	maxCommitTimeWidth         int                        // max width for relative time column across all commits
+	maxCommitSubjectWidth      int                        // max width for subject column across all commits
 	// Commit body fields (shown when commit is expanded)
 	isCommitBody      bool   // true if this is a commit body row
 	commitBodyLine    string // the text content for this body line
@@ -347,11 +352,20 @@ func (m Model) buildRows() []displayRow {
 	for commitIdx, commit := range m.commits {
 		// Add commit header row if commit has metadata
 		if commit.Info.HasMetadata() {
+			commitUnfolded := commit.FoldLevel != sidebyside.CommitFolded
+			prevCommitUnfolded := commitIdx == 0 || m.commits[commitIdx-1].FoldLevel != sidebyside.CommitFolded
+			// Border is visible when commit is unfolded AND (prev is unfolded OR this is first commit)
+			commitBorderVisible := commitUnfolded && prevCommitUnfolded
+
+			// First commit's top border is rendered in renderTopBar (not in content rows)
+			// Subsequent commits get their top border from the previous commit's separator row
+
 			rows = append(rows, displayRow{
 				kind:                  RowKindCommitHeader,
 				fileIndex:             -1,
 				isCommitHeader:        true,
 				commitFoldLevel:       commit.FoldLevel,
+				commitBorderVisible:   commitBorderVisible,
 				commitIndex:           commitIdx,
 				maxCommitFilesWidth:   maxCommitFilesWidth,
 				maxCommitAddWidth:     maxCommitAddWidth,
@@ -365,8 +379,17 @@ func (m Model) buildRows() []displayRow {
 				continue
 			}
 
-			// Add commit body rows when not folded
-			rows = append(rows, m.buildCommitBodyRows(&commit, commitIdx)...)
+			// Add bottom border slot (replaces first blank row of body)
+			rows = append(rows, displayRow{
+				kind:                       RowKindCommitHeaderBottomBorder,
+				fileIndex:                  -1,
+				isCommitHeaderBottomBorder: true,
+				commitBorderVisible:        commitBorderVisible,
+				commitIndex:                commitIdx,
+			})
+
+			// Add commit body rows when not folded (skipping first blank since bottom border replaces it)
+			rows = append(rows, m.buildCommitBodyRowsSkipFirstBlank(&commit, commitIdx)...)
 		}
 
 		// Get file range for this commit
@@ -398,16 +421,33 @@ func (m Model) buildRows() []displayRow {
 		}
 
 		// Add separator row between commits (blank line after last file, before next commit)
-		// This row belongs to the current commit from the cursor's perspective
+		// This row becomes the top border for the next commit when both are unfolded
 		if commit.Info.HasMetadata() && commitIdx+1 < len(m.commits) && m.commits[commitIdx+1].Info.HasMetadata() {
-			rows = append(rows, displayRow{
-				kind:              RowKindCommitBody,
-				fileIndex:         -1,
-				isCommitBody:      true,
-				commitBodyLine:    "",
-				commitBodyIsBlank: true,
-				commitIndex:       commitIdx,
-			})
+			nextCommit := m.commits[commitIdx+1]
+			thisCommitUnfolded := commit.FoldLevel != sidebyside.CommitFolded
+			nextCommitUnfolded := nextCommit.FoldLevel != sidebyside.CommitFolded
+
+			// When both this commit and next commit are unfolded, this separator
+			// becomes the top border for the next commit
+			if thisCommitUnfolded && nextCommitUnfolded {
+				rows = append(rows, displayRow{
+					kind:                    RowKindCommitHeaderTopBorder,
+					fileIndex:               -1,
+					isCommitHeaderTopBorder: true,
+					commitBorderVisible:     true, // visible because both commits are unfolded
+					commitIndex:             commitIdx + 1,
+				})
+			} else {
+				// Regular blank separator
+				rows = append(rows, displayRow{
+					kind:              RowKindCommitBody,
+					fileIndex:         -1,
+					isCommitBody:      true,
+					commitBodyLine:    "",
+					commitBodyIsBlank: true,
+					commitIndex:       commitIdx,
+				})
+			}
 		}
 	}
 
@@ -987,9 +1027,21 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 	// Handle negative scroll by adding blank padding at the top
 	if start < 0 {
+		// Check if first commit is unfolded (for rendering top border on last blank line)
+		firstCommitUnfolded := len(m.commits) > 0 &&
+			m.commits[0].Info.HasMetadata() &&
+			m.commits[0].FoldLevel != sidebyside.CommitFolded
+
 		for i := start; i < 0 && len(visible) < contentHeight; i++ {
 			isCursorRow := len(visible) == cursorViewportRow
-			if isCursorRow {
+			isLastBlankBeforeContent := i == -1
+
+			if isLastBlankBeforeContent && firstCommitUnfolded {
+				// Render as commit top border (yellow ━━━ line)
+				borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+				border := borderStyle.Render(strings.Repeat("━", m.width))
+				visible = append(visible, border)
+			} else if isCursorRow {
 				visible = append(visible, m.renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth))
 			} else {
 				visible = append(visible, "")
@@ -1008,6 +1060,10 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 		if row.isCommitHeader {
 			visible = append(visible, m.renderCommitHeaderRow(row, isCursorRow))
+		} else if row.isCommitHeaderTopBorder {
+			visible = append(visible, m.renderCommitHeaderTopBorder(row, isCursorRow))
+		} else if row.isCommitHeaderBottomBorder {
+			visible = append(visible, m.renderCommitHeaderBottomBorder(row, isCursorRow))
 		} else if row.isCommitBody {
 			visible = append(visible, m.renderCommitBodyRow(row, isCursorRow))
 		} else if row.isHeaderTopBorder {
@@ -1327,6 +1383,77 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 	return borderStyle.Render(border + "┘")
 }
 
+// renderCommitHeaderTopBorder renders the top border of the commit header.
+// Uses heavy box drawing character ━ full-width (no corner).
+func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) string {
+	// Use yellow color for commit borders (Color 3) when visible
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	if !row.commitBorderVisible {
+		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
+	}
+
+	// Full width border with heavy line character
+	borderWidth := m.width
+	if borderWidth < 0 {
+		borderWidth = 0
+	}
+
+	if isCursorRow {
+		var arrow string
+		if m.focused {
+			arrow = cursorArrowStyle.Render("▶")
+		} else {
+			arrow = unfocusedCursorArrowStyle.Render("▷")
+		}
+		restWidth := borderWidth - 1
+		if restWidth < 0 {
+			restWidth = 0
+		}
+		return arrow + borderStyle.Render(strings.Repeat("━", restWidth))
+	}
+
+	return borderStyle.Render(strings.Repeat("━", borderWidth))
+}
+
+// renderCommitHeaderBottomBorder renders the bottom border of the commit header.
+// Uses heavy box drawing character ━ full-width (no corner).
+func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) string {
+	// Use yellow color for commit borders (Color 3) when visible
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	if !row.commitBorderVisible {
+		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
+	}
+
+	// Full width border with heavy line character
+	borderWidth := m.width
+	if borderWidth < 0 {
+		borderWidth = 0
+	}
+
+	if isCursorRow && m.focused {
+		// Format: arrow + space + [1 char grey bg] + border (like commit body rows)
+		arrow := cursorArrowStyle.Render("▶")
+		styledGutter := cursorStyle.Render(" ")
+		restWidth := borderWidth - 3 // arrow(1) + space(1) + gutter(1)
+		if restWidth < 0 {
+			restWidth = 0
+		}
+		return arrow + " " + styledGutter + borderStyle.Render(strings.Repeat("━", restWidth))
+	}
+
+	if isCursorRow && !m.focused {
+		// Unfocused: outline arrow, no background highlight
+		arrow := unfocusedCursorArrowStyle.Render("▷")
+		restWidth := borderWidth - 3 // arrow(1) + spaces(2)
+		if restWidth < 0 {
+			restWidth = 0
+		}
+		return arrow + "  " + borderStyle.Render(strings.Repeat("━", restWidth))
+	}
+
+	return borderStyle.Render(strings.Repeat("━", borderWidth))
+}
+
 // renderCommitHeaderRow renders a commit header row in the content area.
 // This is shown when viewing a commit and can be folded/unfolded.
 //
@@ -1592,6 +1719,16 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet, commitIdx int) 
 		commitIndex:       commitIdx,
 	})
 
+	return rows
+}
+
+// buildCommitBodyRowsSkipFirstBlank creates body rows but skips the first blank line.
+// The first blank is replaced by the commit header bottom border.
+func (m Model) buildCommitBodyRowsSkipFirstBlank(commit *sidebyside.CommitSet, commitIdx int) []displayRow {
+	rows := m.buildCommitBodyRows(commit, commitIdx)
+	if len(rows) > 0 && rows[0].commitBodyIsBlank {
+		return rows[1:]
+	}
 	return rows
 }
 

@@ -1217,3 +1217,493 @@ func TestRenderHeaderTopBorder_WidthAlignment(t *testing.T) {
 		assert.Equal(t, topWidth, bottomWidth, "top and bottom border widths should match for headerBoxWidth=%d", w)
 	}
 }
+
+// === Commit Header Border Tests ===
+
+// Test: First commit should NOT have a top border slot in content rows.
+// The top border for the first commit uses the divider line above content, not a new row.
+// This ensures cursor starts on the commit header, not an empty line.
+func TestCommitBorder_FirstCommit_NoTopBorderSlotInContent(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "abc123",
+					Subject: "Test commit",
+					Author:  "Alice",
+				},
+				FoldLevel: sidebyside.CommitFolded,
+			},
+		},
+		commitFileStarts: []int{0},
+		files:            []sidebyside.FilePair{},
+		width:            100,
+		height:           20,
+		keys:             DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// First content row should be the commit header, NOT a border slot
+	require.Greater(t, len(rows), 0, "should have at least one row")
+	assert.True(t, rows[0].isCommitHeader, "first row should be commit header, not a border slot")
+	assert.Equal(t, 0, rows[0].commitIndex, "first row should belong to commit 0")
+
+	// There should be NO top border slot rows for the first commit
+	for i, row := range rows {
+		if row.isCommitHeaderTopBorder && row.commitIndex == 0 {
+			t.Errorf("row %d is a top border slot for first commit - should not exist in content rows", i)
+		}
+	}
+}
+
+// Test: First commit unfolded - still no top border slot, border renders in divider area
+func TestCommitBorder_FirstCommit_Unfolded_NoTopBorderSlot(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "abc123",
+					Subject: "Test commit",
+					Author:  "Alice",
+					Date:    "2024-01-01",
+				},
+				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+			},
+		},
+		commitFileStarts: []int{0},
+		files:            []sidebyside.FilePair{},
+		width:            100,
+		height:           20,
+		keys:             DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// First content row should still be the commit header
+	require.Greater(t, len(rows), 0, "should have at least one row")
+	assert.True(t, rows[0].isCommitHeader, "first row should be commit header even when unfolded")
+
+	// Second row should be bottom border (when unfolded)
+	require.Greater(t, len(rows), 1, "should have at least two rows when unfolded")
+	assert.True(t, rows[1].isCommitHeaderBottomBorder, "second row should be bottom border")
+}
+
+// Test: First commit's top border renders in the file line (View output)
+// The file line becomes the top border when first commit is unfolded and cursor is on commit section
+func TestCommitBorder_FirstCommit_TopBorderInFileLine(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	// Test with first commit FOLDED - should have ▔ divider, no ━ border
+	mFolded := Model{
+		commits: []sidebyside.CommitSet{
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "abc123",
+					Subject: "Test commit",
+					Author:  "Alice",
+				},
+				FoldLevel: sidebyside.CommitFolded,
+			},
+		},
+		commitFileStarts: []int{0},
+		files:            []sidebyside.FilePair{},
+		width:            50,
+		height:           10,
+		focused:          true,
+		keys:             DefaultKeyMap(),
+	}
+	mFolded.calculateTotalLines()
+
+	outputFolded := mFolded.View()
+	linesFolded := strings.Split(outputFolded, "\n")
+
+	// Find the divider line (should contain ▔ when folded)
+	var hasDivider bool
+	for _, line := range linesFolded {
+		if strings.Contains(line, "▔") {
+			hasDivider = true
+			break
+		}
+	}
+	assert.True(t, hasDivider, "folded commit should have divider with ▔")
+
+	// Should NOT have ━ border when folded
+	var hasBorderWhenFolded bool
+	for _, line := range linesFolded {
+		if strings.Contains(line, "━") {
+			hasBorderWhenFolded = true
+			break
+		}
+	}
+	assert.False(t, hasBorderWhenFolded, "folded commit should not have ━ border")
+
+	// Test with first commit UNFOLDED - should have both ▔ divider AND ━ border
+	// The ━ border appears in the file line (which replaces what would be empty space)
+	mUnfolded := Model{
+		commits: []sidebyside.CommitSet{
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "abc123",
+					Subject: "Test commit",
+					Author:  "Alice",
+					Date:    "2024-01-01",
+				},
+				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+			},
+		},
+		commitFileStarts: []int{0},
+		files:            []sidebyside.FilePair{},
+		width:            50,
+		height:           10,
+		focused:          true,
+		keys:             DefaultKeyMap(),
+	}
+	mUnfolded.calculateTotalLines()
+
+	outputUnfolded := mUnfolded.View()
+	linesUnfolded := strings.Split(outputUnfolded, "\n")
+
+	// Should have ━ border (in file line position) when unfolded
+	var hasBorder bool
+	for _, line := range linesUnfolded {
+		if strings.Contains(line, "━") {
+			hasBorder = true
+			break
+		}
+	}
+	assert.True(t, hasBorder, "unfolded commit should have ━ border in file line")
+
+	// Should still have ▔ divider (unchanged)
+	var hasDividerUnfolded bool
+	for _, line := range linesUnfolded {
+		if strings.Contains(line, "▔") {
+			hasDividerUnfolded = true
+			break
+		}
+	}
+	assert.True(t, hasDividerUnfolded, "unfolded commit should still have ▔ divider")
+}
+
+// Test: Second commit unfolded but first folded - NO shift (no extra top border row)
+func TestCommitBorder_SecondCommit_Unfolded_FirstFolded_NoShift(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "aaa111",
+					Subject: "First commit",
+					Author:  "Alice",
+				},
+				FoldLevel: sidebyside.CommitFolded, // First commit FOLDED
+			},
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "bbb222",
+					Subject: "Second commit",
+					Author:  "Bob",
+					Date:    "2024-01-02",
+				},
+				FoldLevel: sidebyside.CommitNormal, // Second commit UNFOLDED
+			},
+		},
+		commitFileStarts: []int{0, 0},
+		files:            []sidebyside.FilePair{},
+		width:            100,
+		height:           20,
+		keys:             DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Count row types
+	var topBorderCount, commitHeaderCount, bottomBorderCount int
+	for _, row := range rows {
+		if row.isCommitHeaderTopBorder {
+			topBorderCount++
+		}
+		if row.isCommitHeader {
+			commitHeaderCount++
+		}
+		if row.isCommitHeaderBottomBorder {
+			bottomBorderCount++
+		}
+	}
+
+	// Should have 0 top borders (first commit doesn't have top border slot in content rows)
+	assert.Equal(t, 0, topBorderCount, "should have no top borders (first commit has no slot, second has none because first is folded)")
+
+	// Should have 2 commit headers
+	assert.Equal(t, 2, commitHeaderCount, "should have 2 commit headers")
+
+	// Should have 1 bottom border (for second commit which is unfolded)
+	assert.Equal(t, 1, bottomBorderCount, "should have 1 bottom border (second commit is unfolded)")
+
+	// Find the second commit's header - there should be NO top border row immediately before it
+	// because the first commit is folded (no trailing blank to convert)
+	var secondCommitHeaderIdx int
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 1 {
+			secondCommitHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
+
+	// The row before second commit header should NOT be a top border
+	// (since first commit is folded, there's no trailing blank to convert)
+	prevRow := rows[secondCommitHeaderIdx-1]
+	assert.False(t, prevRow.isCommitHeaderTopBorder, "row before second commit header should NOT be a top border when first commit is folded")
+}
+
+// Test: Both commits unfolded - separator becomes top border for second commit
+func TestCommitBorder_BothUnfolded_SeparatorBecomesTopBorder(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "aaa111",
+					Subject: "First commit",
+					Author:  "Alice",
+					Date:    "2024-01-01",
+				},
+				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+			},
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "bbb222",
+					Subject: "Second commit",
+					Author:  "Bob",
+					Date:    "2024-01-02",
+				},
+				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+			},
+		},
+		commitFileStarts: []int{0, 0},
+		files:            []sidebyside.FilePair{},
+		width:            100,
+		height:           20,
+		keys:             DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find the second commit's header
+	var secondCommitHeaderIdx int
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 1 {
+			secondCommitHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
+
+	// The row immediately before second commit header SHOULD be a top border
+	// (the separator row is converted to top border when both commits are unfolded)
+	prevRow := rows[secondCommitHeaderIdx-1]
+	assert.True(t, prevRow.isCommitHeaderTopBorder, "row before second commit header should be a top border when both commits are unfolded")
+	assert.True(t, prevRow.commitBorderVisible, "top border should be visible when both commits are unfolded")
+	assert.Equal(t, 1, prevRow.commitIndex, "top border should belong to second commit")
+}
+
+// Test: Row count stability when toggling second commit (first folded)
+func TestCommitBorder_RowCountStability_FirstFolded(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "aaa111",
+					Subject: "First commit",
+					Author:  "Alice",
+				},
+				FoldLevel: sidebyside.CommitFolded, // FOLDED
+			},
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "bbb222",
+					Subject: "Second commit",
+					Author:  "Bob",
+					Date:    "2024-01-02",
+				},
+				FoldLevel: sidebyside.CommitFolded, // Start FOLDED
+			},
+		},
+		commitFileStarts: []int{0, 0},
+		files:            []sidebyside.FilePair{},
+		width:            100,
+		height:           20,
+		keys:             DefaultKeyMap(),
+	}
+
+	// Count rows when second commit is folded
+	rowsFolded := m.buildRows()
+	foldedCount := len(rowsFolded)
+
+	// Unfold second commit
+	m.commits[1].FoldLevel = sidebyside.CommitNormal
+	rowsUnfolded := m.buildRows()
+	unfoldedCount := len(rowsUnfolded)
+
+	// The second commit body adds rows, but NO extra row should be added for
+	// top border since first commit is folded (no separator to convert)
+	// The bottom border replaces the first body blank, so net effect is:
+	// - Body rows are added (this is expected behavior)
+	// - No extra top border row added
+	t.Logf("Folded: %d rows, Unfolded: %d rows", foldedCount, unfoldedCount)
+
+	// Count how many body rows the second commit would add
+	bodyRows := m.buildCommitBodyRowsSkipFirstBlank(&m.commits[1], 1)
+	expectedBodyRowCount := len(bodyRows) + 1 // +1 for bottom border (replaces first blank)
+
+	// The difference should be exactly the body rows (no extra top border)
+	actualDiff := unfoldedCount - foldedCount
+	assert.Equal(t, expectedBodyRowCount, actualDiff, "row count difference should be exactly body rows + bottom border")
+}
+
+// Test: With files - separator row converts to top border when both unfolded
+func TestCommitBorder_WithFiles_SeparatorConversion(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "aaa111",
+					Subject: "First commit",
+					Author:  "Alice",
+					Date:    "2024-01-01",
+				},
+				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+			},
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "bbb222",
+					Subject: "Second commit",
+					Author:  "Bob",
+					Date:    "2024-01-02",
+				},
+				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+			},
+		},
+		commitFileStarts: []int{0, 1},
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/file1.go",
+				NewPath:   "b/file1.go",
+				FoldLevel: sidebyside.FoldFolded,
+			},
+			{
+				OldPath:   "a/file2.go",
+				NewPath:   "b/file2.go",
+				FoldLevel: sidebyside.FoldFolded,
+			},
+		},
+		width:  100,
+		height: 30,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find the second commit's header
+	var secondCommitHeaderIdx int
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 1 {
+			secondCommitHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
+
+	// The row immediately before second commit's header should be the top border
+	prevRow := rows[secondCommitHeaderIdx-1]
+	assert.True(t, prevRow.isCommitHeaderTopBorder, "separator should be converted to top border when both commits unfolded")
+	assert.True(t, prevRow.commitBorderVisible, "top border should be visible")
+
+	// Count blank separators vs top borders between commits
+	var separatorCount, topBorderCount int
+	for _, row := range rows {
+		if row.isCommitBody && row.commitBodyIsBlank {
+			separatorCount++
+		}
+		if row.isCommitHeaderTopBorder {
+			topBorderCount++
+		}
+	}
+
+	// Should have 1 top border total:
+	// - One converted from separator (between commits)
+	// First commit has no top border slot in content rows
+	assert.Equal(t, 1, topBorderCount, "should have 1 top border (separator conversion only)")
+}
+
+// Test: First commit unfolded, second folded - separator stays as blank
+func TestCommitBorder_FirstUnfolded_SecondFolded_SeparatorStaysBlank(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "aaa111",
+					Subject: "First commit",
+					Author:  "Alice",
+					Date:    "2024-01-01",
+				},
+				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+			},
+			{
+				Info: sidebyside.CommitInfo{
+					SHA:     "bbb222",
+					Subject: "Second commit",
+					Author:  "Bob",
+				},
+				FoldLevel: sidebyside.CommitFolded, // FOLDED
+			},
+		},
+		commitFileStarts: []int{0, 1},
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/file1.go",
+				NewPath:   "b/file1.go",
+				FoldLevel: sidebyside.FoldFolded,
+			},
+			{
+				OldPath:   "a/file2.go",
+				NewPath:   "b/file2.go",
+				FoldLevel: sidebyside.FoldFolded,
+			},
+		},
+		width:  100,
+		height: 30,
+		keys:   DefaultKeyMap(),
+	}
+
+	rows := m.buildRows()
+
+	// Find the second commit's header
+	var secondCommitHeaderIdx int
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 1 {
+			secondCommitHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
+
+	// The row immediately before second commit's header should be a blank (not top border)
+	// because second commit is folded
+	prevRow := rows[secondCommitHeaderIdx-1]
+	assert.False(t, prevRow.isCommitHeaderTopBorder, "separator should remain blank when second commit is folded")
+	assert.True(t, prevRow.isCommitBody && prevRow.commitBodyIsBlank, "separator should be a blank commit body row")
+}

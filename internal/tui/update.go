@@ -821,7 +821,7 @@ func (m Model) cursorCommitIndex() int {
 }
 
 // isOnCommitSection returns true if the cursor is on any commit-related row
-// (either commit header or commit body).
+// (commit header, commit body, or commit header borders).
 func (m Model) isOnCommitSection() bool {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
@@ -831,7 +831,7 @@ func (m Model) isOnCommitSection() bool {
 	}
 
 	row := rows[cursorPos]
-	return row.isCommitHeader || row.isCommitBody
+	return row.isCommitHeader || row.isCommitBody || row.isCommitHeaderBottomBorder || row.isCommitHeaderTopBorder
 }
 
 // handleCommitFoldCycle cycles through 3 levels of commit visibility (org-mode style).
