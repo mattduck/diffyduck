@@ -295,14 +295,7 @@ func (m Model) buildRows() []displayRow {
 	numDigits := len(fmt.Sprintf("%d", totalFiles))
 	fileNumWidth := 1 + numDigits
 	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1 // "   ◐ #01 ~ "
-	maxStatsBarWidth := 0
-	if maxAddWidth > 0 || maxRemWidth > 0 {
-		maxStatsBarWidth = 1 + maxAddWidth
-		if maxAddWidth > 0 && maxRemWidth > 0 {
-			maxStatsBarWidth++ // space between +N and -M
-		}
-		maxStatsBarWidth += maxRemWidth
-	}
+	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
 
 	// Check if structural diff content is wider than header content
@@ -525,14 +518,7 @@ func (m Model) buildRowsLegacy() []displayRow {
 	numDigits := len(fmt.Sprintf("%d", totalFiles))
 	fileNumWidth := 1 + numDigits
 	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1
-	maxStatsBarWidth := 0
-	if maxAddWidth > 0 || maxRemWidth > 0 {
-		maxStatsBarWidth = 1 + maxAddWidth
-		if maxAddWidth > 0 && maxRemWidth > 0 {
-			maxStatsBarWidth++ // space between +N and -M
-		}
-		maxStatsBarWidth += maxRemWidth
-	}
+	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
 
 	// Check if structural diff content is wider than header content
