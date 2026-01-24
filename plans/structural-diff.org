@@ -293,13 +293,13 @@ even more for the border representation"
 - [ ] Show "..." line when truncated
 - [ ] In FoldNormal/FoldExpanded, show full list
 
-**** Update colours
+**** Update colours [DONE]
 #+begin_quote
 "let's change the colours: the func/type/class part becomes colour 8 and the
 identifier part becomes colour 7"
 #+end_quote
-- [ ] Style "func"/"type"/"class" keyword with fg=8
-- [ ] Style identifier name with fg=7
+- [X] Style "func"/"type"/"class" keyword with fg=8
+- [X] Style identifier name with fg=7
 
 **** Add indentation
 #+begin_quote

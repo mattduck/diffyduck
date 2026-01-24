@@ -112,8 +112,8 @@ type RowKind int
 const (
 	RowKindContent RowKind = iota // default: content line pair with diff data
 	RowKindHeader
-	RowKindHeaderSpacer             // bottom border line after header
-	RowKindHeaderTopBorder          // top border line before header
+	RowKindHeaderSpacer    // bottom border line after header
+	RowKindHeaderTopBorder // top border line before header
 	RowKindBlank
 	RowKindSeparatorTop             // top shader line above hunk separator
 	RowKindSeparator                // hunk separator with breadcrumb
@@ -2082,6 +2082,23 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 		styledSymbol = symbol
 	}
 
+	// Style the rest: " kind name" -> space + styled kind (fg=8) + space + styled name (fg=7)
+	kindStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	var styledRest string
+	if strings.HasPrefix(rest, " ") {
+		// Parse: " kind name"
+		trimmed := strings.TrimPrefix(rest, " ")
+		parts := strings.SplitN(trimmed, " ", 2)
+		if len(parts) == 2 {
+			styledRest = " " + kindStyle.Render(parts[0]) + " " + nameStyle.Render(parts[1])
+		} else {
+			styledRest = rest // fallback
+		}
+	} else {
+		styledRest = rest // fallback
+	}
+
 	// Calculate padding to reach headerBoxWidth (based on original content width)
 	originalWidth := len(content) // All ASCII so len() works
 	padding := ""
@@ -2101,14 +2118,14 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 		// Replace first 5 chars of prefix with cursor elements: ▶ + space + gutter(bg) + 2 spaces
 		styledGutter := cursorStyle.Render(" ")
 		cursorPrefix := cursorArrowStyle.Render("▶") + " " + styledGutter + "  "
-		result = cursorPrefix + prefix[5:] + styledSymbol + rest + padding
+		result = cursorPrefix + prefix[5:] + styledSymbol + styledRest + padding
 	} else if isCursorRow && !m.focused {
 		// Unfocused: outline arrow + 4 spaces
 		cursorPrefix := unfocusedCursorArrowStyle.Render("▷") + "    "
-		result = cursorPrefix + prefix[5:] + styledSymbol + rest + padding
+		result = cursorPrefix + prefix[5:] + styledSymbol + styledRest + padding
 	} else {
 		// Non-cursor: use prefix as-is
-		result = prefix + styledSymbol + rest + padding
+		result = prefix + styledSymbol + styledRest + padding
 	}
 
 	// Add border (│) - always present but no trailing fill unlike header
