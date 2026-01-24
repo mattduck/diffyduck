@@ -287,9 +287,8 @@ func runLogMode(debugMode bool) error {
 		commitSets = append(commitSets, commitSet)
 	}
 
-	// Create content fetcher - for now, no fetcher for log mode
-	// (would need per-commit refs for content expansion)
-	opts := []tui.Option{}
+	// Pass git object for on-demand content fetching (per-commit fetchers)
+	opts := []tui.Option{tui.WithGit(g)}
 	if debugMode {
 		opts = append(opts, tui.WithDebugMode())
 	}

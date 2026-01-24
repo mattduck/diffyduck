@@ -656,6 +656,9 @@ func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
 	// Initially at FoldNormal (zero value)
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
 
+	// Position cursor on file header (line 1: top border=0, header=1)
+	m.scroll = 1 - m.cursorOffset()
+
 	// Press Tab to cycle to next level
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
@@ -721,6 +724,9 @@ func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
 	// Since we don't have a fetcher, the command will be nil
 	// but the level should still change
 
+	// Position cursor on file header (line 1)
+	m.scroll = 1 - m.cursorOffset()
+
 	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
 
@@ -738,6 +744,9 @@ func TestUpdate_FoldToggle_SkipsFetch_WhenContentLoaded(t *testing.T) {
 	m := makeTestModel(10)
 	m.files[0].OldContent = []string{"already", "loaded"}
 	m.files[0].NewContent = []string{"already", "loaded"}
+
+	// Position cursor on file header (line 1)
+	m.scroll = 1 - m.cursorOffset()
 
 	// Press Tab to advance to FoldExpanded
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -956,6 +965,9 @@ func TestUpdate_PagerMode_FoldToggle_SkipsExpanded(t *testing.T) {
 	m := makeTestModel(10)
 	m.pagerMode = true // Enable pager mode
 
+	// Position cursor on file header (line 1)
+	m.scroll = 1 - m.cursorOffset()
+
 	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
 
@@ -1015,6 +1027,9 @@ func TestUpdate_PagerMode_NormalMode_DoesNotSkipExpanded(t *testing.T) {
 	// Verify normal (non-pager) mode still goes through FoldExpanded
 	m := makeTestModel(10)
 	// pagerMode is false by default
+
+	// Position cursor on file header (line 1)
+	m.scroll = 1 - m.cursorOffset()
 
 	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)

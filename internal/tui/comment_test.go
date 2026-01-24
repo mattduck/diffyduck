@@ -693,8 +693,8 @@ func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
 		"comment should still be for line 3")
 }
 
-// Test: Fold toggle with comments - cursor on comment row when file folds
-func TestComment_FoldToggle_CursorOnCommentRow_JumpsToHeader(t *testing.T) {
+// Test: TAB on comment row does nothing (only works on file header)
+func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	m := makeCommentableTestModel(10)
 	m.files[0].FoldLevel = sidebyside.FoldNormal
 	m.calculateTotalLines()
@@ -721,21 +721,19 @@ func TestComment_FoldToggle_CursorOnCommentRow_JumpsToHeader(t *testing.T) {
 	cursorPos := m.cursorLine()
 	require.Equal(t, commentRowIdx, cursorPos, "cursor should be on comment row")
 
-	// Fold the file (Normal -> Expanded -> Folded)
-	// First toggle: Normal -> Expanded
+	// TAB should do nothing when cursor is on comment row
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
-	// Second toggle: Expanded -> Folded
-	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	model = newM.(Model)
 
-	// In folded state, comments are hidden, cursor should jump to header
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
+	// Fold level should remain unchanged
+	assert.Equal(t, sidebyside.FoldNormal, model.files[0].FoldLevel,
+		"fold level should not change when TAB pressed on comment row")
 
+	// Cursor should still be on comment row
 	newCursorPos := model.cursorLine()
 	newRows := model.buildRows()
-	assert.True(t, newRows[newCursorPos].isHeader,
-		"after folding, cursor should be on header (comment is hidden)")
+	assert.True(t, newRows[newCursorPos].kind == RowKindComment,
+		"cursor should still be on comment row")
 }
 
 // Test: Multiple files with comments - navigation between them

@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/content"
+	"github.com/user/diffyduck/pkg/git"
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/inlinediff"
 	"github.com/user/diffyduck/pkg/sidebyside"
@@ -44,6 +45,7 @@ type Model struct {
 	commitFileStarts []int // start index in files for each commit
 
 	fetcher            *content.Fetcher // for fetching full file contents (lazy)
+	git                git.Git          // for creating on-demand fetchers in log mode
 	truncatedFileCount int              // number of files omitted due to limit
 
 	// Pager mode
@@ -160,6 +162,14 @@ type Option func(*Model)
 func WithFetcher(f *content.Fetcher) Option {
 	return func(m *Model) {
 		m.fetcher = f
+	}
+}
+
+// WithGit sets the git interface for on-demand content fetching in log mode.
+// This allows creating per-commit fetchers when expanding files.
+func WithGit(g git.Git) Option {
+	return func(m *Model) {
+		m.git = g
 	}
 }
 

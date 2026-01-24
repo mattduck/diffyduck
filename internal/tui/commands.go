@@ -4,15 +4,13 @@ import (
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/user/diffyduck/pkg/content"
 )
 
 // FetchFileContent returns a command that fetches content for one file.
 // Content is fetched with limits applied (max lines, max line length, max bytes).
 // Returns nil for binary files since they have no viewable text content.
 func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
-	if m.fetcher == nil {
-		return nil
-	}
 	if fileIndex < 0 || fileIndex >= len(m.files) {
 		return nil
 	}
@@ -23,7 +21,24 @@ func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 	if fp.IsBinary {
 		return nil
 	}
+
+	// Use existing fetcher if available
 	fetcher := m.fetcher
+
+	// In log mode, create an on-demand fetcher using the commit's SHA
+	if fetcher == nil && m.git != nil && len(m.commits) > 0 {
+		commitIdx := m.commitForFile(fileIndex)
+		if commitIdx >= 0 && commitIdx < len(m.commits) {
+			sha := m.commits[commitIdx].Info.SHA
+			if sha != "" {
+				fetcher = content.NewFetcher(m.git, content.ModeShow, sha, "")
+			}
+		}
+	}
+
+	if fetcher == nil {
+		return nil
+	}
 
 	return func() tea.Msg {
 		oldPath := stripPathPrefix(fp.OldPath)

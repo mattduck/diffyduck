@@ -865,8 +865,8 @@ func TestFoldToggle_CursorOnBlankLine_BlankDisappears(t *testing.T) {
 	assert.Equal(t, 1, model.cursorLine(), "cursor should jump to header when blank line disappears")
 }
 
-// Test: Cursor on hunk separator line that disappears when folding
-func TestFoldToggle_CursorOnHunkSeparator_FoldToHeader(t *testing.T) {
+// Test: TAB on hunk separator does nothing (only works on file header)
+func TestFoldToggle_CursorOnHunkSeparator_NoEffect(t *testing.T) {
 	// Setup: file with gap between hunks, cursor on hunk separator
 	m := Model{
 		focused: true,
@@ -879,7 +879,7 @@ func TestFoldToggle_CursorOnHunkSeparator_FoldToHeader(t *testing.T) {
 					// Gap - next line number is 100, creating a hunk separator
 					{Old: sidebyside.Line{Num: 100, Content: "line100"}, New: sidebyside.Line{Num: 100, Content: "line100"}},
 				},
-				FoldLevel: sidebyside.FoldExpanded, // Will toggle to Folded
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
 		width:  80,
@@ -903,12 +903,14 @@ func TestFoldToggle_CursorOnHunkSeparator_FoldToHeader(t *testing.T) {
 	m.scroll = sepLineIdx - m.cursorOffset()
 	assert.Equal(t, sepLineIdx, m.cursorLine(), "cursor should be on hunk separator")
 
-	// Toggle fold: Expanded -> Folded
-	// Hunk separator disappears, cursor should go to header
+	// TAB should do nothing when not on file header
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	assert.Equal(t, 1, model.cursorLine(), "cursor should jump to header when separator disappears")
+	// Fold level should remain unchanged
+	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel, "fold level should not change when TAB pressed on separator")
+	// Cursor should remain on same line
+	assert.Equal(t, sepLineIdx, model.cursorLine(), "cursor should not move")
 }
 
 // Test: Shift+Tab (all files) preserves scroll position appropriately
@@ -1067,7 +1069,7 @@ func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldFolded, model.files[2].FoldLevel, "third file should still be folded")
 }
 
-// Test: When content loads asynchronously after Tab expand, cursor should stay on same line
+// Test: When content loads asynchronously after expand, cursor should stay on same line
 // Bug: After Tab expands a file without content, FileContentLoadedMsg doesn't preserve scroll
 // Repro: Cursor on diff line 5 -> Tab to expand -> content loads -> cursor lost
 // Expected: cursor stays on line 5
@@ -1112,15 +1114,11 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	// Line 9: diff line (file line 13)
 	// ...
 
-	// Position cursor on line 8 (file line 12)
-	m.scroll = 5 // cursor offset is 3, so cursor at line 8
-	assert.Equal(t, 8, m.cursorLine(), "cursor should be on line 8")
+	// Position cursor on file header (line 1) to press TAB
+	m.scroll = 1 - m.cursorOffset()
+	assert.Equal(t, 1, m.cursorLine(), "cursor should be on header")
 
-	// Verify we're on the line with content "line12"
-	rows := m.buildRows()
-	assert.Equal(t, 12, rows[8].pair.Old.Num, "cursor should be on file line 12")
-
-	// Press Tab to expand
+	// Press Tab to expand (now works because we're on header)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
@@ -1128,7 +1126,13 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel, "file should be Expanded")
 
 	// Since content isn't loaded yet, buildRows falls back to Normal view
-	// Cursor should still be pointing to the same logical line
+	// Now move cursor to line 8 (file line 12) to test content load behavior
+	model.scroll = 5 // cursor offset is 3, so cursor at line 8
+	assert.Equal(t, 8, model.cursorLine(), "cursor should be on line 8")
+
+	// Verify we're on the line with content "line12"
+	rows := model.buildRows()
+	assert.Equal(t, 12, rows[8].pair.Old.Num, "cursor should be on file line 12")
 
 	// Now simulate the content loading
 	// The full file has 20 lines (1-20), our diff showed lines 10-15

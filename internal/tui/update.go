@@ -451,11 +451,17 @@ func (m Model) nextFoldLevelForFile(fp sidebyside.FilePair) sidebyside.FoldLevel
 	return next
 }
 
-// handleFoldToggle cycles the fold level of the current file, or commit if on commit header.
+// handleFoldToggle cycles the fold level of the current file or commit,
+// but only when on the respective header row.
 func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
-	// If cursor is on commit header, do commit fold cycle instead
+	// If cursor is on commit header, do commit fold cycle
 	if m.isOnCommitHeader() {
 		return m.handleCommitFoldCycle()
+	}
+
+	// Only toggle file fold when on file header
+	if !m.isOnFileHeader() {
+		return m, nil
 	}
 
 	fileIdx := m.currentFileIndex()
@@ -825,6 +831,18 @@ func (m Model) isOnCommitHeader() bool {
 	}
 
 	return rows[cursorPos].isCommitHeader
+}
+
+// isOnFileHeader returns true if the cursor is on a file header row.
+func (m Model) isOnFileHeader() bool {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return false
+	}
+
+	return rows[cursorPos].isHeader
 }
 
 // cursorCommitIndex returns the commit index for the row at cursor position.
