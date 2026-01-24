@@ -3217,3 +3217,71 @@ func TestShiftTab_SingleCommit_CyclesCorrectly(t *testing.T) {
 	m = newM.(Model)
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(0))
 }
+
+// =============================================================================
+// Per-Commit File Numbering Tests
+// =============================================================================
+
+func TestMultiCommit_FileNumbersResetPerCommit(t *testing.T) {
+	// Create 2 commits with different file counts
+	// Commit 0: 2 files
+	// Commit 1: 3 files
+	commits := []sidebyside.CommitSet{
+		{
+			Info:      sidebyside.CommitInfo{SHA: "aaa1111"},
+			FoldLevel: sidebyside.CommitNormal, // Show files
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldFolded},
+				{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldFolded},
+			},
+		},
+		{
+			Info:      sidebyside.CommitInfo{SHA: "bbb2222"},
+			FoldLevel: sidebyside.CommitNormal,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/alpha.go", NewPath: "b/alpha.go", FoldLevel: sidebyside.FoldFolded},
+				{OldPath: "a/beta.go", NewPath: "b/beta.go", FoldLevel: sidebyside.FoldFolded},
+				{OldPath: "a/gamma.go", NewPath: "b/gamma.go", FoldLevel: sidebyside.FoldFolded},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find file header rows by fileIndex
+	fileRowIndices := make(map[int]int) // global fileIndex -> row index
+	for i, row := range rows {
+		if row.isHeader && row.fileIndex >= 0 {
+			fileRowIndices[row.fileIndex] = i
+		}
+	}
+
+	// Test first file of first commit (global index 0)
+	m.scroll = fileRowIndices[0] - m.cursorOffset()
+	info := m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile, "first file in commit 0 should be #1")
+	assert.Equal(t, 2, info.TotalFiles, "commit 0 has 2 total files")
+
+	// Test second file of first commit (global index 1)
+	m.scroll = fileRowIndices[1] - m.cursorOffset()
+	info = m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile, "second file in commit 0 should be #2")
+	assert.Equal(t, 2, info.TotalFiles, "commit 0 has 2 total files")
+
+	// Test first file of second commit (global index 2) - should reset to #1
+	m.scroll = fileRowIndices[2] - m.cursorOffset()
+	info = m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile, "first file in commit 1 should be #1 (reset)")
+	assert.Equal(t, 3, info.TotalFiles, "commit 1 has 3 total files")
+
+	// Test third file of second commit (global index 4)
+	m.scroll = fileRowIndices[4] - m.cursorOffset()
+	info = m.StatusInfo()
+	assert.Equal(t, 3, info.CurrentFile, "third file in commit 1 should be #3")
+	assert.Equal(t, 3, info.TotalFiles, "commit 1 has 3 total files")
+}

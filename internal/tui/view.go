@@ -1271,15 +1271,20 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		foldIcon = "●"
 	}
 
-	// Calculate file stats
+	// Calculate file stats for this commit only
+	startIdx := m.commitFileStarts[row.commitIndex]
+	endIdx := len(m.files)
+	if row.commitIndex+1 < len(m.commits) {
+		endIdx = m.commitFileStarts[row.commitIndex+1]
+	}
 	totalAdded := 0
 	totalRemoved := 0
-	for _, fp := range m.files {
-		added, removed := countFileStats(fp)
+	for i := startIdx; i < endIdx; i++ {
+		added, removed := countFileStats(m.files[i])
 		totalAdded += added
 		totalRemoved += removed
 	}
-	fileCount := len(m.files)
+	fileCount := endIdx - startIdx
 
 	// Cursor prefix
 	var prefix string
@@ -1562,11 +1567,24 @@ func (m Model) renderCommitLine() string {
 	sha := shaStyle.Render(commitInfo.ShortSHA())
 	subject := commitInfo.Subject
 
-	// Calculate total stats for all files
+	// Calculate stats for the current commit's files only
+	// currentCommit() returns commits[0] for now, so use commitFileStarts[0]
+	var startIdx, endIdx int
+	if len(m.commits) > 0 && len(m.commitFileStarts) > 0 {
+		startIdx = m.commitFileStarts[0]
+		endIdx = len(m.files)
+		if len(m.commits) > 1 {
+			endIdx = m.commitFileStarts[1]
+		}
+	} else {
+		// Legacy mode: use all files
+		startIdx = 0
+		endIdx = len(m.files)
+	}
 	totalAdded := 0
 	totalRemoved := 0
-	for _, fp := range m.files {
-		added, removed := countFileStats(fp)
+	for i := startIdx; i < endIdx; i++ {
+		added, removed := countFileStats(m.files[i])
 		totalAdded += added
 		totalRemoved += removed
 	}
@@ -1574,7 +1592,7 @@ func (m Model) renderCommitLine() string {
 	// Build right section: N files +X -Y
 	var rightText string
 	var rightSection string
-	fileCount := len(m.files)
+	fileCount := endIdx - startIdx
 	if fileCount == 1 {
 		rightText = "1 file"
 	} else {
@@ -2588,10 +2606,26 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 
 	// File number with # prefix and leading zeros
 	// Color matches the file status (green=added, red=deleted, blue=modified/renamed)
-	totalFiles := len(m.files)
-	numDigits := len(fmt.Sprintf("%d", totalFiles))
-	fileNum := fmt.Sprintf("#%0*d", numDigits, fileIndex+1) // #01
-	fileNumWidth := 1 + numDigits                           // # + digits
+	// File numbers reset to 1 for each commit
+	var totalFilesInCommit int
+	var fileNumInCommit int
+	if len(m.commits) > 0 && len(m.commitFileStarts) > 0 {
+		commitIdx := m.commitForFile(fileIndex)
+		startIdx := m.commitFileStarts[commitIdx]
+		endIdx := len(m.files)
+		if commitIdx+1 < len(m.commits) {
+			endIdx = m.commitFileStarts[commitIdx+1]
+		}
+		totalFilesInCommit = endIdx - startIdx
+		fileNumInCommit = fileIndex - startIdx + 1
+	} else {
+		// Legacy mode: no commits, use global file index
+		totalFilesInCommit = len(m.files)
+		fileNumInCommit = fileIndex + 1
+	}
+	numDigits := len(fmt.Sprintf("%d", totalFilesInCommit))
+	fileNum := fmt.Sprintf("#%0*d", numDigits, fileNumInCommit) // #01
+	fileNumWidth := 1 + numDigits                               // # + digits
 
 	// All headers use same format: indent + icon + fileNum + status + header + stats + │ + trailing
 	statsBar := formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth)

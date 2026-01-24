@@ -604,3 +604,78 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 	assert.True(t, contentPos > 0, "content should be found in content line")
 	assert.True(t, headerPos > 0, "test.go should be found in header line")
 }
+
+func TestView_MultiCommitLogView(t *testing.T) {
+	// Test rendering of multiple commits in a log-style view
+	// Each commit should show its own stats and file numbers should reset per commit
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "abc123def456",
+				Author:  "Alice",
+				Date:    "Mon Jan 15 10:00:00 2024 -0500",
+				Subject: "Add feature X",
+			},
+			FoldLevel:   sidebyside.CommitNormal, // Level 2 - show file headers
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/foo.go",
+					NewPath:   "b/foo.go",
+					FoldLevel: sidebyside.FoldFolded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Type: sidebyside.Added}, New: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added}},
+						{Old: sidebyside.Line{Num: 2, Type: sidebyside.Added}, New: sidebyside.Line{Num: 2, Content: "another", Type: sidebyside.Added}},
+					},
+				},
+				{
+					OldPath:   "a/bar.go",
+					NewPath:   "b/bar.go",
+					FoldLevel: sidebyside.FoldFolded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Type: sidebyside.Added}, New: sidebyside.Line{Num: 1, Content: "bar line", Type: sidebyside.Added}},
+					},
+				},
+			},
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "def789abc012",
+				Author:  "Bob",
+				Date:    "Tue Jan 16 14:00:00 2024 -0500",
+				Subject: "Fix bug Y",
+			},
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/baz.go",
+					NewPath:   "b/baz.go",
+					FoldLevel: sidebyside.FoldFolded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 5, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 5, Content: "new", Type: sidebyside.Added}},
+					},
+				},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 100
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	goldenPath := filepath.Join("testdata", "multi_commit_log.golden")
+	if *update {
+		err := os.WriteFile(goldenPath, []byte(output), 0644)
+		require.NoError(t, err)
+		return
+	}
+
+	expected, err := os.ReadFile(goldenPath)
+	require.NoError(t, err, "Run with -update to create golden file")
+	assert.Equal(t, string(expected), output)
+}

@@ -457,7 +457,22 @@ func (m Model) StatusInfo() StatusInfo {
 	fileIdx := m.currentFileIndex()
 	if fileIdx >= 0 && fileIdx < len(m.files) {
 		fp := m.files[fileIdx]
-		info.CurrentFile = fileIdx + 1
+
+		// Calculate per-commit file number and total
+		if len(m.commits) > 0 && len(m.commitFileStarts) > 0 {
+			commitIdx := m.commitForFile(fileIdx)
+			startIdx := m.commitFileStarts[commitIdx]
+			endIdx := len(m.files)
+			if commitIdx+1 < len(m.commits) {
+				endIdx = m.commitFileStarts[commitIdx+1]
+			}
+			info.CurrentFile = fileIdx - startIdx + 1
+			info.TotalFiles = endIdx - startIdx
+		} else {
+			// Legacy mode: use global file index
+			info.CurrentFile = fileIdx + 1
+		}
+
 		info.FileName = formatFilePath(fp.OldPath, fp.NewPath)
 		info.FoldLevel = fp.FoldLevel
 		info.FileStatus = string(fileStatusFromPair(fp))
