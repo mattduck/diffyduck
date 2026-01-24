@@ -34,13 +34,12 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	assert.Equal(t, 1, info.CurrentFile)
 	assert.Equal(t, 1, info.TotalFiles)
 	assert.Equal(t, "test.go", info.FileName)
-	// With cursor-based positioning: height=20, contentHeight=19, cursorOffset=3
-	// cursorLine = scroll(0) + cursorOffset(3) = 3
-	// CurrentLine = cursorLine + 1 = 4
-	assert.Equal(t, 4, info.CurrentLine)
+	// With new cursor model: cursorLine = scroll = 0
+	// CurrentLine = cursorLine + 1 = 1
+	assert.Equal(t, 1, info.CurrentLine)
 	assert.Equal(t, 52, info.TotalLines) // In diff view: 1 header + 1 bottom border + 50 pairs (no top border for first file)
-	// Percentage: cursorLine(3) / maxCursor(51) * 100 = 5%
-	assert.Equal(t, 5, info.Percentage)
+	// Percentage: cursorLine(0) / maxCursor(51) * 100 = 0%
+	assert.Equal(t, 0, info.Percentage)
 	assert.False(t, info.AtEnd)
 }
 
@@ -108,8 +107,10 @@ func TestStatusInfo_MultipleFiles(t *testing.T) {
 	assert.Equal(t, 2, info.TotalFiles)
 	assert.Equal(t, "first.go", info.FileName)
 
-	// Scroll into file 2 (file 1 has 21 lines: 1 header + 20 pairs)
-	m.scroll = 25
+	// Scroll to file 2's header
+	// File 1: header (0) + bottom border (1) + 20 pairs (2-21) + 4 blanks (22-25) + top border (26)
+	// File 2: header (27) + ...
+	m.scroll = 27
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile)
 	assert.Equal(t, "second.go", info.FileName)
@@ -239,7 +240,7 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 
 	// At scroll that puts cursor at approx line 50, percentage should be ~49
 	// (50/102 * 100 = 49.0, rounded to 49)
-	m.scroll = 50 - m.cursorOffset() // cursor at 50
+	m.scroll = 50 // cursor at 50
 	info = m.StatusInfo()
 	assert.Equal(t, 49, info.Percentage)
 	assert.False(t, info.AtEnd)

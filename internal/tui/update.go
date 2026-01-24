@@ -455,10 +455,8 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 
 // adjustScrollToRow adjusts scroll so the cursor points to the given row index.
 func (m *Model) adjustScrollToRow(rowIndex int) {
-	// cursor = scroll + cursorOffset
-	// We want cursor = rowIndex
-	// So: scroll = rowIndex - cursorOffset
-	m.scroll = rowIndex - m.cursorOffset()
+	// In the new cursor model, scroll directly represents the cursor line
+	m.scroll = rowIndex
 	m.clampScroll()
 }
 

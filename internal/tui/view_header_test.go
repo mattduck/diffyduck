@@ -226,7 +226,7 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 	m.calculateTotalLines()
 	// Position cursor on file header (row 0)
 	// cursorLine = scroll + cursorOffset, so scroll = 0 - cursorOffset
-	m.scroll = -m.cursorOffset()
+	m.scroll = 0
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -269,7 +269,7 @@ func TestView_FileHeaderNoVerticalDivider(t *testing.T) {
 	}
 	m.calculateTotalLines()
 	// Position cursor on file header
-	m.scroll = -m.cursorOffset()
+	m.scroll = 0
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -363,7 +363,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 
 	// In diff view layout: header=0, spacer(bottom border)=1, content=2
 	// Position cursor on bottom border (row 1)
-	m.scroll = 1 - m.cursorOffset()
+	m.scroll = 1
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -388,7 +388,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 
 	// Test content line with cursor
 	// Position cursor on content line (row 2 in diff view)
-	m.scroll = 2 - m.cursorOffset()
+	m.scroll = 2
 	output2 := m.View()
 	lines2 := strings.Split(output2, "\n")
 

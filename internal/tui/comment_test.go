@@ -192,7 +192,7 @@ func TestComment_StartCommentOnContextLine(t *testing.T) {
 	require.NotEqual(t, -1, contextRowIdx, "should find context line row")
 
 	// Position cursor on the context line
-	m.scroll = contextRowIdx - m.cursorOffset()
+	m.scroll = contextRowIdx
 	cursorPos := m.cursorLine()
 	require.Equal(t, contextRowIdx, cursorPos, "cursor should be on context line row")
 
@@ -272,9 +272,8 @@ func TestComment_CursorTracksCommentRows(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Position cursor on first content line (line 3 after top border, header, bottom border)
-	// With height=30, cursor offset = 5 (20% of 28)
-	// To have cursor on line 3: scroll = 3 - 5 = -2
-	m.scroll = -2
+	// In new model, scroll = cursorLine, so scroll = 3
+	m.scroll = 3
 	cursorPos := m.cursorLine()
 	require.Equal(t, 3, cursorPos, "cursor should be on first content line")
 
@@ -306,7 +305,7 @@ func TestComment_CursorTracksCommentRows(t *testing.T) {
 	require.NotEqual(t, -1, targetRowIdx, "should find row for file line 3")
 
 	// Position cursor on that row
-	m.scroll = targetRowIdx - m.cursorOffset()
+	m.scroll = targetRowIdx
 	cursorPos = m.cursorLine()
 
 	// Now try to start a comment - it should attach to line 3, not some offset line
@@ -340,7 +339,7 @@ func TestComment_MultipleCommentsCorrectlyPositioned(t *testing.T) {
 	}
 
 	// Position cursor on line 5
-	m.scroll = line5RowIdx - m.cursorOffset()
+	m.scroll = line5RowIdx
 
 	// Start and submit a comment
 	success := m.startComment()
@@ -376,7 +375,7 @@ func TestComment_SubmitInvalidatesCache(t *testing.T) {
 	// Find first commentable row
 	for i, r := range rows {
 		if m.canComment(r) {
-			m.scroll = i - m.cursorOffset()
+			m.scroll = i
 			break
 		}
 	}
@@ -529,7 +528,7 @@ func TestComment_StatusInfoCorrectWithComments(t *testing.T) {
 	rows := m.buildRows()
 	for i, r := range rows {
 		if r.kind == RowKindContent && r.pair.New.Num == 5 {
-			m.scroll = i - m.cursorOffset()
+			m.scroll = i
 			break
 		}
 	}
@@ -675,7 +674,7 @@ func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
 	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
 
 	// Position cursor on comment row
-	m.scroll = commentRowIdx - m.cursorOffset()
+	m.scroll = commentRowIdx
 	cursorPos := m.cursorLine()
 	require.Equal(t, commentRowIdx, cursorPos, "cursor should be on comment row")
 
@@ -717,7 +716,7 @@ func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
 
 	// Position cursor on comment row
-	m.scroll = commentRowIdx - m.cursorOffset()
+	m.scroll = commentRowIdx
 	cursorPos := m.cursorLine()
 	require.Equal(t, commentRowIdx, cursorPos, "cursor should be on comment row")
 
@@ -935,7 +934,7 @@ func TestComment_BreadcrumbOnCommentRow(t *testing.T) {
 	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
 
 	// Position cursor on comment row
-	m.scroll = commentRowIdx - m.cursorOffset()
+	m.scroll = commentRowIdx
 
 	// Get breadcrumbs (this tests that commentLineNum is used for lookups)
 	row := rows[commentRowIdx]
@@ -972,7 +971,7 @@ func TestComment_StatusInfo_CorrectPositionWithComments(t *testing.T) {
 	}
 	require.NotEqual(t, -1, line8Idx, "should find line 8")
 
-	m.scroll = line8Idx - m.cursorOffset()
+	m.scroll = line8Idx
 
 	info := m.StatusInfo()
 

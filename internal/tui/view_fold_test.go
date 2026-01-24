@@ -690,7 +690,7 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 	for i, row := range rows {
 		if row.isHeader && row.fileIndex == 0 {
 			// Position cursor on this file header
-			m.scroll = -m.cursorOffset() + i
+			m.scroll = i
 			break
 		}
 	}
@@ -772,7 +772,7 @@ func TestCommitBorder_CursorRendersYellowGapAndGreyBgBorderChar(t *testing.T) {
 	require.NotEqual(t, -1, bottomBorderRowIdx, "should find commit bottom border row")
 
 	// Position cursor on the border row
-	m.scroll = -m.cursorOffset() + bottomBorderRowIdx
+	m.scroll = bottomBorderRowIdx
 
 	// Render and check the output
 	output := m.View()

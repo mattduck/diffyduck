@@ -376,6 +376,8 @@ func (m Model) buildRows() []displayRow {
 	}
 
 	// Build rows for each commit
+	// Note: The first item's top border is rendered specially in getVisibleRows,
+	// not as part of the content rows (so it doesn't affect cursor line numbering).
 	for commitIdx, commit := range m.commits {
 		// Add commit header row if commit has metadata
 		if commit.Info.HasMetadata() {
@@ -384,7 +386,6 @@ func (m Model) buildRows() []displayRow {
 			// Border is visible when commit is unfolded AND (prev is unfolded OR this is first commit)
 			commitBorderVisible := commitUnfolded && prevCommitUnfolded
 
-			// First commit's top border is rendered in renderTopBar (not in content rows)
 			// Subsequent commits get their top border from the previous commit's separator row
 
 			rows = append(rows, displayRow{
@@ -556,9 +557,8 @@ func (m Model) buildRowsLegacy() []displayRow {
 	}
 
 	// Add file rows (no commit headers in legacy mode)
-	// Note: Unlike log/show view, diff view doesn't add a top border for the first file.
-	// The first file's header is the first row of content (similar to how log/show view
-	// renders the first commit's border in the fixed top bar).
+	// Note: The first file's top border is rendered specially in getVisibleRows,
+	// not as part of the content rows (so it doesn't affect cursor line numbering).
 	for fileIdx, fp := range m.files {
 		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth)
 	}
@@ -1068,48 +1068,41 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	rightContentArea := rightHalfWidth - lineNumWidth - 3 - 4
 	hideRightTrailingGutter := rightContentArea <= 0
 
-	// The cursor is at a fixed viewport position
-	cursorViewportRow := m.cursorOffset()
+	// The cursor position on screen - moves up when near top of content
+	cursorViewportRow := m.cursorViewportRow()
 
-	start := m.scroll
-	end := m.scroll + contentHeight
+	// Content starts at line 0 when near the top, then scrolls up
+	start := m.contentStartLine()
+	end := start + contentHeight
 
-	// Handle negative scroll by adding blank padding at the top.
-	// The last padding line (i == -1) becomes a border when the first content item is unfolded:
-	// - In log/show view: first commit's top border (heavy yellow line)
-	// - In diff view: first file's top border (light gray box corner)
-	if start < 0 {
+	// When showing from the very beginning, render the first item's top border
+	// as an extra line before the content (not cursor-selectable)
+	if start == 0 && len(rows) > 0 {
 		// Check if first commit is unfolded (for rendering commit top border)
 		firstCommitUnfolded := len(m.commits) > 0 &&
 			m.commits[0].Info.HasMetadata() &&
 			m.commits[0].FoldLevel != sidebyside.CommitFolded
 
 		// Check if first file is unfolded and we're in diff view (no commit metadata)
-		// In this case, render file top border on the last padding line
 		firstFileUnfolded := len(m.files) > 0 &&
 			m.files[0].FoldLevel != sidebyside.FoldFolded
 		isDiffView := len(m.commits) == 0 ||
 			(len(m.commits) > 0 && !m.commits[0].Info.HasMetadata())
 
-		for i := start; i < 0 && len(visible) < contentHeight; i++ {
-			isCursorRow := len(visible) == cursorViewportRow
-			isLastBlankBeforeContent := i == -1
-
-			if isLastBlankBeforeContent && firstCommitUnfolded {
-				// Render as commit top border (yellow ━━━ line)
-				borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-				border := borderStyle.Render(strings.Repeat("━", m.width))
-				visible = append(visible, border)
-			} else if isLastBlankBeforeContent && isDiffView && firstFileUnfolded && len(rows) > 0 && rows[0].isHeader {
-				// Render as first file's top border (matches the header box style)
-				visible = append(visible, m.renderHeaderTopBorder(rows[0].headerBoxWidth, true, rows[0].status, isCursorRow))
-			} else if isCursorRow {
-				visible = append(visible, m.renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth))
-			} else {
-				visible = append(visible, "")
-			}
+		if firstCommitUnfolded {
+			// Render commit top border (yellow ━━━ line)
+			borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+			border := borderStyle.Render(strings.Repeat("━", m.width))
+			visible = append(visible, border)
+		} else if isDiffView && firstFileUnfolded && rows[0].isHeader {
+			// Render first file's top border (matches the header box style)
+			visible = append(visible, m.renderHeaderTopBorder(rows[0].headerBoxWidth, true, rows[0].status, false))
+		} else {
+			// Render blank line (border slot when folded)
+			visible = append(visible, "")
 		}
-		start = 0
+		// Adjust cursor position to account for the border line
+		cursorViewportRow++
 	}
 
 	if end > len(rows) {

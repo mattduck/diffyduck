@@ -585,17 +585,17 @@ func TestStatusInfo_BreadcrumbsOnChunkSeparator(t *testing.T) {
 	require.NotZero(t, sepIdx, "should find hunk separator row")
 
 	// Test 1: Cursor on separator top - no breadcrumb
-	m.scroll = sepTopIdx - m.cursorOffset()
+	m.scroll = sepTopIdx
 	info := m.StatusInfo()
 	assert.Empty(t, info.Breadcrumbs, "cursor on separator top should NOT show breadcrumb")
 
 	// Test 2: Cursor on separator (middle/breadcrumb line) - should show breadcrumb
-	m.scroll = sepIdx - m.cursorOffset()
+	m.scroll = sepIdx
 	info = m.StatusInfo()
 	assert.Contains(t, info.Breadcrumbs, "func MyFunction", "cursor on separator should show breadcrumb")
 
 	// Test 3: Cursor on separator bottom - should show breadcrumb
-	m.scroll = sepBottomIdx - m.cursorOffset()
+	m.scroll = sepBottomIdx
 	info = m.StatusInfo()
 	assert.Contains(t, info.Breadcrumbs, "func MyFunction", "cursor on separator bottom should show breadcrumb")
 }
@@ -1271,19 +1271,19 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find a row belonging to second commit")
 
 	// Position cursor on first commit header
-	m.scroll = firstCommitHeaderIdx - m.cursorOffset()
+	m.scroll = firstCommitHeaderIdx
 	commit := m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "first111", commit.Info.SHA, "cursor on first commit header should return first commit")
 
 	// Position cursor on first commit body - should still return first commit
-	m.scroll = firstCommitBodyIdx - m.cursorOffset()
+	m.scroll = firstCommitBodyIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "first111", commit.Info.SHA, "cursor on first commit body should return first commit")
 
 	// Position cursor on second commit header
-	m.scroll = secondCommitHeaderIdx - m.cursorOffset()
+	m.scroll = secondCommitHeaderIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit header should return second commit")
@@ -1299,7 +1299,7 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitBodyIdx, "should find a body row belonging to second commit")
 
 	// Position cursor on second commit body - should return second commit
-	m.scroll = secondCommitBodyIdx - m.cursorOffset()
+	m.scroll = secondCommitBodyIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit body should return second commit")
@@ -1319,7 +1319,7 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitFileIdx, "should find a file row belonging to second commit")
 
 	// Position cursor on second commit's file - should return second commit
-	m.scroll = secondCommitFileIdx - m.cursorOffset()
+	m.scroll = secondCommitFileIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit's file should return second commit")
@@ -1374,7 +1374,7 @@ func TestTopBar_ShowsCorrectCommit_WhenCursorMoves(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
 
 	// Position cursor on second commit header
-	m.scroll = secondCommitHeaderIdx - m.cursorOffset()
+	m.scroll = secondCommitHeaderIdx
 
 	topBar := m.renderTopBar()
 
@@ -1473,14 +1473,14 @@ func TestTopBar_ShowsCorrectStats_WhenCursorMoves(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
 
 	// Position cursor on first commit - should show "1 file" and "+5 -3"
-	m.scroll = firstCommitHeaderIdx - m.cursorOffset()
+	m.scroll = firstCommitHeaderIdx
 	topBar := m.renderTopBar()
 	assert.Contains(t, topBar, "1 file", "first commit should show 1 file")
 	assert.Contains(t, topBar, "+5", "first commit should show +5")
 	assert.Contains(t, topBar, "-3", "first commit should show -3")
 
 	// Position cursor on second commit - should show "2 files" and "+10 -2"
-	m.scroll = secondCommitHeaderIdx - m.cursorOffset()
+	m.scroll = secondCommitHeaderIdx
 	topBar = m.renderTopBar()
 	assert.Contains(t, topBar, "2 files", "second commit should show 2 files")
 	assert.Contains(t, topBar, "+10", "second commit should show +10")
@@ -1519,7 +1519,7 @@ func TestIsOnCommitHeader(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Position cursor on commit header (row 0)
-	m.scroll = -m.cursorOffset() // minScroll, so cursor is at row 0
+	m.scroll = 0 // minScroll, so cursor is at row 0
 	assert.True(t, m.isOnCommitHeader(), "cursor at row 0 should be on commit header")
 
 	// Move cursor down past commit header

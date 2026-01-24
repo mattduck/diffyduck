@@ -62,7 +62,7 @@ func TestYank_FindCommentForCursor_OnCommentedLine(t *testing.T) {
 	}
 
 	// Position cursor on the commented line (scroll = rowIdx - cursorOffset)
-	m.scroll = lineRowIdx - m.cursorOffset()
+	m.scroll = lineRowIdx
 
 	ck, found := m.findCommentForCursor()
 	assert.True(t, found, "should find comment when cursor is on commented line")
@@ -90,7 +90,7 @@ func TestYank_FindCommentForCursor_OnCommentRow(t *testing.T) {
 	}
 
 	// Position cursor on the comment row (scroll = rowIdx - cursorOffset)
-	m.scroll = commentRowIdx - m.cursorOffset()
+	m.scroll = commentRowIdx
 
 	ck, found := m.findCommentForCursor()
 	assert.True(t, found, "should find comment when cursor is on comment row")
@@ -170,7 +170,7 @@ func TestYank_HandleYank_SetsStatusMessage(t *testing.T) {
 	rows := m.getRows()
 	for i, row := range rows {
 		if row.kind == RowKindContent && row.pair.New.Num == 3 {
-			m.scroll = i - m.cursorOffset()
+			m.scroll = i
 			break
 		}
 	}
@@ -385,7 +385,7 @@ func TestYank_HandleYank_NoComment_ReturnsNil(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Don't add any comments, just position cursor somewhere
-	m.scroll = 3 - m.cursorOffset()
+	m.scroll = 3
 
 	newModel, cmd := m.handleYank()
 	m2 := newModel.(Model)
@@ -422,7 +422,7 @@ func TestYank_KeyPress_Integration(t *testing.T) {
 	rows := m.getRows()
 	for i, row := range rows {
 		if row.kind == RowKindContent && row.pair.New.Num == 3 {
-			m.scroll = i - m.cursorOffset()
+			m.scroll = i
 			break
 		}
 	}

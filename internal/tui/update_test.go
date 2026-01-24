@@ -55,8 +55,8 @@ func TestUpdate_ScrollUp_AtTop(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 	model := newM.(Model)
 
-	// Scroll can now go negative to allow cursor to reach first line
-	assert.Equal(t, -1, model.scroll)
+	// Scroll clamps at 0 (no negative scroll in new model)
+	assert.Equal(t, 0, model.scroll)
 }
 
 func TestUpdate_ScrollDown_AtBottom(t *testing.T) {
@@ -629,8 +629,8 @@ func TestUpdate_MouseWheelUp_AtTop(t *testing.T) {
 	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
 	model := newM.(Model)
 
-	// Scroll can go negative to allow cursor to reach first line
-	assert.Equal(t, -3, model.scroll)
+	// Scroll clamps at 0 (no negative scroll in new model)
+	assert.Equal(t, 0, model.scroll)
 }
 
 func TestUpdate_MouseWheelDown_AtBottom(t *testing.T) {
@@ -649,7 +649,7 @@ func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
 
 	// Position cursor on file header (line 0 in diff view: no top border)
-	m.scroll = 0 - m.cursorOffset()
+	m.scroll = 0
 
 	// Press Tab to cycle to next level
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -717,7 +717,7 @@ func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
 	// but the level should still change
 
 	// Position cursor on file header (line 0 in diff view)
-	m.scroll = 0 - m.cursorOffset()
+	m.scroll = 0
 
 	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
@@ -738,7 +738,7 @@ func TestUpdate_FoldToggle_SkipsFetch_WhenContentLoaded(t *testing.T) {
 	m.files[0].NewContent = []string{"already", "loaded"}
 
 	// Position cursor on file header (line 0 in diff view)
-	m.scroll = 0 - m.cursorOffset()
+	m.scroll = 0
 
 	// Press Tab to advance to FoldExpanded
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -958,7 +958,7 @@ func TestUpdate_PagerMode_FoldToggle_SkipsExpanded(t *testing.T) {
 	m.pagerMode = true // Enable pager mode
 
 	// Position cursor on file header (line 0 in diff view)
-	m.scroll = 0 - m.cursorOffset()
+	m.scroll = 0
 
 	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
@@ -1021,7 +1021,7 @@ func TestUpdate_PagerMode_NormalMode_DoesNotSkipExpanded(t *testing.T) {
 	// pagerMode is false by default
 
 	// Position cursor on file header (line 0 in diff view)
-	m.scroll = 0 - m.cursorOffset()
+	m.scroll = 0
 
 	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
@@ -1140,7 +1140,7 @@ func findTopBorderRowForFile(rows []displayRow, fileIndex int) int {
 // moveCursorToRow adjusts scroll so that the cursor lands on the given row index.
 func moveCursorToRow(m Model, rowIdx int) Model {
 	// cursor is at scroll + cursorOffset(), so scroll = rowIdx - cursorOffset()
-	m.scroll = rowIdx - m.cursorOffset()
+	m.scroll = rowIdx
 	return m
 }
 
@@ -1290,7 +1290,7 @@ func TestCursorIdentity_CommitIndex_CapturedCorrectly(t *testing.T) {
 	require.True(t, rows[1].isCommitHeader, "row 1 should be commit header")
 
 	// Position cursor on second commit header (row 1)
-	m.scroll = 1 - m.cursorOffset()
+	m.scroll = 1
 	m.calculateTotalLines()
 
 	identity := m.getCursorRowIdentity()
@@ -1368,7 +1368,7 @@ func TestFileContentLoaded_SkipsScrollPreservation_WhenCommitFolded(t *testing.T
 	require.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel)
 
 	// Position cursor on second commit header
-	m.scroll = 1 - m.cursorOffset()
+	m.scroll = 1
 	m.calculateTotalLines()
 	initialScroll := m.scroll
 

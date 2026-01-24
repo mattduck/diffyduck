@@ -223,7 +223,7 @@ func TestView_HunkSeparatorNoCrossInMiddle(t *testing.T) {
 	}
 	m.calculateTotalLines()
 	// Position cursor away from the hunk separator (on a content line)
-	m.scroll = 3 - m.cursorOffset() // cursor on line 100
+	m.scroll = 3 // cursor on line 100
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -540,7 +540,7 @@ func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
 	assert.Contains(t, leftHalf, "func MyFunction", "breadcrumb should appear in left half (new content side)")
 
 	// Test 2: Cursor row - breadcrumb still visible with cursor arrow
-	m.scroll = hunkSepIdx - m.cursorOffset()
+	m.scroll = hunkSepIdx
 	output = m.View()
 	lines = strings.Split(output, "\n")
 
@@ -619,7 +619,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 
 	// Render with cursor on content line (line 100)
 	// In diff view layout: header=0, bottom_border=1, line1=2, hunksep_top=3, hunksep=4, hunksep_bottom=5, line100=6
-	m.scroll = 6 - m.cursorOffset()
+	m.scroll = 6
 	contentOutput := m.View()
 	contentLines := strings.Split(contentOutput, "\n")
 
@@ -636,7 +636,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	require.Len(t, contentArrowPositions, 2, "content line should have 2 arrows (left and right)")
 
 	// Now render with cursor on hunk separator (the line with breadcrumbs, not the top shader line)
-	m.scroll = 4 - m.cursorOffset()
+	m.scroll = 4
 	hunkOutput := m.View()
 	hunkLines := strings.Split(hunkOutput, "\n")
 
@@ -694,7 +694,7 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 	}
 	m.calculateTotalLines()
 	// Position cursor on hunk separator (row 4: top_border=0, header=1, bottom_border=2, line1=3, hunksep=4)
-	m.scroll = 4 - m.cursorOffset()
+	m.scroll = 4
 
 	output := m.View()
 	lines := strings.Split(output, "\n")

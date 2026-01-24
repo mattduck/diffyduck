@@ -411,42 +411,54 @@ func (m Model) contentHeight() int {
 	return h
 }
 
-// cursorOffset returns the fixed offset from the top of the viewport where the cursor sits.
+// cursorOffset returns the preferred offset from the top of the viewport where the cursor sits.
 // This is 20% of the base content height (ignores comment prompt to keep cursor stable).
+// Note: The actual cursor position may be higher when near the top of content - see cursorViewportRow().
 func (m Model) cursorOffset() int {
 	return m.baseContentHeight() * 20 / 100
 }
 
+// cursorViewportRow returns the actual row in the viewport where the cursor appears.
+// Near the top of content, the cursor moves up to keep content at the top of screen.
+// Once scroll reaches cursorOffset, the cursor stays at the fixed 20% position.
+func (m Model) cursorViewportRow() int {
+	offset := m.cursorOffset()
+	if m.scroll < offset {
+		return m.scroll
+	}
+	return offset
+}
+
+// contentStartLine returns which line of content appears at the top of the viewport.
+// Near the top, content starts at line 0. Once scroll exceeds cursorOffset,
+// content scrolls up and this returns a positive value.
+func (m Model) contentStartLine() int {
+	offset := m.cursorOffset()
+	if m.scroll <= offset {
+		return 0
+	}
+	return m.scroll - offset
+}
+
 // cursorLine returns the display row index that the cursor points to.
-// This is the scroll position plus the cursor offset.
+// In the new cursor model, scroll directly represents the cursor line.
 func (m Model) cursorLine() int {
-	return m.scroll + m.cursorOffset()
+	return m.scroll
 }
 
 // minScroll returns the minimum valid scroll offset.
-// This is negative, allowing the cursor to reach the first line of content.
-// When scroll = minScroll, cursor (at cursorOffset) points to line 0.
+// The cursor can reach the first content row (row 0, the header).
 func (m Model) minScroll() int {
-	return -m.cursorOffset()
+	return 0
 }
 
 // maxScroll returns the maximum valid scroll offset.
 // This allows the cursor to reach the last line of content.
-// When scroll = maxScroll, cursor points to (totalLines - 1).
 func (m Model) maxScroll() int {
 	if m.totalLines == 0 {
 		return 0
 	}
-	// cursor = scroll + cursorOffset
-	// We want cursor to be able to reach totalLines - 1
-	// So: totalLines - 1 = scroll + cursorOffset
-	// scroll = totalLines - 1 - cursorOffset
-	max := m.totalLines - 1 - m.cursorOffset()
-	// Don't go below minScroll (handles case where content is smaller than viewport)
-	if max < m.minScroll() {
-		return m.minScroll()
-	}
-	return max
+	return m.totalLines - 1
 }
 
 // clampScroll ensures scroll is within valid bounds.
