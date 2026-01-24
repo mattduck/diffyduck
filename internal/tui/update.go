@@ -290,6 +290,10 @@ type cursorRowIdentity struct {
 	commitIndex int     // commit this row belongs to (for commit headers/body)
 	// For blank rows, which blank row within the file's blank area (0-indexed)
 	blankIndex int
+	// For commit body rows, which body row within the commit (0-indexed)
+	commitBodyIndex int
+	// For structural diff rows, which row within the file's structural diff area (0-indexed)
+	structuralDiffIndex int
 	// For content rows, the line numbers to match
 	oldNum int
 	newNum int
@@ -329,13 +333,39 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 		}
 	}
 
+	// For commit body rows, count which body row this is within the commit
+	commitBodyIndex := 0
+	if row.kind == RowKindCommitBody {
+		for i := cursorPos - 1; i >= 0; i-- {
+			if rows[i].kind == RowKindCommitBody && rows[i].commitIndex == row.commitIndex {
+				commitBodyIndex++
+			} else {
+				break
+			}
+		}
+	}
+
+	// For structural diff rows, count which row this is within the file's structural diff area
+	structuralDiffIndex := 0
+	if row.kind == RowKindStructuralDiff {
+		for i := cursorPos - 1; i >= 0; i-- {
+			if rows[i].kind == RowKindStructuralDiff && rows[i].fileIndex == row.fileIndex {
+				structuralDiffIndex++
+			} else {
+				break
+			}
+		}
+	}
+
 	return cursorRowIdentity{
-		kind:        row.kind,
-		fileIndex:   row.fileIndex,
-		commitIndex: row.commitIndex,
-		blankIndex:  blankIndex,
-		oldNum:      row.pair.Old.Num,
-		newNum:      row.pair.New.Num,
+		kind:                row.kind,
+		fileIndex:           row.fileIndex,
+		commitIndex:         row.commitIndex,
+		blankIndex:          blankIndex,
+		commitBodyIndex:     commitBodyIndex,
+		structuralDiffIndex: structuralDiffIndex,
+		oldNum:              row.pair.Old.Num,
+		newNum:              row.pair.New.Num,
 	}
 }
 
@@ -353,23 +383,53 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 
 	// Track blanks seen per file for matching specific blank rows
 	blanksSeen := 0
-	lastFileIndex := -2 // Start with invalid value
+	lastFileIndexForBlanks := -2 // Start with invalid value
+
+	// Track commit body rows seen per commit for matching specific body rows
+	commitBodySeen := 0
+	lastCommitIndex := -2 // Start with invalid value
+
+	// Track structural diff rows seen per file for matching specific rows
+	structuralDiffSeen := 0
+	lastFileIndexForStructDiff := -2 // Start with invalid value
 
 	// First, try to find an exact match
 	for i, row := range rows {
 		// Reset blank counter when file changes
-		if row.fileIndex != lastFileIndex {
+		if row.fileIndex != lastFileIndexForBlanks {
 			blanksSeen = 0
-			lastFileIndex = row.fileIndex
+			lastFileIndexForBlanks = row.fileIndex
 		}
 
-		if m.rowMatchesIdentity(row, identity, blanksSeen) {
+		// Reset commit body counter when commit changes
+		if row.commitIndex != lastCommitIndex {
+			commitBodySeen = 0
+			lastCommitIndex = row.commitIndex
+		}
+
+		// Reset structural diff counter when file changes
+		if row.fileIndex != lastFileIndexForStructDiff {
+			structuralDiffSeen = 0
+			lastFileIndexForStructDiff = row.fileIndex
+		}
+
+		if m.rowMatchesIdentity(row, identity, blanksSeen, commitBodySeen, structuralDiffSeen) {
 			return i
 		}
 
 		// Count blanks after checking (so first blank has index 0)
 		if row.kind == RowKindBlank && row.fileIndex == identity.fileIndex {
 			blanksSeen++
+		}
+
+		// Count commit body rows after checking (so first body row has index 0)
+		if row.kind == RowKindCommitBody && row.commitIndex == identity.commitIndex {
+			commitBodySeen++
+		}
+
+		// Count structural diff rows after checking (so first row has index 0)
+		if row.kind == RowKindStructuralDiff && row.fileIndex == identity.fileIndex {
+			structuralDiffSeen++
 		}
 	}
 
@@ -401,7 +461,9 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 
 // rowMatchesIdentity checks if a row matches the given identity.
 // For blank rows, blanksSeen tracks how many blanks we've seen for this file.
-func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, blanksSeen int) bool {
+// For commit body rows, commitBodySeen tracks how many body rows we've seen for this commit.
+// For structural diff rows, structuralDiffSeen tracks how many rows we've seen for this file.
+func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, blanksSeen, commitBodySeen, structuralDiffSeen int) bool {
 	// File index must match
 	if row.fileIndex != identity.fileIndex {
 		return false
@@ -433,7 +495,11 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 	case RowKindCommitHeaderBottomBorder:
 		return row.kind == RowKindCommitHeaderBottomBorder && row.commitIndex == identity.commitIndex
 	case RowKindCommitBody:
-		return row.kind == RowKindCommitBody && row.commitIndex == identity.commitIndex
+		// Match the specific commit body row by index within the commit
+		return row.kind == RowKindCommitBody && row.commitIndex == identity.commitIndex && commitBodySeen == identity.commitBodyIndex
+	case RowKindStructuralDiff:
+		// Match the specific structural diff row by index within the file
+		return row.kind == RowKindStructuralDiff && structuralDiffSeen == identity.structuralDiffIndex
 	case RowKindContent:
 		// For content rows, match by line numbers
 		// Handle cases where one side might be 0 (added/removed lines)

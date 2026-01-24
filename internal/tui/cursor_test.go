@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 // =============================================================================
@@ -3215,4 +3216,607 @@ func TestMultiCommit_FileNumbersResetPerCommit(t *testing.T) {
 	info = m.StatusInfo()
 	assert.Equal(t, 3, info.CurrentFile, "third file in commit 1 should be #3")
 	assert.Equal(t, 3, info.TotalFiles, "commit 1 has 3 total files")
+}
+
+// Test: Cursor should stay on commit when toggling fold from commit body
+// Bug: When cursor is on commit body and shift+tab is pressed, cursor shifts
+// Repro: show command -> move to commit body -> shift+tab
+// Expected: cursor stays on same commit
+func TestFoldToggleAll_CursorOnCommitBody_StaysOnSameCommit_SingleCommit(t *testing.T) {
+	// Create a commit with body visible (CommitNormal)
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def456",
+			Author:  "Test Author",
+			Email:   "test@example.com",
+			Date:    "2024-01-15T10:30:00+00:00",
+			Subject: "Test commit subject",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+		},
+		FoldLevel:   sidebyside.CommitNormal, // Body is visible
+		FilesLoaded: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 100
+	m.height = 30
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Find the commit body "Author:" row
+	rows := m.buildRows()
+	var authorRowIdx int
+	for i, row := range rows {
+		if row.kind == RowKindCommitBody && strings.Contains(row.commitBodyLine, "Author:") {
+			authorRowIdx = i
+			break
+		}
+	}
+	require.NotZero(t, authorRowIdx, "should find Author: row in commit body")
+
+	// Position cursor on the Author: row
+	m.scroll = authorRowIdx - m.cursorOffset()
+	m.clampScroll()
+
+	// Verify cursor is on commit body
+	cursorBefore := m.cursorLine()
+	rowsBefore := m.buildRows()
+	require.Equal(t, RowKindCommitBody, rowsBefore[cursorBefore].kind, "cursor should be on commit body row")
+	commitIdxBefore := rowsBefore[cursorBefore].commitIndex
+
+	// Toggle fold - this will cycle through levels
+	// Level 2 (CommitNormal) -> Level 3 (CommitNormal + files expanded) -> Level 1 (CommitFolded)
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	// After first toggle (level 3): body still visible, cursor should still be on commit body
+	cursorAfter := m.cursorLine()
+	rowsAfter := m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range")
+	commitIdxAfter := rowsAfter[cursorAfter].commitIndex
+	assert.Equal(t, commitIdxBefore, commitIdxAfter, "cursor should stay on same commit after toggle")
+
+	// Toggle again to level 1 (folded) - body disappears, should fall back to commit header
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter = m.cursorLine()
+	rowsAfter = m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range")
+
+	// When body disappears, cursor should fall back to commit header of same commit
+	rowAfter := rowsAfter[cursorAfter]
+	assert.Equal(t, commitIdxBefore, rowAfter.commitIndex, "cursor should stay on same commit when body folds")
+	assert.Equal(t, RowKindCommitHeader, rowAfter.kind, "cursor should fall back to commit header when body disappears")
+}
+
+// Test: Cursor on second commit body should stay on second commit after fold toggle
+// Tests the multi-commit scenario
+func TestFoldToggleAll_CursorOnCommitBody_StaysOnSameCommit_MultiCommit(t *testing.T) {
+	// Create two commits, both at CommitNormal (body visible)
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "abc123def456",
+				Author:  "First Author",
+				Date:    "2024-01-15T10:30:00+00:00",
+				Subject: "First commit",
+			},
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/file1.go", NewPath: "b/file1.go", FoldLevel: sidebyside.FoldFolded},
+			},
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "def789abc012",
+				Author:  "Second Author",
+				Date:    "2024-01-16T11:00:00+00:00",
+				Subject: "Second commit",
+			},
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/file2.go", NewPath: "b/file2.go", FoldLevel: sidebyside.FoldFolded},
+			},
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 100
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Find the second commit's body "Author:" row (should contain "Second Author")
+	rows := m.buildRows()
+	var secondCommitAuthorRowIdx int
+	for i, row := range rows {
+		if row.kind == RowKindCommitBody && strings.Contains(row.commitBodyLine, "Second Author") {
+			secondCommitAuthorRowIdx = i
+			break
+		}
+	}
+	require.NotZero(t, secondCommitAuthorRowIdx, "should find Second Author row in second commit body")
+
+	// Position cursor on the second commit's Author: row
+	m.scroll = secondCommitAuthorRowIdx - m.cursorOffset()
+	m.clampScroll()
+
+	// Verify cursor is on second commit's body
+	cursorBefore := m.cursorLine()
+	rowsBefore := m.buildRows()
+	require.Less(t, cursorBefore, len(rowsBefore), "cursor should be in valid range")
+	require.Equal(t, RowKindCommitBody, rowsBefore[cursorBefore].kind, "cursor should be on commit body row")
+	require.Equal(t, 1, rowsBefore[cursorBefore].commitIndex, "cursor should be on second commit (index 1)")
+
+	// Toggle fold - level 2 -> 3
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter := m.cursorLine()
+	rowsAfter := m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range after toggle")
+	assert.Equal(t, 1, rowsAfter[cursorAfter].commitIndex, "cursor should stay on second commit after toggle to level 3")
+
+	// Toggle again - level 3 -> 1 (folded, body disappears)
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter = m.cursorLine()
+	rowsAfter = m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range after fold")
+
+	rowAfter := rowsAfter[cursorAfter]
+	assert.Equal(t, 1, rowAfter.commitIndex, "cursor should stay on second commit when body folds")
+	assert.Equal(t, RowKindCommitHeader, rowAfter.kind, "cursor should fall back to second commit header")
+}
+
+// Test: Cursor on specific commit body line should stay on SAME line after fold toggle
+// The bug: commit body identity only matches commitIndex, not the specific row,
+// so cursor can shift from "Date:" line to first blank line after rebuild
+func TestFoldToggleAll_CursorOnCommitBodyDate_StaysOnDateLine(t *testing.T) {
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def456",
+			Author:  "Test Author",
+			Email:   "test@example.com",
+			Date:    "Mon Jan 15 10:30:00 2024 -0500",
+			Subject: "Test commit subject",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+		},
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 100
+	m.height = 30
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Find the commit body "Date:" row specifically
+	rows := m.buildRows()
+	var dateRowIdx int
+	for i, row := range rows {
+		if row.kind == RowKindCommitBody && strings.Contains(row.commitBodyLine, "Date:") {
+			dateRowIdx = i
+			break
+		}
+	}
+	require.NotZero(t, dateRowIdx, "should find Date: row in commit body")
+
+	// Position cursor on the Date: row
+	m.scroll = dateRowIdx - m.cursorOffset()
+	m.clampScroll()
+
+	cursorBefore := m.cursorLine()
+	rowsBefore := m.buildRows()
+	bodyLineBefore := rowsBefore[cursorBefore].commitBodyLine
+	require.Contains(t, bodyLineBefore, "Date:", "cursor should be on Date: row before toggle")
+
+	// Toggle fold - level 2 -> 3 (files expand, but commit body stays)
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter := m.cursorLine()
+	rowsAfter := m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range")
+	bodyLineAfter := rowsAfter[cursorAfter].commitBodyLine
+
+	// The cursor should still be on the Date: line, not shifted to a different body row
+	assert.Contains(t, bodyLineAfter, "Date:", "cursor should stay on Date: row after toggle, not shift to different body row")
+}
+
+// Test: Cursor on structural diff row should stay on same row after fold toggle
+// Bug: RowKindStructuralDiff is not handled in rowMatchesIdentity, so cursor shifts
+func TestFoldToggleAll_CursorOnStructuralDiff_StaysOnSameRow(t *testing.T) {
+	// Create a model with structural diff data
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded, // Folded so structural diff preview shows
+			},
+		},
+		width:  100,
+		height: 30,
+		keys:   DefaultKeyMap(),
+		// Set up structural diff data with multiple entries
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 1, EndLine: 5, Name: "FuncA", Kind: "func"},
+				}),
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 1, EndLine: 5, Name: "FuncA", Kind: "func"},
+					{StartLine: 7, EndLine: 10, Name: "FuncB", Kind: "func"},
+				}),
+				StructuralDiff: &structure.StructuralDiff{
+					Changes: []structure.ElementChange{
+						{
+							Kind: structure.ChangeModified,
+							OldEntry: &structure.Entry{
+								StartLine: 1, EndLine: 5, Name: "FuncA", Kind: "func",
+							},
+							NewEntry: &structure.Entry{
+								StartLine: 1, EndLine: 5, Name: "FuncA", Kind: "func",
+							},
+						},
+						{
+							Kind: structure.ChangeAdded,
+							NewEntry: &structure.Entry{
+								StartLine: 7, EndLine: 10, Name: "FuncB", Kind: "func",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	// Find the second structural diff row (FuncB)
+	rows := m.buildRows()
+	var funcBRowIdx int
+	for i, row := range rows {
+		if row.kind == RowKindStructuralDiff && strings.Contains(row.structuralDiffLine, "FuncB") {
+			funcBRowIdx = i
+			break
+		}
+	}
+	require.NotZero(t, funcBRowIdx, "should find FuncB structural diff row")
+
+	// Position cursor on the FuncB row
+	m.scroll = funcBRowIdx - m.cursorOffset()
+	m.clampScroll()
+
+	cursorBefore := m.cursorLine()
+	rowsBefore := m.buildRows()
+	require.Equal(t, RowKindStructuralDiff, rowsBefore[cursorBefore].kind, "cursor should be on structural diff row")
+	require.Contains(t, rowsBefore[cursorBefore].structuralDiffLine, "FuncB", "cursor should be on FuncB row")
+
+	// Toggle fold - this will expand files (structural diff rows remain in all fold states)
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter := m.cursorLine()
+	rowsAfter := m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range")
+
+	// Structural diff rows persist across fold changes, so cursor should stay on same row
+	rowAfter := rowsAfter[cursorAfter]
+	assert.Equal(t, 0, rowAfter.fileIndex, "cursor should stay on same file")
+	assert.Equal(t, RowKindStructuralDiff, rowAfter.kind, "cursor should stay on structural diff row")
+	assert.Contains(t, rowAfter.structuralDiffLine, "FuncB", "cursor should stay on FuncB row")
+}
+
+// Test: Cursor on structural diff row of second file should stay on second file after fold toggle
+// Bug: Structural diff rows not properly matched by file index
+func TestFoldToggleAll_CursorOnStructuralDiff_MultiFile_StaysOnSameFile(t *testing.T) {
+	// Create a model with multiple files, each with structural diff data
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+		},
+		width:  100,
+		height: 30,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure: structure.NewMap([]structure.Entry{}),
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 1, EndLine: 5, Name: "FirstFunc", Kind: "func"},
+				}),
+				StructuralDiff: &structure.StructuralDiff{
+					Changes: []structure.ElementChange{
+						{
+							Kind: structure.ChangeAdded,
+							NewEntry: &structure.Entry{
+								StartLine: 1, EndLine: 5, Name: "FirstFunc", Kind: "func",
+							},
+						},
+					},
+				},
+			},
+			1: {
+				OldStructure: structure.NewMap([]structure.Entry{}),
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 1, EndLine: 5, Name: "SecondFunc", Kind: "func"},
+				}),
+				StructuralDiff: &structure.StructuralDiff{
+					Changes: []structure.ElementChange{
+						{
+							Kind: structure.ChangeAdded,
+							NewEntry: &structure.Entry{
+								StartLine: 1, EndLine: 5, Name: "SecondFunc", Kind: "func",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	// Find the second file's structural diff row (SecondFunc)
+	rows := m.buildRows()
+	var secondFileStructDiffIdx int
+	for i, row := range rows {
+		if row.kind == RowKindStructuralDiff && strings.Contains(row.structuralDiffLine, "SecondFunc") {
+			secondFileStructDiffIdx = i
+			break
+		}
+	}
+	require.NotZero(t, secondFileStructDiffIdx, "should find SecondFunc structural diff row")
+
+	// Position cursor on the second file's structural diff row
+	m.scroll = secondFileStructDiffIdx - m.cursorOffset()
+	m.clampScroll()
+
+	cursorBefore := m.cursorLine()
+	rowsBefore := m.buildRows()
+	require.Equal(t, RowKindStructuralDiff, rowsBefore[cursorBefore].kind, "cursor should be on structural diff row")
+	require.Equal(t, 1, rowsBefore[cursorBefore].fileIndex, "cursor should be on second file (index 1)")
+
+	// Toggle fold
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter := m.cursorLine()
+	rowsAfter := m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range")
+
+	// Cursor should stay on second file, not jump to first file
+	rowAfter := rowsAfter[cursorAfter]
+	assert.Equal(t, 1, rowAfter.fileIndex, "cursor should stay on second file (index 1), not jump to first file")
+}
+
+// Test: Cursor on specific structural diff row should stay on SAME row, not shift to another
+// Bug: Similar to commit body bug - if cursor is on FuncB row, it shouldn't shift to FuncA row
+func TestFoldToggleAll_CursorOnStructuralDiff_StaysOnSpecificRow(t *testing.T) {
+	// Create a model with multiple structural diff entries in same file
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+		},
+		width:  100,
+		height: 30,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure: structure.NewMap([]structure.Entry{}),
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 1, EndLine: 5, Name: "FuncA", Kind: "func"},
+					{StartLine: 7, EndLine: 10, Name: "FuncB", Kind: "func"},
+					{StartLine: 12, EndLine: 15, Name: "FuncC", Kind: "func"},
+				}),
+				StructuralDiff: &structure.StructuralDiff{
+					Changes: []structure.ElementChange{
+						{
+							Kind:     structure.ChangeAdded,
+							NewEntry: &structure.Entry{StartLine: 1, EndLine: 5, Name: "FuncA", Kind: "func"},
+						},
+						{
+							Kind:     structure.ChangeAdded,
+							NewEntry: &structure.Entry{StartLine: 7, EndLine: 10, Name: "FuncB", Kind: "func"},
+						},
+						{
+							Kind:     structure.ChangeAdded,
+							NewEntry: &structure.Entry{StartLine: 12, EndLine: 15, Name: "FuncC", Kind: "func"},
+						},
+					},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	// Find the FuncB structural diff row (the middle one)
+	rows := m.buildRows()
+	var funcBRowIdx int
+	for i, row := range rows {
+		if row.kind == RowKindStructuralDiff && strings.Contains(row.structuralDiffLine, "FuncB") {
+			funcBRowIdx = i
+			break
+		}
+	}
+	require.NotZero(t, funcBRowIdx, "should find FuncB structural diff row")
+
+	// Position cursor on FuncB row
+	m.scroll = funcBRowIdx - m.cursorOffset()
+	m.clampScroll()
+
+	cursorBefore := m.cursorLine()
+	rowsBefore := m.buildRows()
+	structDiffLineBefore := rowsBefore[cursorBefore].structuralDiffLine
+	require.Contains(t, structDiffLineBefore, "FuncB", "cursor should be on FuncB row before toggle")
+
+	// Create a second file to add (just to trigger row rebuild without changing fold state)
+	// We need a scenario where structural diff rows remain but could shift
+	// Actually, let's just verify current behavior first
+
+	// Structural diff rows persist across fold changes
+	// Toggle fold - files expand but structural diff rows remain
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter := m.cursorLine()
+	rowsAfter := m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range")
+
+	// Cursor should stay on same structural diff row (FuncB)
+	rowAfter := rowsAfter[cursorAfter]
+	assert.Equal(t, 0, rowAfter.fileIndex, "cursor should stay on same file")
+	assert.Equal(t, RowKindStructuralDiff, rowAfter.kind, "cursor should stay on structural diff row")
+	assert.Contains(t, rowAfter.structuralDiffLine, "FuncB", "cursor should stay on FuncB row, not shift to FuncA or FuncC")
+
+	// Toggle again - fold back
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter = m.cursorLine()
+	rowsAfter = m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range")
+
+	// Should still be on FuncB after full fold cycle
+	rowAfter = rowsAfter[cursorAfter]
+	assert.Equal(t, 0, rowAfter.fileIndex, "cursor should stay on same file after fold cycle")
+	assert.Contains(t, rowAfter.structuralDiffLine, "FuncB", "cursor should still be on FuncB after fold cycle")
+}
+
+// Test: Cursor on structural diff in commit view should stay on correct file
+// This tests the "show" command scenario with commits
+func TestFoldToggleAll_CursorOnStructuralDiff_WithCommit_StaysOnSameFile(t *testing.T) {
+	// Create commit with two files, both with structural diff
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def456",
+			Author:  "Test Author",
+			Date:    "2024-01-15T10:30:00+00:00",
+			Subject: "Test commit",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
+				FoldLevel: sidebyside.FoldFolded,
+			},
+		},
+		FoldLevel:   sidebyside.CommitNormal, // Body visible
+		FilesLoaded: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 100
+	m.height = 40
+	m.focused = true
+
+	// Set up structural diff for both files
+	m.structureMaps = map[int]*FileStructure{
+		0: {
+			OldStructure: structure.NewMap([]structure.Entry{}),
+			NewStructure: structure.NewMap([]structure.Entry{
+				{StartLine: 1, EndLine: 5, Name: "FirstFunc", Kind: "func"},
+			}),
+			StructuralDiff: &structure.StructuralDiff{
+				Changes: []structure.ElementChange{
+					{
+						Kind:     structure.ChangeAdded,
+						NewEntry: &structure.Entry{StartLine: 1, EndLine: 5, Name: "FirstFunc", Kind: "func"},
+					},
+				},
+			},
+		},
+		1: {
+			OldStructure: structure.NewMap([]structure.Entry{}),
+			NewStructure: structure.NewMap([]structure.Entry{
+				{StartLine: 1, EndLine: 5, Name: "SecondFunc", Kind: "func"},
+			}),
+			StructuralDiff: &structure.StructuralDiff{
+				Changes: []structure.ElementChange{
+					{
+						Kind:     structure.ChangeAdded,
+						NewEntry: &structure.Entry{StartLine: 1, EndLine: 5, Name: "SecondFunc", Kind: "func"},
+					},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	// Find the second file's structural diff row
+	rows := m.buildRows()
+	var secondStructDiffIdx int
+	for i, row := range rows {
+		if row.kind == RowKindStructuralDiff && strings.Contains(row.structuralDiffLine, "SecondFunc") {
+			secondStructDiffIdx = i
+			break
+		}
+	}
+	require.NotZero(t, secondStructDiffIdx, "should find SecondFunc structural diff row")
+
+	// Position cursor on second file's structural diff
+	m.scroll = secondStructDiffIdx - m.cursorOffset()
+	m.clampScroll()
+
+	cursorBefore := m.cursorLine()
+	rowsBefore := m.buildRows()
+	require.Equal(t, RowKindStructuralDiff, rowsBefore[cursorBefore].kind)
+	require.Equal(t, 1, rowsBefore[cursorBefore].fileIndex, "cursor should be on second file")
+
+	// Toggle fold - Level 2 -> Level 3 (files expand)
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter := m.cursorLine()
+	rowsAfter := m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range")
+
+	// Cursor should stay on second file (index 1), not shift to first file (index 0)
+	rowAfter := rowsAfter[cursorAfter]
+	assert.Equal(t, 1, rowAfter.fileIndex, "cursor should stay on second file, not shift to first file")
 }
