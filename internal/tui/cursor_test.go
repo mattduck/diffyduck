@@ -1198,10 +1198,11 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// File layout with borders (header + borders + 4 blank lines + trailing border after each file):
-	// alpha.go: lines 0-17 (top border + header + bottom border + 10 pairs + 4 blank + trailing border = 18 lines)
-	// beta.go:  lines 18-34 (header + bottom border + 10 pairs + 4 blank + trailing border = 17 lines)
-	// gamma.go: lines 35-51 (header + bottom border + 10 pairs + 4 blank + trailing border = 17 lines)
+	// File layout with borders:
+	// alpha.go: lines 0-16 (top border + header + bottom border + 10 pairs + 4 blank = 17 lines, fileIndex=0)
+	// beta.go:  lines 17-33 (top border + header + bottom border + 10 pairs + 4 blank = 17 lines, fileIndex=1)
+	// gamma.go: lines 34-50 (top border + header + bottom border + 10 pairs + 4 blank = 17 lines, fileIndex=2)
+	// Note: The top border of each file (except file 0) now belongs to that file, not the previous file
 
 	// Scroll through and verify status bar matches cursor position
 	for scroll := m.minScroll(); scroll <= m.maxScroll(); scroll++ {
@@ -1210,11 +1211,11 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 		info := m.StatusInfo()
 
 		// Determine expected file based on cursor position
-		// Note: blank lines and trailing border count as the file above
+		// The top border of each file belongs to that file
 		expectedFile := "alpha.go"
-		if cursorPos >= 18 && cursorPos < 35 { // Line 18 is beta header
+		if cursorPos >= 17 && cursorPos < 34 { // Line 17 is beta's top border
 			expectedFile = "beta.go"
-		} else if cursorPos >= 35 { // Line 35 is gamma header
+		} else if cursorPos >= 34 { // Line 34 is gamma's top border
 			expectedFile = "gamma.go"
 		}
 
@@ -1300,35 +1301,36 @@ func TestResize_CursorOnTrailingTopBorder_StaysOnTrailingBorder(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Find the trailing top border of first file
+	// Find the top border of the second file (the border between file 0 and file 1)
+	// This border now has fileIndex=1 (it belongs to the file it precedes)
 	rows := m.buildRows()
-	trailingBorderIdx := -1
+	file1TopBorderIdx := -1
 	for i, row := range rows {
-		if row.fileIndex == 0 && row.isHeaderTopBorder && i > 0 {
-			// This is the trailing border (not the leading one at index 0)
-			trailingBorderIdx = i
+		if row.fileIndex == 1 && row.isHeaderTopBorder {
+			file1TopBorderIdx = i
+			break
 		}
 	}
-	require.NotEqual(t, -1, trailingBorderIdx, "should find trailing top border")
-	require.True(t, rows[trailingBorderIdx].isHeaderTopBorder, "should be a top border row")
+	require.NotEqual(t, -1, file1TopBorderIdx, "should find second file's top border")
+	require.True(t, rows[file1TopBorderIdx].isHeaderTopBorder, "should be a top border row")
 
-	// Position cursor on trailing top border
-	m.scroll = trailingBorderIdx - m.cursorOffset()
+	// Position cursor on the top border
+	m.scroll = file1TopBorderIdx - m.cursorOffset()
 	cursorPos := m.cursorLine()
-	require.Equal(t, trailingBorderIdx, cursorPos, "cursor should be on trailing top border")
+	require.Equal(t, file1TopBorderIdx, cursorPos, "cursor should be on second file's top border")
 
 	// Resize the terminal
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 25})
 	model := newM.(Model)
 
-	// Cursor should still be on trailing top border of first file
+	// Cursor should still be on the top border of the second file
 	rows = model.buildRows()
 	cursorPos = model.cursorLine()
 
 	// BUG: Without isHeaderTopBorder in cursorRowIdentity, this fails!
 	// The cursor jumps to the header of the file above instead.
-	assert.True(t, rows[cursorPos].isHeaderTopBorder && rows[cursorPos].fileIndex == 0,
-		"after resize, cursor should still be on first file's trailing top border "+
+	assert.True(t, rows[cursorPos].isHeaderTopBorder && rows[cursorPos].fileIndex == 1,
+		"after resize, cursor should still be on second file's top border "+
 			"(got cursorPos=%d, fileIndex=%d, isHeaderTopBorder=%v, isHeader=%v)",
 		cursorPos, rows[cursorPos].fileIndex, rows[cursorPos].isHeaderTopBorder, rows[cursorPos].isHeader)
 }

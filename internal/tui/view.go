@@ -620,7 +620,8 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				for i := 0; i < 4; i++ {
 					rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
 				}
-				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+				// Top border belongs to the NEXT file (fileIdx+1), not the current file
+				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
 			}
 			return rows
 		}
@@ -724,7 +725,8 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			for i := 0; i < 4; i++ {
 				rows = append(rows, displayRow{kind: RowKindBlank, fileIndex: fileIdx, isBlank: true})
 			}
-			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
+			// Top border belongs to the NEXT file (fileIdx+1), not the current file
+			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: nextFileUnfolded})
 		}
 	}
 
@@ -1326,7 +1328,9 @@ func (m Model) renderHeaderTopBorder(headerBoxWidth int, borderVisible bool, sta
 	}
 
 	if isCursorRow {
-		// Arrow at position 0, then 1 char with cursor bg, then rest of border
+		// Arrow at position 0, then space, then 1 char with cursor bg, then rest of border
+		// Structure: arrow(1) + space(1) + gutter(1) + rest(innerWidth) + corner(1) = innerWidth + 4
+		// Must match non-cursor: dashes(2+innerWidth+1) + corner(1) = innerWidth + 4
 		var styledGutter, arrow string
 		if m.focused {
 			styledGutter = cursorStyle.Render("─")
@@ -1335,7 +1339,7 @@ func (m Model) renderHeaderTopBorder(headerBoxWidth int, borderVisible bool, sta
 			styledGutter = borderStyle.Render("─")
 			arrow = unfocusedCursorArrowStyle.Render("▷")
 		}
-		restWidth := innerWidth + 1 // +1 for space gap before corner
+		restWidth := innerWidth
 		if restWidth < 0 {
 			restWidth = 0
 		}
@@ -1363,7 +1367,9 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 	}
 
 	if isCursorRow {
-		// Arrow at position 0, then 1 char with cursor bg, then rest of border
+		// Arrow at position 0, then space, then 1 char with cursor bg, then rest of border
+		// Structure: arrow(1) + space(1) + gutter(1) + rest(innerWidth) + corner(1) = innerWidth + 4
+		// Must match non-cursor: dashes(2+innerWidth+1) + corner(1) = innerWidth + 4
 		var styledGutter, arrow string
 		if m.focused {
 			styledGutter = cursorStyle.Render("─")
@@ -1372,7 +1378,7 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 			styledGutter = borderStyle.Render("─")
 			arrow = unfocusedCursorArrowStyle.Render("▷")
 		}
-		restWidth := innerWidth + 1 // +1 for space gap before corner
+		restWidth := innerWidth
 		if restWidth < 0 {
 			restWidth = 0
 		}

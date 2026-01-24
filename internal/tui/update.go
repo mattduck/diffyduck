@@ -685,6 +685,7 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // goToNextHeading moves the cursor to the next node (commit header or file header).
 // A node is either a commit or a file. From any position within a node, gj jumps
 // to the header of the next node in sequence.
+// Special case: when on a top border, gj goes to that file's header (one line down).
 func (m *Model) goToNextHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
@@ -694,6 +695,18 @@ func (m *Model) goToNextHeading() {
 	}
 
 	currentRow := rows[cursorPos]
+
+	// Special case: when on a top border, go to the file's header (visually one line down)
+	if currentRow.isHeaderTopBorder {
+		for i := cursorPos + 1; i < len(rows); i++ {
+			if rows[i].isHeader && rows[i].fileIndex == currentRow.fileIndex {
+				m.adjustScrollToRow(i)
+				return
+			}
+		}
+		return
+	}
+
 	currentFileIdx := currentRow.fileIndex
 	currentCommitIdx := currentRow.commitIndex
 	inCommitSection := currentRow.isCommitHeader || currentRow.isCommitBody
@@ -724,7 +737,7 @@ func (m *Model) goToNextHeading() {
 
 // goToPrevHeading moves the cursor to the previous node (commit header or file header).
 // If not on a node header, jumps to the current node's header.
-// If already on a header, jumps to the previous node's header.
+// If already on a header (or top border), jumps to the previous node's header.
 func (m *Model) goToPrevHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
@@ -734,7 +747,8 @@ func (m *Model) goToPrevHeading() {
 	}
 
 	currentRow := rows[cursorPos]
-	onHeader := currentRow.isCommitHeader || currentRow.isHeader
+	// Treat top border as part of the header section for navigation purposes
+	onHeader := currentRow.isCommitHeader || currentRow.isHeader || currentRow.isHeaderTopBorder
 
 	if !onHeader {
 		// Not on a header - find the current node's header (could be commit or file)
@@ -755,7 +769,7 @@ func (m *Model) goToPrevHeading() {
 		return
 	}
 
-	// Already on a header - find the previous different node's header
+	// Already on a header (or top border) - find the previous different node's header
 	currentFileIdx := currentRow.fileIndex
 	currentCommitIdx := currentRow.commitIndex
 	isCommitHeader := currentRow.isCommitHeader

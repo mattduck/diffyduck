@@ -210,15 +210,26 @@ func sendKeys(m Model, keys ...string) Model {
 
 func TestUpdate_NextHeading_gj(t *testing.T) {
 	m := makeMultiFileTestModel()
-	// Start at top (first file header)
+	// Start at top - gg puts cursor on file 0's top border (first row)
 	m = sendKeys(m, "g", "g")
 	assert.Equal(t, m.minScroll(), m.scroll, "should be at top")
 
-	// Get cursor position before - should be on first file header
+	// After gg, cursor is on first file's top border
 	info := m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile, "should start at first file")
 
-	// gj should move to next file header
+	// gj from top border goes to file 0's header (one line down)
+	m = sendKeys(m, "g", "j")
+	info = m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile, "gj from top border goes to same file's header")
+
+	// Verify we're on file 0's header
+	rows := m.buildRows()
+	cursorPos := m.cursorLine()
+	assert.True(t, rows[cursorPos].isHeader, "should be on header")
+	assert.Equal(t, 0, rows[cursorPos].fileIndex, "should be on file 0")
+
+	// gj from file 0's header should move to file 1's header
 	m = sendKeys(m, "g", "j")
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile, "gj should move to second file")
@@ -264,12 +275,17 @@ func TestUpdate_PrevHeading_gk(t *testing.T) {
 
 func TestUpdate_PrevHeading_gk_FromMiddleOfFile(t *testing.T) {
 	m := makeMultiFileTestModel()
-	// Go to top (first file header)
+	// Go to top (first file's top border)
 	m = sendKeys(m, "g", "g")
+
+	// Move to first file header (gj from top border)
+	m = sendKeys(m, "g", "j")
+	info := m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile, "should be on first file header")
 
 	// Move to second file header
 	m = sendKeys(m, "g", "j")
-	info := m.StatusInfo()
+	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile, "should be on second file")
 
 	// Move down a few lines into the middle of the file content
@@ -1096,4 +1112,112 @@ func TestFetchFileContent_SkipsBinaryFiles(t *testing.T) {
 	// Should return nil for binary files (no fetch attempt)
 	cmd := m.FetchFileContent(0)
 	assert.Nil(t, cmd, "FetchFileContent should return nil for binary files")
+}
+
+// findTopBorderRowForFile finds the top border row that visually belongs to the given file.
+// This is the row immediately BEFORE the file's header row.
+// Returns the row index or -1 if not found.
+func findTopBorderRowForFile(rows []displayRow, fileIndex int) int {
+	// Find the file's header row
+	for i, row := range rows {
+		if row.isHeader && row.fileIndex == fileIndex {
+			// The top border is the row immediately before the header
+			if i > 0 && rows[i-1].isHeaderTopBorder {
+				return i - 1
+			}
+		}
+	}
+	return -1
+}
+
+// moveCursorToRow adjusts scroll so that the cursor lands on the given row index.
+func moveCursorToRow(m Model, rowIdx int) Model {
+	// cursor is at scroll + cursorOffset(), so scroll = rowIdx - cursorOffset()
+	m.scroll = rowIdx - m.cursorOffset()
+	return m
+}
+
+func TestUpdate_gk_FromTopBorder_GoesToNodeAbove(t *testing.T) {
+	// Test: gk on top border line goes up to the node (file/commit) above
+	m := makeMultiFileTestModel()
+
+	// Build rows to find the top border of file 1 (second file)
+	rows := m.buildRows()
+	file1TopBorder := findTopBorderRowForFile(rows, 1)
+	require.NotEqual(t, -1, file1TopBorder, "should find top border for file 1")
+
+	// Position cursor on file 1's top border
+	m = moveCursorToRow(m, file1TopBorder)
+	cursorPos := m.cursorLine()
+	assert.Equal(t, file1TopBorder, cursorPos, "cursor should be on file 1's top border")
+	assert.True(t, rows[cursorPos].isHeaderTopBorder, "cursor row should be a top border")
+
+	// gk from top border should go to the node above (file 0's header)
+	m = sendKeys(m, "g", "k")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	assert.True(t, rows[cursorPos].isHeader, "gk from top border should go to a header")
+	assert.Equal(t, 0, rows[cursorPos].fileIndex, "gk from file 1's top border should go to file 0's header")
+}
+
+func TestUpdate_gj_FromTopBorder_GoesToFileHeaderBelow(t *testing.T) {
+	// Test: gj on top border line goes down to the filename line (visually below)
+	m := makeMultiFileTestModel()
+
+	// Build rows to find the top border of file 1 (second file)
+	rows := m.buildRows()
+	file1TopBorder := findTopBorderRowForFile(rows, 1)
+	require.NotEqual(t, -1, file1TopBorder, "should find top border for file 1")
+
+	// Position cursor on file 1's top border
+	m = moveCursorToRow(m, file1TopBorder)
+	cursorPos := m.cursorLine()
+	assert.Equal(t, file1TopBorder, cursorPos, "cursor should be on file 1's top border")
+
+	// gj from top border should go to the file header (visually one line below)
+	m = sendKeys(m, "g", "j")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	assert.True(t, rows[cursorPos].isHeader, "gj from top border should go to a header")
+	assert.Equal(t, 1, rows[cursorPos].fileIndex, "gj from file 1's top border should go to file 1's header")
+}
+
+func TestUpdate_TopBarShowsCorrectFile_WhenOnTopBorder(t *testing.T) {
+	// Test: when on top border line, the top-bar shows the info for that file
+	// (not the file above)
+	m := makeMultiFileTestModel()
+
+	// Build rows to find the top border of file 1 (second file)
+	rows := m.buildRows()
+	file1TopBorder := findTopBorderRowForFile(rows, 1)
+	require.NotEqual(t, -1, file1TopBorder, "should find top border for file 1")
+
+	// Position cursor on file 1's top border
+	m = moveCursorToRow(m, file1TopBorder)
+
+	// StatusInfo should show file 1 (CurrentFile=2 since it's 1-based)
+	info := m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile, "top-bar should show file 2 when cursor is on file 1's (0-indexed) top border")
+	assert.Contains(t, info.FileName, "second.go", "filename should be second.go")
+}
+
+func TestUpdate_gk_FromFirstTopBorder_StaysOnFirstFile(t *testing.T) {
+	// Test: gk from the very first top border (file 0) should stay there
+	// (or go to commit header if in multi-commit mode)
+	m := makeMultiFileTestModel()
+
+	// Build rows to find the top border of file 0 (first file)
+	rows := m.buildRows()
+	file0TopBorder := findTopBorderRowForFile(rows, 0)
+	require.NotEqual(t, -1, file0TopBorder, "should find top border for file 0")
+
+	// Position cursor on file 0's top border
+	m = moveCursorToRow(m, file0TopBorder)
+	cursorPos := m.cursorLine()
+	assert.Equal(t, file0TopBorder, cursorPos, "cursor should be on file 0's top border")
+
+	// gk should stay on file 0's area (no previous file to go to)
+	m = sendKeys(m, "g", "k")
+	info := m.StatusInfo()
+	assert.Equal(t, 1, info.CurrentFile, "gk from first file's top border should stay on first file")
 }

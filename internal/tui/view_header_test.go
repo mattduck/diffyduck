@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -515,9 +516,9 @@ func TestBuildRows_NonFirstFileNoLeadingTopBorder(t *testing.T) {
 	}
 	require.NotEqual(t, -1, secondFileStart, "should find second file start")
 
-	// The row at secondFileStart should be the header (not a top border)
-	// because the top border comes from file 0's trailing rows
-	assert.True(t, rows[secondFileStart].isHeader, "second file should start with header (top border comes from first file)")
+	// The row at secondFileStart should be the top border (which now belongs to file 1)
+	// The top border visually and semantically belongs to the file it precedes
+	assert.True(t, rows[secondFileStart].isHeaderTopBorder, "second file should start with its top border")
 }
 
 // Test: Trailing top border visibility - next file unfolded
@@ -555,19 +556,17 @@ func TestBuildRows_TrailingTopBorderVisibleWhenNextUnfolded(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Find the trailing top border of file 0 (it's the last isHeaderTopBorder before file 1 starts)
-	var trailingBorder *displayRow
+	// Find the top border of file 1 (the border between file 0 and file 1)
+	// This border visually separates file 0's content from file 1's header
+	var file1TopBorder *displayRow
 	for i := range rows {
-		if rows[i].fileIndex == 0 && rows[i].isHeaderTopBorder {
-			// This could be the leading or trailing border
-			// The trailing one is after blank rows
-			if i > 0 && rows[i-1].isBlank {
-				trailingBorder = &rows[i]
-			}
+		if rows[i].fileIndex == 1 && rows[i].isHeaderTopBorder {
+			file1TopBorder = &rows[i]
+			break
 		}
 	}
-	require.NotNil(t, trailingBorder, "should find trailing top border of first file")
-	assert.True(t, trailingBorder.borderVisible, "trailing border should be visible when next file is unfolded")
+	require.NotNil(t, file1TopBorder, "should find top border of second file")
+	assert.True(t, file1TopBorder.borderVisible, "top border should be visible when file is unfolded")
 }
 
 // Test: Trailing top border visibility - next file folded
@@ -605,17 +604,16 @@ func TestBuildRows_TrailingTopBorderHiddenWhenNextFolded(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Find the trailing top border of file 0
-	var trailingBorder *displayRow
+	// Find the top border of file 1 (the border between file 0 and file 1)
+	var file1TopBorder *displayRow
 	for i := range rows {
-		if rows[i].fileIndex == 0 && rows[i].isHeaderTopBorder {
-			if i > 0 && rows[i-1].isBlank {
-				trailingBorder = &rows[i]
-			}
+		if rows[i].fileIndex == 1 && rows[i].isHeaderTopBorder {
+			file1TopBorder = &rows[i]
+			break
 		}
 	}
-	require.NotNil(t, trailingBorder, "should find trailing top border of first file")
-	assert.False(t, trailingBorder.borderVisible, "trailing border should be hidden when next file is folded")
+	require.NotNil(t, file1TopBorder, "should find top border of second file")
+	assert.False(t, file1TopBorder.borderVisible, "top border should be hidden when file is folded")
 }
 
 // Test: Header borderVisible - first file
@@ -1067,25 +1065,25 @@ func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
 		}
 	}
 
-	// Check trailing top borders
-	// File 0 and 1's trailing borders should be visible (next file is unfolded)
-	// File 2's trailing border should be hidden (no next file)
-	trailingBorders := make(map[int]*displayRow)
+	// Check top borders between files
+	// The top border for each file (except the first) is the visual separator from the previous file
+	// File 1's top border should be visible (file 1 is unfolded)
+	// File 2's top border should be visible (file 2 is unfolded)
+	// File 2 has no "trailing" border after it since there's no file 3
+	topBorders := make(map[int]*displayRow)
 	for i := range rows {
-		if rows[i].isHeaderTopBorder && i > 0 && rows[i-1].isBlank {
-			trailingBorders[rows[i].fileIndex] = &rows[i]
+		if rows[i].isHeaderTopBorder {
+			topBorders[rows[i].fileIndex] = &rows[i]
 		}
 	}
 
-	if tb, ok := trailingBorders[0]; ok {
-		assert.True(t, tb.borderVisible, "file 0's trailing border should be visible (file 1 is unfolded)")
+	if tb, ok := topBorders[1]; ok {
+		assert.True(t, tb.borderVisible, "file 1's top border should be visible (file 1 is unfolded)")
 	}
-	if tb, ok := trailingBorders[1]; ok {
-		assert.True(t, tb.borderVisible, "file 1's trailing border should be visible (file 2 is unfolded)")
+	if tb, ok := topBorders[2]; ok {
+		assert.True(t, tb.borderVisible, "file 2's top border should be visible (file 2 is unfolded)")
 	}
-	if tb, ok := trailingBorders[2]; ok {
-		assert.False(t, tb.borderVisible, "file 2's trailing border should be hidden (no next file)")
-	}
+	// There's no border after file 2 since there's no file 3
 }
 
 // Test: Integration - mixed fold states
@@ -1140,9 +1138,11 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 	assert.True(t, file0Rows[0].isHeaderTopBorder, "file 0's first row should be border slot")
 	assert.True(t, file0Rows[1].isHeader, "file 0's second row should be header")
 
-	// File 1: has header, bottom border, content, blanks, trailing border
-	// But borders should have borderVisible=false (prev file folded)
-	var file1Header, file1BottomBorder, file1TrailingBorder *displayRow
+	// File 1: has header, bottom border, content, blanks
+	// NOTE: File 1 does NOT have a top border because file 0 is folded
+	// (folded files don't create trailing borders)
+	// The border between file 1 and file 2 belongs to file 2 (fileIndex=2)
+	var file1Header, file1BottomBorder, file2TopBorder *displayRow
 	for i := range rows {
 		if rows[i].fileIndex == 1 {
 			if rows[i].isHeader {
@@ -1151,24 +1151,28 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 			if rows[i].isHeaderSpacer {
 				file1BottomBorder = &rows[i]
 			}
-			if rows[i].isHeaderTopBorder && i > 0 && rows[i-1].isBlank {
-				file1TrailingBorder = &rows[i]
-			}
+		}
+		// The border after file 1's content belongs to file 2
+		if rows[i].fileIndex == 2 && rows[i].isHeaderTopBorder {
+			file2TopBorder = &rows[i]
 		}
 	}
 
 	require.NotNil(t, file1Header, "file 1 should have header")
 	require.NotNil(t, file1BottomBorder, "file 1 should have bottom border")
-	require.NotNil(t, file1TrailingBorder, "file 1 should have trailing border")
+	require.NotNil(t, file2TopBorder, "file 2 should have top border (the border after file 1's content)")
 
+	// Header/spacer borders are hidden when previous file is folded
 	assert.False(t, file1Header.borderVisible, "file 1's header border should be hidden (prev file folded)")
 	assert.False(t, file1BottomBorder.borderVisible, "file 1's bottom border should be hidden (prev file folded)")
-	assert.False(t, file1TrailingBorder.borderVisible, "file 1's trailing border should be hidden (next file folded)")
+	assert.False(t, file2TopBorder.borderVisible, "file 2's top border should be hidden (file 2 is folded)")
 
-	// File 2: just header (folded)
+	// File 2: top border + header (folded)
+	// The top border belongs to file 2 (the file it precedes)
 	file2Rows := filterRowsByFileIndex(rows, 2)
-	assert.Equal(t, 1, len(file2Rows), "file 2 should have only 1 row (header)")
-	assert.True(t, file2Rows[0].isHeader, "file 2's row should be header")
+	assert.Equal(t, 2, len(file2Rows), "file 2 should have 2 rows (top border + header)")
+	assert.True(t, file2Rows[0].isHeaderTopBorder, "file 2's first row should be top border")
+	assert.True(t, file2Rows[1].isHeader, "file 2's second row should be header")
 }
 
 // Helper function to filter rows by file index
@@ -1706,4 +1710,95 @@ func TestCommitBorder_FirstUnfolded_SecondFolded_SeparatorStaysBlank(t *testing.
 	prevRow := rows[secondCommitHeaderIdx-1]
 	assert.False(t, prevRow.isCommitHeaderTopBorder, "separator should remain blank when second commit is folded")
 	assert.True(t, prevRow.isCommitBody && prevRow.commitBodyIsBlank, "separator should be a blank commit body row")
+}
+
+func TestBorderAlignmentWithCursor(t *testing.T) {
+	// Test: when cursor is on top or bottom border line for a file, the border is still aligned
+	// (same width as when cursor is not on the border)
+
+	lipgloss.SetColorProfile(termenv.TrueColor)
+
+	// Create a model with multiple files
+	makePairs := func(n int) []sidebyside.LinePair {
+		pairs := make([]sidebyside.LinePair, n)
+		for i := range pairs {
+			pairs[i] = sidebyside.LinePair{
+				Old: sidebyside.Line{Num: i + 1, Content: "left content"},
+				New: sidebyside.Line{Num: i + 1, Content: "right content"},
+			}
+		}
+		return pairs
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: makePairs(5), FoldLevel: sidebyside.FoldNormal},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: makePairs(5), FoldLevel: sidebyside.FoldNormal},
+	})
+	m.width = 80
+	m.height = 40
+	m.initialFoldSet = true
+	m.focused = true
+	m.keys = DefaultKeyMap()
+
+	// Build rows
+	rows := m.buildRows()
+
+	// Find the top border for file 1 (second file) by looking for the row before file 1's header
+	var topBorderIdx int
+	for i, row := range rows {
+		if row.isHeader && row.fileIndex == 1 {
+			// The top border is the row immediately before the header
+			if i > 0 && rows[i-1].isHeaderTopBorder {
+				topBorderIdx = i - 1
+			}
+			break
+		}
+	}
+	require.NotZero(t, topBorderIdx, "should find top border for file 1")
+
+	// Get the headerBoxWidth for this border
+	borderRow := rows[topBorderIdx]
+	headerBoxWidth := borderRow.headerBoxWidth
+
+	// Render the border without cursor
+	noCursorBorder := m.renderHeaderTopBorder(headerBoxWidth, borderRow.borderVisible, borderRow.status, false)
+
+	// Render the border with cursor
+	cursorBorder := m.renderHeaderTopBorder(headerBoxWidth, borderRow.borderVisible, borderRow.status, true)
+
+	// Strip ANSI codes and compare visual character width (rune count, not byte count)
+	noCursorLen := utf8.RuneCountInString(stripANSI(noCursorBorder))
+	cursorLen := utf8.RuneCountInString(stripANSI(cursorBorder))
+
+	// Both should have the same visual width
+	assert.Equal(t, noCursorLen, cursorLen,
+		"border with cursor (%d) should have same width as border without cursor (%d)",
+		cursorLen, noCursorLen)
+
+	// Verify the cursor border has the correct structure: arrow + space + styled gutter + rest
+	// The stripped content should start with "▶─" (arrow followed by a dash as space)
+	strippedCursor := stripANSI(cursorBorder)
+	assert.True(t, strings.HasPrefix(strippedCursor, "▶─"),
+		"cursor border should start with arrow followed by dash (space), got: %q", strippedCursor[:min(10, len(strippedCursor))])
+
+	// Also test the bottom border (header spacer)
+	var spacerIdx int
+	for i, row := range rows {
+		if row.isHeaderSpacer && row.fileIndex == 1 {
+			spacerIdx = i
+			break
+		}
+	}
+	require.NotZero(t, spacerIdx, "should find header spacer for file 1")
+
+	spacerRow := rows[spacerIdx]
+	noCursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.borderVisible, spacerRow.status, false)
+	cursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.borderVisible, spacerRow.status, true)
+
+	noCursorSpacerLen := utf8.RuneCountInString(stripANSI(noCursorSpacer))
+	cursorSpacerLen := utf8.RuneCountInString(stripANSI(cursorSpacer))
+
+	assert.Equal(t, noCursorSpacerLen, cursorSpacerLen,
+		"bottom border with cursor (%d) should have same width as border without cursor (%d)",
+		cursorSpacerLen, noCursorSpacerLen)
 }
