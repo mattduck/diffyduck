@@ -166,9 +166,12 @@ type displayRow struct {
 	// Hunk separator fields
 	chunkStartLine int // first line of the following chunk (new/right side), for breadcrumbs
 	// Commit header fields
-	isCommitHeader  bool                       // true if this is a commit header row
-	commitFoldLevel sidebyside.CommitFoldLevel // fold level for commit headers
-	commitIndex     int                        // which commit this header belongs to
+	isCommitHeader      bool                       // true if this is a commit header row
+	commitFoldLevel     sidebyside.CommitFoldLevel // fold level for commit headers
+	commitIndex         int                        // which commit this header belongs to
+	maxCommitFilesWidth int                        // max width for file count column across all commits
+	maxCommitAddWidth   int                        // max width for additions column across all commits
+	maxCommitRemWidth   int                        // max width for removals column across all commits
 	// Commit body fields (shown when commit is expanded)
 	isCommitBody      bool   // true if this is a commit body row
 	commitBodyLine    string // the text content for this body line
@@ -289,16 +292,54 @@ func (m Model) buildRows() []displayRow {
 	}
 	headerBoxWidth := iconPartWidth + maxHeaderWidth + maxStatsBarWidth
 
+	// Calculate max commit header column widths for alignment
+	maxCommitFilesWidth := 0
+	maxCommitAddWidth := 0
+	maxCommitRemWidth := 0
+	for commitIdx := range m.commits {
+		// Get file range for this commit
+		startIdx := m.commitFileStarts[commitIdx]
+		endIdx := len(m.files)
+		if commitIdx+1 < len(m.commits) {
+			endIdx = m.commitFileStarts[commitIdx+1]
+		}
+		// Calculate stats for this commit
+		commitFileCount := endIdx - startIdx
+		commitAdded := 0
+		commitRemoved := 0
+		for i := startIdx; i < endIdx; i++ {
+			added, removed := countFileStats(m.files[i])
+			commitAdded += added
+			commitRemoved += removed
+		}
+		// Track max widths
+		fw := len(fmt.Sprintf("%d", commitFileCount))
+		if fw > maxCommitFilesWidth {
+			maxCommitFilesWidth = fw
+		}
+		aw := len(fmt.Sprintf("+%d", commitAdded))
+		if aw > maxCommitAddWidth {
+			maxCommitAddWidth = aw
+		}
+		rw := len(fmt.Sprintf("-%d", commitRemoved))
+		if rw > maxCommitRemWidth {
+			maxCommitRemWidth = rw
+		}
+	}
+
 	// Build rows for each commit
 	for commitIdx, commit := range m.commits {
 		// Add commit header row if commit has metadata
 		if commit.Info.HasMetadata() {
 			rows = append(rows, displayRow{
-				kind:            RowKindCommitHeader,
-				fileIndex:       -1,
-				isCommitHeader:  true,
-				commitFoldLevel: commit.FoldLevel,
-				commitIndex:     commitIdx,
+				kind:                RowKindCommitHeader,
+				fileIndex:           -1,
+				isCommitHeader:      true,
+				commitFoldLevel:     commit.FoldLevel,
+				commitIndex:         commitIdx,
+				maxCommitFilesWidth: maxCommitFilesWidth,
+				maxCommitAddWidth:   maxCommitAddWidth,
+				maxCommitRemWidth:   maxCommitRemWidth,
 			})
 
 			// If commit is folded, skip its files
@@ -1307,6 +1348,17 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	removedText := fmt.Sprintf("-%d", totalRemoved)
 	timeText := formatShortRelativeDate(commitInfo.Date)
 
+	// Pad columns to max widths for alignment across commits
+	if len(filesText) < row.maxCommitFilesWidth {
+		filesText += strings.Repeat(" ", row.maxCommitFilesWidth-len(filesText))
+	}
+	if len(addedText) < row.maxCommitAddWidth {
+		addedText += strings.Repeat(" ", row.maxCommitAddWidth-len(addedText))
+	}
+	if len(removedText) < row.maxCommitRemWidth {
+		removedText += strings.Repeat(" ", row.maxCommitRemWidth-len(removedText))
+	}
+
 	// Author: max 15 chars, truncate with "..." if longer
 	author := commitInfo.Author
 	maxAuthorLen := 15
@@ -1316,7 +1368,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	// Calculate fixed width using raw text lengths (not styled)
 	// prefix(2) + fold(1) + space(1) + sha(7) + space(1) + files + space(1) + added + space(1) + removed + space(1) + time + space(1) + author
-	fixedWidth := 2 + 1 + 1 + len(shaText) + 1 + len(filesText) + 1 + len(addedText) + 1 + len(removedText) + 1 + len(timeText) + 1 + len(author)
+	fixedWidth := 2 + 1 + 1 + len(shaText) + 1 + row.maxCommitFilesWidth + 1 + row.maxCommitAddWidth + 1 + row.maxCommitRemWidth + 1 + len(timeText) + 1 + len(author)
 
 	// Build the fixed part with styling
 	fixedPart := prefix +

@@ -608,37 +608,49 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 func TestView_MultiCommitLogView(t *testing.T) {
 	// Test rendering of multiple commits in a log-style view
 	// Each commit should show its own stats and file numbers should reset per commit
+	// Use varied stats to verify column alignment (+134 vs +5, -0 vs -23, etc.)
+
+	// Helper to create N line pairs of a given type
+	makeAddedPairs := func(n int) []sidebyside.LinePair {
+		pairs := make([]sidebyside.LinePair, n)
+		for i := range pairs {
+			pairs[i] = sidebyside.LinePair{
+				Old: sidebyside.Line{Num: i + 1, Type: sidebyside.Added},
+				New: sidebyside.Line{Num: i + 1, Content: "line", Type: sidebyside.Added},
+			}
+		}
+		return pairs
+	}
+	makeRemovedPairs := func(n int) []sidebyside.LinePair {
+		pairs := make([]sidebyside.LinePair, n)
+		for i := range pairs {
+			pairs[i] = sidebyside.LinePair{
+				Old: sidebyside.Line{Num: i + 1, Content: "old", Type: sidebyside.Removed},
+				New: sidebyside.Line{Num: i + 1, Type: sidebyside.Removed},
+			}
+		}
+		return pairs
+	}
+
 	commits := []sidebyside.CommitSet{
 		{
+			// Commit 0: 12 files, +134 -0 (large addition count)
 			Info: sidebyside.CommitInfo{
 				SHA:     "abc123def456",
 				Author:  "Alice",
 				Date:    "Mon Jan 15 10:00:00 2024 -0500",
 				Subject: "Add feature X",
 			},
-			FoldLevel:   sidebyside.CommitNormal, // Level 2 - show file headers
+			FoldLevel:   sidebyside.CommitNormal,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{
-					OldPath:   "a/foo.go",
-					NewPath:   "b/foo.go",
-					FoldLevel: sidebyside.FoldFolded,
-					Pairs: []sidebyside.LinePair{
-						{Old: sidebyside.Line{Num: 1, Type: sidebyside.Added}, New: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added}},
-						{Old: sidebyside.Line{Num: 2, Type: sidebyside.Added}, New: sidebyside.Line{Num: 2, Content: "another", Type: sidebyside.Added}},
-					},
-				},
-				{
-					OldPath:   "a/bar.go",
-					NewPath:   "b/bar.go",
-					FoldLevel: sidebyside.FoldFolded,
-					Pairs: []sidebyside.LinePair{
-						{Old: sidebyside.Line{Num: 1, Type: sidebyside.Added}, New: sidebyside.Line{Num: 1, Content: "bar line", Type: sidebyside.Added}},
-					},
-				},
+				{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldFolded, Pairs: makeAddedPairs(50)},
+				{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldFolded, Pairs: makeAddedPairs(50)},
+				{OldPath: "a/f3.go", NewPath: "b/f3.go", FoldLevel: sidebyside.FoldFolded, Pairs: makeAddedPairs(34)},
 			},
 		},
 		{
+			// Commit 1: 1 file, +5 -23 (small add, larger remove)
 			Info: sidebyside.CommitInfo{
 				SHA:     "def789abc012",
 				Author:  "Bob",
@@ -648,14 +660,8 @@ func TestView_MultiCommitLogView(t *testing.T) {
 			FoldLevel:   sidebyside.CommitNormal,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{
-					OldPath:   "a/baz.go",
-					NewPath:   "b/baz.go",
-					FoldLevel: sidebyside.FoldFolded,
-					Pairs: []sidebyside.LinePair{
-						{Old: sidebyside.Line{Num: 5, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 5, Content: "new", Type: sidebyside.Added}},
-					},
-				},
+				{OldPath: "a/baz.go", NewPath: "b/baz.go", FoldLevel: sidebyside.FoldFolded,
+					Pairs: append(makeAddedPairs(5), makeRemovedPairs(23)...)},
 			},
 		},
 	}
