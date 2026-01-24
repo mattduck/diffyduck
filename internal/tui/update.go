@@ -468,6 +468,16 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 
 	newLevel := m.nextFoldLevelForFile(m.files[fileIdx])
 	m.files[fileIdx].FoldLevel = newLevel
+
+	// If file is expanded beyond FoldFolded, update parent commit to CommitExpanded
+	// Level 2 means "file headings only" - any file content means level 3
+	if newLevel != sidebyside.FoldFolded && len(m.commits) > 0 {
+		commitIdx := m.commitForFile(fileIdx)
+		if commitIdx >= 0 && commitIdx < len(m.commits) {
+			m.commits[commitIdx].FoldLevel = sidebyside.CommitExpanded
+		}
+	}
+
 	m.calculateTotalLines()
 
 	// Preserve scroll position
@@ -884,6 +894,7 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 		}
 	case 2:
 		// Level 2 -> Level 3: Show file hunks
+		commit.FoldLevel = sidebyside.CommitExpanded
 		for i := startIdx; i < endIdx; i++ {
 			m.files[i].FoldLevel = sidebyside.FoldNormal
 		}

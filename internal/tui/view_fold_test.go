@@ -577,3 +577,149 @@ func TestView_ExpandedFile_AlignmentWithRemovedLines(t *testing.T) {
 	assert.Equal(t, 4, newLine3Row.pair.Old.Num,
 		"left side line number should be 4 (after the removed line)")
 }
+
+func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
+	// When a commit is at visibility level 3 (after pressing tab twice),
+	// its header should show the full-fill icon ● instead of half-fill ◐
+	//
+	// This test simulates pressing Tab twice on a commit header to get to level 3,
+	// then verifies the fold icon is correctly updated to the full-fill style.
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc1234",
+			Author:  "Test Author",
+			Subject: "Test commit subject",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
+				},
+			},
+		},
+		FoldLevel:   sidebyside.CommitFolded, // Start folded
+		FilesLoaded: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Tab 1: Level 1 (Folded) -> Level 2 (Normal, files folded)
+	newM, _ := m.handleCommitFoldCycle()
+	m = newM.(Model)
+	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "after first Tab, should be at level 2")
+
+	// Tab 2: Level 2 -> Level 3 (files expanded)
+	newM, _ = m.handleCommitFoldCycle()
+	m = newM.(Model)
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "after second Tab, should be at level 3")
+
+	// At level 3, the commit's FoldLevel should be CommitExpanded
+	assert.Equal(t, sidebyside.CommitExpanded, m.commits[0].FoldLevel,
+		"at level 3, commit.FoldLevel should be CommitExpanded")
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Find the commit header line (contains the SHA)
+	var commitHeaderLine string
+	for _, line := range lines {
+		if strings.Contains(line, "abc1234") {
+			commitHeaderLine = line
+			break
+		}
+	}
+
+	require.NotEmpty(t, commitHeaderLine, "should find commit header with SHA")
+
+	// At level 3, should show full-fill icon ●, not half-fill ◐
+	assert.Contains(t, commitHeaderLine, "●",
+		"commit header at level 3 should show full-fill icon ●")
+	assert.NotContains(t, commitHeaderLine, "◐",
+		"commit header at level 3 should NOT show half-fill icon ◐")
+}
+
+func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
+	// When a file is expanded beyond just its header (FoldFolded),
+	// the parent commit should be updated to CommitExpanded (level 3).
+	// Level 2 means "file headings only" - if any file shows content,
+	// the commit should be at level 3.
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "def5678",
+			Author:  "Test Author",
+			Subject: "Test commit",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
+				},
+			},
+		},
+		FoldLevel:   sidebyside.CommitNormal, // Start at level 2 (file headers visible)
+		FilesLoaded: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Verify we're at level 2
+	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "should start at level 2")
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit should be CommitNormal")
+	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file should be FoldFolded")
+
+	// Navigate to the file and expand it
+	// First, move cursor to be on the file (not the commit header)
+	m.scroll = m.minScroll()
+	rows := m.buildRows()
+	for i, row := range rows {
+		if row.isHeader && row.fileIndex == 0 {
+			// Position cursor on this file header
+			m.scroll = -m.cursorOffset() + i
+			break
+		}
+	}
+
+	// Expand the file using handleFoldToggle (simulates pressing Tab on a file)
+	newM, _ := m.handleFoldToggle()
+	m = newM.(Model)
+
+	// File should now be expanded
+	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel,
+		"file should be FoldNormal after toggle")
+
+	// The commit should now be at level 3 with CommitExpanded
+	assert.Equal(t, 3, m.commitVisibilityLevelFor(0),
+		"commit visibility should be level 3 after file expansion")
+	assert.Equal(t, sidebyside.CommitExpanded, m.commits[0].FoldLevel,
+		"commit.FoldLevel should be CommitExpanded when a file is expanded")
+
+	// Verify the commit header shows the full-fill icon
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	var commitHeaderLine string
+	for _, line := range lines {
+		if strings.Contains(line, "def5678") {
+			commitHeaderLine = line
+			break
+		}
+	}
+
+	require.NotEmpty(t, commitHeaderLine, "should find commit header with SHA")
+	assert.Contains(t, commitHeaderLine, "●",
+		"commit header should show full-fill icon ● when file is expanded")
+}
