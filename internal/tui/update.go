@@ -68,8 +68,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FileContentLoadedMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
+			// Check if loading this file's content affects visible rows:
+			// - If the file's commit is folded, files aren't shown
+			// - If the file itself isn't in FoldExpanded mode, content isn't shown
+			// In these cases, skip expensive scroll preservation
+			commitIdx := m.commitForFile(msg.FileIndex)
+			commitFolded := commitIdx >= 0 && commitIdx < len(m.commits) &&
+				m.commits[commitIdx].Info.HasMetadata() &&
+				m.commits[commitIdx].FoldLevel == sidebyside.CommitFolded
+			fileExpanded := m.files[msg.FileIndex].FoldLevel == sidebyside.FoldExpanded
+			affectsVisibleRows := !commitFolded && fileExpanded
+
 			// Capture cursor identity before content changes the row layout
-			identity := m.getCursorRowIdentity()
+			var identity cursorRowIdentity
+			if affectsVisibleRows {
+				identity = m.getCursorRowIdentity()
+			}
 
 			m.files[msg.FileIndex].OldContent = msg.OldContent
 			m.files[msg.FileIndex].NewContent = msg.NewContent
@@ -78,9 +92,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.files[msg.FileIndex].NewContentTruncated = msg.NewTruncated
 			m.calculateTotalLines()
 
-			// Preserve scroll position
-			newRowIdx := m.findRowOrNearestAbove(identity)
-			m.adjustScrollToRow(newRowIdx)
+			// Preserve scroll position only if the loaded file affects visible rows
+			if affectsVisibleRows {
+				newRowIdx := m.findRowOrNearestAbove(identity)
+				m.adjustScrollToRow(newRowIdx)
+			}
 
 			// File content loaded, but still loading until highlight is ready
 			// (loading state will be cleared when HighlightReadyMsg arrives)
@@ -269,8 +285,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // This is used to preserve scroll position across fold changes and resize.
 // Using RowKind ensures this stays in sync with displayRow types automatically.
 type cursorRowIdentity struct {
-	kind      RowKind // row type - must match for non-content rows
-	fileIndex int     // file this row belongs to (-1 for summary)
+	kind        RowKind // row type - must match for non-content rows
+	fileIndex   int     // file this row belongs to (-1 for commit rows)
+	commitIndex int     // commit this row belongs to (for commit headers/body)
 	// For blank rows, which blank row within the file's blank area (0-indexed)
 	blankIndex int
 	// For content rows, the line numbers to match
@@ -313,11 +330,12 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 	}
 
 	return cursorRowIdentity{
-		kind:       row.kind,
-		fileIndex:  row.fileIndex,
-		blankIndex: blankIndex,
-		oldNum:     row.pair.Old.Num,
-		newNum:     row.pair.New.Num,
+		kind:        row.kind,
+		fileIndex:   row.fileIndex,
+		commitIndex: row.commitIndex,
+		blankIndex:  blankIndex,
+		oldNum:      row.pair.Old.Num,
+		newNum:      row.pair.New.Num,
 	}
 }
 
@@ -356,14 +374,25 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 	}
 
 	// No exact match - find the nearest header or separator above the original position
-	// Walk through rows looking for the last header/separator at or before identity.fileIndex
+	// For commit rows, find the commit header; for file rows, find the file header
 	lastHeaderOrSep := 0
 	for i, row := range rows {
-		if row.fileIndex > identity.fileIndex {
-			break // Past our file, stop searching
-		}
-		if row.kind == RowKindHeader || row.kind == RowKindSeparator {
-			lastHeaderOrSep = i
+		// For commit-related rows (fileIndex == -1), stop when we pass the target commit
+		if identity.fileIndex == -1 {
+			if row.commitIndex > identity.commitIndex {
+				break
+			}
+			if row.kind == RowKindCommitHeader && row.commitIndex == identity.commitIndex {
+				lastHeaderOrSep = i
+			}
+		} else {
+			// For file rows, stop when we pass the target file
+			if row.fileIndex > identity.fileIndex {
+				break
+			}
+			if row.kind == RowKindHeader || row.kind == RowKindSeparator {
+				lastHeaderOrSep = i
+			}
 		}
 	}
 
@@ -398,7 +427,13 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 	case RowKindTruncationIndicator:
 		return row.kind == RowKindTruncationIndicator
 	case RowKindCommitHeader:
-		return row.kind == RowKindCommitHeader
+		return row.kind == RowKindCommitHeader && row.commitIndex == identity.commitIndex
+	case RowKindCommitHeaderTopBorder:
+		return row.kind == RowKindCommitHeaderTopBorder && row.commitIndex == identity.commitIndex
+	case RowKindCommitHeaderBottomBorder:
+		return row.kind == RowKindCommitHeaderBottomBorder && row.commitIndex == identity.commitIndex
+	case RowKindCommitBody:
+		return row.kind == RowKindCommitBody && row.commitIndex == identity.commitIndex
 	case RowKindContent:
 		// For content rows, match by line numbers
 		// Handle cases where one side might be 0 (added/removed lines)

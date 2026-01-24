@@ -1225,3 +1225,219 @@ func TestUpdate_gk_FromFirstHeader_StaysOnFirstFile(t *testing.T) {
 	info := m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile, "gk from first file's header should stay on first file")
 }
+
+// =============================================================================
+// Cursor Identity Tests - Multi-Commit Support
+// =============================================================================
+
+// createTwoCommitModelForIdentityTests creates a model with two commits for testing
+// cursor identity preservation across content loading.
+func createTwoCommitModelForIdentityTests() Model {
+	commit1 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "aaa1111",
+			Author:  "Author One",
+			Subject: "First commit subject",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/file1.go",
+				NewPath:   "b/file1.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "old1"}, New: sidebyside.Line{Num: 1, Content: "new1"}},
+				},
+			},
+		},
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: true,
+	}
+	commit2 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "bbb2222",
+			Author:  "Author Two",
+			Subject: "Second commit subject",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/file2.go",
+				NewPath:   "b/file2.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "old2"}, New: sidebyside.Line{Num: 1, Content: "new2"}},
+				},
+			},
+		},
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit1, commit2})
+	m.width = 80
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+	return m
+}
+
+func TestCursorIdentity_CommitIndex_CapturedCorrectly(t *testing.T) {
+	m := createTwoCommitModelForIdentityTests()
+
+	// Both commits folded -> 2 rows (commit headers)
+	rows := m.buildRows()
+	require.Equal(t, 2, len(rows), "should have 2 rows when both commits folded")
+	require.True(t, rows[0].isCommitHeader, "row 0 should be commit header")
+	require.True(t, rows[1].isCommitHeader, "row 1 should be commit header")
+
+	// Position cursor on second commit header (row 1)
+	m.scroll = 1 - m.cursorOffset()
+	m.calculateTotalLines()
+
+	identity := m.getCursorRowIdentity()
+	assert.Equal(t, RowKindCommitHeader, identity.kind, "identity kind should be CommitHeader")
+	assert.Equal(t, 1, identity.commitIndex, "identity should capture commit index 1")
+	assert.Equal(t, -1, identity.fileIndex, "commit rows have fileIndex -1")
+}
+
+func TestRowMatchesIdentity_CommitHeader_RequiresMatchingCommitIndex(t *testing.T) {
+	m := createTwoCommitModelForIdentityTests()
+	rows := m.buildRows()
+
+	// Create identity for commit 1's header
+	identity := cursorRowIdentity{
+		kind:        RowKindCommitHeader,
+		fileIndex:   -1,
+		commitIndex: 1,
+	}
+
+	// Row 0 is commit 0's header - should NOT match
+	assert.False(t, m.rowMatchesIdentity(rows[0], identity, 0),
+		"commit 0's header should not match identity for commit 1")
+
+	// Row 1 is commit 1's header - SHOULD match
+	assert.True(t, m.rowMatchesIdentity(rows[1], identity, 0),
+		"commit 1's header should match identity for commit 1")
+}
+
+func TestFindRowOrNearestAbove_CommitRow_FindsCorrectCommit(t *testing.T) {
+	m := createTwoCommitModelForIdentityTests()
+
+	// Identity for second commit header
+	identity := cursorRowIdentity{
+		kind:        RowKindCommitHeader,
+		fileIndex:   -1,
+		commitIndex: 1,
+	}
+
+	// Should find row 1 (second commit header), not row 0
+	rowIdx := m.findRowOrNearestAbove(identity)
+	assert.Equal(t, 1, rowIdx, "should find row 1 for commit 1's header")
+
+	rows := m.buildRows()
+	assert.Equal(t, 1, rows[rowIdx].commitIndex, "found row should be commit 1")
+}
+
+func TestFindRowOrNearestAbove_CommitRow_FallbackToCommitHeader(t *testing.T) {
+	m := createTwoCommitModelForIdentityTests()
+
+	// Expand second commit to get more row types
+	m.commits[1].FoldLevel = sidebyside.CommitNormal
+	m.calculateTotalLines()
+
+	// Create identity for a row type that might not exist after rebuild
+	// (e.g., CommitHeaderBottomBorder for commit 1)
+	identity := cursorRowIdentity{
+		kind:        RowKindCommitHeaderBottomBorder,
+		fileIndex:   -1,
+		commitIndex: 1,
+	}
+
+	rowIdx := m.findRowOrNearestAbove(identity)
+	rows := m.buildRows()
+
+	// Should find either the exact row or fall back to commit 1's header
+	assert.True(t, rows[rowIdx].commitIndex == 1 || rowIdx == 0,
+		"should find a row in commit 1 or fall back gracefully")
+}
+
+func TestFileContentLoaded_SkipsScrollPreservation_WhenCommitFolded(t *testing.T) {
+	m := createTwoCommitModelForIdentityTests()
+
+	// Both commits are folded
+	require.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel)
+	require.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel)
+
+	// Position cursor on second commit header
+	m.scroll = 1 - m.cursorOffset()
+	m.calculateTotalLines()
+	initialScroll := m.scroll
+
+	// Simulate file content loading for file in first (folded) commit
+	msg := FileContentLoadedMsg{
+		FileIndex:  0,
+		OldContent: []string{"line1", "line2"},
+		NewContent: []string{"line1", "line2"},
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	// Scroll should be unchanged because commit was folded
+	// (no scroll preservation needed, content doesn't affect visible rows)
+	assert.Equal(t, initialScroll, model.scroll,
+		"scroll should be unchanged when loading content for folded commit")
+}
+
+func TestFileContentLoaded_SkipsScrollPreservation_WhenFileNotExpanded(t *testing.T) {
+	m := createTwoCommitModelForIdentityTests()
+
+	// Expand first commit but keep file folded
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.files[0].FoldLevel = sidebyside.FoldFolded // file is folded, not expanded
+	m.calculateTotalLines()
+
+	// Position cursor somewhere
+	m.scroll = 0
+	initialScroll := m.scroll
+
+	// Simulate file content loading
+	msg := FileContentLoadedMsg{
+		FileIndex:  0,
+		OldContent: []string{"line1", "line2", "line3"},
+		NewContent: []string{"line1", "line2", "line3"},
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	// Scroll should be unchanged because file is not in FoldExpanded mode
+	assert.Equal(t, initialScroll, model.scroll,
+		"scroll should be unchanged when loading content for non-expanded file")
+}
+
+func TestFileContentLoaded_PreservesScroll_WhenFileExpanded(t *testing.T) {
+	m := createTwoCommitModelForIdentityTests()
+
+	// Expand first commit and its file to FoldExpanded
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.calculateTotalLines()
+
+	// Get initial cursor identity
+	initialIdentity := m.getCursorRowIdentity()
+
+	// Simulate file content loading - this SHOULD trigger scroll preservation
+	msg := FileContentLoadedMsg{
+		FileIndex:  0,
+		OldContent: []string{"line1", "line2", "line3", "line4", "line5"},
+		NewContent: []string{"line1", "line2", "line3", "line4", "line5"},
+	}
+
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	// After content loads, cursor should still point to same logical row
+	newIdentity := model.getCursorRowIdentity()
+	assert.Equal(t, initialIdentity.kind, newIdentity.kind,
+		"cursor should be on same kind of row after content load")
+}
