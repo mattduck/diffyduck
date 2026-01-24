@@ -1858,3 +1858,160 @@ func TestDiffView_CursorStartsOnFileHeader(t *testing.T) {
 		}
 	}
 }
+
+func TestHeaderBoxBorderAlignment(t *testing.T) {
+	// Test that the │ on the content line aligns with ┐ and ┘ on the border lines.
+	// Bug: when there are additions but no removals, the stats bar width calculation
+	// adds an extra space "between +N and -M" even when there's no -M, causing
+	// the │ to be 1 position left of the corners.
+	//
+	// Correct layout (│ aligns with corners):
+	//   ─────────────────────────┐
+	//        ◐ #1 + tmp.txt +1  │▒▒▒
+	//   ─────────────────────────┘
+	//
+	// Buggy layout (│ is 1 char left of corners):
+	//   ─────────────────────────┐
+	//        ◐ #1 + tmp.txt +1 │▒▒▒
+	//   ─────────────────────────┘
+	//
+	// Note: We test on file index 1 (second file) because file index 0 no longer
+	// has a top border in scrollable content (it's rendered in the padding area).
+
+	lipgloss.SetColorProfile(termenv.TrueColor)
+
+	tests := []struct {
+		name    string
+		oldPath string
+		newPath string
+		added   int
+		removed int
+	}{
+		// User's exact scenario: new file with +1 addition
+		{"added file with one line", "/dev/null", "b/tmp.txt", 1, 0},
+		// Other scenarios
+		{"additions only", "a/tmp.txt", "b/tmp.txt", 1, 0},
+		{"removals only", "a/tmp.txt", "b/tmp.txt", 0, 1},
+		{"both additions and removals", "a/tmp.txt", "b/tmp.txt", 1, 1},
+		{"larger additions only", "a/tmp.txt", "b/tmp.txt", 42, 0},
+		{"larger removals only", "a/tmp.txt", "b/tmp.txt", 0, 42},
+		{"no changes", "a/tmp.txt", "b/tmp.txt", 0, 0},
+		// Deleted file
+		{"deleted file", "a/tmp.txt", "/dev/null", 0, 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create pairs based on added/removed counts
+			var pairs []sidebyside.LinePair
+			for i := range tt.added {
+				pairs = append(pairs, sidebyside.LinePair{
+					New: sidebyside.Line{Num: i + 1, Content: "added line", Type: sidebyside.Added},
+					Old: sidebyside.Line{Type: sidebyside.Empty},
+				})
+			}
+			for i := range tt.removed {
+				pairs = append(pairs, sidebyside.LinePair{
+					Old: sidebyside.Line{Num: i + 1, Content: "removed line", Type: sidebyside.Removed},
+					New: sidebyside.Line{Type: sidebyside.Empty},
+				})
+			}
+			if len(pairs) == 0 {
+				// Need at least one pair for the file to show
+				pairs = append(pairs, sidebyside.LinePair{
+					Old: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
+				})
+			}
+
+			// Use two files: a dummy first file, then the file under test.
+			// This ensures file index 1 has a top border we can test alignment on.
+			m := New([]sidebyside.FilePair{
+				{
+					OldPath:   "a/dummy.txt",
+					NewPath:   "b/dummy.txt",
+					Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context}}},
+					FoldLevel: sidebyside.FoldNormal,
+				},
+				{
+					OldPath:   tt.oldPath,
+					NewPath:   tt.newPath,
+					Pairs:     pairs,
+					FoldLevel: sidebyside.FoldNormal, // Need FoldNormal to get bottom border
+				},
+			})
+			m.width = 100
+			m.height = 40
+			m.initialFoldSet = true
+			m.focused = true
+			m.keys = DefaultKeyMap()
+
+			// Build display rows
+			rows := m.buildRows()
+
+			// Find the header box rows for file 1 (second file, which has a top border)
+			var topBorderRow, headerRow, bottomBorderRow *displayRow
+			for i := range rows {
+				if rows[i].fileIndex == 1 {
+					if rows[i].isHeaderTopBorder {
+						topBorderRow = &rows[i]
+					} else if rows[i].isHeader {
+						headerRow = &rows[i]
+					} else if rows[i].isHeaderSpacer {
+						bottomBorderRow = &rows[i]
+					}
+				}
+			}
+
+			require.NotNil(t, topBorderRow, "should find top border row for file 1")
+			require.NotNil(t, headerRow, "should find header row for file 1")
+			require.NotNil(t, bottomBorderRow, "should find bottom border row for file 1")
+
+			// Get the headerBoxWidth (should be same for all)
+			headerBoxWidth := headerRow.headerBoxWidth
+			require.Equal(t, headerBoxWidth, topBorderRow.headerBoxWidth, "top border should have same headerBoxWidth")
+			require.Equal(t, headerBoxWidth, bottomBorderRow.headerBoxWidth, "bottom border should have same headerBoxWidth")
+
+			// Render the rows
+			topBorder := m.renderHeaderTopBorder(headerBoxWidth, true, headerRow.status, false)
+			header := m.renderHeader(
+				headerRow.header,
+				headerRow.foldLevel,
+				headerRow.borderVisible,
+				headerRow.status,
+				headerRow.added,
+				headerRow.removed,
+				headerRow.maxHeaderWidth,
+				headerRow.maxAddWidth,
+				headerRow.maxRemWidth,
+				headerRow.headerBoxWidth,
+				headerRow.fileIndex,
+				0,
+				false,
+			)
+			bottomBorder := m.renderHeaderBottomBorder(headerBoxWidth, true, headerRow.status, false)
+
+			// Strip ANSI codes for comparison
+			topStripped := stripANSI(topBorder)
+			headerStripped := stripANSI(header)
+			bottomStripped := stripANSI(bottomBorder)
+
+			// Find the position of the corner/border characters (rune position, not byte)
+			topCornerPos := findRuneIndex(topStripped, "┐")
+			bottomCornerPos := findRuneIndex(bottomStripped, "┘")
+			verticalBarPos := findRuneIndex(headerStripped, "│")
+
+			require.NotEqual(t, -1, topCornerPos, "should find ┐ in top border: %q", topStripped)
+			require.NotEqual(t, -1, bottomCornerPos, "should find ┘ in bottom border: %q", bottomStripped)
+			require.NotEqual(t, -1, verticalBarPos, "should find │ in header: %q", headerStripped)
+
+			// All three should be at the same position
+			assert.Equal(t, topCornerPos, verticalBarPos,
+				"│ position (%d) should match ┐ position (%d)\nTop border: %q\nHeader:     %q",
+				verticalBarPos, topCornerPos, topStripped, headerStripped)
+			assert.Equal(t, bottomCornerPos, verticalBarPos,
+				"│ position (%d) should match ┘ position (%d)\nBottom border: %q\nHeader:        %q",
+				verticalBarPos, bottomCornerPos, bottomStripped, headerStripped)
+		})
+	}
+}

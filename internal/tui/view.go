@@ -298,8 +298,8 @@ func (m Model) buildRows() []displayRow {
 	maxStatsBarWidth := 0
 	if maxAddWidth > 0 || maxRemWidth > 0 {
 		maxStatsBarWidth = 1 + maxAddWidth
-		if maxAddWidth > 0 {
-			maxStatsBarWidth++
+		if maxAddWidth > 0 && maxRemWidth > 0 {
+			maxStatsBarWidth++ // space between +N and -M
 		}
 		maxStatsBarWidth += maxRemWidth
 	}
@@ -528,8 +528,8 @@ func (m Model) buildRowsLegacy() []displayRow {
 	maxStatsBarWidth := 0
 	if maxAddWidth > 0 || maxRemWidth > 0 {
 		maxStatsBarWidth = 1 + maxAddWidth
-		if maxAddWidth > 0 {
-			maxStatsBarWidth++
+		if maxAddWidth > 0 && maxRemWidth > 0 {
+			maxStatsBarWidth++ // space between +N and -M
 		}
 		maxStatsBarWidth += maxRemWidth
 	}
@@ -3083,9 +3083,9 @@ func statsBarDisplayWidth(maxAddWidth, maxRemWidth int) int {
 	// Addition column (always padded to maxAddWidth)
 	width += maxAddWidth
 
-	// Space before removal + removal column (always padded to maxRemWidth)
-	if maxAddWidth > 0 {
-		width++ // space between +N and -M
+	// Space between +N and -M (only when both exist)
+	if maxAddWidth > 0 && maxRemWidth > 0 {
+		width++
 	}
 	width += maxRemWidth
 
