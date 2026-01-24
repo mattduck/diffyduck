@@ -41,13 +41,13 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		return m, nil
 
-	case tea.KeyBackspace:
+	case tea.KeyBackspace, tea.KeyCtrlH:
 		m.commentDeleteBackward()
 		m.commentEnsureCursorVisible()
 		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		return m, nil
 
-	case tea.KeyDelete:
+	case tea.KeyDelete, tea.KeyCtrlD:
 		m.commentDeleteForward()
 		m.commentEnsureCursorVisible()
 		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
