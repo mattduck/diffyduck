@@ -131,8 +131,8 @@ func TestStartup_ScrollIsZero_NoBlankSpaceAtTop(t *testing.T) {
 func TestScrollDown_CanGoBeyondContent(t *testing.T) {
 	// Scrolling down should allow scroll to exceed totalLines
 	// so the cursor can reach the last line of content
-	// With new row structure for unfolded files (last file has no trailing blank/border):
-	// top border (1) + header (1) + bottom border (1) + 10 pairs = 13 total lines
+	// In diff view (no commit metadata), first file has no top border:
+	// header (1) + bottom border (1) + 10 pairs = 12 total lines
 	m := makeTestModel(10)
 	m.height = 50 // cursor at line 9
 	m.scroll = 0
@@ -141,11 +141,11 @@ func TestScrollDown_CanGoBeyondContent(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
-	// Last content line is at index 12 (0-indexed) - the last content pair
-	// Cursor is at offset 9, so scroll should be 12 - 9 = 3
-	// We want cursor (at scroll + cursorOffset) to be on line 12
-	// So scroll + 9 = 12, scroll = 3
-	assert.Equal(t, 3, model.scroll, "G should put cursor on last line")
+	// Last content line is at index 11 (0-indexed) - the last content pair
+	// Cursor is at offset 9, so scroll should be 11 - 9 = 2
+	// We want cursor (at scroll + cursorOffset) to be on line 11
+	// So scroll + 9 = 11, scroll = 2
+	assert.Equal(t, 2, model.scroll, "G should put cursor on last line")
 }
 
 func TestMaxScroll_AllowsCursorOnLastLine(t *testing.T) {
@@ -294,35 +294,31 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 	// When cursor is on a file header, the filename portion should be highlighted
 	// Highlight = bg color 7, fg color 0
 	withANSIColors(t, func() {
-		m := Model{
-			focused: true,
-			files: []sidebyside.FilePair{
-				{
-					OldPath: "a/test.go",
-					NewPath: "b/test.go",
-					Pairs: []sidebyside.LinePair{
-						{
-							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-							New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						},
+		m := New([]sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
-			width:  80,
-			height: 10, // cursor offset = 1 (20% of 8)
-			scroll: 0,  // cursor at line 1 (the header, after top border at line 0)
-			keys:   DefaultKeyMap(),
-		}
-		m.calculateTotalLines()
+		})
+		m.focused = true
+		m.width = 80
+		m.height = 10 // cursor offset = 1 (20% of 8)
+		// Position cursor on the header (row 0) using minScroll
+		m.scroll = m.minScroll()
 
 		output := m.View()
 
-		// Layout: [topBar, divider, content[0..contentH-1], bottomBar]
-		// With scroll=0 and cursorOffset=1, cursor is at line 1 (the header)
-		// Row 0 = top border, Row 1 = header, Row 2 = bottom border
-		// So lines[0]=topBar, lines[1]=divider, lines[2]=top border, lines[3]=header (with cursor)
+		// Layout: [topBar, divider, visibleRows..., bottomBar]
+		// At minScroll=-1, visibleRows[0]=blank (padding for negative scroll), visibleRows[1]=header
+		// So lines[0]=topBar file info, lines[1]=divider, lines[2]=blank, lines[3]=header (with cursor)
 		lines := strings.Split(output, "\n")
-		assert.True(t, len(lines) > 3)
+		require.True(t, len(lines) > 3, "should have more than 3 lines of output")
 		headerLine := lines[3]
 
 		// The header should contain the filename
@@ -336,30 +332,29 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 	// The fold icon (◐/○/●) should NOT be highlighted, only the file number prefix
 	withANSIColors(t, func() {
-		m := Model{
-			focused: true,
-			files: []sidebyside.FilePair{
-				{
-					OldPath: "a/test.go",
-					NewPath: "b/test.go",
-					Pairs: []sidebyside.LinePair{
-						{
-							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-							New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						},
+		m := New([]sidebyside.FilePair{
+			{
+				OldPath: "a/test.go",
+				NewPath: "b/test.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
 					},
 				},
 			},
-			width:  80,
-			height: 10,
-			scroll: 0, // cursor at line 1 (the header, after top border at line 0)
-			keys:   DefaultKeyMap(),
-		}
-		m.calculateTotalLines()
+		})
+		m.focused = true
+		m.width = 80
+		m.height = 10
+		// Position cursor on the header (row 0) using minScroll
+		m.scroll = m.minScroll()
 
 		output := m.View()
 		lines := strings.Split(output, "\n")
-		// lines[0]=topBar, lines[1]=divider, lines[2]=top border, lines[3]=header (with cursor)
+		require.True(t, len(lines) > 3, "should have more than 3 lines of output")
+		// At minScroll=-1, visibleRows[0]=blank (padding), visibleRows[1]=header
+		// So lines[0]=topBar, lines[1]=divider, lines[2]=blank, lines[3]=header (with cursor)
 		headerLine := lines[3]
 
 		// The cursor style applies to a minimal 1-char gutter area (before the icon)
@@ -642,8 +637,7 @@ func TestView_CursorHighlight_BothGuttersOnAddedLine(t *testing.T) {
 
 // Test: When cursor is on a file header and we fold/unfold, cursor stays on header
 func TestFoldToggle_CursorOnHeader_StaysOnHeader(t *testing.T) {
-	// Setup: cursor on file header (line 1, after top border at line 0)
-	// For unfolded files: row 0 = top border, row 1 = header
+	// Setup: cursor on file header (line 0 in diff view, no top border row)
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
@@ -659,34 +653,34 @@ func TestFoldToggle_CursorOnHeader_StaysOnHeader(t *testing.T) {
 		},
 		width:  80,
 		height: 20, // cursor offset = 3 (20% of 19)
-		scroll: -2, // cursor at line 1 (the header, after top border)
+		scroll: -3, // cursor at line 0 (the header)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
-	// Verify cursor is on header initially (line 1)
-	assert.Equal(t, 1, m.cursorLine(), "cursor should start on header (line 1)")
+	// Verify cursor is on header initially (line 0)
+	assert.Equal(t, 0, m.cursorLine(), "cursor should start on header (line 0)")
 
 	// Toggle fold: Normal -> Expanded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	// Cursor should still be on header (which is still line 1)
-	assert.Equal(t, 1, model.cursorLine(), "after Normal->Expanded, cursor should still be on header")
+	// Cursor should still be on header (which is still line 0)
+	assert.Equal(t, 0, model.cursorLine(), "after Normal->Expanded, cursor should still be on header")
 
 	// Toggle fold again: Expanded -> Folded
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model = newM.(Model)
 
-	// Cursor should be on header (line 1, border slot at line 0 renders blank when folded)
-	assert.Equal(t, 1, model.cursorLine(), "after Expanded->Folded, cursor should be on header")
+	// Cursor should be on header (line 0)
+	assert.Equal(t, 0, model.cursorLine(), "after Expanded->Folded, cursor should be on header")
 
 	// Toggle fold again: Folded -> Normal
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model = newM.(Model)
 
-	// Cursor should be on header (back to line 1 since normal has top border)
-	assert.Equal(t, 1, model.cursorLine(), "after Folded->Normal, cursor should still be on header")
+	// Cursor should be on header (still line 0)
+	assert.Equal(t, 0, model.cursorLine(), "after Folded->Normal, cursor should still be on header")
 }
 
 // Test: When cursor is on a diff line that remains visible, cursor stays on it
@@ -861,8 +855,8 @@ func TestFoldToggle_CursorOnBlankLine_BlankDisappears(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
 	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel)
 
-	// The blank line is gone - cursor should jump to first file header (at line 1, border slot at 0)
-	assert.Equal(t, 1, model.cursorLine(), "cursor should jump to header when blank line disappears")
+	// The blank line is gone - cursor should jump to first file header (at line 0, no border slot in diff view)
+	assert.Equal(t, 0, model.cursorLine(), "cursor should jump to header when blank line disappears")
 }
 
 // Test: TAB on hunk separator does nothing (only works on file header)
@@ -980,15 +974,15 @@ func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// New layout with borders:
-	// 0=first top border, 1=first header, 2=first bottom border, 3=first diff,
-	// 4-7=blank, 8=trailing top border, 9=second header
-	// Put cursor on second file's header (line 9)
-	m.scroll = 6 // cursor offset = 3, so cursor at line 9
+	// Layout in diff view (no top border for first file):
+	// 0=first header, 1=first bottom border, 2=first diff,
+	// 3-6=blank, 7=trailing top border, 8=second header
+	// Put cursor on second file's header (line 8)
+	m.scroll = 5 // cursor offset = 3, so cursor at line 8
 
-	assert.Equal(t, 9, m.cursorLine(), "cursor should start on second file header")
+	assert.Equal(t, 8, m.cursorLine(), "cursor should start on second file header")
 	rows := m.buildRows()
-	assert.True(t, rows[9].isHeader, "line 9 should be a header")
+	assert.True(t, rows[8].isHeader, "line 8 should be a header")
 
 	// Toggle all: Normal -> Expanded -> Folded
 	// After folding all, second file header should be at line 1 (since no blanks in Folded)
@@ -997,11 +991,11 @@ func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 	newM, _ = m.handleFoldToggleAll() // -> Folded
 	m = newM.(Model)
 
-	// In Folded mode: line 0 = first file border slot (blank), line 1 = first header, line 2 = second header
-	// Cursor should now be on second header (line 2)
-	assert.Equal(t, 2, m.cursorLine(), "cursor should be on second file header after fold all")
+	// In Folded mode (diff view): line 0 = first header, line 1 = second header
+	// Cursor should now be on second header (line 1)
+	assert.Equal(t, 1, m.cursorLine(), "cursor should be on second file header after fold all")
 	rows = m.buildRows()
-	assert.True(t, rows[2].isHeader, "line 2 should be second file header")
+	assert.True(t, rows[1].isHeader, "line 1 should be second file header")
 }
 
 // =============================================================================
@@ -1043,16 +1037,15 @@ func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// When all folded, layout is:
-	// Line 0: first file border slot (blank)
-	// Line 1: first header
-	// Line 2: second header
-	// Line 3: third header
+	// When all folded, layout is (in diff view, first file has no border slot):
+	// Line 0: first header
+	// Line 1: second header
+	// Line 2: third header
 
-	// Position cursor on second file's header (line 2)
-	// With cursorOffset=3, to get cursor on line 2: scroll = 2 - 3 = -1
-	m.scroll = -1
-	assert.Equal(t, 2, m.cursorLine(), "cursor should be on line 2 (second file header)")
+	// Position cursor on second file's header (line 1)
+	// With cursorOffset=3, to get cursor on line 1: scroll = 1 - 3 = -2
+	m.scroll = -2
+	assert.Equal(t, 1, m.cursorLine(), "cursor should be on line 1 (second file header)")
 
 	// Verify status bar shows second file
 	info := m.StatusInfo()
@@ -1101,22 +1094,21 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Layout in Normal view (with borders):
-	// Line 0: top border
-	// Line 1: header
-	// Line 2: bottom border (header spacer)
-	// Line 3: separator top (since diff starts at line 10, not line 1)
-	// Line 4: separator (breadcrumb)
-	// Line 5: separator bottom
-	// Line 6: diff line (file line 10)
-	// Line 7: diff line (file line 11)
-	// Line 8: diff line (file line 12) <- cursor here
-	// Line 9: diff line (file line 13)
+	// Layout in Normal view (in diff view, first file has no top border in buildRows):
+	// Line 0: header
+	// Line 1: bottom border (header spacer)
+	// Line 2: separator top (since diff starts at line 10, not line 1)
+	// Line 3: separator (breadcrumb)
+	// Line 4: separator bottom
+	// Line 5: diff line (file line 10)
+	// Line 6: diff line (file line 11)
+	// Line 7: diff line (file line 12) <- cursor here
+	// Line 8: diff line (file line 13)
 	// ...
 
-	// Position cursor on file header (line 1) to press TAB
-	m.scroll = 1 - m.cursorOffset()
-	assert.Equal(t, 1, m.cursorLine(), "cursor should be on header")
+	// Position cursor on file header (line 0) to press TAB
+	m.scroll = 0 - m.cursorOffset()
+	assert.Equal(t, 0, m.cursorLine(), "cursor should be on header")
 
 	// Press Tab to expand (now works because we're on header)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -1126,13 +1118,13 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel, "file should be Expanded")
 
 	// Since content isn't loaded yet, buildRows falls back to Normal view
-	// Now move cursor to line 8 (file line 12) to test content load behavior
-	model.scroll = 5 // cursor offset is 3, so cursor at line 8
-	assert.Equal(t, 8, model.cursorLine(), "cursor should be on line 8")
+	// Now move cursor to line 7 (file line 12) to test content load behavior
+	model.scroll = 4 // cursor offset is 3, so cursor at line 7
+	assert.Equal(t, 7, model.cursorLine(), "cursor should be on line 7")
 
 	// Verify we're on the line with content "line12"
 	rows := model.buildRows()
-	assert.Equal(t, 12, rows[8].pair.Old.Num, "cursor should be on file line 12")
+	assert.Equal(t, 12, rows[7].pair.Old.Num, "cursor should be on file line 12")
 
 	// Now simulate the content loading
 	// The full file has 20 lines (1-20), our diff showed lines 10-15
@@ -1151,7 +1143,7 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	model = newM.(Model)
 
 	// After content loads, cursor should still be on file line 12
-	// In expanded view with 20 lines:
+	// In expanded view with 20 lines (in diff view, no top border):
 	// Line 0: header
 	// Line 1: header spacer
 	// Line 2: file line 1
@@ -1159,6 +1151,8 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	// ...
 	// Line 13: file line 12 <- cursor should be here
 	// ...
+	// Note: We were on line 7 before content load, which mapped to file line 12.
+	// After content load, file line 12 is at row 13 (header + spacer + 11 lines).
 
 	cursorPos := model.cursorLine()
 	rows = model.buildRows()
@@ -1202,11 +1196,11 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// File layout with borders:
-	// alpha.go: lines 0-16 (top border + header + bottom border + 10 pairs + 4 blank = 17 lines, fileIndex=0)
-	// beta.go:  lines 17-33 (top border + header + bottom border + 10 pairs + 4 blank = 17 lines, fileIndex=1)
-	// gamma.go: lines 34-50 (top border + header + bottom border + 10 pairs + 4 blank = 17 lines, fileIndex=2)
-	// Note: The top border of each file (except file 0) now belongs to that file, not the previous file
+	// File layout with borders (in diff view, first file has no top border):
+	// alpha.go: lines 0-15 (header + bottom border + 10 pairs + 4 blank = 16 lines, fileIndex=0)
+	// beta.go:  lines 16-32 (top border + header + bottom border + 10 pairs + 4 blank = 17 lines, fileIndex=1)
+	// gamma.go: lines 33-49 (top border + header + bottom border + 10 pairs + 4 blank = 17 lines, fileIndex=2)
+	// Note: The top border of each file (except file 0) belongs to that file
 
 	// Scroll through and verify status bar matches cursor position
 	for scroll := m.minScroll(); scroll <= m.maxScroll(); scroll++ {
@@ -1217,9 +1211,9 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 		// Determine expected file based on cursor position
 		// The top border of each file belongs to that file
 		expectedFile := "alpha.go"
-		if cursorPos >= 17 && cursorPos < 34 { // Line 17 is beta's top border
+		if cursorPos >= 16 && cursorPos < 33 { // Line 16 is beta's top border
 			expectedFile = "beta.go"
-		} else if cursorPos >= 34 { // Line 34 is gamma's top border
+		} else if cursorPos >= 33 { // Line 33 is gamma's top border
 			expectedFile = "gamma.go"
 		}
 
@@ -1234,11 +1228,10 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 // Cursor Identity Tests - Row Type Preservation
 // =============================================================================
 
-// Test: Cursor on isHeaderTopBorder should stay there after resize
-// Bug: cursorRowIdentity doesn't capture isHeaderTopBorder, so cursor jumps to wrong position
-func TestResize_CursorOnHeaderTopBorder_StaysOnTopBorder(t *testing.T) {
-	// Setup: single unfolded file, cursor on top border (line 0)
-	// Layout: row 0 = top border, row 1 = header, row 2 = bottom border, row 3+ = content
+// Test: Cursor on file header should stay there after resize
+func TestResize_CursorOnHeader_StaysOnHeader(t *testing.T) {
+	// Setup: single unfolded file, cursor on header (line 0)
+	// In diff view: row 0 = header, row 1 = bottom border, row 2+ = content
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
@@ -1254,27 +1247,27 @@ func TestResize_CursorOnHeaderTopBorder_StaysOnTopBorder(t *testing.T) {
 		},
 		width:  80,
 		height: 20, // cursor offset = 3
-		scroll: -3, // cursor at line 0 (the top border)
+		scroll: -3, // cursor at line 0 (the header)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
-	// Verify cursor is on top border initially
+	// Verify cursor is on header initially
 	rows := m.buildRows()
 	cursorPos := m.cursorLine()
 	require.Equal(t, 0, cursorPos, "cursor should start on line 0")
-	require.True(t, rows[0].isHeaderTopBorder, "line 0 should be top border")
+	require.True(t, rows[0].isHeader, "line 0 should be header")
 
 	// Resize the terminal (triggers cursor identity save/restore)
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 25})
 	model := newM.(Model)
 
-	// Cursor should still be on top border (line 0)
+	// Cursor should still be on header (line 0)
 	rows = model.buildRows()
 	cursorPos = model.cursorLine()
-	assert.True(t, rows[cursorPos].isHeaderTopBorder,
-		"after resize, cursor should still be on top border (got cursorPos=%d, isHeaderTopBorder=%v)",
-		cursorPos, rows[cursorPos].isHeaderTopBorder)
+	assert.True(t, rows[cursorPos].isHeader,
+		"after resize, cursor should still be on header (got cursorPos=%d, isHeader=%v)",
+		cursorPos, rows[cursorPos].isHeader)
 }
 
 // Test: Cursor on trailing top border (between files) should stay there after resize
@@ -1463,46 +1456,6 @@ func TestResize_CursorOnSecondSeparator_StaysOnSecondSeparator(t *testing.T) {
 	assert.Equal(t, separatorIndices[1], cursorPos,
 		"after resize, cursor should still be on SECOND separator (index %d), but got cursorPos=%d (first separator is at %d)",
 		separatorIndices[1], cursorPos, separatorIndices[0])
-}
-
-// Test: Cursor on top border should stay there after fold toggle
-func TestFoldToggle_CursorOnTopBorder_StaysOnTopBorder(t *testing.T) {
-	// Setup: cursor on top border, toggle fold
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
-				Pairs: []sidebyside.LinePair{
-					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
-				},
-				FoldLevel: sidebyside.FoldNormal,
-			},
-		},
-		width:  80,
-		height: 20,
-		scroll: -3, // cursor at line 0 (top border)
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
-
-	// Verify on top border
-	rows := m.buildRows()
-	require.True(t, rows[0].isHeaderTopBorder, "line 0 should be top border")
-
-	// Toggle fold: Normal -> Expanded
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	model := newM.(Model)
-
-	// In Expanded mode, top border still exists at line 0
-	rows = model.buildRows()
-	cursorPos := model.cursorLine()
-
-	// Should be on top border, not jumped to header or elsewhere
-	assert.True(t, rows[cursorPos].isHeaderTopBorder,
-		"after fold toggle, cursor should still be on top border (got cursorPos=%d, isHeaderTopBorder=%v)",
-		cursorPos, rows[cursorPos].isHeaderTopBorder)
 }
 
 // =============================================================================

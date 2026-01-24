@@ -135,6 +135,7 @@ func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	m.scroll = m.minScroll() // Position cursor at top so header is visible with top border
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -151,7 +152,8 @@ func TestView_NoBlankLineBeforeFirstFile(t *testing.T) {
 	require.NotEqual(t, -1, headerIdx, "should find file header")
 	require.Greater(t, headerIdx, 0, "header should not be at first line")
 
-	// Line before header should be top border (not blank)
+	// Line before header should be top border (rendered in padding area for first file)
+	// The top border uses box-drawing characters ─ and ┐
 	assert.Contains(t, lines[headerIdx-1], "─", "line before header should be top border")
 	assert.Contains(t, lines[headerIdx-1], "┐", "top border should have corner")
 }
@@ -616,8 +618,8 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	}
 
 	// Render with cursor on content line (line 100)
-	// Row layout: top_border=0, header=1, bottom_border=2, line1=3, hunksep_top=4, hunksep=5, hunksep_bottom=6, line100=7
-	m.scroll = 7 - m.cursorOffset()
+	// In diff view layout: header=0, bottom_border=1, line1=2, hunksep_top=3, hunksep=4, hunksep_bottom=5, line100=6
+	m.scroll = 6 - m.cursorOffset()
 	contentOutput := m.View()
 	contentLines := strings.Split(contentOutput, "\n")
 
@@ -634,7 +636,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	require.Len(t, contentArrowPositions, 2, "content line should have 2 arrows (left and right)")
 
 	// Now render with cursor on hunk separator (the line with breadcrumbs, not the top shader line)
-	m.scroll = 5 - m.cursorOffset()
+	m.scroll = 4 - m.cursorOffset()
 	hunkOutput := m.View()
 	hunkLines := strings.Split(hunkOutput, "\n")
 

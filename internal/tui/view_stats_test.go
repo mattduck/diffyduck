@@ -228,12 +228,13 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	m.scroll = m.minScroll() // Position cursor at top so header is visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, divider, borderSlot, header, bottomBar]
-	// lines[2] = border slot (blank when folded), lines[3] = header
+	// Layout at minScroll: [topBar, divider, padding, header, ...]
+	// lines[3] = header (at cursorOffset position)
 	header := lines[3]
 	assert.Contains(t, header, "main.go", "header should contain filename")
 	assert.Contains(t, header, "+3", "header should show addition count")
@@ -287,13 +288,14 @@ func TestFileHeaderWithStats_Alignment(t *testing.T) {
 		})
 	}
 	m.calculateTotalLines()
+	m.scroll = m.minScroll() // Position cursor at top so headers are visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, divider, content..., bottomBar]
-	// Find display column position of - in the stats section of each header
-	// lines[2] = border slot (blank), lines[3] = first header, lines[4] = second header
+	// Layout at minScroll: [topBar, divider, padding, header1, header2, ...]
+	// lines[3] = first header (at cursorOffset position)
+	// lines[4] = second header
 	header1 := lines[3]
 	header2 := lines[4]
 
@@ -348,11 +350,12 @@ func TestFileHeaderWithStats_ShadingAlignment(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	m.scroll = m.minScroll() // Position cursor at top so headers are visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, divider, borderSlot, header1, header2, bottomBar]
+	// Layout at minScroll: [topBar, divider, padding, header1, header2, ...]
 	header1 := lines[3] // +100
 	header2 := lines[4] // +5
 
@@ -400,10 +403,11 @@ func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	m.scroll = m.minScroll() // Position cursor at top so header is visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	// Layout: [topBar, divider, borderSlot, header, bottomBar]
+	// Layout at minScroll: [topBar, divider, padding, header, ...]
 	header := lines[3]
 
 	assert.Contains(t, header, "newfile.go", "header should contain filename")
@@ -440,10 +444,11 @@ func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	m.scroll = m.minScroll() // Position cursor at top so header is visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	// Layout: [topBar, divider, borderSlot, header, bottomBar]
+	// Layout at minScroll: [topBar, divider, padding, header, ...]
 	header := lines[3]
 
 	assert.Contains(t, header, "deleted.go", "header should contain filename")

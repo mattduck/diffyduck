@@ -99,10 +99,10 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 				keys:   DefaultKeyMap(),
 			}
 			m.calculateTotalLines()
-			// Position cursor on row 4 (second content line, after top border + header + bottom border + first content)
+			// Position cursor on row 3 (second content line in diff view layout: header=0, spacer=1, first content=2, second content=3)
 			// so we can test line 1's indicator without cursor arrow
-			// cursorLine = scroll + cursorOffset, so scroll = row - cursorOffset = 4 - cursorOffset
-			m.scroll = 4 - m.cursorOffset()
+			// cursorLine = scroll + cursorOffset, so scroll = row - cursorOffset = 3 - cursorOffset
+			m.scroll = 3 - m.cursorOffset()
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
@@ -263,17 +263,25 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	// Position scroll so content lines are visible
+	// In diff view layout: header=0, spacer=1, separator (3 lines)=2-4, content=5+
+	// Position cursor on content row
+	m.scroll = 5 - m.cursorOffset()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, content..., bottomBar]
-	// lines[0] = top bar, lines[1] = top border, lines[2] = header, lines[3] = bottom border
-	// lines[4-6] = separator (3 lines: top + breadcrumb + bottom) since diff starts after line 1
-	// lines[7] = cursor indicator row, Content lines: lines[8] = 9999, lines[9] = 10000, lines[10] = 10001
-	line1 := lines[8]
-	line2 := lines[9]
-	line3 := lines[10]
+	// Find lines containing the test content
+	var line1, line2, line3 string
+	for _, line := range lines {
+		if strings.Contains(line, "line before") {
+			line1 = line
+		} else if strings.Contains(line, "ten thousand") {
+			line2 = line
+		} else if strings.Contains(line, "line after") {
+			line3 = line
+		}
+	}
 
 	// All lines should have their content starting at the same display column position
 	// The gutter width should accommodate 5 digits for consistency

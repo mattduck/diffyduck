@@ -426,9 +426,11 @@ func (m Model) buildRows() []displayRow {
 			endIdx = m.commitFileStarts[commitIdx+1]
 		}
 
-		// Add first file's top border slot (always present, renders as blank or border)
-		// This ensures content doesn't shift when first file is unfolded
-		if startIdx < endIdx {
+		// Add first file's top border slot when commit has metadata (log/show view).
+		// This ensures content doesn't shift when first file is unfolded.
+		// For diff view (no commit metadata), the file header is the first row of content
+		// (similar to how log/show view renders the first commit's border in the fixed top bar).
+		if startIdx < endIdx && commit.Info.HasMetadata() {
 			firstFileUnfolded := m.files[startIdx].FoldLevel != sidebyside.FoldFolded
 			rows = append(rows, displayRow{
 				kind:              RowKindHeaderTopBorder,
@@ -553,22 +555,10 @@ func (m Model) buildRowsLegacy() []displayRow {
 		}
 	}
 
-	// Add first file's top border slot (always present, renders as blank or border)
-	// This ensures content doesn't shift when first file is unfolded
-	if len(m.files) > 0 {
-		firstFileUnfolded := m.files[0].FoldLevel != sidebyside.FoldFolded
-		rows = append(rows, displayRow{
-			kind:              RowKindHeaderTopBorder,
-			fileIndex:         0,
-			isHeaderTopBorder: true,
-			foldLevel:         sidebyside.FoldNormal,
-			status:            fileStatusFromPair(m.files[0]),
-			headerBoxWidth:    headerBoxWidth,
-			borderVisible:     firstFileUnfolded,
-		})
-	}
-
 	// Add file rows (no commit headers in legacy mode)
+	// Note: Unlike log/show view, diff view doesn't add a top border for the first file.
+	// The first file's header is the first row of content (similar to how log/show view
+	// renders the first commit's border in the fixed top bar).
 	for fileIdx, fp := range m.files {
 		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth)
 	}
@@ -1084,12 +1074,22 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	start := m.scroll
 	end := m.scroll + contentHeight
 
-	// Handle negative scroll by adding blank padding at the top
+	// Handle negative scroll by adding blank padding at the top.
+	// The last padding line (i == -1) becomes a border when the first content item is unfolded:
+	// - In log/show view: first commit's top border (heavy yellow line)
+	// - In diff view: first file's top border (light gray box corner)
 	if start < 0 {
-		// Check if first commit is unfolded (for rendering top border on last blank line)
+		// Check if first commit is unfolded (for rendering commit top border)
 		firstCommitUnfolded := len(m.commits) > 0 &&
 			m.commits[0].Info.HasMetadata() &&
 			m.commits[0].FoldLevel != sidebyside.CommitFolded
+
+		// Check if first file is unfolded and we're in diff view (no commit metadata)
+		// In this case, render file top border on the last padding line
+		firstFileUnfolded := len(m.files) > 0 &&
+			m.files[0].FoldLevel != sidebyside.FoldFolded
+		isDiffView := len(m.commits) == 0 ||
+			(len(m.commits) > 0 && !m.commits[0].Info.HasMetadata())
 
 		for i := start; i < 0 && len(visible) < contentHeight; i++ {
 			isCursorRow := len(visible) == cursorViewportRow
@@ -1100,6 +1100,9 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 				borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 				border := borderStyle.Render(strings.Repeat("━", m.width))
 				visible = append(visible, border)
+			} else if isLastBlankBeforeContent && isDiffView && firstFileUnfolded && len(rows) > 0 && rows[0].isHeader {
+				// Render as first file's top border (matches the header box style)
+				visible = append(visible, m.renderHeaderTopBorder(rows[0].headerBoxWidth, true, rows[0].status, isCursorRow))
 			} else if isCursorRow {
 				visible = append(visible, m.renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth))
 			} else {

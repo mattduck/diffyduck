@@ -1,0 +1,85 @@
+* First File Top Border Fix [COMPLETED]
+
+Move the first file's top border from scrollable content to the padding area,
+so the cursor starts on the file header instead of a decorative border line.
+
+** Problem
+
+In diff view, the first file's top border (───────────) was appearing as
+scrollable content at row 0. This meant:
+- The cursor started on a decorative border line, not meaningful content
+- Users had to scroll down to reach the actual file header
+- Inconsistent with log/show view behavior
+
+** Solution
+
+Move the first file's top border from ~buildRows()~ into the padding area
+(rendered by ~getVisibleRows()~ when scroll is negative).
+
+*** Before
+#+begin_example
+row 0: top border (decorative) <- cursor starts here
+row 1: header
+row 2: spacer
+row 3+: content
+#+end_example
+
+*** After
+#+begin_example
+(padding area: top border rendered above row 0)
+row 0: header <- cursor starts here
+row 1: spacer
+row 2+: content
+#+end_example
+
+** Implementation
+
+*** Files changed
+- ~internal/tui/view.go~ - buildRows(), buildRowsLegacy(), getVisibleRows()
+- ~internal/tui/view_test.go~ - Added TestDiffView_CursorStartsOnFileHeader
+
+*** Key changes
+
+**** buildRows() / buildRowsLegacy()
+Skip adding top border for the first file (fileIndex == 0) in diff view.
+The top border is still added for subsequent files.
+
+**** getVisibleRows()
+When rendering the padding area (lines before row 0), render the first file's
+top border using the calculated headerBoxWidth.
+
+** Test Impact
+
+The row index shift affected 40+ tests across multiple files:
+
+| File                    | Changes                                              |
+|-------------------------+------------------------------------------------------|
+| search_test.go          | Row indices 3→2, 4→3 throughout                      |
+| cursor_test.go          | File boundaries, scroll positions                    |
+| update_test.go          | gj/gk navigation, fold toggle positions              |
+| view_header_test.go     | Row counts, header positions, layout comments        |
+| view_fold_test.go       | totalLines calculations (19→18, etc)                 |
+| view_stats_test.go      | Added m.scroll = m.minScroll() for visibility        |
+| view_gutter_test.go     | Scroll offsets for cursor positioning                |
+| view_scroll_test.go     | totalLines (53→52)                                   |
+| view_separator_test.go  | Row indices for hunk separator tests                 |
+
+*** Pattern of fixes
+- All row indices shifted by -1 for first file content
+- Tests checking rendered content needed ~m.scroll = m.minScroll()~ to ensure
+  the header was in the visible viewport
+- Expected ~totalLines~ values decreased by 1 (no longer counting first border)
+- Comments describing layout updated to reflect new structure
+
+** Testing
+
+#+begin_src bash
+go test ./internal/tui/... -run TestDiffView_CursorStartsOnFileHeader -v
+make check  # All tests pass
+#+end_src
+
+** Notes
+
+The tests were brittle because they encoded exact row numbers rather than
+computing them dynamically. Future tests should prefer relative positioning
+or computed indices where possible.

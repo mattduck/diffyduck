@@ -210,18 +210,13 @@ func sendKeys(m Model, keys ...string) Model {
 
 func TestUpdate_NextHeading_gj(t *testing.T) {
 	m := makeMultiFileTestModel()
-	// Start at top - gg puts cursor on file 0's top border (first row)
+	// Start at top - gg puts cursor on file 0's header (first row in diff view)
 	m = sendKeys(m, "g", "g")
 	assert.Equal(t, m.minScroll(), m.scroll, "should be at top")
 
-	// After gg, cursor is on first file's top border
+	// After gg, cursor is on first file's header (in diff view, there's no top border row)
 	info := m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile, "should start at first file")
-
-	// gj from top border goes to file 0's header (one line down)
-	m = sendKeys(m, "g", "j")
-	info = m.StatusInfo()
-	assert.Equal(t, 1, info.CurrentFile, "gj from top border goes to same file's header")
 
 	// Verify we're on file 0's header
 	rows := m.buildRows()
@@ -275,11 +270,8 @@ func TestUpdate_PrevHeading_gk(t *testing.T) {
 
 func TestUpdate_PrevHeading_gk_FromMiddleOfFile(t *testing.T) {
 	m := makeMultiFileTestModel()
-	// Go to top (first file's top border)
+	// Go to top (first file's header in diff view)
 	m = sendKeys(m, "g", "g")
-
-	// Move to first file header (gj from top border)
-	m = sendKeys(m, "g", "j")
 	info := m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile, "should be on first file header")
 
@@ -656,8 +648,8 @@ func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
 	// Initially at FoldNormal (zero value)
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
 
-	// Position cursor on file header (line 1: top border=0, header=1)
-	m.scroll = 1 - m.cursorOffset()
+	// Position cursor on file header (line 0 in diff view: no top border)
+	m.scroll = 0 - m.cursorOffset()
 
 	// Press Tab to cycle to next level
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -724,8 +716,8 @@ func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
 	// Since we don't have a fetcher, the command will be nil
 	// but the level should still change
 
-	// Position cursor on file header (line 1)
-	m.scroll = 1 - m.cursorOffset()
+	// Position cursor on file header (line 0 in diff view)
+	m.scroll = 0 - m.cursorOffset()
 
 	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
@@ -745,8 +737,8 @@ func TestUpdate_FoldToggle_SkipsFetch_WhenContentLoaded(t *testing.T) {
 	m.files[0].OldContent = []string{"already", "loaded"}
 	m.files[0].NewContent = []string{"already", "loaded"}
 
-	// Position cursor on file header (line 1)
-	m.scroll = 1 - m.cursorOffset()
+	// Position cursor on file header (line 0 in diff view)
+	m.scroll = 0 - m.cursorOffset()
 
 	// Press Tab to advance to FoldExpanded
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -965,8 +957,8 @@ func TestUpdate_PagerMode_FoldToggle_SkipsExpanded(t *testing.T) {
 	m := makeTestModel(10)
 	m.pagerMode = true // Enable pager mode
 
-	// Position cursor on file header (line 1)
-	m.scroll = 1 - m.cursorOffset()
+	// Position cursor on file header (line 0 in diff view)
+	m.scroll = 0 - m.cursorOffset()
 
 	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
@@ -1028,8 +1020,8 @@ func TestUpdate_PagerMode_NormalMode_DoesNotSkipExpanded(t *testing.T) {
 	m := makeTestModel(10)
 	// pagerMode is false by default
 
-	// Position cursor on file header (line 1)
-	m.scroll = 1 - m.cursorOffset()
+	// Position cursor on file header (line 0 in diff view)
+	m.scroll = 0 - m.cursorOffset()
 
 	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
@@ -1216,23 +1208,20 @@ func TestUpdate_TopBarShowsCorrectFile_WhenOnTopBorder(t *testing.T) {
 	assert.Contains(t, info.FileName, "second.go", "filename should be second.go")
 }
 
-func TestUpdate_gk_FromFirstTopBorder_StaysOnFirstFile(t *testing.T) {
-	// Test: gk from the very first top border (file 0) should stay there
-	// (or go to commit header if in multi-commit mode)
+func TestUpdate_gk_FromFirstHeader_StaysOnFirstFile(t *testing.T) {
+	// Test: gk from the very first file's header (file 0) should stay there
+	// In diff view, file 0's header is the first row (no top border in buildRows)
 	m := makeMultiFileTestModel()
 
-	// Build rows to find the top border of file 0 (first file)
-	rows := m.buildRows()
-	file0TopBorder := findTopBorderRowForFile(rows, 0)
-	require.NotEqual(t, -1, file0TopBorder, "should find top border for file 0")
-
-	// Position cursor on file 0's top border
-	m = moveCursorToRow(m, file0TopBorder)
+	// Go to top - puts cursor on file 0's header in diff view
+	m = sendKeys(m, "g", "g")
 	cursorPos := m.cursorLine()
-	assert.Equal(t, file0TopBorder, cursorPos, "cursor should be on file 0's top border")
+	rows := m.buildRows()
+	assert.True(t, rows[cursorPos].isHeader, "cursor should be on file 0's header")
+	assert.Equal(t, 0, rows[cursorPos].fileIndex, "should be file 0")
 
 	// gk should stay on file 0's area (no previous file to go to)
 	m = sendKeys(m, "g", "k")
 	info := m.StatusInfo()
-	assert.Equal(t, 1, info.CurrentFile, "gk from first file's top border should stay on first file")
+	assert.Equal(t, 1, info.CurrentFile, "gk from first file's header should stay on first file")
 }

@@ -173,12 +173,18 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 				keys:   DefaultKeyMap(),
 			}
 			m.calculateTotalLines()
+			// Set scroll to minScroll so header is visible at top of content
+			m.scroll = m.minScroll()
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
-			// Layout: [topBar, divider, content..., bottomBar]
-			// lines[2] = first file border slot (blank when folded, border when unfolded)
-			// lines[3] = header (always at this position)
+			// Layout in diff view (at minScroll with cursorOffset padding):
+			// lines[0] = topBar
+			// lines[1] = divider
+			// lines[2] = padding/top border
+			// lines[3] = header (at cursorOffset position)
+			// The header is always at lines[3] because cursorOffset=1 for height=10
+			// (padding line at lines[2], header at lines[3])
 			header := lines[3]
 
 			// Get the expected fold icon
@@ -355,8 +361,9 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Position cursor on bottom border (row 2: top_border=0, header=1, bottom_border=2)
-	m.scroll = 2 - m.cursorOffset()
+	// In diff view layout: header=0, spacer(bottom border)=1, content=2
+	// Position cursor on bottom border (row 1)
+	m.scroll = 1 - m.cursorOffset()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -380,8 +387,8 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	assert.Contains(t, borderLine, "─", "bottom border should have horizontal line")
 
 	// Test content line with cursor
-	// Position cursor on content line (row 3: top_border=0, header=1, bottom_border=2, content=3)
-	m.scroll = 3 - m.cursorOffset()
+	// Position cursor on content line (row 2 in diff view)
+	m.scroll = 2 - m.cursorOffset()
 	output2 := m.View()
 	lines2 := strings.Split(output2, "\n")
 
@@ -433,16 +440,14 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Should have: border slot + header = 2 rows
-	// Border slot renders as blank when folded
-	require.Len(t, rows, 2, "folded file should have border slot + header")
-	assert.True(t, rows[0].isHeaderTopBorder, "first row should be border slot")
-	assert.False(t, rows[0].borderVisible, "border slot should not be visible when folded")
-	assert.True(t, rows[1].isHeader, "second row should be header")
+	// In diff view (no commit metadata), first file has no top border slot in buildRows
+	// The top border is rendered in the padding area instead
+	require.Len(t, rows, 1, "folded file should have header only (no border slot in diff view)")
+	assert.True(t, rows[0].isHeader, "first row should be header")
 }
 
-// Test: First file unfolded has leading top border with borderVisible=true
-func TestBuildRows_FirstFileUnfoldedHasTopBorder(t *testing.T) {
+// Test: First file unfolded has header as first row (top border is in padding area in diff view)
+func TestBuildRows_FirstFileUnfoldedHasHeaderAsFirstRow(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
@@ -465,10 +470,10 @@ func TestBuildRows_FirstFileUnfoldedHasTopBorder(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// First row should be isHeaderTopBorder with borderVisible=true
+	// In diff view (no commit metadata), first file has header as first row
+	// The top border is rendered in the padding area, not in buildRows
 	require.True(t, len(rows) >= 1, "should have at least one row")
-	assert.True(t, rows[0].isHeaderTopBorder, "first row should be top border")
-	assert.True(t, rows[0].borderVisible, "first file's top border should be visible")
+	assert.True(t, rows[0].isHeader, "first row should be header (top border is in padding area)")
 }
 
 // Test: Non-first file unfolded has no leading top border (comes from file above)
@@ -1002,8 +1007,9 @@ func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 	}
 
 	assert.Equal(t, 3, headerCount, "should have 3 header rows")
-	// First file always has a border slot (but renders as blank when folded)
-	assert.Equal(t, 1, topBorderCount, "should have 1 border slot (for first file, renders blank when folded)")
+	// When all files are folded, there are no top borders or bottom borders
+	// Top borders are only added after unfolded content (for the next file)
+	assert.Equal(t, 0, topBorderCount, "should have 0 top borders when all files are folded")
 	assert.Equal(t, 0, bottomBorderCount, "should have no bottom border rows when all folded")
 }
 
@@ -1132,11 +1138,10 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// File 0: border slot + header (folded)
+	// File 0: header only (first file has no top border in buildRows for diff view)
 	file0Rows := filterRowsByFileIndex(rows, 0)
-	assert.Equal(t, 2, len(file0Rows), "file 0 should have 2 rows (border slot + header)")
-	assert.True(t, file0Rows[0].isHeaderTopBorder, "file 0's first row should be border slot")
-	assert.True(t, file0Rows[1].isHeader, "file 0's second row should be header")
+	assert.Equal(t, 1, len(file0Rows), "file 0 should have 1 row (header only, top border is in padding area)")
+	assert.True(t, file0Rows[0].isHeader, "file 0's first row should be header")
 
 	// File 1: has header, bottom border, content, blanks
 	// NOTE: File 1 does NOT have a top border because file 0 is folded
@@ -1801,4 +1806,55 @@ func TestBorderAlignmentWithCursor(t *testing.T) {
 	assert.Equal(t, noCursorSpacerLen, cursorSpacerLen,
 		"bottom border with cursor (%d) should have same width as border without cursor (%d)",
 		cursorSpacerLen, noCursorSpacerLen)
+}
+
+func TestDiffView_CursorStartsOnFileHeader(t *testing.T) {
+	// In diff view (no commits), the cursor should start on the file header line,
+	// not on a top border. The file header should be the first row of content,
+	// meaning you can't scroll up to see a border above it.
+	//
+	// This contrasts with log/show view where the first commit's top border
+	// is rendered in the fixed top bar (non-scrollable).
+
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	// Create a simple diff view with one file
+	m := New([]sidebyside.FilePair{
+		{
+			OldPath: "a/test.go",
+			NewPath: "b/test.go",
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "old line", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
+				},
+			},
+		},
+	})
+	m.width = 80
+	m.height = 20
+
+	rows := m.buildRows()
+	require.NotEmpty(t, rows, "should have at least one row")
+
+	// The first row should be the file header, not a top border
+	assert.Equal(t, RowKindHeader, rows[0].kind,
+		"first row should be file header (RowKindHeader), not top border")
+
+	// At minScroll, the cursor should be on row 0 (the file header)
+	m.scroll = m.minScroll()
+	cursorPos := m.cursorLine()
+	assert.Equal(t, 0, cursorPos,
+		"at minScroll, cursor should be on row 0 (file header)")
+
+	// Verify that row 0 is indeed the file header
+	assert.Equal(t, RowKindHeader, rows[cursorPos].kind,
+		"cursor at minScroll should be on file header row")
+
+	// Verify there's no top border row we could scroll to
+	for i, row := range rows {
+		if row.kind == RowKindHeaderTopBorder && row.fileIndex == 0 {
+			t.Errorf("found top border for first file at row %d; first file should not have a scrollable top border", i)
+		}
+	}
 }

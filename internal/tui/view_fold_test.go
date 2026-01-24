@@ -81,13 +81,13 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 				keys:   DefaultKeyMap(),
 			}
 			m.calculateTotalLines()
+			m.scroll = m.minScroll() // Position cursor at top so header is visible
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
 
-			// Layout: [topBar, divider, content..., bottomBar]
-			// lines[2] = first file border slot (blank when folded, border when unfolded)
-			// lines[3] = header (always at this position now)
+			// Layout at minScroll: [topBar, divider, padding, header, ...]
+			// lines[3] = header (at cursorOffset position)
 			headerLine := lines[3]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
 			// Header format is: <foldIcon> <fileNum> <statusIndicator> filename [stats]
@@ -118,12 +118,13 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
+	m.scroll = m.minScroll() // Position cursor at top so header is visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout: [topBar, divider, content..., bottomBar]
-	// lines[0] = top bar, lines[1] = divider, lines[2] = border slot (blank), lines[3] = header
+	// Layout at minScroll: [topBar, divider, padding, header, ...]
+	// lines[3] = header (at cursorOffset position)
 	// Folded view should only show the header and then padding
 	assert.Contains(t, lines[3], "foo.go", "first content line should be the header")
 	assert.Contains(t, lines[3], "○", "header should have folded icon")
@@ -273,10 +274,11 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Normal file: 1 top border + 1 header + 1 bottom border + 10 pairs + 4 blank + 1 trailing border = 18 lines
-	// Folded file: 1 header only (no borders, no blank lines after since it's folded)
-	// Total should be 18 + 1 = 19
-	assert.Equal(t, 19, m.totalLines, "totalLines should account for fold states")
+	// In diff view (no commit metadata), first file has no top border in buildRows:
+	// Normal file (first): 1 header + 1 bottom border + 10 pairs + 4 blank + 1 trailing border = 17 lines
+	// Folded file (second): 1 header only (top border not added when folded)
+	// Total should be 17 + 1 = 18
+	assert.Equal(t, 18, m.totalLines, "totalLines should account for fold states")
 }
 
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
