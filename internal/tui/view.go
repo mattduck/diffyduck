@@ -1984,7 +1984,9 @@ func (m Model) renderFileLine(info StatusInfo) string {
 	// Build the left section: indent(3) + icon + space + fileNum
 	var leftSection string
 	if info.CurrentFile > 0 {
-		leftSection = "  " + foldIcon + " " + fileNum
+		// Style fold icon with fg=8 to match commit header fold icon
+		foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		leftSection = "  " + foldIconStyle.Render(foldIcon) + " " + fileNum
 	}
 
 	return prefix + leftSection + content + strings.Repeat(" ", padding) + rightSection
