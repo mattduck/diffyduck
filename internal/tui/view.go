@@ -355,7 +355,7 @@ func (m Model) buildRows() []displayRow {
 			}
 
 			// Add commit body rows when not folded
-			rows = append(rows, m.buildCommitBodyRows(&commit)...)
+			rows = append(rows, m.buildCommitBodyRows(&commit, commitIdx)...)
 		}
 
 		// Get file range for this commit
@@ -1425,7 +1425,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 // buildCommitBodyRows creates display rows for the commit body (shown when expanded).
 // Format is similar to git log: full SHA, author, date, then message body.
-func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
+func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet, commitIdx int) []displayRow {
 	var rows []displayRow
 	info := commit.Info
 
@@ -1436,6 +1436,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 		isCommitBody:      true,
 		commitBodyLine:    "",
 		commitBodyIsBlank: true,
+		commitIndex:       commitIdx,
 	})
 
 	// Line 1: "commit <full sha>" (indented 2 spaces)
@@ -1445,6 +1446,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 		fileIndex:      -1,
 		isCommitBody:   true,
 		commitBodyLine: commitLine,
+		commitIndex:    commitIdx,
 	})
 
 	// Line 2: "Author: <author> <email>"
@@ -1457,6 +1459,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 		fileIndex:      -1,
 		isCommitBody:   true,
 		commitBodyLine: authorLine,
+		commitIndex:    commitIdx,
 	})
 
 	// Line 3: "Date:   <date>"
@@ -1466,6 +1469,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 		fileIndex:      -1,
 		isCommitBody:   true,
 		commitBodyLine: dateLine,
+		commitIndex:    commitIdx,
 	})
 
 	// Blank line before message
@@ -1475,6 +1479,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 		isCommitBody:      true,
 		commitBodyLine:    "",
 		commitBodyIsBlank: true,
+		commitIndex:       commitIdx,
 	})
 
 	// Subject line (first line of message, indented)
@@ -1484,6 +1489,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 			fileIndex:      -1,
 			isCommitBody:   true,
 			commitBodyLine: "    " + info.Subject,
+			commitIndex:    commitIdx,
 		})
 	}
 
@@ -1496,6 +1502,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 			isCommitBody:      true,
 			commitBodyLine:    "",
 			commitBodyIsBlank: true,
+			commitIndex:       commitIdx,
 		})
 		bodyLines := strings.Split(info.Body, "\n")
 		for _, line := range bodyLines {
@@ -1507,6 +1514,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 					isCommitBody:      true,
 					commitBodyLine:    "",
 					commitBodyIsBlank: true,
+					commitIndex:       commitIdx,
 				})
 			} else {
 				rows = append(rows, displayRow{
@@ -1514,6 +1522,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 					fileIndex:      -1,
 					isCommitBody:   true,
 					commitBodyLine: "    " + line,
+					commitIndex:    commitIdx,
 				})
 			}
 		}
@@ -1526,6 +1535,7 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 		isCommitBody:      true,
 		commitBodyLine:    "",
 		commitBodyIsBlank: true,
+		commitIndex:       commitIdx,
 	})
 
 	return rows
@@ -1589,7 +1599,7 @@ func (m Model) renderTopBar() string {
 
 // renderCommitLine renders the commit info line for the top bar.
 // Shows fold icon, SHA, subject, and file stats for a compact display.
-func (m Model) renderCommitLine() string {
+func (m *Model) renderCommitLine() string {
 	commit := m.currentCommit()
 	if commit == nil {
 		return ""
@@ -1630,13 +1640,13 @@ func (m Model) renderCommitLine() string {
 	subject := commitInfo.Subject
 
 	// Calculate stats for the current commit's files only
-	// currentCommit() returns commits[0] for now, so use commitFileStarts[0]
+	commitIdx := m.currentCommitIndex()
 	var startIdx, endIdx int
 	if len(m.commits) > 0 && len(m.commitFileStarts) > 0 {
-		startIdx = m.commitFileStarts[0]
+		startIdx = m.commitFileStarts[commitIdx]
 		endIdx = len(m.files)
-		if len(m.commits) > 1 {
-			endIdx = m.commitFileStarts[1]
+		if commitIdx+1 < len(m.commits) {
+			endIdx = m.commitFileStarts[commitIdx+1]
 		}
 	} else {
 		// Legacy mode: use all files

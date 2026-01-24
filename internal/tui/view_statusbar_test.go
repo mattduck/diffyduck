@@ -1213,6 +1213,279 @@ func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
 	assert.Equal(t, 0, separatorRow.commitIndex, "separator should belong to first commit (index 0)")
 }
 
+func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
+	// This test verifies that currentCommit() returns the commit the cursor is currently on,
+	// including when cursor is on commit body rows (not just the header).
+	files1 := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldFolded},
+	}
+	files2 := []sidebyside.FilePair{
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldFolded},
+	}
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "first111",
+				Author:  "Author One",
+				Subject: "First commit",
+			},
+			Files:       files1,
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "second22",
+				Author:  "Author Two",
+				Subject: "Second commit",
+			},
+			Files:       files2,
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+		},
+	}
+	m := NewWithCommits(commits)
+	m.width = 100
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find various rows for first and second commit
+	var firstCommitHeaderIdx, firstCommitBodyIdx, secondCommitHeaderIdx int
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 0 && firstCommitHeaderIdx == 0 {
+			firstCommitHeaderIdx = i
+		}
+		if row.isCommitBody && row.commitIndex == 0 && firstCommitBodyIdx == 0 {
+			firstCommitBodyIdx = i
+		}
+		if row.isCommitHeader && row.commitIndex == 1 && secondCommitHeaderIdx == 0 {
+			secondCommitHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, 0, firstCommitBodyIdx, "should find a body row belonging to first commit")
+	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find a row belonging to second commit")
+
+	// Position cursor on first commit header
+	m.scroll = firstCommitHeaderIdx - m.cursorOffset()
+	commit := m.currentCommit()
+	require.NotNil(t, commit, "should return a commit")
+	assert.Equal(t, "first111", commit.Info.SHA, "cursor on first commit header should return first commit")
+
+	// Position cursor on first commit body - should still return first commit
+	m.scroll = firstCommitBodyIdx - m.cursorOffset()
+	commit = m.currentCommit()
+	require.NotNil(t, commit, "should return a commit")
+	assert.Equal(t, "first111", commit.Info.SHA, "cursor on first commit body should return first commit")
+
+	// Position cursor on second commit header
+	m.scroll = secondCommitHeaderIdx - m.cursorOffset()
+	commit = m.currentCommit()
+	require.NotNil(t, commit, "should return a commit")
+	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit header should return second commit")
+
+	// Find second commit body row
+	var secondCommitBodyIdx int
+	for i, row := range rows {
+		if row.isCommitBody && row.commitIndex == 1 {
+			secondCommitBodyIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, 0, secondCommitBodyIdx, "should find a body row belonging to second commit")
+
+	// Position cursor on second commit body - should return second commit
+	m.scroll = secondCommitBodyIdx - m.cursorOffset()
+	commit = m.currentCommit()
+	require.NotNil(t, commit, "should return a commit")
+	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit body should return second commit")
+
+	// Find second commit's file row (the file header for bar.go)
+	var secondCommitFileIdx int
+	for i, row := range rows {
+		if row.isHeader && row.fileIndex >= 0 {
+			// Check if this file belongs to the second commit
+			commitIdx := m.commitForFile(row.fileIndex)
+			if commitIdx == 1 {
+				secondCommitFileIdx = i
+				break
+			}
+		}
+	}
+	require.NotEqual(t, 0, secondCommitFileIdx, "should find a file row belonging to second commit")
+
+	// Position cursor on second commit's file - should return second commit
+	m.scroll = secondCommitFileIdx - m.cursorOffset()
+	commit = m.currentCommit()
+	require.NotNil(t, commit, "should return a commit")
+	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit's file should return second commit")
+}
+
+func TestTopBar_ShowsCorrectCommit_WhenCursorMoves(t *testing.T) {
+	// Verifies the top bar shows the commit that the cursor is currently on
+	files1 := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldFolded},
+	}
+	files2 := []sidebyside.FilePair{
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldFolded},
+	}
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "aaa11111",
+				Author:  "Author One",
+				Subject: "First commit message",
+			},
+			Files:       files1,
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "bbb22222",
+				Author:  "Author Two",
+				Subject: "Second commit message",
+			},
+			Files:       files2,
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+		},
+	}
+	m := NewWithCommits(commits)
+	m.width = 100
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find the second commit's header row
+	var secondCommitHeaderIdx int
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 1 {
+			secondCommitHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
+
+	// Position cursor on second commit header
+	m.scroll = secondCommitHeaderIdx - m.cursorOffset()
+
+	topBar := m.renderTopBar()
+
+	// Top bar should show the second commit's info, not the first
+	assert.Contains(t, topBar, "bbb2222", "top bar should show second commit SHA")
+	assert.Contains(t, topBar, "Second commit", "top bar should show second commit subject")
+	assert.NotContains(t, topBar, "aaa1111", "top bar should NOT show first commit SHA")
+	assert.NotContains(t, topBar, "First commit", "top bar should NOT show first commit subject")
+}
+
+func TestTopBar_ShowsCorrectStats_WhenCursorMoves(t *testing.T) {
+	// Verifies the top bar shows the correct file stats for the commit under the cursor
+	// First commit: 1 file with +5 -3
+	// Second commit: 2 files with +10 -2 total
+	files1 := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Type: sidebyside.Removed}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Removed}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Removed}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+			},
+		},
+	}
+	files2 := []sidebyside.FilePair{
+		{
+			OldPath:   "a/bar.go",
+			NewPath:   "b/bar.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Type: sidebyside.Removed}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+			},
+		},
+		{
+			OldPath:   "a/baz.go",
+			NewPath:   "b/baz.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Type: sidebyside.Removed}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
+			},
+		},
+	}
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "aaa11111",
+				Author:  "Author One",
+				Subject: "First commit",
+			},
+			Files:       files1,
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "bbb22222",
+				Author:  "Author Two",
+				Subject: "Second commit",
+			},
+			Files:       files2,
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+		},
+	}
+	m := NewWithCommits(commits)
+	m.width = 100
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find the first and second commit's header rows
+	var firstCommitHeaderIdx, secondCommitHeaderIdx int
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 0 && firstCommitHeaderIdx == 0 {
+			firstCommitHeaderIdx = i
+		}
+		if row.isCommitHeader && row.commitIndex == 1 {
+			secondCommitHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
+
+	// Position cursor on first commit - should show "1 file" and "+5 -3"
+	m.scroll = firstCommitHeaderIdx - m.cursorOffset()
+	topBar := m.renderTopBar()
+	assert.Contains(t, topBar, "1 file", "first commit should show 1 file")
+	assert.Contains(t, topBar, "+5", "first commit should show +5")
+	assert.Contains(t, topBar, "-3", "first commit should show -3")
+
+	// Position cursor on second commit - should show "2 files" and "+10 -2"
+	m.scroll = secondCommitHeaderIdx - m.cursorOffset()
+	topBar = m.renderTopBar()
+	assert.Contains(t, topBar, "2 files", "second commit should show 2 files")
+	assert.Contains(t, topBar, "+10", "second commit should show +10")
+	assert.Contains(t, topBar, "-2", "second commit should show -2")
+}
+
 func TestIsOnCommitHeader(t *testing.T) {
 	// Create model with commit info
 	files := []sidebyside.FilePair{

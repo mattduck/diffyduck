@@ -764,15 +764,39 @@ func (m *Model) getRows() []displayRow {
 	return m.cachedRows
 }
 
+// currentCommitIndex returns the index of the commit the cursor is currently in.
+// Returns 0 if there are no commits or cursor position is invalid.
+func (m *Model) currentCommitIndex() int {
+	if len(m.commits) == 0 {
+		return 0
+	}
+
+	// Get the row at the cursor position
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos >= 0 && cursorPos < len(rows) {
+		row := rows[cursorPos]
+		// For file rows, use fileIndex to determine the commit
+		// This works because file rows have fileIndex set but may not have commitIndex set
+		if row.fileIndex >= 0 {
+			return m.commitForFile(row.fileIndex)
+		}
+		// For commit header/body rows, use commitIndex directly
+		if row.commitIndex >= 0 && row.commitIndex < len(m.commits) {
+			return row.commitIndex
+		}
+	}
+
+	return 0
+}
+
 // currentCommit returns the commit set the cursor is currently in.
-// For now, always returns the first (and only) commit.
-// Will be expanded for log view with multiple commits.
-func (m Model) currentCommit() *sidebyside.CommitSet {
+// Uses the cursor position to determine which commit is displayed.
+func (m *Model) currentCommit() *sidebyside.CommitSet {
 	if len(m.commits) == 0 {
 		return nil
 	}
-	// TODO: When log view is implemented, track which commit the cursor is in
-	return &m.commits[0]
+	return &m.commits[m.currentCommitIndex()]
 }
 
 // commitForFile returns the commit index that contains the given file index.
@@ -791,8 +815,13 @@ func (m Model) isFirstFileInCommit(fileIdx int) bool {
 	return fileIdx == m.commitFileStarts[commitIdx]
 }
 
-// hasCommitInfo returns true if the current view has commit metadata.
+// hasCommitInfo returns true if any commit in the view has metadata.
+// This is used to determine whether to reserve space for the commit line in the top bar.
 func (m Model) hasCommitInfo() bool {
-	commit := m.currentCommit()
-	return commit != nil && commit.Info.HasMetadata()
+	for i := range m.commits {
+		if m.commits[i].Info.HasMetadata() {
+			return true
+		}
+	}
+	return false
 }
