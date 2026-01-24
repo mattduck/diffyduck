@@ -723,3 +723,72 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 	assert.Contains(t, commitHeaderLine, "●",
 		"commit header should show full-fill icon ● when file is expanded")
 }
+
+func TestCommitBorder_CursorRendersYellowGapAndGreyBgBorderChar(t *testing.T) {
+	// When cursor is on a commit border line, it should render:
+	// - Arrow (▶)
+	// - Yellow border char (━) as gap
+	// - Grey bg border char (━) as cursor indicator
+	// - Rest of yellow border
+	//
+	// This matches the pattern used for file headers.
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc1234",
+			Author:  "Test Author",
+			Subject: "Test commit",
+		},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
+				},
+			},
+		},
+		FoldLevel:   sidebyside.CommitNormal, // Unfolded so borders are visible
+		FilesLoaded: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Find the bottom border row and position cursor on it
+	rows := m.buildRows()
+	var bottomBorderRowIdx int = -1
+	for i, row := range rows {
+		if row.isCommitHeaderBottomBorder {
+			bottomBorderRowIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, bottomBorderRowIdx, "should find commit bottom border row")
+
+	// Position cursor on the border row
+	m.scroll = -m.cursorOffset() + bottomBorderRowIdx
+
+	// Render and check the output
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Find the border line by looking for the heavy border character with arrow
+	var borderLine string
+	for _, line := range lines {
+		// Border line should contain ━ and start with arrow when cursor is on it
+		if strings.Contains(line, "━") && strings.HasPrefix(line, "▶") {
+			borderLine = line
+			break
+		}
+	}
+
+	require.NotEmpty(t, borderLine, "should find commit border line with arrow and ━")
+
+	// Should start with arrow followed immediately by border char (no space gap)
+	assert.True(t, strings.HasPrefix(borderLine, "▶━"),
+		"commit border with cursor should be: arrow + border char (no space), got: %s", borderLine)
+}

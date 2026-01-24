@@ -1404,13 +1404,20 @@ func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) str
 		borderWidth = 0
 	}
 
-	if isCursorRow {
-		var arrow string
-		if m.focused {
-			arrow = cursorArrowStyle.Render("▶")
-		} else {
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+	if isCursorRow && m.focused {
+		// Format: arrow + gap (yellow border) + cursor char (grey bg, fg=0) + rest of border
+		arrow := cursorArrowStyle.Render("▶")
+		styledGutter := cursorStyle.Render("━")
+		restWidth := borderWidth - 3 // arrow(1) + gap(1) + gutter(1)
+		if restWidth < 0 {
+			restWidth = 0
 		}
+		return arrow + borderStyle.Render("━") + styledGutter + borderStyle.Render(strings.Repeat("━", restWidth))
+	}
+
+	if isCursorRow && !m.focused {
+		// Unfocused: outline arrow, no background highlight
+		arrow := unfocusedCursorArrowStyle.Render("▷")
 		restWidth := borderWidth - 1
 		if restWidth < 0 {
 			restWidth = 0
@@ -1437,24 +1444,24 @@ func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) 
 	}
 
 	if isCursorRow && m.focused {
-		// Format: arrow + space + [1 char grey bg] + border (like commit body rows)
+		// Format: arrow + gap (yellow border) + cursor char (grey bg, fg=0) + rest of border
 		arrow := cursorArrowStyle.Render("▶")
-		styledGutter := cursorStyle.Render(" ")
-		restWidth := borderWidth - 3 // arrow(1) + space(1) + gutter(1)
+		styledGutter := cursorStyle.Render("━")
+		restWidth := borderWidth - 3 // arrow(1) + gap(1) + gutter(1)
 		if restWidth < 0 {
 			restWidth = 0
 		}
-		return arrow + " " + styledGutter + borderStyle.Render(strings.Repeat("━", restWidth))
+		return arrow + borderStyle.Render("━") + styledGutter + borderStyle.Render(strings.Repeat("━", restWidth))
 	}
 
 	if isCursorRow && !m.focused {
 		// Unfocused: outline arrow, no background highlight
 		arrow := unfocusedCursorArrowStyle.Render("▷")
-		restWidth := borderWidth - 3 // arrow(1) + spaces(2)
+		restWidth := borderWidth - 1
 		if restWidth < 0 {
 			restWidth = 0
 		}
-		return arrow + "  " + borderStyle.Render(strings.Repeat("━", restWidth))
+		return arrow + borderStyle.Render(strings.Repeat("━", restWidth))
 	}
 
 	return borderStyle.Render(strings.Repeat("━", borderWidth))
