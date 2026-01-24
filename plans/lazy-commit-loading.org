@@ -1,0 +1,281 @@
+* Lazy Commit Loading for Log Mode
+
+** Goal
+
+Load commits incrementally to support browsing unlimited git history without
+upfront blocking or excessive memory usage.
+
+** Phase 1: Skeleton-First Loading with Deferred Diffs
+
+*** Current Behavior
+
+1. =git log -p -n1000= fetches all metadata AND all diffs upfront
+2. All diffs parsed synchronously before TUI starts
+3. Blocks for seconds on large repos with many commits
+
+*** Target Behavior
+
+1. =git log= (no =-p=) fetches just metadata for all commits (fast, ~100KB)
+2. TUI starts immediately with skeleton commits (=FilesLoaded=false=, =Files=[]=)
+3. First viewport's worth of commits (~10-20) fetched with full diffs async
+4. When user unfolds a commit, fetch its diff on-demand if not already loaded
+
+*** Data Flow
+
+#+begin_src
+Startup:
+  git log --format=<meta> -n1000
+       ↓
+  []CommitSet with FilesLoaded=false, Files=[]
+       ↓
+  TUI starts (instant)
+       ↓
+  Async: fetch first N commits' diffs
+
+User scrolls/unfolds:
+  CommitSet.FilesLoaded == false?
+       ↓ yes
+  git show -p <sha>
+       ↓
+  Parse diff → populate Files
+       ↓
+  Set FilesLoaded=true, recalculate rows
+#+end_src
+
+*** Implementation Steps
+
+**** 1. Add =LogMetaOnly()= to pkg/git/git.go
+
+New method that runs =git log= without =-p= flag:
+
+#+begin_src go
+func (g *RealGit) LogMetaOnly(n int) ([]*CommitMeta, error) {
+    gitArgs := []string{
+        "log",
+        // no -p flag
+        fmt.Sprintf("-n%d", n),
+        "--format=" + logMetaFormat,
+    }
+    // ... execute and parse metadata only
+}
+#+end_src
+
+**** 2. Add =ShowDiff()= to pkg/git/git.go
+
+Method to fetch just the diff for a single commit:
+
+#+begin_src go
+func (g *RealGit) ShowDiff(sha string) (string, error) {
+    cmd := exec.Command("git", "show", "--format=", "-p", sha)
+    // ...
+}
+#+end_src
+
+This is similar to existing =Show()= but ensures we just get the patch.
+
+**** 3. Modify =runLogMode()= in cmd/diffyduck/main.go
+
+#+begin_src go
+func runLogMode(debugMode bool) error {
+    g := git.New()
+
+    // Fast: fetch metadata only
+    metas, err := g.LogMetaOnly(1000)
+
+    // Create skeleton CommitSets
+    var commitSets []sidebyside.CommitSet
+    for _, meta := range metas {
+        commitSets = append(commitSets, sidebyside.CommitSet{
+            Info: sidebyside.CommitInfo{
+                SHA:     meta.SHA,
+                Author:  meta.Author,
+                // ...
+            },
+            Files:       nil,        // No files yet
+            FilesLoaded: false,      // Mark as unloaded
+            FoldLevel:   sidebyside.CommitFolded,
+        })
+    }
+
+    model := tui.NewWithCommits(commitSets, tui.WithGit(g))
+    // ...
+}
+#+end_src
+
+**** 4. Add async commit diff loading to TUI
+
+New message types in internal/tui/messages.go (or commands.go):
+
+#+begin_src go
+type CommitDiffLoadedMsg struct {
+    CommitIndex int
+    Files       []sidebyside.FilePair
+    TruncatedFileCount int
+    Err         error
+}
+
+func (m Model) FetchCommitDiff(commitIdx int) tea.Cmd {
+    return func() tea.Msg {
+        sha := m.commits[commitIdx].Info.SHA
+        diffStr, err := m.git.ShowDiff(sha)
+        if err != nil {
+            return CommitDiffLoadedMsg{CommitIndex: commitIdx, Err: err}
+        }
+
+        d, err := diff.Parse(diffStr)
+        if err != nil {
+            return CommitDiffLoadedMsg{CommitIndex: commitIdx, Err: err}
+        }
+
+        files, truncated := sidebyside.TransformDiff(d)
+        return CommitDiffLoadedMsg{
+            CommitIndex:        commitIdx,
+            Files:              files,
+            TruncatedFileCount: truncated,
+        }
+    }
+}
+#+end_src
+
+**** 5. Handle =CommitDiffLoadedMsg= in update.go
+
+#+begin_src go
+case CommitDiffLoadedMsg:
+    if msg.Err != nil {
+        // Handle error (show in status line?)
+        return m, nil
+    }
+
+    // Update commit
+    m.commits[msg.CommitIndex].Files = msg.Files
+    m.commits[msg.CommitIndex].FilesLoaded = true
+    m.commits[msg.CommitIndex].TruncatedFileCount = msg.TruncatedFileCount
+
+    // Rebuild flattened file list and row indices
+    m.rebuildFileList()
+    m.calculateTotalLines()
+
+    return m, nil
+#+end_src
+
+**** 6. Trigger loading on unfold
+
+In the fold/unfold key handler (update.go), when expanding a commit:
+
+#+begin_src go
+case "Tab":
+    // ... existing fold logic ...
+
+    // If expanding and not loaded, fetch diff
+    if newFoldLevel > CommitFolded && !m.commits[commitIdx].FilesLoaded {
+        return m, m.FetchCommitDiff(commitIdx)
+    }
+#+end_src
+
+**** 7. Pre-fetch first viewport on startup
+
+In =NewWithCommits()= or via a startup command:
+
+#+begin_src go
+func (m Model) prefetchInitialCommits() tea.Cmd {
+    // Calculate how many commits fit in viewport
+    // (estimate ~3-5 visible rows per folded commit header)
+    visibleCommits := m.height / 4
+    if visibleCommits > len(m.commits) {
+        visibleCommits = len(m.commits)
+    }
+
+    var cmds []tea.Cmd
+    for i := 0; i < visibleCommits && i < maxPrefetch; i++ {
+        if !m.commits[i].FilesLoaded {
+            cmds = append(cmds, m.FetchCommitDiff(i))
+        }
+    }
+    return tea.Batch(cmds...)
+}
+#+end_src
+
+*** UI Considerations
+
+**** Loading Indicator
+
+When a commit is unfolded but =FilesLoaded=false=:
+- Show loading spinner or "Loading..." text
+- Disable further expansion until loaded
+
+**** Folded Commit Display
+
+A skeleton commit (unloaded) should still display:
+- Commit hash, author, date, subject (all in CommitInfo)
+- File count could show "?" or be omitted until loaded
+- Stats (+/-) unavailable until loaded
+
+This may require a small change to =commitHeaderRow()= to handle unloaded state.
+
+*** Files Affected
+
+| File | Changes |
+|------|---------|
+| pkg/git/git.go | Add =LogMetaOnly()=, =ShowDiff()= |
+| cmd/diffyduck/main.go | Modify =runLogMode()= to use skeleton loading |
+| internal/tui/model.go | Add =rebuildFileList()= method |
+| internal/tui/commands.go | Add =FetchCommitDiff()= command |
+| internal/tui/update.go | Handle =CommitDiffLoadedMsg=, trigger on unfold |
+| internal/tui/view.go | Handle unloaded commits in header display |
+
+** Phase 2: Memory Eviction (Future)
+
+*** Goal
+
+Prevent unbounded memory growth when scrolling through very long history.
+
+*** Approach: Distance-Based Eviction
+
+When a commit is far from the viewport (e.g., 50+ commits away):
+1. Force-fold the commit
+2. Clear its =Files= slice (=Files = nil=)
+3. Set =FilesLoaded = false=
+4. Keep =CommitInfo= (skeleton) intact
+
+Re-expanding triggers a fresh fetch.
+
+*** Triggers
+
+- After handling scroll events, check distance from viewport
+- Use a hysteresis zone to avoid thrashing (e.g., evict at 50, reload at 40)
+
+*** Considerations
+
+- User jumping back with =gg= would trigger re-fetches
+- Could keep an LRU cache of N recently-viewed commits
+- May want to batch eviction checks (not on every scroll)
+
+*** Deferred
+
+This phase is deferred until Phase 1 is working and we have real-world
+usage data on memory patterns.
+
+** Related Work
+
+- [[file:log-performance.org][Log Performance]] - buildRows() caching to reduce CPU
+- [[file:commit-hierarchy.org][Commit Hierarchy]] - original CommitSet design
+
+** Testing
+
+*** Unit Tests
+
+- =git.LogMetaOnly()= returns correct metadata without diffs
+- =git.ShowDiff()= returns only the diff portion
+- Skeleton commits display correctly in view
+
+*** State Transition Tests
+
+- Unfold skeleton commit → triggers FetchCommitDiff
+- CommitDiffLoadedMsg → updates Files, rebuilds file list
+- Pre-fetch on startup loads first N commits
+
+*** Integration Tests
+
+- Full flow: startup → skeleton display → unfold → diff loads
+- Verify scroll position preserved when diffs load
+

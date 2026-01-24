@@ -247,8 +247,8 @@ func run() error {
 func runLogMode(debugMode bool) error {
 	g := git.New()
 
-	// Fetch last 10 commits with diffs
-	commits, err := g.LogWithMeta(10)
+	// Fetch commits with diffs (TODO: add pagination)
+	commits, err := g.LogWithMeta(500)
 	if err != nil {
 		return fmt.Errorf("git log: %w", err)
 	}
