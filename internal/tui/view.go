@@ -1910,12 +1910,13 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 
 	var rows []displayRow
 
-	// Calculate prefix to align symbol with file status symbol in header
+	// Calculate prefix to indent list under filename
 	// Header layout: indent(5) + icon(1) + space(1) + fileNum(1+numDigits) + space(1) = 9 + numDigits
+	// Add 2 more to start under filename: 11 + numDigits
 	totalFiles := len(m.files)
 	numDigits := len(fmt.Sprintf("%d", totalFiles))
-	symbolPrefix := strings.Repeat(" ", 9+numDigits)
-	childPrefix := strings.Repeat(" ", 9+numDigits+2) // 2 extra spaces for child indent
+	symbolPrefix := strings.Repeat(" ", 11+numDigits)
+	childPrefix := strings.Repeat(" ", 11+numDigits+2) // 2 extra spaces for child indent
 
 	// Build a tree structure: top-level items and their children
 	// Types/classes can contain methods
@@ -2051,10 +2052,10 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 	headerBoxWidth := row.headerBoxWidth
 	borderVisible := row.borderVisible
 
-	// Calculate symbol position (aligned with file status symbol in header)
+	// Calculate symbol position (indented under filename)
 	totalFiles := len(m.files)
 	numDigits := len(fmt.Sprintf("%d", totalFiles))
-	symbolPos := 9 + numDigits
+	symbolPos := 11 + numDigits
 
 	// Extract parts: prefix (spaces), symbol, rest (kind + name)
 	var prefix, symbol, rest string

@@ -301,13 +301,13 @@ identifier part becomes colour 7"
 - [X] Style "func"/"type"/"class" keyword with fg=8
 - [X] Style identifier name with fg=7
 
-**** Add indentation
+**** Add indentation [DONE]
 #+begin_quote
 "let's add two spaces indentation for our list to start under the filename --
 so two more indented than the symbol on the filename"
 #+end_quote
-- [ ] Add 2 more spaces to symbolPrefix (11 + numDigits instead of 9 + numDigits)
-- [ ] Update width calculations accordingly
+- [X] Add 2 more spaces to symbolPrefix (11 + numDigits instead of 9 + numDigits)
+- [X] Update symbolPos in renderStructuralDiffRow accordingly
 
 **** Explore blank line before last folded item
 #+begin_quote
