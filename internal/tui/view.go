@@ -1484,7 +1484,7 @@ func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) str
 }
 
 // renderCommitHeaderBottomBorder renders the bottom border of the commit header.
-// Uses heavy box drawing character ━ full-width (no corner).
+// Uses light box drawing character ─ full-width (no corner).
 func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) string {
 	// Use yellow color for commit borders (Color 3) when visible
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
@@ -1492,7 +1492,7 @@ func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) 
 		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
 	}
 
-	// Full width border with heavy line character
+	// Full width border with light line character
 	borderWidth := m.width
 	if borderWidth < 0 {
 		borderWidth = 0
@@ -1501,12 +1501,12 @@ func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) 
 	if isCursorRow && m.focused {
 		// Format: arrow + gap (yellow border) + cursor char (grey bg, fg=0) + rest of border
 		arrow := cursorArrowStyle.Render("▶")
-		styledGutter := cursorStyle.Render("━")
+		styledGutter := cursorStyle.Render("─")
 		restWidth := borderWidth - 3 // arrow(1) + gap(1) + gutter(1)
 		if restWidth < 0 {
 			restWidth = 0
 		}
-		return arrow + borderStyle.Render("━") + styledGutter + borderStyle.Render(strings.Repeat("━", restWidth))
+		return arrow + borderStyle.Render("─") + styledGutter + borderStyle.Render(strings.Repeat("─", restWidth))
 	}
 
 	if isCursorRow && !m.focused {
@@ -1516,10 +1516,10 @@ func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) 
 		if restWidth < 0 {
 			restWidth = 0
 		}
-		return arrow + borderStyle.Render(strings.Repeat("━", restWidth))
+		return arrow + borderStyle.Render(strings.Repeat("─", restWidth))
 	}
 
-	return borderStyle.Render(strings.Repeat("━", borderWidth))
+	return borderStyle.Render(strings.Repeat("─", borderWidth))
 }
 
 // renderCommitHeaderRow renders a commit header row in the content area.

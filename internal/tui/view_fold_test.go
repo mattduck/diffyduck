@@ -778,19 +778,19 @@ func TestCommitBorder_CursorRendersYellowGapAndGreyBgBorderChar(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the border line by looking for the heavy border character with arrow
+	// Find the border line by looking for the light border character with arrow
 	var borderLine string
 	for _, line := range lines {
-		// Border line should contain ━ and start with arrow when cursor is on it
-		if strings.Contains(line, "━") && strings.HasPrefix(line, "▶") {
+		// Bottom border line should contain ─ and start with arrow when cursor is on it
+		if strings.Contains(line, "─") && strings.HasPrefix(line, "▶") {
 			borderLine = line
 			break
 		}
 	}
 
-	require.NotEmpty(t, borderLine, "should find commit border line with arrow and ━")
+	require.NotEmpty(t, borderLine, "should find commit bottom border line with arrow and ─")
 
 	// Should start with arrow followed immediately by border char (no space gap)
-	assert.True(t, strings.HasPrefix(borderLine, "▶━"),
-		"commit border with cursor should be: arrow + border char (no space), got: %s", borderLine)
+	assert.True(t, strings.HasPrefix(borderLine, "▶─"),
+		"commit bottom border with cursor should be: arrow + border char (no space), got: %s", borderLine)
 }
