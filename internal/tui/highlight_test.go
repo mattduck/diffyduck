@@ -6,6 +6,7 @@ import (
 
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 func TestSyntaxHighlighting_SpansGenerated(t *testing.T) {
@@ -1264,5 +1265,257 @@ class MyDataClass:
 	}
 	if !foundDoubled {
 		t.Error("Expected to find 'def doubled' (decorated method inside decorated class)")
+	}
+}
+
+func TestStructuralDiff_ComputedOnHighlightReady(t *testing.T) {
+	// Test that structural diff is computed when storing highlight spans.
+	// Old file has: FuncA, FuncB (will be deleted), TypeX
+	// New file has: FuncA (modified), TypeX, FuncC (added)
+	oldContent := `package main
+
+func FuncA() {
+	x := 1
+}
+
+func FuncB() {
+	y := 2
+}
+
+type TypeX struct {
+	field int
+}
+`
+	newContent := `package main
+
+func FuncA() {
+	x := 1
+	z := 3
+}
+
+type TypeX struct {
+	field int
+}
+
+func FuncC() {
+	w := 4
+}
+`
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
+
+	// Build Pairs that show the diff:
+	// - FuncA: line 5 added (z := 3)
+	// - FuncB: lines 7-9 removed
+	// - FuncC: lines 12-14 added
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/test.go",
+			NewPath:    "b/test.go",
+			FoldLevel:  sidebyside.FoldExpanded,
+			OldContent: oldLines,
+			NewContent: newLines,
+			Pairs: []sidebyside.LinePair{
+				// Context lines (package, func FuncA, etc.)
+				{Old: sidebyside.Line{Num: 1, Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 2, Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 3, Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 4, Type: sidebyside.Context}, New: sidebyside.Line{Num: 4, Type: sidebyside.Context}},
+				// Added line in FuncA
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 5, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 5, Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 6, Type: sidebyside.Context}, New: sidebyside.Line{Num: 7, Type: sidebyside.Context}},
+				// Removed FuncB
+				{Old: sidebyside.Line{Num: 7, Type: sidebyside.Removed}, New: sidebyside.Line{Num: 0, Type: sidebyside.Empty}},
+				{Old: sidebyside.Line{Num: 8, Type: sidebyside.Removed}, New: sidebyside.Line{Num: 0, Type: sidebyside.Empty}},
+				{Old: sidebyside.Line{Num: 9, Type: sidebyside.Removed}, New: sidebyside.Line{Num: 0, Type: sidebyside.Empty}},
+				{Old: sidebyside.Line{Num: 10, Type: sidebyside.Context}, New: sidebyside.Line{Num: 8, Type: sidebyside.Context}},
+				// TypeX context
+				{Old: sidebyside.Line{Num: 11, Type: sidebyside.Context}, New: sidebyside.Line{Num: 9, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 12, Type: sidebyside.Context}, New: sidebyside.Line{Num: 10, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 13, Type: sidebyside.Context}, New: sidebyside.Line{Num: 11, Type: sidebyside.Context}},
+				// Added FuncC
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 12, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 13, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 14, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 15, Type: sidebyside.Added}},
+			},
+		},
+	}
+
+	m := New(files)
+	defer m.highlighter.Close()
+
+	// Request and store highlighting (which computes structural diff)
+	cmd := m.RequestHighlight(0)
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	if !ok {
+		t.Fatalf("Expected HighlightReadyMsg, got %T", msg)
+	}
+
+	m.storeHighlightSpans(hlMsg)
+
+	// Verify structural diff was computed
+	fs := m.structureMaps[0]
+	if fs == nil {
+		t.Fatal("FileStructure not stored")
+	}
+	if fs.StructuralDiff == nil {
+		t.Fatal("StructuralDiff not computed")
+	}
+
+	diff := fs.StructuralDiff
+	t.Logf("Structural diff has %d changes", len(diff.Changes))
+	for _, c := range diff.Changes {
+		t.Logf("  %s %s", c.Kind.Symbol(), c.Name())
+	}
+
+	// Find changes by name
+	byName := make(map[string]*structure.ElementChange)
+	for i := range diff.Changes {
+		c := &diff.Changes[i]
+		byName[c.Name()] = c
+	}
+
+	// Verify FuncA is modified (has added line 5)
+	if c, ok := byName["FuncA"]; !ok {
+		t.Error("Expected FuncA in diff")
+	} else if c.Kind != structure.ChangeModified {
+		t.Errorf("Expected FuncA to be modified, got %s", c.Kind)
+	}
+
+	// Verify FuncB is deleted
+	if c, ok := byName["FuncB"]; !ok {
+		t.Error("Expected FuncB in diff")
+	} else if c.Kind != structure.ChangeDeleted {
+		t.Errorf("Expected FuncB to be deleted, got %s", c.Kind)
+	}
+
+	// Verify TypeX is unchanged
+	if c, ok := byName["TypeX"]; !ok {
+		t.Error("Expected TypeX in diff")
+	} else if c.Kind != structure.ChangeUnchanged {
+		t.Errorf("Expected TypeX to be unchanged, got %s", c.Kind)
+	}
+
+	// Verify FuncC is added
+	if c, ok := byName["FuncC"]; !ok {
+		t.Error("Expected FuncC in diff")
+	} else if c.Kind != structure.ChangeAdded {
+		t.Errorf("Expected FuncC to be added, got %s", c.Kind)
+	}
+
+	// Verify HasChanges and ChangedOnly
+	if !diff.HasChanges() {
+		t.Error("Expected HasChanges() to be true")
+	}
+	changed := diff.ChangedOnly()
+	if len(changed) != 3 { // FuncA modified, FuncB deleted, FuncC added
+		t.Errorf("Expected 3 changed elements, got %d", len(changed))
+	}
+}
+
+func TestStructuralDiff_RenderedInView(t *testing.T) {
+	// Test that structural diff rows appear in buildRows when structure is loaded
+	oldContent := `package main
+
+func FuncA() {
+	x := 1
+}
+`
+	newContent := `package main
+
+func FuncA() {
+	x := 1
+	z := 3
+}
+
+func FuncB() {
+	y := 2
+}
+`
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/test.go",
+			NewPath:    "b/test.go",
+			FoldLevel:  sidebyside.FoldNormal,
+			OldContent: oldLines,
+			NewContent: newLines,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 2, Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 3, Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 4, Type: sidebyside.Context}, New: sidebyside.Line{Num: 4, Type: sidebyside.Context}},
+				// Added line in FuncA
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 5, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 5, Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Type: sidebyside.Context}},
+				// Added FuncB
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 7, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 8, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 9, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 10, Type: sidebyside.Added}},
+			},
+		},
+	}
+
+	m := New(files)
+	defer m.highlighter.Close()
+	m.width = 120
+	m.height = 40
+
+	// Request and store highlighting
+	cmd := m.RequestHighlight(0)
+	msg := cmd()
+	hlMsg := msg.(HighlightReadyMsg)
+	m.storeHighlightSpans(hlMsg)
+
+	// Build rows and check for structural diff rows
+	rows := m.buildRows()
+
+	var structDiffRows []displayRow
+	for _, row := range rows {
+		if row.isStructuralDiff {
+			structDiffRows = append(structDiffRows, row)
+		}
+	}
+
+	t.Logf("Found %d structural diff rows", len(structDiffRows))
+	for _, row := range structDiffRows {
+		t.Logf("  %q (blank=%v)", row.structuralDiffLine, row.structuralDiffIsBlank)
+	}
+
+	// Should have structural diff rows (FuncA modified, FuncB added, plus blank)
+	if len(structDiffRows) == 0 {
+		t.Error("Expected structural diff rows to be present")
+	}
+
+	// Verify the rows have correct fileIndex
+	for _, row := range structDiffRows {
+		if row.fileIndex != 0 {
+			t.Errorf("Expected fileIndex 0, got %d", row.fileIndex)
+		}
+	}
+
+	// Verify we can find expected symbols in the lines
+	foundModified := false
+	foundAdded := false
+	for _, row := range structDiffRows {
+		if strings.Contains(row.structuralDiffLine, "~") && strings.Contains(row.structuralDiffLine, "FuncA") {
+			foundModified = true
+		}
+		if strings.Contains(row.structuralDiffLine, "+") && strings.Contains(row.structuralDiffLine, "FuncB") {
+			foundAdded = true
+		}
+	}
+
+	if !foundModified {
+		t.Error("Expected to find modified FuncA in structural diff rows")
+	}
+	if !foundAdded {
+		t.Error("Expected to find added FuncB in structural diff rows")
 	}
 }

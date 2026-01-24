@@ -148,11 +148,13 @@ type PairsFileHighlight struct {
 	NewLineLens   map[int]int      // line number -> length of line content
 }
 
-// FileStructure stores code structure map for breadcrumb display.
-// Only new (right side) content structure is stored since breadcrumbs
-// show where you are in the current version of the file.
+// FileStructure stores code structure maps for breadcrumbs and structural diff.
+// NewStructure is used for breadcrumbs (current version of the file).
+// OldStructure is used for structural diff (comparing old vs new).
 type FileStructure struct {
-	NewStructure *structure.Map // structure for new content
+	OldStructure   *structure.Map            // structure for old content (for structural diff)
+	NewStructure   *structure.Map            // structure for new content (for breadcrumbs)
+	StructuralDiff *structure.StructuralDiff // diff between old and new structure
 }
 
 // Option is a function that configures a Model.
@@ -554,9 +556,10 @@ func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
 	row := rows[cursorPos]
 
 	// Only show breadcrumbs for content rows and certain separator rows
-	// (not headers, separator tops, etc.)
+	// (not headers, separator tops, structural diff rows, etc.)
 	if row.isHeader || row.isSeparatorTop ||
-		row.isBlank || row.isHeaderSpacer || row.isHeaderTopBorder {
+		row.isBlank || row.isHeaderSpacer || row.isHeaderTopBorder ||
+		row.isStructuralDiff {
 		return ""
 	}
 

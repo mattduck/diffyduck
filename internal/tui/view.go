@@ -12,6 +12,7 @@ import (
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/inlinediff"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 var (
@@ -111,8 +112,8 @@ type RowKind int
 const (
 	RowKindContent RowKind = iota // default: content line pair with diff data
 	RowKindHeader
-	RowKindHeaderSpacer    // bottom border line after header
-	RowKindHeaderTopBorder // top border line before header
+	RowKindHeaderSpacer             // bottom border line after header
+	RowKindHeaderTopBorder          // top border line before header
 	RowKindBlank
 	RowKindSeparatorTop             // top shader line above hunk separator
 	RowKindSeparator                // hunk separator with breadcrumb
@@ -124,6 +125,7 @@ const (
 	RowKindCommitHeaderBottomBorder // bottom border line after commit header
 	RowKindCommitBody               // commit body row (full sha, author, date, message)
 	RowKindComment                  // inline comment row (belongs to line above)
+	RowKindStructuralDiff           // structural diff row (added/modified/deleted functions/types)
 )
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
@@ -189,6 +191,10 @@ type displayRow struct {
 	commentRowIndex  int    // index within the comment box (0=top border, 1..n-2=content, n-1=bottom border)
 	commentRowCount  int    // total rows in this comment box
 	commentLineIndex int    // which line of comment content this is (for content rows, -1 for borders)
+	// Structural diff fields (for RowKindStructuralDiff rows)
+	isStructuralDiff      bool   // true if this is a structural diff row
+	structuralDiffLine    string // the formatted line (e.g., "  ~ func FuncA")
+	structuralDiffIsBlank bool   // true if this is a blank separator line
 }
 
 // buildCommentRows creates displayRow entries for a comment box.
@@ -576,6 +582,9 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 
 			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
+			// Add structural diff rows if available
+			rows = append(rows, m.buildStructuralDiffRows(fileIdx)...)
+
 			expandedRows := m.buildExpandedRows(fp)
 			for i := range expandedRows {
 				expandedRows[i].fileIndex = fileIdx
@@ -635,6 +644,9 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+
+		// Add structural diff rows if available
+		rows = append(rows, m.buildStructuralDiffRows(fileIdx)...)
 
 		if fp.IsBinary {
 			var msg string
@@ -1068,6 +1080,8 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			visible = append(visible, m.renderCommitHeaderBottomBorder(row, isCursorRow))
 		} else if row.isCommitBody {
 			visible = append(visible, m.renderCommitBodyRow(row, isCursorRow))
+		} else if row.isStructuralDiff {
+			visible = append(visible, m.renderStructuralDiffRow(row, isCursorRow))
 		} else if row.isHeaderTopBorder {
 			visible = append(visible, m.renderHeaderTopBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow))
 		} else if row.isHeaderSpacer {
@@ -1745,6 +1759,130 @@ func (m Model) buildCommitBodyRowsSkipFirstBlank(commit *sidebyside.CommitSet, c
 	return rows
 }
 
+// buildStructuralDiffRows creates display rows for the structural diff summary.
+// Shows which functions, methods, and types were added, modified, or deleted.
+func (m Model) buildStructuralDiffRows(fileIdx int) []displayRow {
+	fs := m.structureMaps[fileIdx]
+	if fs == nil || fs.StructuralDiff == nil {
+		return nil
+	}
+
+	diff := fs.StructuralDiff
+	if !diff.HasChanges() {
+		return nil
+	}
+
+	var rows []displayRow
+
+	// Get only the changed elements
+	changes := diff.ChangedOnly()
+	if len(changes) == 0 {
+		return nil
+	}
+
+	// Build a tree structure: top-level items and their children
+	// Types/classes can contain methods
+	type treeNode struct {
+		change   structure.ElementChange
+		children []structure.ElementChange
+	}
+
+	// Group methods under their parent types (by checking line containment)
+	var topLevel []treeNode
+	methodsAssigned := make(map[int]bool) // track which changes are assigned as children
+
+	// First pass: find all types/classes that could be parents
+	for i, c := range changes {
+		entry := c.Entry()
+		if entry == nil {
+			continue
+		}
+		if entry.Kind == "type" || entry.Kind == "class" {
+			node := treeNode{change: c}
+			// Find methods that are within this type's range
+			for j, other := range changes {
+				if i == j {
+					continue
+				}
+				otherEntry := other.Entry()
+				if otherEntry == nil {
+					continue
+				}
+				// Check if this is a method/function within the type's lines
+				if otherEntry.Kind == "func" || otherEntry.Kind == "def" {
+					// Use the entry that has line info (prefer new, fall back to old)
+					typeStart, typeEnd := entry.StartLine, entry.EndLine
+					otherStart := otherEntry.StartLine
+
+					if otherStart >= typeStart && otherStart <= typeEnd {
+						node.children = append(node.children, other)
+						methodsAssigned[j] = true
+					}
+				}
+			}
+			topLevel = append(topLevel, node)
+			methodsAssigned[i] = true
+		}
+	}
+
+	// Second pass: add remaining items as top-level
+	for i, c := range changes {
+		if !methodsAssigned[i] {
+			topLevel = append(topLevel, treeNode{change: c})
+		}
+	}
+
+	// Render tree
+	for _, node := range topLevel {
+		c := node.change
+		entry := c.Entry()
+		if entry == nil {
+			continue
+		}
+
+		// Format: "  ~ type MyStruct" or "  + func NewFunc"
+		symbol := c.Kind.Symbol()
+		line := "  " + symbol + " " + entry.Kind + " " + entry.Name
+
+		rows = append(rows, displayRow{
+			kind:               RowKindStructuralDiff,
+			fileIndex:          fileIdx,
+			isStructuralDiff:   true,
+			structuralDiffLine: line,
+		})
+
+		// Add children (methods within types)
+		for _, child := range node.children {
+			childEntry := child.Entry()
+			if childEntry == nil {
+				continue
+			}
+			childSymbol := child.Kind.Symbol()
+			childLine := "    " + childSymbol + " " + childEntry.Kind + " " + childEntry.Name
+
+			rows = append(rows, displayRow{
+				kind:               RowKindStructuralDiff,
+				fileIndex:          fileIdx,
+				isStructuralDiff:   true,
+				structuralDiffLine: childLine,
+			})
+		}
+	}
+
+	// Add trailing blank line for separation
+	if len(rows) > 0 {
+		rows = append(rows, displayRow{
+			kind:                  RowKindStructuralDiff,
+			fileIndex:             fileIdx,
+			isStructuralDiff:      true,
+			structuralDiffLine:    "",
+			structuralDiffIsBlank: true,
+		})
+	}
+
+	return rows
+}
+
 // renderCommitBodyRow renders a single line of the commit body.
 func (m Model) renderCommitBodyRow(row displayRow, isCursorRow bool) string {
 	// Style the content
@@ -1767,6 +1905,41 @@ func (m Model) renderCommitBodyRow(row displayRow, isCursorRow bool) string {
 
 	if isCursorRow && !m.focused {
 		// Unfocused: outline arrow, no background highlight
+		return unfocusedCursorArrowStyle.Render("▷") + "   " + content
+	}
+
+	// Non-cursor: 2-space prefix + 2-space indent
+	return "    " + content
+}
+
+// renderStructuralDiffRow renders a single line of the structural diff summary.
+func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string {
+	content := row.structuralDiffLine
+
+	// Color the symbol based on change kind
+	if len(content) >= 3 {
+		symbol := content[2:3] // Get the symbol at position 2 (after "  ")
+		var styledLine string
+		switch symbol {
+		case "+":
+			styledLine = content[:2] + addedStyle.Render("+") + content[3:]
+		case "-":
+			styledLine = content[:2] + removedStyle.Render("-") + content[3:]
+		case "~":
+			styledLine = content[:2] + changedStyle.Render("~") + content[3:]
+		default:
+			styledLine = content
+		}
+		content = styledLine
+	}
+
+	// Cursor handling with 1-char bg highlight (like file headers)
+	if isCursorRow && m.focused {
+		styledGutter := cursorStyle.Render(" ")
+		return cursorArrowStyle.Render("▶") + " " + styledGutter + " " + content
+	}
+
+	if isCursorRow && !m.focused {
 		return unfocusedCursorArrowStyle.Render("▷") + "   " + content
 	}
 

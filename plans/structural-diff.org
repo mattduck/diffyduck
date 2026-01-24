@@ -1,0 +1,181 @@
+* Structural Diff Feature
+
+Detect which functions, methods, classes, and structs were added/modified/deleted
+by combining tree-sitter structure extraction with diff line information.
+
+** Goals
+
+*** Phase 1: Basic structural diff [COMPLETED]
+- [X] Extract structure from both old and new file contents
+- [X] Match elements by name between old and new
+- [X] Determine change status based on diff line overlap
+- [X] Store structural diff in model for display
+- [X] Display structural diff in view (below file header, above hunks)
+- [X] Cursor on structural diff rows shows file in top bar (no line number)
+- [X] Tree structure for nested elements (methods under types)
+
+*** Phase 2: Rename/move detection (future)
+- Detect when a function is renamed but content is identical
+- Detect when a function is moved (same name, same content, different lines)
+- Use content hashing for efficient comparison
+- Special representation for renames vs modifications
+
+** Requirements (from discussion)
+
+#+begin_quote
+"first use-case is to list the parts that changed for easy/quick overview.
+later use-case could include filtering, or listing all the key parts of file
+for navigation. but initially I'm just thinking about diffing"
+#+end_quote
+
+#+begin_quote
+"functions/methods/classes, and any key composite objects -- so structs in Go
+could be one"
+#+end_quote
+
+#+begin_quote
+"I think we want to keep it simple meaning we get the boundaries of that thing
+and detect if there were any diff changes within those boundaries"
+#+end_quote
+
+#+begin_quote
+"separate items, and then when we display them it will probably be as some kind
+of tree where we say '~ class X' and then under that '+ my_new_method' or
+'~ my_changed_method', or nothing because the part that changed was not
+belonging to a class or method"
+#+end_quote
+
+#+begin_quote
+"it depends a lot on performance. I think ideally we would compute all this
+within the same async 'loading' we do for a file -- so when we compute the
+syntax and so forth"
+#+end_quote
+
+** Existing Infrastructure
+
+*** pkg/structure/ package
+- ~Entry~ struct with: StartLine, EndLine, Name, Kind, Receiver, Params, ReturnType
+- ~Map~ struct with ~AtLine(line int) []Entry~ for breadcrumb lookup
+- ~Extractor~ dispatches to language-specific extractors
+- Go extractor handles: function_declaration, method_declaration, type_declaration
+
+*** pkg/highlight/highlighter.go
+- ~HighlightWithStructure()~ parses once and returns both spans and structure
+- Currently only called for NEW content (old uses plain ~Highlight()~)
+
+*** internal/tui/highlight.go
+- ~RequestHighlight()~ triggers async highlighting
+- Stores structure in ~m.structureMaps[fileIndex].NewStructure~
+- Only extracts structure from new content currently
+
+** Design
+
+*** New types (pkg/structure/diff.go or similar)
+
+#+begin_src go
+type ChangeKind int
+
+const (
+    ChangeUnchanged ChangeKind = iota
+    ChangeAdded
+    ChangeDeleted
+    ChangeModified
+    // Future: ChangeMoved, ChangeRenamed
+)
+
+type ElementChange struct {
+    Kind       ChangeKind
+    OldEntry   *Entry  // nil for Added
+    NewEntry   *Entry  // nil for Deleted
+}
+
+type StructuralDiff struct {
+    Changes []ElementChange
+}
+#+end_src
+
+*** Algorithm
+
+1. Extract structure from old content -> oldMap
+2. Extract structure from new content -> newMap
+3. Build name->entry maps for both
+4. For each entry in newMap:
+   - If name exists in oldMap: matched (check if modified)
+   - Else: added
+5. For each entry in oldMap not matched: deleted
+6. For matched pairs, check if any diff lines overlap with their boundaries:
+   - Get changed line numbers from FilePair.Pairs (lines with Type == Added or Removed)
+   - If old entry's range overlaps with removed lines OR new entry's range overlaps
+     with added lines -> modified
+   - Else -> unchanged
+
+*** Integration points
+
+**** highlight.go changes
+- Also call ~HighlightWithStructure()~ for old content (not just new)
+- Store both ~OldStructure~ and ~NewStructure~ in FileStructure
+- Compute structural diff after both are available
+
+**** model.go changes
+- Extend ~FileStructure~ to include ~OldStructure *structure.Map~
+- Add ~StructuralDiff *structure.StructuralDiff~ field
+
+**** commands.go changes
+- Structural diff computation happens in the same async flow as highlighting
+- No additional async work needed
+
+** Performance Considerations
+
+- Tree-sitter parsing already happens for highlighting
+- Structure extraction reuses the same parse tree (HighlightWithStructure)
+- Matching is O(n) with hash map lookups
+- Diff line overlap check is O(entries * hunks) but both are typically small
+- Total overhead should be minimal
+
+** Languages
+
+Starting with Go only. Python extractor exists but not prioritized.
+
+Future: extend to other languages by adding extractors.
+
+** Testing Strategy
+
+- Unit tests for diff algorithm (given old entries, new entries, changed lines -> expected changes)
+- Integration tests with real Go files
+- Golden file tests for structural diff output format
+
+** Open Questions
+
+- How to represent nested structures in the diff output?
+  - Decision: flat list of all elements, display logic handles tree rendering
+- Should we diff at the content level (actual code changes) or just line overlap?
+  - Decision: line overlap is simpler and sufficient for v1
+
+** Implementation Notes (Phase 1)
+
+*** Files changed
+- ~pkg/structure/diff.go~ - Core diff types and ComputeDiff algorithm
+- ~pkg/structure/diff_test.go~ - Unit tests for diff logic
+- ~internal/tui/messages.go~ - Added OldStructure to HighlightReadyMsg
+- ~internal/tui/model.go~ - Added OldStructure and StructuralDiff to FileStructure
+- ~internal/tui/highlight.go~ - Extract old structure, compute diff, extractChangedLines helper
+- ~internal/tui/view.go~ - RowKindStructuralDiff, buildStructuralDiffRows, renderStructuralDiffRow
+- ~internal/tui/highlight_test.go~ - Integration tests for structural diff
+
+*** Display format
+Structural diff appears between file header and first hunk:
+#+begin_example
+  ~ func FuncA
+  + func NewFunc
+  - func DeletedFunc
+  ~ type MyStruct
+    ~ func (m MyStruct) ModifiedMethod
+#+end_example
+
+Methods within types are indented. Symbols: + (added), - (deleted), ~ (modified).
+
+*** Cursor behavior
+When cursor is on structural diff rows:
+- Top bar shows file info (same as being on file header)
+- No line number or breadcrumbs shown
+- fileIndex is set to the actual file (unlike commit body which uses -1)

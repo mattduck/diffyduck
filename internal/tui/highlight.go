@@ -32,12 +32,14 @@ func (m Model) RequestHighlight(fileIndex int) tea.Cmd {
 		}
 
 		var oldSpans, newSpans []highlight.Span
-		var newStructure *structure.Map
+		var oldStructure, newStructure *structure.Map
 
-		// Parse old content if available (highlight only, no structure for breadcrumbs)
+		// Parse old content if available (with structure for structural diff)
 		if len(fp.OldContent) > 0 {
 			content := []byte(strings.Join(fp.OldContent, "\n"))
-			oldSpans, _ = m.highlighter.Highlight(filename, content)
+			spans, structMap, _ := m.highlighter.HighlightWithStructure(filename, content)
+			oldSpans = spans
+			oldStructure = structMap
 		}
 
 		// Parse new content if available (with structure for breadcrumbs)
@@ -53,6 +55,7 @@ func (m Model) RequestHighlight(fileIndex int) tea.Cmd {
 			FileIndex:    fileIndex,
 			OldSpans:     convertSpans(oldSpans),
 			NewSpans:     convertSpans(newSpans),
+			OldStructure: convertStructure(oldStructure),
 			NewStructure: convertStructure(newStructure),
 		}
 		return msg
@@ -268,10 +271,25 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 		OldSpans: unconvertSpans(msg.OldSpans),
 		NewSpans: unconvertSpans(msg.NewSpans),
 	}
+
+	oldStruct := unconvertStructure(msg.OldStructure)
+	newStruct := unconvertStructure(msg.NewStructure)
+
+	// Compute structural diff if we have structure for at least one side
+	var structDiff *structure.StructuralDiff
+	if oldStruct != nil || newStruct != nil {
+		// Extract changed lines from the file's Pairs
+		addedLines, removedLines := m.extractChangedLines(msg.FileIndex)
+		structDiff = structure.ComputeDiff(oldStruct, newStruct, addedLines, removedLines)
+	}
+
 	// Store structure (even if empty) to mark file as processed.
 	// This prevents filesNeedingStructure from re-processing already-loaded files.
+	// OldStructure is used for structural diff, NewStructure for breadcrumbs.
 	m.structureMaps[msg.FileIndex] = &FileStructure{
-		NewStructure: unconvertStructure(msg.NewStructure),
+		OldStructure:   oldStruct,
+		NewStructure:   newStruct,
+		StructuralDiff: structDiff,
 	}
 }
 
@@ -420,4 +438,29 @@ func (m Model) getLineSpansFromPairs(fileIndex int, lineNum int, isOld bool) []h
 	lineEnd := lineStart + lineLen
 
 	return highlight.SpansForLine(allSpans, lineStart, lineEnd)
+}
+
+// extractChangedLines extracts the added and removed line numbers from a file's Pairs.
+// Returns maps of 1-based line numbers that were added (in new) and removed (from old).
+func (m Model) extractChangedLines(fileIndex int) (addedLines, removedLines map[int]bool) {
+	if fileIndex < 0 || fileIndex >= len(m.files) {
+		return nil, nil
+	}
+
+	fp := m.files[fileIndex]
+	addedLines = make(map[int]bool)
+	removedLines = make(map[int]bool)
+
+	for _, pair := range fp.Pairs {
+		// Check old side for removed lines
+		if pair.Old.Type == sidebyside.Removed && pair.Old.Num > 0 {
+			removedLines[pair.Old.Num] = true
+		}
+		// Check new side for added lines
+		if pair.New.Type == sidebyside.Added && pair.New.Num > 0 {
+			addedLines[pair.New.Num] = true
+		}
+	}
+
+	return addedLines, removedLines
 }

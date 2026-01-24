@@ -39,6 +39,7 @@ type HighlightReadyMsg struct {
 	FileIndex    int
 	OldSpans     []HighlightSpan  // spans for old file content
 	NewSpans     []HighlightSpan  // spans for new file content
+	OldStructure []StructureEntry // structure for old file content (for structural diff)
 	NewStructure []StructureEntry // structure for new file content (for breadcrumbs)
 }
 
