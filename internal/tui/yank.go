@@ -226,3 +226,14 @@ func copyToClipboard(text string) error {
 	cmd.Stdin = strings.NewReader(text)
 	return cmd.Run()
 }
+
+// readFromClipboard reads text from the system clipboard.
+// TODO: Add support for Linux (xclip/xsel) and Windows (clip.exe)
+func readFromClipboard() (string, error) {
+	cmd := exec.Command("pbpaste")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}

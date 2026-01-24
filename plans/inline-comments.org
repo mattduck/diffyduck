@@ -30,6 +30,8 @@
 - [X] C-p / Up: Move up one line
 - [X] C-n / Down: Move down one line
 - [X] C-k: Kill to end of line
+- [X] C-u: Kill to beginning of line
+- [X] C-v: Paste from clipboard
 - [X] C-c / C-g: Cancel comment
 - [X] Backspace: Delete backward
 - [X] Delete: Delete forward
@@ -104,7 +106,7 @@
 
 ** Editing
 - [ ] Use bubbles/textarea for richer editing experience
-- [ ] Copy/paste support
+- [X] Paste from clipboard support (C-v)
 - [ ] Undo/redo within comment
 
 ** Multi-comment

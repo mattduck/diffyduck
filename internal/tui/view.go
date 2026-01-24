@@ -2317,8 +2317,8 @@ func (m Model) renderCommentPrompt() string {
 			renderedLine = prefix + line
 		}
 
-		// Pad to full width
-		lineWidth := displayWidth(renderedLine)
+		// Pad to full width (use lipgloss.Width to handle ANSI escape codes correctly)
+		lineWidth := lipgloss.Width(renderedLine)
 		padding := m.width - lineWidth
 		if padding < 0 {
 			padding = 0
@@ -2329,7 +2329,7 @@ func (m Model) renderCommentPrompt() string {
 	// Add help line at the bottom
 	help := " (C-j to submit, C-c to cancel)"
 	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	helpPadding := m.width - displayWidth(help)
+	helpPadding := m.width - lipgloss.Width(help)
 	if helpPadding < 0 {
 		helpPadding = 0
 	}

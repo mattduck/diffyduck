@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -1540,6 +1541,374 @@ func TestComment_KillToEnd_LastLine(t *testing.T) {
 	assert.Equal(t, "hello\nwo", m.commentInput)
 }
 
+// Test: commentKillToStart kills to beginning of line (first line)
+func TestComment_KillToStart_FirstLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello\nworld"
+	m.commentCursor = 3
+
+	m.commentKillToStart()
+
+	assert.Equal(t, "lo\nworld", m.commentInput)
+	assert.Equal(t, 0, m.commentCursor)
+}
+
+// Test: commentKillToStart kills to newline (not first line)
+func TestComment_KillToStart_SecondLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello\nworld"
+	m.commentCursor = 9 // at 'l' in "world"
+
+	m.commentKillToStart()
+
+	assert.Equal(t, "hello\nld", m.commentInput)
+	assert.Equal(t, 6, m.commentCursor)
+}
+
+// Test: commentKillToStart at beginning of line is a no-op
+func TestComment_KillToStart_AtLineStart(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello\nworld"
+	m.commentCursor = 6 // at start of "world"
+
+	m.commentKillToStart()
+
+	assert.Equal(t, "hello\nworld", m.commentInput)
+	assert.Equal(t, 6, m.commentCursor)
+}
+
+// Test: Ctrl+U key triggers kill to start
+func TestComment_CtrlU_KillsToStart(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello world"
+	m.commentCursor = 6 // at 'w'
+
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	m2 := newModel.(Model)
+
+	assert.Equal(t, "world", m2.commentInput)
+	assert.Equal(t, 0, m2.commentCursor)
+	assert.True(t, m2.commentMode)
+}
+
+// =============================================================================
+// Paste Tests
+// =============================================================================
+
+// Test: commentPaste inserts single line text at cursor
+func TestComment_Paste_SingleLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "hello world"
+	m.commentCursor = 6 // at 'w'
+
+	// Simulate paste by directly calling the insert logic
+	pasteText := "beautiful "
+	before := m.commentInput[:m.commentCursor]
+	after := m.commentInput[m.commentCursor:]
+	m.commentInput = before + pasteText + after
+	m.commentCursor += len(pasteText)
+
+	assert.Equal(t, "hello beautiful world", m.commentInput)
+	assert.Equal(t, 16, m.commentCursor)
+}
+
+// Test: commentPaste inserts multi-line text at cursor
+func TestComment_Paste_MultiLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "start end"
+	m.commentCursor = 6 // at 'e' in "end"
+
+	// Simulate paste of multi-line content
+	pasteText := "line1\nline2\nline3 "
+	before := m.commentInput[:m.commentCursor]
+	after := m.commentInput[m.commentCursor:]
+	m.commentInput = before + pasteText + after
+	m.commentCursor += len(pasteText)
+
+	assert.Equal(t, "start line1\nline2\nline3 end", m.commentInput)
+	assert.Equal(t, 24, m.commentCursor) // 6 + len("line1\nline2\nline3 ") = 6 + 18 = 24
+}
+
+// Test: paste into empty comment
+func TestComment_Paste_IntoEmpty(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = ""
+	m.commentCursor = 0
+
+	pasteText := "first line\nsecond line"
+	before := m.commentInput[:m.commentCursor]
+	after := m.commentInput[m.commentCursor:]
+	m.commentInput = before + pasteText + after
+	m.commentCursor += len(pasteText)
+
+	assert.Equal(t, "first line\nsecond line", m.commentInput)
+	assert.Equal(t, 22, m.commentCursor)
+}
+
+// Test: paste at end of existing multi-line comment
+func TestComment_Paste_AtEndOfMultiLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "existing\ncomment"
+	m.commentCursor = 16 // at end
+
+	pasteText := "\nnew line"
+	before := m.commentInput[:m.commentCursor]
+	after := m.commentInput[m.commentCursor:]
+	m.commentInput = before + pasteText + after
+	m.commentCursor += len(pasteText)
+
+	assert.Equal(t, "existing\ncomment\nnew line", m.commentInput)
+	assert.Equal(t, 25, m.commentCursor)
+}
+
+// Test: cursor position is correct after multi-line paste
+func TestComment_Paste_CursorPositionAfterMultiLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = "AB"
+	m.commentCursor = 1 // between A and B
+
+	pasteText := "X\nY\nZ"
+	before := m.commentInput[:m.commentCursor]
+	after := m.commentInput[m.commentCursor:]
+	m.commentInput = before + pasteText + after
+	m.commentCursor += len(pasteText)
+
+	// Result should be "AX\nY\nZB" with cursor after Z (before B)
+	assert.Equal(t, "AX\nY\nZB", m.commentInput)
+	assert.Equal(t, 6, m.commentCursor) // 1 + 5 = 6
+
+	// Verify cursor is at the right position by checking what's before/after
+	assert.Equal(t, "AX\nY\nZ", m.commentInput[:m.commentCursor])
+	assert.Equal(t, "B", m.commentInput[m.commentCursor:])
+}
+
+// Test: renderCommentPrompt with multi-line input shows all lines
+func TestComment_RenderPrompt_MultiLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.width = 80
+	m.commentMode = true
+	m.commentInput = "line1\nline2\nline3"
+	m.commentCursor = 12 // at 'l' of "line3"
+
+	// renderCommentPrompt is called via renderStatusBar
+	output := m.renderStatusBar()
+
+	lines := strings.Split(output, "\n")
+
+	// Should have 4 lines: 3 content lines + 1 help line
+	assert.Equal(t, 4, len(lines), "should have 4 lines: 3 content + 1 help")
+
+	// Check that each line has the right prefix
+	assert.True(t, strings.HasPrefix(lines[0], " . "), "first line should have continuation prefix")
+	assert.True(t, strings.HasPrefix(lines[1], " . "), "second line should have continuation prefix")
+	assert.True(t, strings.HasPrefix(lines[2], " > "), "third (cursor) line should have cursor prefix")
+	assert.True(t, strings.Contains(lines[3], "C-j to submit"), "last line should be help text")
+
+	// Verify content is present
+	assert.Contains(t, lines[0], "line1")
+	assert.Contains(t, lines[1], "line2")
+	assert.Contains(t, lines[2], "line3")
+}
+
+// Test: renderCommentPrompt with pasted content ending in newline
+func TestComment_RenderPrompt_TrailingNewline(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.width = 80
+	m.commentMode = true
+	m.commentInput = "pasted\n" // trailing newline creates empty line
+	m.commentCursor = 7         // after the newline (on empty line)
+
+	output := m.renderStatusBar()
+	lines := strings.Split(output, "\n")
+
+	// Should have 3 lines: "pasted", empty line (cursor), help
+	assert.Equal(t, 3, len(lines), "should have 3 lines: content, empty cursor line, help")
+
+	// First line should have continuation prefix (cursor is on second line)
+	assert.True(t, strings.HasPrefix(lines[0], " . "), "first line should have continuation prefix")
+	assert.Contains(t, lines[0], "pasted")
+
+	// Second line should have cursor prefix (it's the empty line after newline)
+	assert.True(t, strings.HasPrefix(lines[1], " > "), "second line should have cursor prefix")
+}
+
+// Test: paste with trailing newline updates cursor correctly
+func TestComment_Paste_TrailingNewline(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.commentMode = true
+	m.commentInput = ""
+	m.commentCursor = 0
+
+	// Simulate pasting text with trailing newline (common when copying lines)
+	pasteText := "copied line\n"
+	m.commentInput = pasteText
+	m.commentCursor = len(pasteText)
+
+	// Cursor should be at position 12 (after the newline)
+	assert.Equal(t, 12, m.commentCursor)
+
+	// The input should be "copied line\n"
+	assert.Equal(t, "copied line\n", m.commentInput)
+
+	// When we split this, we get ["copied line", ""]
+	lines := strings.Split(m.commentInput, "\n")
+	assert.Equal(t, 2, len(lines))
+	assert.Equal(t, "copied line", lines[0])
+	assert.Equal(t, "", lines[1])
+}
+
+// Test: Full View() with multi-line comment input contains all lines
+func TestComment_FullView_MultiLineInput(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.width = 80
+	m.height = 30
+	m.commentMode = true
+	m.commentInput = "first line\nsecond line\nthird line"
+	m.commentCursor = 33 // at end
+
+	m.calculateTotalLines()
+	output := m.View()
+
+	// The view should contain all three comment input lines
+	assert.Contains(t, output, "first line", "view should contain first line")
+	assert.Contains(t, output, "second line", "view should contain second line")
+	assert.Contains(t, output, "third line", "view should contain third line")
+
+	// Should have the cursor indicator on the last line
+	assert.Contains(t, output, " > ", "view should have cursor indicator")
+
+	// Should have continuation indicators on other lines
+	assert.Contains(t, output, " . ", "view should have continuation indicators")
+}
+
+// Test: commentPromptHeight calculation with multi-line input
+func TestComment_PromptHeight_MultiLine(t *testing.T) {
+	m := makeCommentableTestModel(5)
+
+	// Not in comment mode - should return 1
+	m.commentMode = false
+	assert.Equal(t, 1, m.commentPromptHeight())
+
+	// In comment mode with single line
+	m.commentMode = true
+	m.commentInput = "single line"
+	assert.Equal(t, 2, m.commentPromptHeight()) // 1 content line + 1 help line
+
+	// In comment mode with multiple lines
+	m.commentInput = "line1\nline2\nline3"
+	assert.Equal(t, 4, m.commentPromptHeight()) // 3 content lines + 1 help line
+
+	// With trailing newline (adds empty line)
+	m.commentInput = "line1\nline2\n"
+	assert.Equal(t, 4, m.commentPromptHeight()) // 3 lines (including empty) + 1 help line
+}
+
+// Test: paste normalizes line endings and removes problematic characters
+func TestComment_Paste_SanitizesText(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Unix line endings unchanged",
+			input:    "line1\nline2\nline3",
+			expected: "line1\nline2\nline3",
+		},
+		{
+			name:     "Windows CRLF converted to LF",
+			input:    "line1\r\nline2\r\nline3",
+			expected: "line1\nline2\nline3",
+		},
+		{
+			name:     "Old Mac CR converted to LF",
+			input:    "line1\rline2\rline3",
+			expected: "line1\nline2\nline3",
+		},
+		{
+			name:     "Mixed line endings normalized",
+			input:    "unix\nwindows\r\nmac\r",
+			expected: "unix\nwindows\nmac",
+		},
+		{
+			name:     "Zero-width space removed",
+			input:    "hello\u200Bworld",
+			expected: "helloworld",
+		},
+		{
+			name:     "BOM removed",
+			input:    "\uFEFFhello",
+			expected: "hello",
+		},
+		{
+			name:     "Direction marks preserved",
+			input:    "hello\u200Eworld\u200F",
+			expected: "hello\u200Eworld\u200F",
+		},
+		{
+			name:     "Control characters removed",
+			input:    "hello\x00\x01\x02world",
+			expected: "helloworld",
+		},
+		{
+			name:     "Tabs preserved",
+			input:    "hello\tworld",
+			expected: "hello\tworld",
+		},
+		{
+			name:     "Unicode line separator converted",
+			input:    "hello\u2028world",
+			expected: "hello\nworld",
+		},
+		{
+			name:     "Trailing newline stripped",
+			input:    "hello\n",
+			expected: "hello",
+		},
+		{
+			name:     "Trailing whitespace stripped",
+			input:    "hello  \t\n",
+			expected: "hello",
+		},
+		{
+			name:     "Internal newlines preserved",
+			input:    "hello\nworld\n",
+			expected: "hello\nworld",
+		},
+		{
+			name:     "Trailing NO-BREAK SPACE stripped",
+			input:    "hello\u00A0",
+			expected: "hello",
+		},
+		{
+			name:     "Trailing Unicode whitespace stripped",
+			input:    "hello\u2003\u2009", // EM SPACE + THIN SPACE
+			expected: "hello",
+		},
+		{
+			name:     "Internal NO-BREAK SPACE preserved",
+			input:    "hello\u00A0world",
+			expected: "hello\u00A0world",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizePastedText(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 // Test: cancelComment exits comment mode
 func TestComment_Cancel(t *testing.T) {
 	m := makeCommentableTestModel(5)
@@ -1671,6 +2040,15 @@ func TestComment_HandleInput_AllKeys(t *testing.T) {
 			cursor:     2,
 			wantInput:  "he",
 			wantCursor: 2,
+			wantMode:   true,
+		},
+		{
+			name:       "Ctrl+U kills to start",
+			key:        tea.KeyMsg{Type: tea.KeyCtrlU},
+			input:      "hello",
+			cursor:     3,
+			wantInput:  "lo",
+			wantCursor: 0,
 			wantMode:   true,
 		},
 		{

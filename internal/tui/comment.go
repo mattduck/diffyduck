@@ -2,12 +2,26 @@ package tui
 
 import (
 	"strings"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // handleCommentInput handles keypresses while in comment input mode.
 func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle bracketed paste (Cmd+V in terminal) - sanitize the entire pasted content
+	if msg.Paste && len(msg.Runes) > 0 {
+		text := sanitizePastedText(string(msg.Runes))
+		if text != "" {
+			before := m.commentInput[:m.commentCursor]
+			after := m.commentInput[m.commentCursor:]
+			m.commentInput = before + text + after
+			m.commentCursor += len(text)
+			m.clampScroll()
+		}
+		return m, nil
+	}
+
 	switch msg.Type {
 	case tea.KeyCtrlC, tea.KeyCtrlG:
 		// Cancel comment editing
@@ -22,6 +36,8 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter:
 		// Enter inserts newline
 		m.insertCommentRune('\n')
+		// Clamp scroll since contentHeight changed
+		m.clampScroll()
 		return m, nil
 
 	case tea.KeyBackspace:
@@ -65,6 +81,26 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlK:
 		// Kill to end of line
 		m.commentKillToEnd()
+		return m, nil
+
+	case tea.KeyCtrlU:
+		// Kill to beginning of line
+		m.commentKillToStart()
+		return m, nil
+
+	case tea.KeyCtrlV:
+		// Paste from clipboard (explicit Ctrl+V) - read and sanitize
+		text, err := readFromClipboard()
+		if err != nil || text == "" {
+			return m, nil
+		}
+		text = sanitizePastedText(text)
+		// Insert at cursor position
+		before := m.commentInput[:m.commentCursor]
+		after := m.commentInput[m.commentCursor:]
+		m.commentInput = before + text + after
+		m.commentCursor += len(text)
+		m.clampScroll()
 		return m, nil
 
 	case tea.KeySpace:
@@ -260,6 +296,74 @@ func (m *Model) commentKillToEnd() {
 		// Kill to newline (keep the newline)
 		m.commentInput = m.commentInput[:m.commentCursor] + after[nextNewline:]
 	}
+}
+
+// commentKillToStart deletes from cursor to beginning of line.
+func (m *Model) commentKillToStart() {
+	before := m.commentInput[:m.commentCursor]
+	after := m.commentInput[m.commentCursor:]
+
+	lastNewline := strings.LastIndex(before, "\n")
+	if lastNewline == -1 {
+		// On first line, kill from beginning
+		m.commentInput = after
+		m.commentCursor = 0
+	} else {
+		// Kill from after the newline to cursor
+		m.commentInput = before[:lastNewline+1] + after
+		m.commentCursor = lastNewline + 1
+	}
+}
+
+// sanitizePastedText normalizes line endings and removes problematic characters.
+func sanitizePastedText(text string) string {
+	// First pass: normalize all line ending variants to \n
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	text = strings.ReplaceAll(text, "\u2028", "\n") // Unicode Line Separator
+	text = strings.ReplaceAll(text, "\u2029", "\n") // Unicode Paragraph Separator
+	text = strings.ReplaceAll(text, "\x85", "\n")   // NEL (Next Line)
+
+	// Second pass: filter out problematic characters
+	var result strings.Builder
+	result.Grow(len(text))
+	for _, r := range text {
+		// Skip ASCII control characters except \n and \t
+		if r < 32 && r != '\n' && r != '\t' {
+			continue
+		}
+		// Skip DEL
+		if r == 127 {
+			continue
+		}
+		// Skip zero-width and invisible Unicode characters
+		if isProblematicUnicode(r) {
+			continue
+		}
+		result.WriteRune(r)
+	}
+
+	// Strip trailing whitespace/newlines that can cause empty line issues
+	// Use unicode.IsSpace to catch all Unicode whitespace variants (e.g., NO-BREAK SPACE U+00A0)
+	return strings.TrimRightFunc(result.String(), unicode.IsSpace)
+}
+
+// isProblematicUnicode returns true for Unicode characters that can cause display issues.
+func isProblematicUnicode(r rune) bool {
+	switch {
+	// Zero-width characters (invisible, can confuse cursor/width)
+	case r == '\u200B': // Zero Width Space
+		return true
+	case r == '\u200C': // Zero Width Non-Joiner
+		return true
+	case r == '\u200D': // Zero Width Joiner
+		return true
+	case r == '\uFEFF': // Zero Width No-Break Space (BOM)
+		return true
+	case r == '\u2060': // Word Joiner
+		return true
+	}
+	return false
 }
 
 // commentMoveUp moves the cursor up one line, preserving column position.
