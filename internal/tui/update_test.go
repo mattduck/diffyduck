@@ -1441,3 +1441,95 @@ func TestFileContentLoaded_PreservesScroll_WhenFileExpanded(t *testing.T) {
 	assert.Equal(t, initialIdentity.kind, newIdentity.kind,
 		"cursor should be on same kind of row after content load")
 }
+
+// makeHunkedTestModel creates a file with 3 hunks at specific source line numbers:
+// - Hunk 1: lines 10-15 (6 lines)
+// - Hunk 2: lines 25-30 (6 lines) - 10 lines gap from hunk 1, within threshold
+// - Hunk 3: lines 100-105 (6 lines) - 70 lines gap from hunk 2, outside threshold
+func makeHunkedTestModel() Model {
+	// Build pairs with gaps to create hunks
+	var pairs []sidebyside.LinePair
+
+	// Hunk 1: lines 10-15
+	for i := 10; i <= 15; i++ {
+		pairs = append(pairs, sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i, Content: "hunk1", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: i, Content: "hunk1", Type: sidebyside.Context},
+		})
+	}
+
+	// Hunk 2: lines 25-30 (10 lines gap = within 15 line threshold)
+	for i := 25; i <= 30; i++ {
+		pairs = append(pairs, sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i, Content: "hunk2", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: i, Content: "hunk2", Type: sidebyside.Context},
+		})
+	}
+
+	// Hunk 3: lines 100-105 (70 lines gap = outside 15 line threshold)
+	for i := 100; i <= 105; i++ {
+		pairs = append(pairs, sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i, Content: "hunk3", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: i, Content: "hunk3", Type: sidebyside.Context},
+		})
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+	})
+	m.width = 100
+	m.height = 40
+	m.focusColour = true
+	return m
+}
+
+func TestFocusProximity_NearbyHunksIncluded(t *testing.T) {
+	m := makeHunkedTestModel()
+	m.rebuildRowsCache()
+
+	rows := m.cachedRows
+
+	// Find a content row in hunk 1 (lines 10-15)
+	var hunk1ContentIdx int
+	for i, row := range rows {
+		if row.kind == RowKindContent && row.pair.New.Num >= 10 && row.pair.New.Num <= 15 {
+			hunk1ContentIdx = i
+			break
+		}
+	}
+	require.NotZero(t, hunk1ContentIdx, "should find hunk 1 content")
+
+	// Position cursor on hunk 1
+	m.scroll = hunk1ContentIdx - m.cursorOffset()
+	m.clampScroll()
+
+	predicate := m.getFocusPredicate()
+	require.NotNil(t, predicate, "focus predicate should be active when on content")
+
+	// Count which hunks are in focus
+	var hunk1InFocus, hunk2InFocus, hunk3InFocus bool
+	for i, row := range rows {
+		if row.kind != RowKindContent {
+			continue
+		}
+		inFocus := predicate(i, row)
+		lineNum := row.pair.New.Num
+		if lineNum >= 10 && lineNum <= 15 {
+			if inFocus {
+				hunk1InFocus = true
+			}
+		} else if lineNum >= 25 && lineNum <= 30 {
+			if inFocus {
+				hunk2InFocus = true
+			}
+		} else if lineNum >= 100 && lineNum <= 105 {
+			if inFocus {
+				hunk3InFocus = true
+			}
+		}
+	}
+
+	assert.True(t, hunk1InFocus, "hunk 1 (cursor hunk) should be in focus")
+	assert.True(t, hunk2InFocus, "hunk 2 (10 lines away, within threshold) should be in focus")
+	assert.False(t, hunk3InFocus, "hunk 3 (70 lines away, outside threshold) should NOT be in focus")
+}

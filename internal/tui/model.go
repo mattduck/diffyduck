@@ -113,6 +113,9 @@ type Model struct {
 	// Focus state - true when terminal has focus
 	focused bool
 
+	// Focus colour mode - dims content outside current hunk to reduce visual clutter
+	focusColour bool
+
 	// Comment state
 	commentMode   bool                  // true when editing a comment
 	commentInput  string                // text being edited
@@ -235,6 +238,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		spinner:             s,
 		loadingFiles:        make(map[int]time.Time),
 		focused:             true,
+		focusColour:         true,
 		comments:            make(map[commentKey]string),
 	}
 
@@ -892,4 +896,355 @@ func (m Model) hasCommitInfo() bool {
 		}
 	}
 	return false
+}
+
+// getFocusPredicate returns a predicate function that determines if a row should be in focus.
+// Returns nil if focus mode shouldn't apply (focusColour disabled or cursor not on focusable row).
+// When non-nil, rows where the predicate returns false will be dimmed.
+func (m Model) getFocusPredicate() func(rowIdx int, row displayRow) bool {
+	if !m.focusColour {
+		return nil
+	}
+
+	rows := m.cachedRows
+	if !m.rowsCacheValid || len(rows) == 0 {
+		return nil
+	}
+
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return nil
+	}
+
+	cursorRow := rows[cursorPos]
+
+	switch cursorRow.kind {
+	case RowKindContent, RowKindSeparatorTop, RowKindSeparator, RowKindSeparatorBottom:
+		// Focus on current hunk + file header + all hunk separators for navigation
+		start, end, fileIdx := m.getHunkBounds(cursorPos, cursorRow.fileIndex)
+		return func(rowIdx int, row displayRow) bool {
+			// Only consider rows in the current file
+			if row.fileIndex != fileIdx {
+				return false
+			}
+
+			switch row.kind {
+			// File header rows stay in focus
+			case RowKindHeader, RowKindHeaderSpacer, RowKindHeaderTopBorder:
+				return true
+			// Structural diff rows (under file header) stay in focus
+			case RowKindStructuralDiff:
+				return true
+			// All hunk separators in the file stay in focus for navigation
+			case RowKindSeparatorTop, RowKindSeparator, RowKindSeparatorBottom:
+				return true
+			}
+
+			// Current hunk content
+			return rowIdx >= start && rowIdx < end
+		}
+
+	default:
+		// No focus mode for other row types (yet)
+		return nil
+	}
+}
+
+// focusProximityThreshold is the number of lines within which nearby hunks
+// are also included in the focus area.
+const focusProximityThreshold = 15
+
+// getHunkBounds returns the range of row indices for the current hunk.
+// Returns (start, end, fileIdx) where start is inclusive and end is exclusive.
+// The range includes the hunk's content and its preceding separator rows.
+// Special case: SeparatorTop is treated as the bottom border of the hunk ABOVE.
+// Also expands to include nearby hunks within focusProximityThreshold lines.
+func (m Model) getHunkBounds(cursorPos, fileIdx int) (int, int, int) {
+	rows := m.cachedRows
+	cursorKind := rows[cursorPos].kind
+
+	var start, end int
+
+	// Special case: SeparatorTop belongs to the hunk above, not below.
+	// It acts as the bottom border of the previous hunk.
+	if cursorKind == RowKindSeparatorTop {
+		// Scan backward through content to find the start of the hunk above
+		start = cursorPos
+		for start > 0 {
+			prevRow := rows[start-1]
+			if prevRow.fileIndex != fileIdx {
+				break
+			}
+			if prevRow.kind == RowKindHeader || prevRow.kind == RowKindHeaderSpacer || prevRow.kind == RowKindHeaderTopBorder {
+				break
+			}
+			if prevRow.kind == RowKindContent {
+				start--
+				continue
+			}
+			// Stop at the previous separator block
+			if prevRow.kind == RowKindSeparatorTop {
+				start-- // include the previous SeparatorTop
+				break
+			}
+			if prevRow.kind == RowKindSeparator || prevRow.kind == RowKindSeparatorBottom {
+				// Skip past the separator block to find its SeparatorTop
+				start--
+				continue
+			}
+			break
+		}
+		// End is just after the SeparatorTop we're on
+		end = cursorPos + 1
+	} else {
+		// Normal case: scan backward to find the start of the current hunk.
+		// The hunk includes Separator and SeparatorBottom above it, but NOT SeparatorTop
+		// (since SeparatorTop belongs to the hunk above).
+		start = cursorPos
+		for start > 0 {
+			prevRow := rows[start-1]
+			// Stop if we hit a different file
+			if prevRow.fileIndex != fileIdx {
+				break
+			}
+			// Stop if we hit a header row (we're at the first hunk)
+			if prevRow.kind == RowKindHeader || prevRow.kind == RowKindHeaderSpacer || prevRow.kind == RowKindHeaderTopBorder {
+				break
+			}
+			// Include content rows
+			if prevRow.kind == RowKindContent {
+				start--
+				continue
+			}
+			// Include Separator and SeparatorBottom (they belong to this hunk)
+			if prevRow.kind == RowKindSeparatorBottom || prevRow.kind == RowKindSeparator {
+				start--
+				continue
+			}
+			// Stop at SeparatorTop (it belongs to the hunk above)
+			if prevRow.kind == RowKindSeparatorTop {
+				break
+			}
+			break
+		}
+
+		// Scan forward to find the end of the current hunk.
+		// If cursor is on Separator or SeparatorBottom, skip past them to reach content.
+		// The hunk ends when we hit SeparatorTop (which belongs to the next hunk's above).
+		end = cursorPos + 1
+		inSeparatorBlock := cursorKind == RowKindSeparator || cursorKind == RowKindSeparatorBottom
+
+		for end < len(rows) {
+			nextRow := rows[end]
+			// Stop if we hit a different file
+			if nextRow.fileIndex != fileIdx {
+				break
+			}
+			// Stop if we hit blank rows (inter-file spacing)
+			if nextRow.kind == RowKindBlank {
+				break
+			}
+			// SeparatorTop belongs to the hunk above, so stop here
+			if nextRow.kind == RowKindSeparatorTop {
+				break
+			}
+			// Handle Separator and SeparatorBottom
+			if nextRow.kind == RowKindSeparator || nextRow.kind == RowKindSeparatorBottom {
+				if inSeparatorBlock {
+					// Still in the initial separator block, keep going
+					end++
+					continue
+				}
+				// Hit a new separator block, include Separator and SeparatorBottom
+				// (they're the bottom border of current hunk)
+				end++
+				continue
+			}
+			// Content row - we've exited any initial separator block
+			if nextRow.kind == RowKindContent {
+				inSeparatorBlock = false
+				end++
+			} else {
+				break
+			}
+		}
+	}
+
+	// Expand to include nearby hunks within the proximity threshold
+	start, end = m.expandToNearbyHunks(start, end, fileIdx)
+
+	return start, end, fileIdx
+}
+
+// expandToNearbyHunks expands the focus bounds to include hunks within
+// focusProximityThreshold SOURCE lines of the current bounds.
+// Uses actual line numbers from the code, not display row indices.
+func (m Model) expandToNearbyHunks(start, end, fileIdx int) (int, int) {
+	rows := m.cachedRows
+
+	// Get the source line range of current focus area
+	minLine, maxLine := m.getSourceLineRange(start, end)
+	if minLine == 0 && maxLine == 0 {
+		return start, end
+	}
+
+	// Keep expanding until no more nearby hunks are found
+	for {
+		expanded := false
+
+		// Check for hunk above within threshold (by source line numbers)
+		if start > 0 {
+			// Find the last content row of the hunk above
+			scanPos := start - 1
+			// Skip past separator rows
+			for scanPos >= 0 && rows[scanPos].fileIndex == fileIdx {
+				row := rows[scanPos]
+				if row.kind == RowKindSeparatorTop || row.kind == RowKindSeparator || row.kind == RowKindSeparatorBottom {
+					scanPos--
+				} else {
+					break
+				}
+			}
+			// Check if there's content above
+			if scanPos >= 0 && rows[scanPos].fileIndex == fileIdx && rows[scanPos].kind == RowKindContent {
+				// Get the max line number of the hunk above
+				hunkAboveEnd := m.findHunkEnd(scanPos, fileIdx)
+				_, hunkAboveMaxLine := m.getSourceLineRange(scanPos, hunkAboveEnd)
+				// Check if it's within threshold of our min line
+				if hunkAboveMaxLine > 0 && minLine-hunkAboveMaxLine <= focusProximityThreshold {
+					newStart := m.findHunkStart(scanPos, fileIdx)
+					if newStart < start {
+						start = newStart
+						// Update minLine for next iteration
+						newMinLine, _ := m.getSourceLineRange(start, end)
+						if newMinLine > 0 {
+							minLine = newMinLine
+						}
+						expanded = true
+					}
+				}
+			}
+		}
+
+		// Check for hunk below within threshold (by source line numbers)
+		if end < len(rows) {
+			// Find the first content row of the hunk below
+			scanPos := end
+			// Skip past separator rows
+			for scanPos < len(rows) && rows[scanPos].fileIndex == fileIdx {
+				row := rows[scanPos]
+				if row.kind == RowKindSeparatorTop || row.kind == RowKindSeparator || row.kind == RowKindSeparatorBottom {
+					scanPos++
+				} else {
+					break
+				}
+			}
+			// Check if there's content below
+			if scanPos < len(rows) && rows[scanPos].fileIndex == fileIdx && rows[scanPos].kind == RowKindContent {
+				// Get the min line number of the hunk below
+				hunkBelowStart := m.findHunkStart(scanPos, fileIdx)
+				hunkBelowMinLine, _ := m.getSourceLineRange(hunkBelowStart, scanPos+1)
+				// Check if it's within threshold of our max line
+				if hunkBelowMinLine > 0 && hunkBelowMinLine-maxLine <= focusProximityThreshold {
+					newEnd := m.findHunkEnd(scanPos, fileIdx)
+					if newEnd > end {
+						end = newEnd
+						// Update maxLine for next iteration
+						_, newMaxLine := m.getSourceLineRange(start, end)
+						if newMaxLine > 0 {
+							maxLine = newMaxLine
+						}
+						expanded = true
+					}
+				}
+			}
+		}
+
+		if !expanded {
+			break
+		}
+	}
+
+	return start, end
+}
+
+// getSourceLineRange returns the min and max source line numbers in the given row range.
+// Uses the New side line numbers (left side in the UI).
+func (m Model) getSourceLineRange(start, end int) (minLine, maxLine int) {
+	rows := m.cachedRows
+	for i := start; i < end && i < len(rows); i++ {
+		row := rows[i]
+		if row.kind == RowKindContent {
+			if row.pair.New.Num > 0 {
+				if minLine == 0 || row.pair.New.Num < minLine {
+					minLine = row.pair.New.Num
+				}
+				if row.pair.New.Num > maxLine {
+					maxLine = row.pair.New.Num
+				}
+			}
+			// Also check Old side for deleted-only lines
+			if row.pair.Old.Num > 0 {
+				if minLine == 0 || row.pair.Old.Num < minLine {
+					minLine = row.pair.Old.Num
+				}
+				if row.pair.Old.Num > maxLine {
+					maxLine = row.pair.Old.Num
+				}
+			}
+		}
+	}
+	return minLine, maxLine
+}
+
+// findHunkStart finds the start of the hunk containing the given position.
+func (m Model) findHunkStart(pos, fileIdx int) int {
+	rows := m.cachedRows
+	start := pos
+	for start > 0 {
+		prevRow := rows[start-1]
+		if prevRow.fileIndex != fileIdx {
+			break
+		}
+		if prevRow.kind == RowKindHeader || prevRow.kind == RowKindHeaderSpacer || prevRow.kind == RowKindHeaderTopBorder {
+			break
+		}
+		if prevRow.kind == RowKindContent {
+			start--
+			continue
+		}
+		if prevRow.kind == RowKindSeparatorBottom || prevRow.kind == RowKindSeparator {
+			start--
+			continue
+		}
+		if prevRow.kind == RowKindSeparatorTop {
+			break
+		}
+		break
+	}
+	return start
+}
+
+// findHunkEnd finds the end of the hunk containing the given position.
+func (m Model) findHunkEnd(pos, fileIdx int) int {
+	rows := m.cachedRows
+	end := pos + 1
+	for end < len(rows) {
+		nextRow := rows[end]
+		if nextRow.fileIndex != fileIdx {
+			break
+		}
+		if nextRow.kind == RowKindBlank {
+			break
+		}
+		if nextRow.kind == RowKindSeparatorTop {
+			break
+		}
+		if nextRow.kind == RowKindContent {
+			end++
+		} else {
+			break
+		}
+	}
+	return end
 }

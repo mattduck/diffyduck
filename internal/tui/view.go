@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/highlight"
@@ -1063,6 +1064,9 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	// The cursor position on screen - moves up when near top of content
 	cursorViewportRow := m.cursorViewportRow()
 
+	// Get focus predicate for dimming out-of-focus content
+	focusPredicate := m.getFocusPredicate()
+
 	// Content starts at line 0 when near the top, then scrolls up
 	start := m.contentStartLine()
 	end := start + contentHeight
@@ -1105,43 +1109,52 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		row := rows[i]
 		isCursorRow := len(visible) == cursorViewportRow
 
+		var rendered string
 		if row.isCommitHeader {
-			visible = append(visible, m.renderCommitHeaderRow(row, isCursorRow))
+			rendered = m.renderCommitHeaderRow(row, isCursorRow)
 		} else if row.isCommitHeaderTopBorder {
-			visible = append(visible, m.renderCommitHeaderTopBorder(row, isCursorRow))
+			rendered = m.renderCommitHeaderTopBorder(row, isCursorRow)
 		} else if row.isCommitHeaderBottomBorder {
-			visible = append(visible, m.renderCommitHeaderBottomBorder(row, isCursorRow))
+			rendered = m.renderCommitHeaderBottomBorder(row, isCursorRow)
 		} else if row.isCommitBody {
-			visible = append(visible, m.renderCommitBodyRow(row, isCursorRow))
+			rendered = m.renderCommitBodyRow(row, isCursorRow)
 		} else if row.isStructuralDiff {
-			visible = append(visible, m.renderStructuralDiffRow(row, isCursorRow))
+			rendered = m.renderStructuralDiffRow(row, isCursorRow)
 		} else if row.isHeaderTopBorder {
-			visible = append(visible, m.renderHeaderTopBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow))
+			rendered = m.renderHeaderTopBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow)
 		} else if row.isHeaderSpacer {
-			visible = append(visible, m.renderHeaderBottomBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow))
+			rendered = m.renderHeaderBottomBorder(row.headerBoxWidth, row.borderVisible, row.status, isCursorRow)
 		} else if row.isBlank {
 			if isCursorRow {
-				visible = append(visible, m.renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth))
+				rendered = m.renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth)
 			} else {
-				visible = append(visible, m.renderInterFileBlank())
+				rendered = m.renderInterFileBlank()
 			}
 		} else if row.isHeader {
-			visible = append(visible, m.renderHeader(row.header, row.foldLevel, row.borderVisible, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow))
+			rendered = m.renderHeader(row.header, row.foldLevel, row.borderVisible, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow)
 		} else if row.isSeparatorTop {
-			visible = append(visible, m.renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth, isCursorRow))
+			rendered = m.renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth, isCursorRow)
 		} else if row.isSeparator {
-			visible = append(visible, m.renderHunkSeparator(row, leftHalfWidth, rightHalfWidth, isCursorRow))
+			rendered = m.renderHunkSeparator(row, leftHalfWidth, rightHalfWidth, isCursorRow)
 		} else if row.isSeparatorBottom {
-			visible = append(visible, m.renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth, isCursorRow)) // same as top
+			rendered = m.renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth, isCursorRow) // same as top
 		} else if row.isTruncationIndicator {
-			visible = append(visible, m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew))
+			rendered = m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew)
 		} else if row.isBinaryIndicator {
-			visible = append(visible, m.renderBinaryIndicator(row.binaryMessage, isCursorRow, row.binaryOld, row.binaryNew))
+			rendered = m.renderBinaryIndicator(row.binaryMessage, isCursorRow, row.binaryOld, row.binaryNew)
 		} else if row.kind == RowKindComment {
-			visible = append(visible, m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow))
+			rendered = m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow)
 		} else {
-			visible = append(visible, m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter))
+			rendered = m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter)
 		}
+
+		// Apply focus colour dimming to rows outside the focus area
+		// Strip all ANSI codes and render as dim text for a clean muted appearance
+		if focusPredicate != nil && !focusPredicate(i, row) {
+			rendered = "\x1b[2m" + ansi.Strip(rendered) + "\x1b[22m"
+		}
+
+		visible = append(visible, rendered)
 	}
 
 	return visible
