@@ -172,6 +172,7 @@ type displayRow struct {
 	maxCommitFilesWidth int                        // max width for file count column across all commits
 	maxCommitAddWidth   int                        // max width for additions column across all commits
 	maxCommitRemWidth   int                        // max width for removals column across all commits
+	maxCommitTimeWidth  int                        // max width for relative time column across all commits
 	// Commit body fields (shown when commit is expanded)
 	isCommitBody      bool   // true if this is a commit body row
 	commitBodyLine    string // the text content for this body line
@@ -296,6 +297,7 @@ func (m Model) buildRows() []displayRow {
 	maxCommitFilesWidth := 0
 	maxCommitAddWidth := 0
 	maxCommitRemWidth := 0
+	maxCommitTimeWidth := 0
 	for commitIdx := range m.commits {
 		// Get file range for this commit
 		startIdx := m.commitFileStarts[commitIdx]
@@ -325,6 +327,10 @@ func (m Model) buildRows() []displayRow {
 		if rw > maxCommitRemWidth {
 			maxCommitRemWidth = rw
 		}
+		tw := len(formatShortRelativeDate(m.commits[commitIdx].Info.Date))
+		if tw > maxCommitTimeWidth {
+			maxCommitTimeWidth = tw
+		}
 	}
 
 	// Build rows for each commit
@@ -340,6 +346,7 @@ func (m Model) buildRows() []displayRow {
 				maxCommitFilesWidth: maxCommitFilesWidth,
 				maxCommitAddWidth:   maxCommitAddWidth,
 				maxCommitRemWidth:   maxCommitRemWidth,
+				maxCommitTimeWidth:  maxCommitTimeWidth,
 			})
 
 			// If commit is folded, skip its files
@@ -1358,6 +1365,9 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	if len(removedText) < row.maxCommitRemWidth {
 		removedText += strings.Repeat(" ", row.maxCommitRemWidth-len(removedText))
 	}
+	if len(timeText) < row.maxCommitTimeWidth {
+		timeText += strings.Repeat(" ", row.maxCommitTimeWidth-len(timeText))
+	}
 
 	// Author: max 15 chars, truncate with "..." if longer
 	author := commitInfo.Author
@@ -1368,7 +1378,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	// Calculate fixed width using raw text lengths (not styled)
 	// prefix(2) + fold(1) + space(1) + sha(7) + space(1) + files + space(1) + added + space(1) + removed + space(1) + time + space(1) + author
-	fixedWidth := 2 + 1 + 1 + len(shaText) + 1 + row.maxCommitFilesWidth + 1 + row.maxCommitAddWidth + 1 + row.maxCommitRemWidth + 1 + len(timeText) + 1 + len(author)
+	fixedWidth := 2 + 1 + 1 + len(shaText) + 1 + row.maxCommitFilesWidth + 1 + row.maxCommitAddWidth + 1 + row.maxCommitRemWidth + 1 + row.maxCommitTimeWidth + 1 + len(author)
 
 	// Build the fixed part with styling
 	fixedPart := prefix +
