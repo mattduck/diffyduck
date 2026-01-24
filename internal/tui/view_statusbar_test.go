@@ -1100,6 +1100,119 @@ func TestCommitBodyRows_NotShownWhenFolded(t *testing.T) {
 	}
 }
 
+func TestCommitBodyRows_BlankLineBetweenSubjectAndBody(t *testing.T) {
+	// Test that there's a blank line between the subject and body (traditional git log format)
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890fedcba9876543210",
+			Author:  "Test Author",
+			Email:   "test@example.com",
+			Date:    "Mon Jan 15 10:30:00 2024 -0500",
+			Subject: "Add new feature",
+			Body:    "This is the first line of the body.\nThis is the second line.",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 100
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find body rows and check for blank line between subject and body
+	var bodyRows []displayRow
+	for _, row := range rows {
+		if row.isCommitBody {
+			bodyRows = append(bodyRows, row)
+		}
+	}
+
+	// Find the subject row index
+	subjectIdx := -1
+	for i, row := range bodyRows {
+		if strings.Contains(row.commitBodyLine, "Add new feature") {
+			subjectIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, subjectIdx, "should find subject row")
+
+	// The row after the subject should be a blank line
+	require.Greater(t, len(bodyRows), subjectIdx+1, "should have rows after subject")
+	blankRow := bodyRows[subjectIdx+1]
+	assert.True(t, blankRow.commitBodyIsBlank, "row after subject should be blank")
+	assert.Empty(t, blankRow.commitBodyLine, "blank row should have empty content")
+
+	// The row after the blank should be the first body line
+	require.Greater(t, len(bodyRows), subjectIdx+2, "should have body rows after blank line")
+	firstBodyRow := bodyRows[subjectIdx+2]
+	assert.Contains(t, firstBodyRow.commitBodyLine, "first line of the body", "should have body content after blank line")
+}
+
+func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
+	// Test that there's a blank separator row between commits that belongs to the first commit
+	// This ensures proper visual separation and cursor association
+	files1 := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldFolded},
+	}
+	files2 := []sidebyside.FilePair{
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldFolded},
+	}
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "abc123",
+				Author:  "Author One",
+				Subject: "First commit",
+			},
+			Files:       files1,
+			FoldLevel:   sidebyside.CommitNormal, // Level 2 - file headers shown
+			FilesLoaded: true,
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "def456",
+				Author:  "Author Two",
+				Subject: "Second commit",
+			},
+			Files:       files2,
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+		},
+	}
+	m := NewWithCommits(commits)
+	m.width = 100
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find the second commit header row
+	secondCommitHeaderIdx := -1
+	for i, row := range rows {
+		if row.isCommitHeader && row.commitIndex == 1 {
+			secondCommitHeaderIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, secondCommitHeaderIdx, "should find second commit header")
+	require.Greater(t, secondCommitHeaderIdx, 1, "second commit header should not be at start")
+
+	// The row before the second commit header should be a blank separator
+	separatorRow := rows[secondCommitHeaderIdx-1]
+	assert.True(t, separatorRow.isCommitBody, "separator should be a commit body row")
+	assert.True(t, separatorRow.commitBodyIsBlank, "separator should be blank")
+	assert.Equal(t, 0, separatorRow.commitIndex, "separator should belong to first commit (index 0)")
+}
+
 func TestIsOnCommitHeader(t *testing.T) {
 	// Create model with commit info
 	files := []sidebyside.FilePair{

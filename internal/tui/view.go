@@ -322,6 +322,19 @@ func (m Model) buildRows() []displayRow {
 			fp := m.files[fileIdx]
 			rows = m.buildFileRows(rows, fileIdx, fp, startIdx, endIdx, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth)
 		}
+
+		// Add separator row between commits (blank line after last file, before next commit)
+		// This row belongs to the current commit from the cursor's perspective
+		if commit.Info.HasMetadata() && commitIdx+1 < len(m.commits) && m.commits[commitIdx+1].Info.HasMetadata() {
+			rows = append(rows, displayRow{
+				kind:              RowKindCommitBody,
+				fileIndex:         -1,
+				isCommitBody:      true,
+				commitBodyLine:    "",
+				commitBodyIsBlank: true,
+				commitIndex:       commitIdx,
+			})
+		}
 	}
 
 	// Add truncation indicator if files were omitted
@@ -1409,6 +1422,14 @@ func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet) []displayRow {
 
 	// Body lines (rest of message, indented)
 	if info.Body != "" {
+		// Blank line between subject and body (traditional git log format)
+		rows = append(rows, displayRow{
+			kind:              RowKindCommitBody,
+			fileIndex:         -1,
+			isCommitBody:      true,
+			commitBodyLine:    "",
+			commitBodyIsBlank: true,
+		})
 		bodyLines := strings.Split(info.Body, "\n")
 		for _, line := range bodyLines {
 			// Skip empty lines at the start of body
