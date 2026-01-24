@@ -298,6 +298,138 @@ func TestUpdate_PrevHeading_gk_FromMiddleOfFile(t *testing.T) {
 	assert.Equal(t, 1, info.CurrentFile, "gk from header should go to previous file")
 }
 
+func makeMultiCommitTestModel() Model {
+	// Create 2 commits with 2 files each
+	makePairs := func(n int) []sidebyside.LinePair {
+		pairs := make([]sidebyside.LinePair, n)
+		for i := range pairs {
+			pairs[i] = sidebyside.LinePair{
+				Old: sidebyside.Line{Num: i + 1, Content: "content"},
+				New: sidebyside.Line{Num: i + 1, Content: "content"},
+			}
+		}
+		return pairs
+	}
+
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "abc123",
+				Author:  "Author",
+				Subject: "First commit",
+			},
+			FoldLevel:   sidebyside.CommitNormal, // Expanded to show files
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/file1.go", NewPath: "b/file1.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldNormal},
+				{OldPath: "a/file2.go", NewPath: "b/file2.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldNormal},
+			},
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "def456",
+				Author:  "Author",
+				Subject: "Second commit",
+			},
+			FoldLevel:   sidebyside.CommitNormal, // Expanded to show files
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/file3.go", NewPath: "b/file3.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldNormal},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 80
+	m.height = 60 // tall enough to see all content
+	m.initialFoldSet = true
+	m.calculateTotalLines()
+	return m
+}
+
+func TestUpdate_NextHeading_gj_MultiCommit(t *testing.T) {
+	m := makeMultiCommitTestModel()
+
+	// Go to top
+	m = sendKeys(m, "g", "g")
+
+	// Should start at commit 0 header
+	rows := m.buildRows()
+	cursorPos := m.cursorLine()
+	require.True(t, rows[cursorPos].isCommitHeader, "should start on commit header")
+	assert.Equal(t, 0, rows[cursorPos].commitIndex, "should be on commit 0")
+
+	// gj should go to first file header
+	m = sendKeys(m, "g", "j")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isHeader, "gj from commit header should go to file header")
+	assert.Equal(t, 0, rows[cursorPos].fileIndex, "should be on file 0")
+
+	// gj should go to second file header
+	m = sendKeys(m, "g", "j")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isHeader, "gj should go to next file header")
+	assert.Equal(t, 1, rows[cursorPos].fileIndex, "should be on file 1")
+
+	// gj from last file of commit 0 should go to commit 1 header
+	m = sendKeys(m, "g", "j")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isCommitHeader, "gj from last file should go to next commit header")
+	assert.Equal(t, 1, rows[cursorPos].commitIndex, "should be on commit 1")
+
+	// gj should go to commit 1's first file
+	m = sendKeys(m, "g", "j")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isHeader, "gj should go to commit 1's file header")
+	assert.Equal(t, 2, rows[cursorPos].fileIndex, "should be on file 2 (commit 1's first file)")
+}
+
+func TestUpdate_PrevHeading_gk_MultiCommit(t *testing.T) {
+	m := makeMultiCommitTestModel()
+
+	// Go to bottom (should be on commit 1's file content)
+	m = sendKeys(m, "G")
+
+	// gk should go to commit 1's file header
+	m = sendKeys(m, "g", "k")
+	rows := m.buildRows()
+	cursorPos := m.cursorLine()
+	require.True(t, rows[cursorPos].isHeader, "gk should go to file header")
+	assert.Equal(t, 2, rows[cursorPos].fileIndex, "should be on file 2")
+
+	// gk from file header should go to commit 1 header
+	m = sendKeys(m, "g", "k")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isCommitHeader, "gk should go to commit header")
+	assert.Equal(t, 1, rows[cursorPos].commitIndex, "should be on commit 1 header")
+
+	// gk should go to commit 0's last file header
+	m = sendKeys(m, "g", "k")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isHeader, "gk should go to previous file header")
+	assert.Equal(t, 1, rows[cursorPos].fileIndex, "should be on file 1 (commit 0's last file)")
+
+	// gk should go to commit 0's first file header
+	m = sendKeys(m, "g", "k")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isHeader, "gk should go to previous file header")
+	assert.Equal(t, 0, rows[cursorPos].fileIndex, "should be on file 0")
+
+	// gk should go to commit 0 header
+	m = sendKeys(m, "g", "k")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isCommitHeader, "gk should go to commit header")
+	assert.Equal(t, 0, rows[cursorPos].commitIndex, "should be on commit 0 header")
+}
+
 func TestUpdate_GoToBottom(t *testing.T) {
 	m := makeTestModel(100) // 100 pairs + 1 header = 101 lines
 	m.scroll = 0

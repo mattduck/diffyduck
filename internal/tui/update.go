@@ -669,11 +669,11 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scroll = m.minScroll()
 		m.resetSearchMatchForRow()
 	case "j":
-		// gj: next heading (file header)
+		// gj: next node (commit header or file header)
 		m.goToNextHeading()
 		m.resetSearchMatchForRow()
 	case "k":
-		// gk: previous heading (file header)
+		// gk: previous node (commit header or file header)
 		m.goToPrevHeading()
 		m.resetSearchMatchForRow()
 	}
@@ -682,47 +682,72 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// goToNextHeading moves the cursor to the next file header.
+// goToNextHeading moves the cursor to the next node (commit header or file header).
+// A node is either a commit or a file. From any position within a node, gj jumps
+// to the header of the next node in sequence.
 func (m *Model) goToNextHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
 
-	// Find the current file index
-	currentFileIdx := -1
-	if cursorPos >= 0 && cursorPos < len(rows) {
-		currentFileIdx = rows[cursorPos].fileIndex
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return
 	}
 
-	// Find the next file header after the current file
-	for i, row := range rows {
-		if row.isHeader && row.fileIndex > currentFileIdx {
-			m.adjustScrollToRow(i)
-			return
+	currentRow := rows[cursorPos]
+	currentFileIdx := currentRow.fileIndex
+	currentCommitIdx := currentRow.commitIndex
+	inCommitSection := currentRow.isCommitHeader || currentRow.isCommitBody
+
+	// Find the next header that belongs to a different node
+	for i := cursorPos + 1; i < len(rows); i++ {
+		row := rows[i]
+
+		if row.isCommitHeader {
+			// A commit header is always a different node (unless we're in that commit's header/body)
+			if !inCommitSection || row.commitIndex != currentCommitIdx {
+				m.adjustScrollToRow(i)
+				return
+			}
+		}
+
+		if row.isHeader {
+			// A file header is a different node if:
+			// - We're in a commit section (any file header is different from commit header)
+			// - Or the file has a different index
+			if inCommitSection || row.fileIndex != currentFileIdx {
+				m.adjustScrollToRow(i)
+				return
+			}
 		}
 	}
 }
 
-// goToPrevHeading moves the cursor to the current file's header if not already
-// on it, or to the previous file's header if already on the current header.
+// goToPrevHeading moves the cursor to the previous node (commit header or file header).
+// If not on a node header, jumps to the current node's header.
+// If already on a header, jumps to the previous node's header.
 func (m *Model) goToPrevHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
 
-	// Find the current file index and whether we're on header
-	currentFileIdx := 0
-	onHeader := false
-	if cursorPos >= 0 && cursorPos < len(rows) {
-		fi := rows[cursorPos].fileIndex
-		onHeader = rows[cursorPos].isHeader
-		if fi >= 0 {
-			currentFileIdx = fi
-		}
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return
 	}
 
-	// If not on header, jump to current file's header first
+	currentRow := rows[cursorPos]
+	onHeader := currentRow.isCommitHeader || currentRow.isHeader
+
 	if !onHeader {
-		for i, row := range rows {
-			if row.isHeader && row.fileIndex == currentFileIdx {
+		// Not on a header - find the current node's header (could be commit or file)
+		currentFileIdx := currentRow.fileIndex
+		inCommitSection := currentRow.isCommitBody
+
+		for i := cursorPos - 1; i >= 0; i-- {
+			row := rows[i]
+			if inCommitSection && row.isCommitHeader {
+				m.adjustScrollToRow(i)
+				return
+			}
+			if !inCommitSection && row.isHeader && row.fileIndex == currentFileIdx {
 				m.adjustScrollToRow(i)
 				return
 			}
@@ -730,17 +755,30 @@ func (m *Model) goToPrevHeading() {
 		return
 	}
 
-	// Already on header, find the header of the previous file
-	targetFileIdx := currentFileIdx - 1
-	if targetFileIdx < 0 {
-		// Already at first file's header, stay there
-		return
-	}
+	// Already on a header - find the previous different node's header
+	currentFileIdx := currentRow.fileIndex
+	currentCommitIdx := currentRow.commitIndex
+	isCommitHeader := currentRow.isCommitHeader
 
-	for i, row := range rows {
-		if row.isHeader && row.fileIndex == targetFileIdx {
-			m.adjustScrollToRow(i)
-			return
+	for i := cursorPos - 1; i >= 0; i-- {
+		row := rows[i]
+
+		if row.isCommitHeader {
+			// Found a commit header - it's a different node if different commit
+			if !isCommitHeader || row.commitIndex != currentCommitIdx {
+				m.adjustScrollToRow(i)
+				return
+			}
+		}
+
+		if row.isHeader {
+			// Found a file header - it's a different node if:
+			// - Current is a commit header (any file is different from commit)
+			// - Or different file index
+			if isCommitHeader || row.fileIndex != currentFileIdx {
+				m.adjustScrollToRow(i)
+				return
+			}
 		}
 	}
 }
