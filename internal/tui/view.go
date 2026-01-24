@@ -71,7 +71,18 @@ func (m Model) View() string {
 		return ""
 	}
 
-	contentH := m.contentHeight()
+	// Render top bar first to determine its actual height.
+	// Top bar height varies: 2 lines (commit + divider) when on commit section,
+	// 3 lines (commit + file + divider) when on a file.
+	topBar := m.renderTopBar()
+	topBarLines := strings.Count(topBar, "\n") + 1
+
+	// Calculate actual available content height based on rendered top bar
+	bottomBarLines := 1
+	contentH := m.height - topBarLines - bottomBarLines
+	if contentH < 1 {
+		contentH = 1
+	}
 
 	// Use cached rows if available, otherwise rebuild (cache should normally be valid)
 	rows := m.cachedRows
@@ -89,12 +100,7 @@ func (m Model) View() string {
 
 	// Build final output: top bar + content + bottom bar
 	var output []string
-
-	// Add top bar (file info)
-	topBar := m.renderTopBar()
 	output = append(output, topBar)
-
-	// Add content rows
 	output = append(output, visibleRows...)
 
 	// Add bottom bar (less-style indicator)
@@ -2129,9 +2135,13 @@ func (m Model) renderTopBar() string {
 		lines = append(lines, commitLine)
 	}
 
-	// File info line
-	fileLine := m.renderFileLine(info)
-	lines = append(lines, fileLine)
+	// File info line - show when:
+	// - No commit info (file line contains total stats)
+	// - OR cursor is on a file (info.CurrentFile > 0)
+	if !m.hasCommitInfo() || info.CurrentFile > 0 {
+		fileLine := m.renderFileLine(info)
+		lines = append(lines, fileLine)
+	}
 
 	// Divider line using upper 1/8 block (dim, faint when unfocused)
 	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))

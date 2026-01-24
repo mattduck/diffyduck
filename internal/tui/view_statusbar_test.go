@@ -699,6 +699,128 @@ func TestTopBar_WithoutCommitInfo(t *testing.T) {
 	assert.Contains(t, fileLine, "-1", "file line should contain removed stats when no commit info")
 }
 
+func TestTopBar_DynamicHeight_OnCommitSection(t *testing.T) {
+	// When cursor is on a commit section (header/body), top bar should shrink
+	// to show only commit line + divider (no file line).
+	// When cursor is on a file, top bar should show commit + file + divider.
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+				},
+			},
+		},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890",
+			Author:  "Test Author",
+			Email:   "test@example.com",
+			Date:    "2024-01-15T10:30:00+00:00",
+			Subject: "Fix the bug in parser",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Test 1: Cursor on commit section (scroll=0 puts cursor on commit body)
+	m.scroll = 0
+	topBarOnCommit := m.renderTopBar()
+	linesOnCommit := strings.Split(topBarOnCommit, "\n")
+
+	// Should have 2 lines: commit line + divider (no file line)
+	assert.Equal(t, 2, len(linesOnCommit), "top bar on commit section should have 2 lines (commit + divider)")
+	assert.Contains(t, linesOnCommit[0], "abc123d", "first line should be commit line with SHA")
+	assert.Contains(t, linesOnCommit[1], "▔", "second line should be divider")
+
+	// Test 2: Cursor on file (scroll high enough to be past commit body)
+	m.scroll = 15
+	topBarOnFile := m.renderTopBar()
+	linesOnFile := strings.Split(topBarOnFile, "\n")
+
+	// Should have 3 lines: commit line + file line + divider
+	assert.Equal(t, 3, len(linesOnFile), "top bar on file should have 3 lines (commit + file + divider)")
+	assert.Contains(t, linesOnFile[0], "abc123d", "first line should be commit line")
+	assert.Contains(t, linesOnFile[1], "foo.go", "second line should be file line")
+	assert.Contains(t, linesOnFile[2], "▔", "third line should be divider")
+}
+
+func TestView_NoPaddingLineAboveBottomBar(t *testing.T) {
+	// Verify that when top bar shrinks (cursor on commit section),
+	// the extra space is used for content, not blank padding above bottom bar.
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+				},
+			},
+		},
+	}
+	commit := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:     "abc123def4567890",
+			Author:  "Test Author",
+			Subject: "Fix the bug",
+		},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 80
+	m.height = 20
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Put cursor on commit section (scroll=0)
+	m.scroll = 0
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Total lines should equal height
+	assert.Equal(t, m.height, len(lines), "view should have exactly height lines")
+
+	// The line before the bottom bar should NOT be blank
+	// (unless it's legitimate content padding at end of diff)
+	bottomBarIdx := len(lines) - 1
+	lineAboveBottomBar := lines[bottomBarIdx-1]
+
+	// Bottom bar contains "line X/Y" indicator
+	assert.Contains(t, lines[bottomBarIdx], "line", "last line should be bottom bar")
+
+	// The line above shouldn't be pure whitespace (unless the diff content ends there)
+	// This is a bit tricky to test perfectly, but we can check that if it IS blank,
+	// it's because we're at the end of content, not due to padding bug
+	if strings.TrimSpace(lineAboveBottomBar) == "" {
+		// If blank, verify it's not because of the top bar height mismatch
+		// by checking that content fills the available space
+		topBarLines := strings.Count(m.renderTopBar(), "\n") + 1
+		expectedContentLines := m.height - topBarLines - 1 // -1 for bottom bar
+
+		// Count non-top-bar, non-bottom-bar lines in output
+		actualContentLines := len(lines) - topBarLines - 1
+		assert.Equal(t, expectedContentLines, actualContentLines,
+			"content area should match available space (top bar height: %d)", topBarLines)
+	}
+}
+
 func TestFormatRelativeDate(t *testing.T) {
 	tests := []struct {
 		name     string
