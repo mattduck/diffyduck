@@ -1795,8 +1795,9 @@ func (m Model) buildCommitBodyRowsSkipFirstBlank(commit *sidebyside.CommitSet, c
 // structuralDiffMaxContentWidth calculates the maximum content width needed for
 // structural diff lines for a file. This is used to expand the header box width
 // if structural diff entries are wider than the filename. Returns 0 if no
-// structural diff or no changes. The width is the content after the icon prefix
-// (i.e., space + kind + space + name, plus 2 more for child items).
+// structural diff or no changes. The width is the content after the icon prefix:
+// extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name = 5 + kind_len + name_len
+// For child items, add 2 more for child indent.
 func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 	fs := m.structureMaps[fileIdx]
 	if fs == nil || fs.StructuralDiff == nil {
@@ -1825,8 +1826,9 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 			continue
 		}
 		if entry.Kind == "type" || entry.Kind == "class" {
-			// Width for parent: space + kind + space + name
-			width := 1 + len(entry.Kind) + 1 + len(entry.Name)
+			// Width for parent: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name
+			// extraIndent = symbolPrefix (11+numDigits) - iconPartWidth (9+numDigits) = 2
+			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name)
 			if width > maxWidth {
 				maxWidth = width
 			}
@@ -1844,8 +1846,8 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 					typeStart, typeEnd := entry.StartLine, entry.EndLine
 					otherStart := otherEntry.StartLine
 					if otherStart >= typeStart && otherStart <= typeEnd {
-						// Width for child: space + 2 (child indent) + kind + space + name
-						childWidth := 1 + 2 + len(otherEntry.Kind) + 1 + len(otherEntry.Name)
+						// Width for child: extraIndent(2) + symbol(1) + space(1) + childIndent(2) + kind + space(1) + name
+						childWidth := 2 + 1 + 1 + 2 + len(otherEntry.Kind) + 1 + len(otherEntry.Name)
 						if childWidth > maxWidth {
 							maxWidth = childWidth
 						}
@@ -1864,8 +1866,8 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 			if entry == nil {
 				continue
 			}
-			// Width for top-level: space + kind + space + name
-			width := 1 + len(entry.Kind) + 1 + len(entry.Name)
+			// Width for top-level: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name
+			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name)
 			if width > maxWidth {
 				maxWidth = width
 			}
@@ -1898,9 +1900,9 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 
 	var rows []displayRow
 
-	// Calculate prefix to indent list under filename
-	// Header layout: indent(5) + icon(1) + space(1) + fileNum(1+numDigits) + space(1) = 9 + numDigits
-	// Add 2 more to start under filename: 11 + numDigits
+	// Calculate prefix to align symbol with filename start
+	// Header layout: prefix(5) + icon(1) + space(1) + fileNum(1+numDigits) + space(1) + status(1) + space(1) = 11 + numDigits
+	// This positions the symbol directly under the first character of the filename
 	totalFiles := len(m.files)
 	numDigits := len(fmt.Sprintf("%d", totalFiles))
 	symbolPrefix := strings.Repeat(" ", 11+numDigits)
@@ -2040,7 +2042,7 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 	headerBoxWidth := row.headerBoxWidth
 	borderVisible := row.borderVisible
 
-	// Calculate symbol position (indented under filename)
+	// Calculate symbol position (aligned with filename start)
 	totalFiles := len(m.files)
 	numDigits := len(fmt.Sprintf("%d", totalFiles))
 	symbolPos := 11 + numDigits
@@ -2089,10 +2091,13 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 	}
 
 	// Calculate padding to reach headerBoxWidth (based on original content width)
+	// Calculate padding to reach headerBoxWidth, plus 2 extra to align with header border
+	// (the header has a 2-space prefix before headerBoxWidth content)
 	originalWidth := len(content) // All ASCII so len() works
+	paddingNeeded := headerBoxWidth - originalWidth + 2
 	padding := ""
-	if headerBoxWidth > originalWidth {
-		padding = strings.Repeat(" ", headerBoxWidth-originalWidth)
+	if paddingNeeded > 0 {
+		padding = strings.Repeat(" ", paddingNeeded)
 	}
 
 	// Border style (darker when previous file is folded)

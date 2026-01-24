@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 var update = flag.Bool("update", false, "update golden files")
@@ -675,6 +677,164 @@ func TestView_MultiCommitLogView(t *testing.T) {
 	output := m.View()
 
 	goldenPath := filepath.Join("testdata", "multi_commit_log.golden")
+	if *update {
+		err := os.WriteFile(goldenPath, []byte(output), 0644)
+		require.NoError(t, err)
+		return
+	}
+
+	expected, err := os.ReadFile(goldenPath)
+	require.NoError(t, err, "Run with -update to create golden file")
+	assert.Equal(t, string(expected), output)
+}
+
+// TestView_StructuralDiffBorderAlignment tests that:
+// 1. The border (│) on structural diff rows aligns with the header border
+// 2. The structural diff symbol (+/-/~) aligns with the first character of the filename
+func TestView_StructuralDiffBorderAlignment(t *testing.T) {
+	// Create a file with structural diff data showing changed functions
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/example.go",
+				NewPath:   "b/example.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					},
+					{
+						Old: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
+					},
+					{
+						Old: sidebyside.Line{Num: 3, Content: "func Hello() {", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 3, Content: "func Hello() {", Type: sidebyside.Added},
+					},
+					{
+						Old: sidebyside.Line{Num: 4, Content: "    println(\"hi\")", Type: sidebyside.Removed},
+						New: sidebyside.Line{Num: 4, Content: "    println(\"hello\")", Type: sidebyside.Added},
+					},
+					{
+						Old: sidebyside.Line{Num: 5, Content: "}", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 5, Content: "}", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  100,
+		height: 20,
+		keys:   DefaultKeyMap(),
+		// Set up structural diff data showing a modified function
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 3, EndLine: 5, Name: "Hello", Kind: "func"},
+				}),
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 3, EndLine: 5, Name: "Hello", Kind: "func"},
+				}),
+				StructuralDiff: &structure.StructuralDiff{
+					Changes: []structure.ElementChange{
+						{
+							Kind: structure.ChangeModified,
+							OldEntry: &structure.Entry{
+								StartLine: 3, EndLine: 5, Name: "Hello", Kind: "func",
+							},
+							NewEntry: &structure.Entry{
+								StartLine: 3, EndLine: 5, Name: "Hello", Kind: "func",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+
+	lines := strings.Split(output, "\n")
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+	// Helper to find rune (display) position of a character
+	findRunePos := func(s string, target rune) int {
+		runes := []rune(s)
+		for i, r := range runes {
+			if r == target {
+				return i
+			}
+		}
+		return -1
+	}
+
+	// Helper to find rune position of a substring
+	findSubstringRunePos := func(s, substr string) int {
+		idx := strings.Index(s, substr)
+		if idx < 0 {
+			return -1
+		}
+		// Count runes up to byte position idx
+		return len([]rune(s[:idx]))
+	}
+
+	// Test 1: Check that borders are aligned
+	var borderPositions []int
+	var borderLines []string
+	for _, line := range lines {
+		stripped := ansiRegex.ReplaceAllString(line, "")
+		// Find lines that are part of the header box (contain │ but not ┃ which is content separator)
+		if strings.Contains(stripped, "│") && !strings.Contains(stripped, "┃") {
+			pos := findRunePos(stripped, '│')
+			borderPositions = append(borderPositions, pos)
+			borderLines = append(borderLines, stripped)
+		}
+	}
+
+	if len(borderPositions) > 1 {
+		first := borderPositions[0]
+		for i, pos := range borderPositions {
+			if pos != first {
+				t.Errorf("Border misalignment: line %d has │ at rune position %d, expected %d\n  line: %q\n  expected to match: %q",
+					i, pos, first, borderLines[i], borderLines[0])
+			}
+		}
+	}
+
+	// Test 2: Check that the structural diff symbol aligns with the filename
+	var headerLine, structDiffLine string
+	for _, line := range lines {
+		stripped := ansiRegex.ReplaceAllString(line, "")
+		// Find the header line (contains filename "example.go" and has │)
+		if strings.Contains(stripped, "example.go") && strings.Contains(stripped, "│") {
+			headerLine = stripped
+		}
+		// Find a structural diff line (contains ~ and "func")
+		if strings.Contains(stripped, "~ func") {
+			structDiffLine = stripped
+		}
+	}
+
+	require.NotEmpty(t, headerLine, "should find header line with example.go")
+	require.NotEmpty(t, structDiffLine, "should find structural diff line")
+
+	// Find position of filename in header (first char of "example.go")
+	filenamePos := findSubstringRunePos(headerLine, "example.go")
+	require.GreaterOrEqual(t, filenamePos, 0, "should find filename position")
+
+	// Find position of the symbol (~) in structural diff line
+	symbolPos := findRunePos(structDiffLine, '~')
+	require.GreaterOrEqual(t, symbolPos, 0, "should find symbol position")
+
+	// The symbol should be aligned with the filename's first character
+	assert.Equal(t, filenamePos, symbolPos,
+		"structural diff symbol should align with filename start\n  header: %q\n  struct: %q",
+		headerLine, structDiffLine)
+
+	// Golden file test
+	goldenPath := filepath.Join("testdata", "structural_diff_border.golden")
 	if *update {
 		err := os.WriteFile(goldenPath, []byte(output), 0644)
 		require.NoError(t, err)
