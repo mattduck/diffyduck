@@ -566,6 +566,20 @@ These items came up during initial implementation and need addressing:
   - Prevents commit being missed when scrolling
   - Could use top border similar to file headers
 
+** Technical Debt
+
+*** Eliminate buildRowsLegacy
+
+- [ ] Remove ~buildRowsLegacy~ from view.go
+
+  The function exists as a fallback for when ~m.commits~ is empty but ~m.files~
+  isn't - a state that only occurs when tests directly manipulate ~m.files~
+  without going through constructors.
+
+  Since ~New()~ now wraps files in a synthetic CommitSet, this code path is
+  dead in production. Fix the tests that bypass constructors, then delete
+  ~buildRowsLegacy~.
+
 ** References
 
 - Current fold implementation: internal/tui/update.go (~handleFoldToggle~)
