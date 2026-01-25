@@ -23,6 +23,7 @@ type KeyMap struct {
 	FoldToggleAll []string
 	Enter         []string // used for commit fold toggle and context expansion
 	Yank          []string
+	RefreshLayout []string // recalculate dynamic column widths
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -47,6 +48,7 @@ func DefaultKeyMap() KeyMap {
 		FoldToggleAll: []string{"shift+tab"},
 		Enter:         []string{"enter"},
 		Yank:          []string{"y"},
+		RefreshLayout: []string{"r"},
 	}
 }
 

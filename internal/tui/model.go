@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -91,7 +92,18 @@ type Model struct {
 	totalLines         int // total number of displayable lines across all files
 	maxLineNumSeen     int // largest line number seen (for dynamic gutter width, only grows)
 	maxLessWidth       int // max width of less indicator (never shrinks to prevent jittering)
-	maxNewContentWidth int // max display width of new-side content (left side, only grows, for dynamic divider)
+	maxNewContentWidth int // display width of new-side content (left side); defaults to 90, updated on 'r' refresh
+
+	// Cached column widths for file/commit headers - updated on 'r' refresh
+	cachedFileHeaderWidth int // max file header display width
+	cachedFileAddWidth    int // max "+N" width for file stats
+	cachedFileRemWidth    int // max "-N" width for file stats
+	cachedCommitFileCount int // max commit file count width (e.g., "99" = 2)
+	cachedCommitAddWidth  int // max commit "+N" width
+	cachedCommitRemWidth  int // max commit "-N" width
+	cachedCommitTimeWidth int // max relative time width (e.g., "12 months")
+	cachedCommitSubjWidth int // max subject width (capped at 120)
+	cachedStructDiffWidth int // max structural diff content width
 
 	// Row cache - avoids rebuilding on every scroll
 	cachedRows     []displayRow // cached result of buildRows()
@@ -240,6 +252,18 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		focused:             true,
 		focusColour:         false,
 		comments:            make(map[commentKey]string),
+		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
+		maxLineNumSeen:      9999, // default gives 4-digit gutter; recalculated on 'r' refresh
+		// Column width defaults - recalculated on 'r' refresh
+		cachedFileHeaderWidth: 50, // typical file path length
+		cachedFileAddWidth:    4,  // "+999"
+		cachedFileRemWidth:    4,  // "-999"
+		cachedCommitFileCount: 2,  // "99" files
+		cachedCommitAddWidth:  5,  // "+9999"
+		cachedCommitRemWidth:  5,  // "-9999"
+		cachedCommitTimeWidth: 9,  // "12 months"
+		cachedCommitSubjWidth: 60, // reasonable subject length
+		cachedStructDiffWidth: 0,  // structural diff width; 0 until 'r' refresh
 	}
 
 	// Flatten files from all commits and track boundaries
@@ -763,9 +787,24 @@ func (m *Model) updateMaxLineNum(n int) {
 	}
 }
 
+// updateMaxLineNumSeen scans all file pairs to find the largest line number.
+// Called on 'r' refresh to adjust gutter width for large files.
+func (m *Model) updateMaxLineNumSeen() {
+	for _, fp := range m.files {
+		for _, pair := range fp.Pairs {
+			m.updateMaxLineNum(pair.Old.Num)
+			m.updateMaxLineNum(pair.New.Num)
+		}
+	}
+}
+
 // lineNumWidth returns the width needed for line numbers based on the largest seen.
 // Minimum width is 4 to handle typical files up to 9999 lines.
-func (m Model) lineNumWidth() int {
+func (m *Model) lineNumWidth() int {
+	// Fall back to scanning if not initialized (e.g., in tests)
+	if m.maxLineNumSeen == 0 {
+		m.updateMaxLineNumSeen()
+	}
 	width := 4 // minimum
 	n := m.maxLineNumSeen
 	for n >= 10000 {
@@ -806,21 +845,105 @@ func (m *Model) updateMaxNewContentWidth() {
 	}
 }
 
-// rebuildRowsCache unconditionally rebuilds the cached rows.
-// This also updates totalLines, maxLineNumSeen, and maxNewContentWidth.
-func (m *Model) rebuildRowsCache() {
-	// Pre-scan files to update maxLineNumSeen BEFORE building rows.
-	// This ensures lineNumWidth() returns the correct value during buildRows().
+// updateColumnWidths recalculates cached column widths for file and commit headers.
+// Called on 'r' refresh to align columns based on actual content.
+func (m *Model) updateColumnWidths() {
+	// Reset to allow shrinking on manual refresh
+	m.cachedFileHeaderWidth = 0
+	m.cachedFileAddWidth = 0
+	m.cachedFileRemWidth = 0
+	m.cachedCommitFileCount = 0
+	m.cachedCommitAddWidth = 0
+	m.cachedCommitRemWidth = 0
+	m.cachedCommitTimeWidth = 0
+	m.cachedCommitSubjWidth = 0
+
+	// Calculate file header widths
 	for _, fp := range m.files {
-		for _, pair := range fp.Pairs {
-			m.updateMaxLineNum(pair.Old.Num)
-			m.updateMaxLineNum(pair.New.Num)
+		header := formatFileHeader(fp)
+		w := displayWidth(header)
+		if w > m.cachedFileHeaderWidth {
+			m.cachedFileHeaderWidth = w
+		}
+		added, removed := countFileStats(fp)
+		aw := statsAddWidth(added)
+		if aw > m.cachedFileAddWidth {
+			m.cachedFileAddWidth = aw
+		}
+		rw := statsRemWidth(removed)
+		if rw > m.cachedFileRemWidth {
+			m.cachedFileRemWidth = rw
 		}
 	}
 
-	// Update maxNewContentWidth (only grows, never shrinks to prevent jitter).
-	// This enables dynamic divider positioning.
+	// Calculate commit header widths
+	for commitIdx := range m.commits {
+		startIdx := m.commitFileStarts[commitIdx]
+		endIdx := len(m.files)
+		if commitIdx+1 < len(m.commits) {
+			endIdx = m.commitFileStarts[commitIdx+1]
+		}
+		commitFileCount := endIdx - startIdx
+		commitAdded := 0
+		commitRemoved := 0
+		for i := startIdx; i < endIdx; i++ {
+			added, removed := countFileStats(m.files[i])
+			commitAdded += added
+			commitRemoved += removed
+		}
+		fw := len(fmt.Sprintf("%d", commitFileCount))
+		if fw > m.cachedCommitFileCount {
+			m.cachedCommitFileCount = fw
+		}
+		aw := len(fmt.Sprintf("+%d", commitAdded))
+		if aw > m.cachedCommitAddWidth {
+			m.cachedCommitAddWidth = aw
+		}
+		rw := len(fmt.Sprintf("-%d", commitRemoved))
+		if rw > m.cachedCommitRemWidth {
+			m.cachedCommitRemWidth = rw
+		}
+		tw := len(formatShortRelativeDate(m.commits[commitIdx].Info.Date))
+		if tw > m.cachedCommitTimeWidth {
+			m.cachedCommitTimeWidth = tw
+		}
+		sw := displayWidth(m.commits[commitIdx].Info.Subject)
+		if sw > 120 {
+			sw = 120
+		}
+		if sw > m.cachedCommitSubjWidth {
+			m.cachedCommitSubjWidth = sw
+		}
+	}
+}
+
+// updateStructuralDiffWidth scans all files to find the max structural diff content width.
+// Called on 'r' refresh to expand header box if structural diffs are wider than filenames.
+func (m *Model) updateStructuralDiffWidth() {
+	m.cachedStructDiffWidth = 0
+	for fileIdx := range m.files {
+		w := m.structuralDiffMaxContentWidth(fileIdx)
+		if w > m.cachedStructDiffWidth {
+			m.cachedStructDiffWidth = w
+		}
+	}
+}
+
+// RefreshLayout recalculates all dynamic layout metrics based on actual content.
+// Called by 'r' key and useful in tests to get properly aligned output.
+func (m *Model) RefreshLayout() {
+	m.updateMaxLineNumSeen()
 	m.updateMaxNewContentWidth()
+	m.updateColumnWidths()
+	m.updateStructuralDiffWidth()
+	m.rowsCacheValid = false
+}
+
+// rebuildRowsCache unconditionally rebuilds the cached rows.
+// This also updates totalLines. Width metrics are updated on 'r' refresh.
+func (m *Model) rebuildRowsCache() {
+	// NOTE: maxLineNumSeen, maxNewContentWidth, and column widths are NOT updated
+	// automatically here for performance. Press 'r' to refresh layout.
 
 	m.cachedRows = m.buildRows()
 	m.rowsCacheValid = true

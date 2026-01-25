@@ -672,7 +672,7 @@ func TestView_MultiCommitLogView(t *testing.T) {
 	m.width = 100
 	m.height = 20
 	m.focused = true
-	m.calculateTotalLines()
+	m.RefreshLayout()
 
 	output := m.View()
 

@@ -68,6 +68,7 @@ index abc123..def456 100644
 	m := New(files)
 	m.width = 100
 	m.height = 20
+	m.RefreshLayout() // Align columns based on actual content
 
 	output := m.View()
 
@@ -138,6 +139,7 @@ index abc123..def456 100644
 	m := New(files)
 	m.width = 80
 	m.height = 20
+	m.RefreshLayout()
 
 	output := m.View()
 
@@ -198,6 +200,7 @@ index 0000000..abc1234
 	m := New(files)
 	m.width = 80
 	m.height = 20
+	m.RefreshLayout()
 
 	output := m.View()
 
@@ -256,6 +259,7 @@ index 0000000..e69de29
 	m := New(files)
 	m.width = 80
 	m.height = 20
+	m.RefreshLayout()
 
 	output := m.View()
 
@@ -308,6 +312,7 @@ index 0000000..abc1234
 	m := New(files)
 	m.width = 80
 	m.height = 24
+	m.RefreshLayout()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -372,6 +377,7 @@ func TestFullPipeline_TabsInContent(t *testing.T) {
 	m := New(files)
 	m.width = 80
 	m.height = 20
+	m.RefreshLayout()
 
 	output := m.View()
 

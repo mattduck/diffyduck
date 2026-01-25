@@ -268,35 +268,37 @@ func (m Model) buildRows() []displayRow {
 		return m.buildRowsLegacy()
 	}
 
-	// Calculate max header width and max add/rem widths across all visible files
-	maxHeaderWidth := 0
-	maxAddWidth := 0
-	maxRemWidth := 0
-	for commitIdx, commit := range m.commits {
-		// Skip files in folded commits for width calculation
-		if commit.Info.HasMetadata() && commit.FoldLevel == sidebyside.CommitFolded {
-			continue
-		}
-		startIdx := m.commitFileStarts[commitIdx]
-		endIdx := len(m.files)
-		if commitIdx+1 < len(m.commits) {
-			endIdx = m.commitFileStarts[commitIdx+1]
-		}
-		for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
-			fp := m.files[fileIdx]
-			header := formatFileHeader(fp)
-			w := displayWidth(header)
-			if w > maxHeaderWidth {
-				maxHeaderWidth = w
+	// Use cached column widths (updated on 'r' refresh)
+	// Fall back to calculating if not initialized (e.g., in tests)
+	maxHeaderWidth := m.cachedFileHeaderWidth
+	maxAddWidth := m.cachedFileAddWidth
+	maxRemWidth := m.cachedFileRemWidth
+	if maxHeaderWidth == 0 {
+		for commitIdx, commit := range m.commits {
+			if commit.Info.HasMetadata() && commit.FoldLevel == sidebyside.CommitFolded {
+				continue
 			}
-			added, removed := countFileStats(fp)
-			aw := statsAddWidth(added)
-			if aw > maxAddWidth {
-				maxAddWidth = aw
+			startIdx := m.commitFileStarts[commitIdx]
+			endIdx := len(m.files)
+			if commitIdx+1 < len(m.commits) {
+				endIdx = m.commitFileStarts[commitIdx+1]
 			}
-			rw := statsRemWidth(removed)
-			if rw > maxRemWidth {
-				maxRemWidth = rw
+			for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
+				fp := m.files[fileIdx]
+				header := formatFileHeader(fp)
+				w := displayWidth(header)
+				if w > maxHeaderWidth {
+					maxHeaderWidth = w
+				}
+				added, removed := countFileStats(fp)
+				aw := statsAddWidth(added)
+				if aw > maxAddWidth {
+					maxAddWidth = aw
+				}
+				rw := statsRemWidth(removed)
+				if rw > maxRemWidth {
+					maxRemWidth = rw
+				}
 			}
 		}
 	}
@@ -309,16 +311,9 @@ func (m Model) buildRows() []displayRow {
 	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
 
-	// Check if structural diff content is wider than header content
-	maxStructuralDiffWidth := 0
-	for fileIdx := range m.files {
-		w := m.structuralDiffMaxContentWidth(fileIdx)
-		if w > maxStructuralDiffWidth {
-			maxStructuralDiffWidth = w
-		}
-	}
-	if maxStructuralDiffWidth > headerContentWidth {
-		headerContentWidth = maxStructuralDiffWidth
+	// Use cached structural diff width (updated on 'r' refresh)
+	if m.cachedStructDiffWidth > headerContentWidth {
+		headerContentWidth = m.cachedStructDiffWidth
 	}
 
 	// Calculate final box width, clamped to 80% of screen width
@@ -330,52 +325,51 @@ func (m Model) buildRows() []displayRow {
 		}
 	}
 
-	// Calculate max commit header column widths for alignment
-	maxCommitFilesWidth := 0
-	maxCommitAddWidth := 0
-	maxCommitRemWidth := 0
-	maxCommitTimeWidth := 0
-	maxCommitSubjectWidth := 0
-	for commitIdx := range m.commits {
-		// Get file range for this commit
-		startIdx := m.commitFileStarts[commitIdx]
-		endIdx := len(m.files)
-		if commitIdx+1 < len(m.commits) {
-			endIdx = m.commitFileStarts[commitIdx+1]
-		}
-		// Calculate stats for this commit
-		commitFileCount := endIdx - startIdx
-		commitAdded := 0
-		commitRemoved := 0
-		for i := startIdx; i < endIdx; i++ {
-			added, removed := countFileStats(m.files[i])
-			commitAdded += added
-			commitRemoved += removed
-		}
-		// Track max widths
-		fw := len(fmt.Sprintf("%d", commitFileCount))
-		if fw > maxCommitFilesWidth {
-			maxCommitFilesWidth = fw
-		}
-		aw := len(fmt.Sprintf("+%d", commitAdded))
-		if aw > maxCommitAddWidth {
-			maxCommitAddWidth = aw
-		}
-		rw := len(fmt.Sprintf("-%d", commitRemoved))
-		if rw > maxCommitRemWidth {
-			maxCommitRemWidth = rw
-		}
-		tw := len(formatShortRelativeDate(m.commits[commitIdx].Info.Date))
-		if tw > maxCommitTimeWidth {
-			maxCommitTimeWidth = tw
-		}
-		// Subject width (capped at 120) - use displayWidth for Unicode
-		sw := displayWidth(m.commits[commitIdx].Info.Subject)
-		if sw > 120 {
-			sw = 120
-		}
-		if sw > maxCommitSubjectWidth {
-			maxCommitSubjectWidth = sw
+	// Use cached commit column widths (updated on 'r' refresh)
+	// Fall back to calculating if not initialized
+	maxCommitFilesWidth := m.cachedCommitFileCount
+	maxCommitAddWidth := m.cachedCommitAddWidth
+	maxCommitRemWidth := m.cachedCommitRemWidth
+	maxCommitTimeWidth := m.cachedCommitTimeWidth
+	maxCommitSubjectWidth := m.cachedCommitSubjWidth
+	if maxCommitFilesWidth == 0 && len(m.commits) > 0 {
+		for commitIdx := range m.commits {
+			startIdx := m.commitFileStarts[commitIdx]
+			endIdx := len(m.files)
+			if commitIdx+1 < len(m.commits) {
+				endIdx = m.commitFileStarts[commitIdx+1]
+			}
+			commitFileCount := endIdx - startIdx
+			commitAdded := 0
+			commitRemoved := 0
+			for i := startIdx; i < endIdx; i++ {
+				added, removed := countFileStats(m.files[i])
+				commitAdded += added
+				commitRemoved += removed
+			}
+			fw := len(fmt.Sprintf("%d", commitFileCount))
+			if fw > maxCommitFilesWidth {
+				maxCommitFilesWidth = fw
+			}
+			aw := len(fmt.Sprintf("+%d", commitAdded))
+			if aw > maxCommitAddWidth {
+				maxCommitAddWidth = aw
+			}
+			rw := len(fmt.Sprintf("-%d", commitRemoved))
+			if rw > maxCommitRemWidth {
+				maxCommitRemWidth = rw
+			}
+			tw := len(formatShortRelativeDate(m.commits[commitIdx].Info.Date))
+			if tw > maxCommitTimeWidth {
+				maxCommitTimeWidth = tw
+			}
+			sw := displayWidth(m.commits[commitIdx].Info.Subject)
+			if sw > 120 {
+				sw = 120
+			}
+			if sw > maxCommitSubjectWidth {
+				maxCommitSubjectWidth = sw
+			}
 		}
 	}
 
@@ -503,24 +497,27 @@ func (m Model) buildRows() []displayRow {
 func (m Model) buildRowsLegacy() []displayRow {
 	var rows []displayRow
 
-	// Calculate max header width and max add/rem widths across all files
-	maxHeaderWidth := 0
-	maxAddWidth := 0
-	maxRemWidth := 0
-	for _, fp := range m.files {
-		header := formatFileHeader(fp)
-		w := displayWidth(header)
-		if w > maxHeaderWidth {
-			maxHeaderWidth = w
-		}
-		added, removed := countFileStats(fp)
-		aw := statsAddWidth(added)
-		if aw > maxAddWidth {
-			maxAddWidth = aw
-		}
-		rw := statsRemWidth(removed)
-		if rw > maxRemWidth {
-			maxRemWidth = rw
+	// Use cached column widths (updated on 'r' refresh)
+	// Fall back to calculating if not initialized (e.g., in tests)
+	maxHeaderWidth := m.cachedFileHeaderWidth
+	maxAddWidth := m.cachedFileAddWidth
+	maxRemWidth := m.cachedFileRemWidth
+	if maxHeaderWidth == 0 {
+		for _, fp := range m.files {
+			header := formatFileHeader(fp)
+			w := displayWidth(header)
+			if w > maxHeaderWidth {
+				maxHeaderWidth = w
+			}
+			added, removed := countFileStats(fp)
+			aw := statsAddWidth(added)
+			if aw > maxAddWidth {
+				maxAddWidth = aw
+			}
+			rw := statsRemWidth(removed)
+			if rw > maxRemWidth {
+				maxRemWidth = rw
+			}
 		}
 	}
 
@@ -532,12 +529,14 @@ func (m Model) buildRowsLegacy() []displayRow {
 	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
 
-	// Check if structural diff content is wider than header content
-	maxStructuralDiffWidth := 0
-	for fileIdx := range m.files {
-		w := m.structuralDiffMaxContentWidth(fileIdx)
-		if w > maxStructuralDiffWidth {
-			maxStructuralDiffWidth = w
+	// Use cached structural diff width, or calculate if not set (for tests)
+	maxStructuralDiffWidth := m.cachedStructDiffWidth
+	if maxStructuralDiffWidth == 0 {
+		for fileIdx := range m.files {
+			w := m.structuralDiffMaxContentWidth(fileIdx)
+			if w > maxStructuralDiffWidth {
+				maxStructuralDiffWidth = w
+			}
 		}
 	}
 	if maxStructuralDiffWidth > headerContentWidth {

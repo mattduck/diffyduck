@@ -276,6 +276,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case matchesKey(msg, keys.Yank):
 		return m.handleYank()
+
+	case matchesKey(msg, keys.RefreshLayout):
+		m.RefreshLayout()
 	}
 
 	return m, nil
