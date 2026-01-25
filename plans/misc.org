@@ -21,3 +21,14 @@ else just track "Nth row of type X in file/commit Y" as a single generic
 mechanism rather than type-specific fields.
 
 See commit 960d7e7 for the current implementation.
+
+** LATER Per-file header box width instead of global max
+
+Currently, headerBoxWidth is calculated as the max width needed across ALL files,
+so every file header and structural diff row uses the same box width. This means
+a file with a long signature pushes out the borders for files with short content.
+
+Consider calculating headerBoxWidth per-file instead, so each file's header box
+is sized to fit its own content (filename + stats + structural diff signatures).
+This would make the UI more compact when viewing multiple files with varying
+content widths.

@@ -1847,6 +1847,30 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 		statsWidth += 1 + maxRemLen // " M"
 	}
 
+	// Calculate max width available for signatures (80% of terminal minus overhead)
+	maxSignatureWidth := 0
+	if m.width > 0 {
+		totalFiles := len(m.files)
+		numDigits := len(fmt.Sprintf("%d", totalFiles))
+		iconPartWidth := 9 + numDigits
+		maxBoxWidth := m.width * 80 / 100
+		// Overhead: 2 (extraIndent) + 1 (symbol) + 1 (space) + 5 (max kind) + 1 (space) + statsWidth
+		overhead := 2 + 1 + 1 + 5 + 1 + statsWidth
+		maxSignatureWidth = maxBoxWidth - iconPartWidth - overhead
+		if maxSignatureWidth < 20 {
+			maxSignatureWidth = 20
+		}
+	}
+
+	// Helper to get display width of name or signature (expanded to fill available space)
+	entryDisplayWidth := func(entry *structure.Entry) int {
+		sig := entry.FormatSignature(maxSignatureWidth)
+		if sig == "" {
+			return runewidth.StringWidth(entry.Name)
+		}
+		return runewidth.StringWidth(sig)
+	}
+
 	maxWidth := 0
 
 	// Build tree structure to identify children (same logic as buildStructuralDiffRows)
@@ -1859,9 +1883,9 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 			continue
 		}
 		if entry.Kind == "type" || entry.Kind == "class" {
-			// Width for parent: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name + stats
+			// Width for parent: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name/sig + stats
 			// extraIndent = symbolPrefix (11+numDigits) - iconPartWidth (9+numDigits) = 2
-			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name) + statsWidth
+			width := 2 + 1 + 1 + runewidth.StringWidth(entry.Kind) + 1 + entryDisplayWidth(entry) + statsWidth
 			if width > maxWidth {
 				maxWidth = width
 			}
@@ -1879,8 +1903,8 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 					typeStart, typeEnd := entry.StartLine, entry.EndLine
 					otherStart := otherEntry.StartLine
 					if otherStart >= typeStart && otherStart <= typeEnd {
-						// Width for child: extraIndent(2) + symbol(1) + space(1) + childIndent(2) + kind + space(1) + name + stats
-						childWidth := 2 + 1 + 1 + 2 + len(otherEntry.Kind) + 1 + len(otherEntry.Name) + statsWidth
+						// Width for child: extraIndent(2) + symbol(1) + space(1) + childIndent(2) + kind + space(1) + name/sig + stats
+						childWidth := 2 + 1 + 1 + 2 + runewidth.StringWidth(otherEntry.Kind) + 1 + entryDisplayWidth(otherEntry) + statsWidth
 						if childWidth > maxWidth {
 							maxWidth = childWidth
 						}
@@ -1899,8 +1923,8 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 			if entry == nil {
 				continue
 			}
-			// Width for top-level: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name + stats
-			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name) + statsWidth
+			// Width for top-level: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name/sig + stats
+			width := 2 + 1 + 1 + runewidth.StringWidth(entry.Kind) + 1 + entryDisplayWidth(entry) + statsWidth
 			if width > maxWidth {
 				maxWidth = width
 			}
@@ -2024,6 +2048,36 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 		}
 	}
 
+	// Calculate stats width for signature width calculation
+	statsWidth := 0
+	if maxAddLen > 0 || maxRemLen > 0 {
+		if maxAddLen > 0 && maxRemLen > 0 {
+			statsWidth = 1 + maxAddLen + 1 + maxRemLen // " add rem"
+		} else if maxAddLen > 0 {
+			statsWidth = 1 + maxAddLen
+		} else {
+			statsWidth = 1 + maxRemLen
+		}
+	}
+
+	// Helper to format entry name or signature
+	formatEntry := func(entry *structure.Entry, prefixLen int) string {
+		// For functions/methods, use FormatSignature to show params and return type
+		// For types/classes, FormatSignature returns "" so we fall back to Name
+		sig := entry.FormatSignature(0) // Check if it has a signature at all
+		if sig == "" {
+			return entry.Name
+		}
+		// Calculate available width for signature
+		kindLen := runewidth.StringWidth(entry.Kind)
+		fixedOverhead := prefixLen + 1 + 1 + kindLen + 1 + statsWidth // prefix + symbol + space + kind + space + stats
+		availableWidth := headerBoxWidth + 2 - fixedOverhead
+		if availableWidth < 10 {
+			availableWidth = 10 // minimum width to show something useful
+		}
+		return entry.FormatSignature(availableWidth)
+	}
+
 	// Render tree
 	for _, node := range topLevel {
 		c := node.change
@@ -2032,9 +2086,10 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 			continue
 		}
 
-		// Format: "<prefix>~ type MyStruct" where symbol aligns with file status
+		// Format: "<prefix>~ type MyStruct" or "<prefix>~ func Name(...) -> Type"
 		symbol := c.Kind.Symbol()
-		line := symbolPrefix + symbol + " " + entry.Kind + " " + entry.Name
+		nameOrSig := formatEntry(entry, len(symbolPrefix))
+		line := symbolPrefix + symbol + " " + entry.Kind + " " + nameOrSig
 
 		rows = append(rows, displayRow{
 			kind:                    RowKindStructuralDiff,
@@ -2056,7 +2111,8 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 				continue
 			}
 			childSymbol := child.Kind.Symbol()
-			childLine := childPrefix + childSymbol + " " + childEntry.Kind + " " + childEntry.Name
+			childNameOrSig := formatEntry(childEntry, len(childPrefix))
+			childLine := childPrefix + childSymbol + " " + childEntry.Kind + " " + childNameOrSig
 
 			rows = append(rows, displayRow{
 				kind:                    RowKindStructuralDiff,
@@ -2207,7 +2263,7 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 	// Calculate padding to reach headerBoxWidth (based on original content width)
 	// Calculate padding to reach headerBoxWidth, plus 2 extra to align with header border
 	// (the header has a 2-space prefix before headerBoxWidth content)
-	originalWidth := len(content) + statsWidth // All ASCII so len() works
+	originalWidth := runewidth.StringWidth(content) + statsWidth
 	paddingNeeded := headerBoxWidth - originalWidth + 2
 	padding := ""
 	if paddingNeeded > 0 {
