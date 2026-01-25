@@ -291,6 +291,22 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 		NewStructure:   newStruct,
 		StructuralDiff: structDiff,
 	}
+
+	// Invalidate row cache if structural diff would be visible.
+	// Structural diff rows appear under file headers, which are only visible
+	// when the commit is not folded. Skip invalidation for folded commits
+	// to avoid unnecessary cache rebuilds in log mode.
+	if structDiff != nil && structDiff.HasChanges() {
+		commitIdx := m.commitForFile(msg.FileIndex)
+		if commitIdx >= 0 && commitIdx < len(m.commits) {
+			if m.commits[commitIdx].FoldLevel != sidebyside.CommitFolded {
+				m.rowsCacheValid = false
+			}
+		} else {
+			// No commit structure (e.g., diff mode) - always invalidate
+			m.rowsCacheValid = false
+		}
+	}
 }
 
 // storePairsHighlightSpans stores the spans and structure from a PairsHighlightReadyMsg into the model.

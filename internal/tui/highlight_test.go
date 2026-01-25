@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"github.com/user/diffyduck/pkg/structure"
@@ -1518,4 +1520,246 @@ func FuncB() {
 	if !foundAdded {
 		t.Error("Expected to find added FuncB in structural diff rows")
 	}
+}
+
+func TestStoreHighlightSpans_InvalidatesCacheWhenCommitUnfolded(t *testing.T) {
+	// Test that row cache is invalidated when structural diff is stored
+	// and the commit is not folded (so structural diff rows would be visible).
+	oldContent := `package main
+
+func FuncA() {
+	x := 1
+}
+`
+	newContent := `package main
+
+func FuncA() {
+	x := 1
+	y := 2
+}
+`
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/test.go",
+			NewPath:    "b/test.go",
+			FoldLevel:  sidebyside.FoldNormal,
+			OldContent: oldLines,
+			NewContent: newLines,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 3, Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 4, Type: sidebyside.Context}, New: sidebyside.Line{Num: 4, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 5, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 5, Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Type: sidebyside.Context}},
+			},
+		},
+	}
+
+	// Create model with a commit that is NOT folded
+	commit := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc123"},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal, // Not folded
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	defer m.highlighter.Close()
+
+	// Build rows to populate cache
+	m.rebuildRowsCache()
+	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+
+	// Request and store highlighting
+	cmd := m.RequestHighlight(0)
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	require.True(t, ok, "expected HighlightReadyMsg")
+
+	m.storeHighlightSpans(hlMsg)
+
+	// Cache should be invalidated because commit is not folded
+	// and structural diff has changes
+	assert.False(t, m.rowsCacheValid, "cache should be invalidated when structural diff is stored for unfolded commit")
+}
+
+func TestStoreHighlightSpans_DoesNotInvalidateCacheWhenCommitFolded(t *testing.T) {
+	// Test that row cache is NOT invalidated when structural diff is stored
+	// but the commit is folded (structural diff rows wouldn't be visible anyway).
+	oldContent := `package main
+
+func FuncA() {
+	x := 1
+}
+`
+	newContent := `package main
+
+func FuncA() {
+	x := 1
+	y := 2
+}
+`
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/test.go",
+			NewPath:    "b/test.go",
+			FoldLevel:  sidebyside.FoldNormal,
+			OldContent: oldLines,
+			NewContent: newLines,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 3, Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 4, Type: sidebyside.Context}, New: sidebyside.Line{Num: 4, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 5, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 5, Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Type: sidebyside.Context}},
+			},
+		},
+	}
+
+	// Create model with a commit that IS folded
+	commit := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc123"},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitFolded, // Folded - file headers not visible
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	defer m.highlighter.Close()
+
+	// Build rows to populate cache
+	m.rebuildRowsCache()
+	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+
+	// Request and store highlighting
+	cmd := m.RequestHighlight(0)
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	require.True(t, ok, "expected HighlightReadyMsg")
+
+	m.storeHighlightSpans(hlMsg)
+
+	// Cache should NOT be invalidated because commit is folded
+	assert.True(t, m.rowsCacheValid, "cache should remain valid when commit is folded")
+}
+
+func TestStoreHighlightSpans_DoesNotInvalidateCacheWhenNoStructuralChanges(t *testing.T) {
+	// Test that row cache is NOT invalidated when there are no structural changes.
+	// Use identical old/new content with only context lines (no adds/removes).
+	content := `package main
+
+func FuncA() {
+	x := 1
+}
+`
+	lines := strings.Split(content, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/test.go",
+			NewPath:    "b/test.go",
+			FoldLevel:  sidebyside.FoldNormal,
+			OldContent: lines,
+			NewContent: lines,
+			// All context lines - no actual changes
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 2, Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 3, Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 4, Type: sidebyside.Context}, New: sidebyside.Line{Num: 4, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 5, Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Type: sidebyside.Context}},
+			},
+		},
+	}
+
+	commit := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc123"},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	defer m.highlighter.Close()
+
+	// Build rows to populate cache
+	m.rebuildRowsCache()
+	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+
+	// Request and store highlighting
+	cmd := m.RequestHighlight(0)
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	require.True(t, ok, "expected HighlightReadyMsg")
+
+	m.storeHighlightSpans(hlMsg)
+
+	// Structural diff should have no changes since old == new
+	fs := m.structureMaps[0]
+	require.NotNil(t, fs)
+	if fs.StructuralDiff != nil {
+		assert.False(t, fs.StructuralDiff.HasChanges(), "structural diff should have no changes")
+	}
+
+	// Cache should remain valid when no structural changes
+	assert.True(t, m.rowsCacheValid, "cache should remain valid when no structural changes")
+}
+
+func TestStoreHighlightSpans_InvalidatesCacheInDiffMode(t *testing.T) {
+	// Test that row cache is invalidated in diff mode (no commit structure).
+	// This uses New() instead of NewWithCommits() to simulate diff command.
+	oldContent := `package main
+
+func FuncA() {
+	x := 1
+}
+`
+	newContent := `package main
+
+func FuncA() {
+	x := 1
+	y := 2
+}
+`
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
+
+	files := []sidebyside.FilePair{
+		{
+			OldPath:    "a/test.go",
+			NewPath:    "b/test.go",
+			FoldLevel:  sidebyside.FoldNormal,
+			OldContent: oldLines,
+			NewContent: newLines,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 3, Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 4, Type: sidebyside.Context}, New: sidebyside.Line{Num: 4, Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 0, Type: sidebyside.Empty}, New: sidebyside.Line{Num: 5, Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 5, Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Type: sidebyside.Context}},
+			},
+		},
+	}
+
+	// Use New() to create model without explicit commit structure (diff mode)
+	m := New(files)
+	defer m.highlighter.Close()
+
+	// Build rows to populate cache
+	m.rebuildRowsCache()
+	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+
+	// Request and store highlighting
+	cmd := m.RequestHighlight(0)
+	msg := cmd()
+	hlMsg, ok := msg.(HighlightReadyMsg)
+	require.True(t, ok, "expected HighlightReadyMsg")
+
+	m.storeHighlightSpans(hlMsg)
+
+	// Cache should be invalidated in diff mode (no commit to check fold status)
+	assert.False(t, m.rowsCacheValid, "cache should be invalidated in diff mode when structural diff has changes")
 }
