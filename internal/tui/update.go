@@ -292,6 +292,8 @@ type cursorRowIdentity struct {
 	blankIndex int
 	// For commit body rows, which body row within the commit (0-indexed)
 	commitBodyIndex int
+	// For commit info body rows, which body row within the info section (0-indexed)
+	commitInfoBodyIndex int
 	// For structural diff rows, which row within the file's structural diff area (0-indexed)
 	structuralDiffIndex int
 	// For content rows, the line numbers to match
@@ -357,12 +359,25 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 		}
 	}
 
+	// For commit info body rows, count which row this is within the info section
+	commitInfoBodyIndex := 0
+	if row.kind == RowKindCommitInfoBody {
+		for i := cursorPos - 1; i >= 0; i-- {
+			if rows[i].kind == RowKindCommitInfoBody && rows[i].commitIndex == row.commitIndex {
+				commitInfoBodyIndex++
+			} else {
+				break
+			}
+		}
+	}
+
 	return cursorRowIdentity{
 		kind:                row.kind,
 		fileIndex:           row.fileIndex,
 		commitIndex:         row.commitIndex,
 		blankIndex:          blankIndex,
 		commitBodyIndex:     commitBodyIndex,
+		commitInfoBodyIndex: commitInfoBodyIndex,
 		structuralDiffIndex: structuralDiffIndex,
 		oldNum:              row.pair.Old.Num,
 		newNum:              row.pair.New.Num,
@@ -389,6 +404,10 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 	commitBodySeen := 0
 	lastCommitIndex := -2 // Start with invalid value
 
+	// Track commit info body rows seen per commit for matching specific body rows
+	commitInfoBodySeen := 0
+	lastCommitIndexForInfo := -2 // Start with invalid value
+
 	// Track structural diff rows seen per file for matching specific rows
 	structuralDiffSeen := 0
 	lastFileIndexForStructDiff := -2 // Start with invalid value
@@ -407,13 +426,19 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 			lastCommitIndex = row.commitIndex
 		}
 
+		// Reset commit info body counter when commit changes
+		if row.commitIndex != lastCommitIndexForInfo {
+			commitInfoBodySeen = 0
+			lastCommitIndexForInfo = row.commitIndex
+		}
+
 		// Reset structural diff counter when file changes
 		if row.fileIndex != lastFileIndexForStructDiff {
 			structuralDiffSeen = 0
 			lastFileIndexForStructDiff = row.fileIndex
 		}
 
-		if m.rowMatchesIdentity(row, identity, blanksSeen, commitBodySeen, structuralDiffSeen) {
+		if m.rowMatchesIdentity(row, identity, blanksSeen, commitBodySeen, commitInfoBodySeen, structuralDiffSeen) {
 			return i
 		}
 
@@ -425,6 +450,11 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 		// Count commit body rows after checking (so first body row has index 0)
 		if row.kind == RowKindCommitBody && row.commitIndex == identity.commitIndex {
 			commitBodySeen++
+		}
+
+		// Count commit info body rows after checking (so first row has index 0)
+		if row.kind == RowKindCommitInfoBody && row.commitIndex == identity.commitIndex {
+			commitInfoBodySeen++
 		}
 
 		// Count structural diff rows after checking (so first row has index 0)
@@ -463,7 +493,7 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 // For blank rows, blanksSeen tracks how many blanks we've seen for this file.
 // For commit body rows, commitBodySeen tracks how many body rows we've seen for this commit.
 // For structural diff rows, structuralDiffSeen tracks how many rows we've seen for this file.
-func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, blanksSeen, commitBodySeen, structuralDiffSeen int) bool {
+func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, blanksSeen, commitBodySeen, commitInfoBodySeen, structuralDiffSeen int) bool {
 	// File index must match
 	if row.fileIndex != identity.fileIndex {
 		return false
@@ -497,6 +527,11 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 	case RowKindCommitBody:
 		// Match the specific commit body row by index within the commit
 		return row.kind == RowKindCommitBody && row.commitIndex == identity.commitIndex && commitBodySeen == identity.commitBodyIndex
+	case RowKindCommitInfoHeader:
+		return row.kind == RowKindCommitInfoHeader && row.commitIndex == identity.commitIndex
+	case RowKindCommitInfoBody:
+		// Match the specific commit info body row by index within the info section
+		return row.kind == RowKindCommitInfoBody && row.commitIndex == identity.commitIndex && commitInfoBodySeen == identity.commitInfoBodyIndex
 	case RowKindStructuralDiff:
 		// Match the specific structural diff row by index within the file
 		return row.kind == RowKindStructuralDiff && structuralDiffSeen == identity.structuralDiffIndex
@@ -553,6 +588,11 @@ func (m Model) nextFoldLevelForFile(fp sidebyside.FilePair) sidebyside.FoldLevel
 // handleFoldToggle cycles the fold level of the current file or commit,
 // but only when on the respective header row.
 func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
+	// If cursor is on commit info header, toggle between Normal and Expanded
+	if m.isOnCommitInfoHeader() {
+		return m.handleCommitInfoFoldToggle()
+	}
+
 	// If cursor is on commit header, do commit fold cycle
 	if m.isOnCommitHeader() {
 		return m.handleCommitFoldCycle()
@@ -574,12 +614,14 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	newLevel := m.nextFoldLevelForFile(m.files[fileIdx])
 	m.files[fileIdx].FoldLevel = newLevel
 
-	// If file is expanded beyond FoldFolded, update parent commit to CommitExpanded
-	// Level 2 means "file headings only" - any file content means level 3
+	// If file is expanded beyond FoldFolded, ensure parent commit is at least CommitNormal
+	// (so the file is visible), but don't force CommitExpanded (keep commit info fold state independent)
 	if newLevel != sidebyside.FoldFolded && len(m.commits) > 0 {
 		commitIdx := m.commitForFile(fileIdx)
 		if commitIdx >= 0 && commitIdx < len(m.commits) {
-			m.commits[commitIdx].FoldLevel = sidebyside.CommitExpanded
+			if m.commits[commitIdx].FoldLevel == sidebyside.CommitFolded {
+				m.commits[commitIdx].FoldLevel = sidebyside.CommitNormal
+			}
 		}
 	}
 
@@ -653,8 +695,8 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 
 // setAllCommitsToLevel sets all commits and their files to the specified visibility level.
 // Level 1: CommitFolded, all files FoldFolded
-// Level 2: CommitNormal, all files FoldFolded
-// Level 3: CommitNormal, all files FoldNormal
+// Level 2: CommitNormal, all files FoldFolded (file headers only, commit info header only)
+// Level 3: CommitExpanded, all files FoldNormal (file content visible, commit info expanded)
 func (m *Model) setAllCommitsToLevel(level int) {
 	var commitFold sidebyside.CommitFoldLevel
 	var fileFold sidebyside.FoldLevel
@@ -667,7 +709,7 @@ func (m *Model) setAllCommitsToLevel(level int) {
 		commitFold = sidebyside.CommitNormal
 		fileFold = sidebyside.FoldFolded
 	case 3:
-		commitFold = sidebyside.CommitNormal
+		commitFold = sidebyside.CommitExpanded
 		fileFold = sidebyside.FoldNormal
 	default:
 		commitFold = sidebyside.CommitFolded
@@ -831,6 +873,7 @@ func (m *Model) goToNextHeading() {
 	currentFileIdx := currentRow.fileIndex
 	currentCommitIdx := currentRow.commitIndex
 	inCommitSection := currentRow.isCommitHeader || currentRow.isCommitBody
+	inCommitInfoSection := currentRow.isCommitInfoHeader || currentRow.isCommitInfoBody
 
 	// Find the next header that belongs to a different node
 	for i := cursorPos + 1; i < len(rows); i++ {
@@ -844,11 +887,21 @@ func (m *Model) goToNextHeading() {
 			}
 		}
 
+		if row.isCommitInfoHeader {
+			// Commit info header is a different node if:
+			// - We're in the commit header section (not info section)
+			// - Or different commit
+			if !inCommitInfoSection || row.commitIndex != currentCommitIdx {
+				m.adjustScrollToRow(i)
+				return
+			}
+		}
+
 		if row.isHeader {
 			// A file header is a different node if:
-			// - We're in a commit section (any file header is different from commit header)
+			// - We're in a commit section or commit info section
 			// - Or the file has a different index
-			if inCommitSection || row.fileIndex != currentFileIdx {
+			if inCommitSection || inCommitInfoSection || row.fileIndex != currentFileIdx {
 				m.adjustScrollToRow(i)
 				return
 			}
@@ -869,12 +922,14 @@ func (m *Model) goToPrevHeading() {
 
 	currentRow := rows[cursorPos]
 	// Treat top border as part of the header section for navigation purposes
-	onHeader := currentRow.isCommitHeader || currentRow.isHeader || currentRow.isHeaderTopBorder
+	onHeader := currentRow.isCommitHeader || currentRow.isCommitInfoHeader || currentRow.isHeader || currentRow.isHeaderTopBorder
 
 	if !onHeader {
-		// Not on a header - find the current node's header (could be commit or file)
+		// Not on a header - find the current node's header (could be commit, commit info, or file)
 		currentFileIdx := currentRow.fileIndex
+		currentCommitIdx := currentRow.commitIndex
 		inCommitSection := currentRow.isCommitBody
+		inCommitInfoSection := currentRow.isCommitInfoBody
 
 		for i := cursorPos - 1; i >= 0; i-- {
 			row := rows[i]
@@ -882,7 +937,11 @@ func (m *Model) goToPrevHeading() {
 				m.adjustScrollToRow(i)
 				return
 			}
-			if !inCommitSection && row.isHeader && row.fileIndex == currentFileIdx {
+			if inCommitInfoSection && row.isCommitInfoHeader && row.commitIndex == currentCommitIdx {
+				m.adjustScrollToRow(i)
+				return
+			}
+			if !inCommitSection && !inCommitInfoSection && row.isHeader && row.fileIndex == currentFileIdx {
 				m.adjustScrollToRow(i)
 				return
 			}
@@ -894,6 +953,7 @@ func (m *Model) goToPrevHeading() {
 	currentFileIdx := currentRow.fileIndex
 	currentCommitIdx := currentRow.commitIndex
 	isCommitHeader := currentRow.isCommitHeader
+	isCommitInfoHeader := currentRow.isCommitInfoHeader
 
 	for i := cursorPos - 1; i >= 0; i-- {
 		row := rows[i]
@@ -906,11 +966,19 @@ func (m *Model) goToPrevHeading() {
 			}
 		}
 
+		if row.isCommitInfoHeader {
+			// Stop at commit info header unless we're already on a commit info header of the same commit
+			if !(isCommitInfoHeader && row.commitIndex == currentCommitIdx) {
+				m.adjustScrollToRow(i)
+				return
+			}
+		}
+
 		if row.isHeader {
 			// Found a file header - it's a different node if:
-			// - Current is a commit header (any file is different from commit)
+			// - Current is a commit header or commit info header
 			// - Or different file index
-			if isCommitHeader || row.fileIndex != currentFileIdx {
+			if isCommitHeader || isCommitInfoHeader || row.fileIndex != currentFileIdx {
 				m.adjustScrollToRow(i)
 				return
 			}
@@ -936,6 +1004,18 @@ func (m Model) isOnCommitHeader() bool {
 	}
 
 	return rows[cursorPos].isCommitHeader
+}
+
+// isOnCommitInfoHeader returns true if the cursor is on a commit info header row.
+func (m Model) isOnCommitInfoHeader() bool {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return false
+	}
+
+	return rows[cursorPos].isCommitInfoHeader
 }
 
 // isOnFileHeader returns true if the cursor is on a file header row.
@@ -1036,6 +1116,35 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	m.calculateTotalLines()
 
 	return m, cmd
+}
+
+// handleCommitInfoFoldToggle toggles the commit info node between header-only and expanded.
+// This toggles the parent commit between CommitNormal and CommitExpanded.
+func (m Model) handleCommitInfoFoldToggle() (tea.Model, tea.Cmd) {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return m, nil
+	}
+
+	commitIdx := rows[cursorPos].commitIndex
+	if commitIdx < 0 || commitIdx >= len(m.commits) {
+		return m, nil
+	}
+
+	commit := &m.commits[commitIdx]
+
+	// Toggle between CommitNormal (info header only) and CommitExpanded (info + body)
+	if commit.FoldLevel == sidebyside.CommitNormal {
+		commit.FoldLevel = sidebyside.CommitExpanded
+	} else if commit.FoldLevel == sidebyside.CommitExpanded {
+		commit.FoldLevel = sidebyside.CommitNormal
+	}
+	// Note: If CommitFolded, the info header isn't visible, so this won't be reached
+
+	m.calculateTotalLines()
+
+	return m, nil
 }
 
 // commitVisibilityLevel returns the current visibility level for the first commit (1, 2, or 3).

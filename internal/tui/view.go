@@ -130,7 +130,9 @@ const (
 	RowKindCommitHeader             // commit header row (sha, author, date, subject)
 	RowKindCommitHeaderTopBorder    // top border line before commit header
 	RowKindCommitHeaderBottomBorder // bottom border line after commit header
-	RowKindCommitBody               // commit body row (full sha, author, date, message)
+	RowKindCommitBody               // commit body row (full sha, author, date, message) - legacy, kept for separators
+	RowKindCommitInfoHeader         // commit info header with yellow shaders (foldable child node)
+	RowKindCommitInfoBody           // commit info body row (Author, Date, message content)
 	RowKindComment                  // inline comment row (belongs to line above)
 	RowKindStructuralDiff           // structural diff row (added/modified/deleted functions/types)
 )
@@ -188,10 +190,14 @@ type displayRow struct {
 	maxCommitRemWidth          int                        // max width for removals column across all commits
 	maxCommitTimeWidth         int                        // max width for relative time column across all commits
 	maxCommitSubjectWidth      int                        // max width for subject column across all commits
-	// Commit body fields (shown when commit is expanded)
+	// Commit body fields (shown when commit is expanded) - legacy, kept for separators
 	isCommitBody      bool   // true if this is a commit body row
 	commitBodyLine    string // the text content for this body line
 	commitBodyIsBlank bool   // true if this is a blank line in the body
+	// Commit info fields (foldable child node under commit)
+	isCommitInfoHeader bool   // true if this is a commit info header row
+	isCommitInfoBody   bool   // true if this is a commit info body row
+	commitInfoLine     string // text content for info body lines
 	// Comment fields (for RowKindComment rows)
 	commentText      string // text of the comment (for rendering)
 	commentLineNum   int    // line number this comment belongs to (for association)
@@ -420,8 +426,8 @@ func (m Model) buildRows() []displayRow {
 				commitIndex:                commitIdx,
 			})
 
-			// Add commit body rows when not folded (skipping first blank since bottom border replaces it)
-			rows = append(rows, m.buildCommitBodyRowsSkipFirstBlank(&commit, commitIdx)...)
+			// Add commit info rows (foldable child node under commit)
+			rows = append(rows, m.buildCommitInfoRows(&commit, commitIdx)...)
 		}
 
 		// Get file range for this commit
@@ -431,21 +437,23 @@ func (m Model) buildRows() []displayRow {
 			endIdx = m.commitFileStarts[commitIdx+1]
 		}
 
-		// Add first file's top border slot when commit has metadata (log/show view).
-		// This ensures content doesn't shift when first file is unfolded.
-		// For diff view (no commit metadata), the file header is the first row of content
-		// (similar to how log/show view renders the first commit's border in the fixed top bar).
+		// Add first file's top border slot only when commit info is expanded.
+		// The border draws into the trailing blank line of the expanded commit info body.
+		// When commit info is folded, no border row is needed (no blank line to draw into).
 		if startIdx < endIdx && commit.Info.HasMetadata() {
-			firstFileUnfolded := m.files[startIdx].FoldLevel != sidebyside.FoldFolded
-			rows = append(rows, displayRow{
-				kind:              RowKindHeaderTopBorder,
-				fileIndex:         startIdx,
-				isHeaderTopBorder: true,
-				foldLevel:         sidebyside.FoldNormal,
-				status:            fileStatusFromPair(m.files[startIdx]),
-				headerBoxWidth:    headerBoxWidth,
-				borderVisible:     firstFileUnfolded,
-			})
+			commitInfoExpanded := commit.FoldLevel == sidebyside.CommitExpanded
+			if commitInfoExpanded {
+				firstFileUnfolded := m.files[startIdx].FoldLevel != sidebyside.FoldFolded
+				rows = append(rows, displayRow{
+					kind:              RowKindHeaderTopBorder,
+					fileIndex:         startIdx,
+					isHeaderTopBorder: true,
+					foldLevel:         sidebyside.FoldNormal,
+					status:            fileStatusFromPair(m.files[startIdx]),
+					headerBoxWidth:    headerBoxWidth,
+					borderVisible:     firstFileUnfolded,
+				})
+			}
 		}
 
 		// Add file rows for this commit
@@ -582,9 +590,20 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	isFirstFile := fileIdx == commitStartIdx
 	_ = isFirstFile // Used for documentation, first file's border handled elsewhere
 
-	// Check if previous file is unfolded (for header/bottom border visibility)
-	prevFileUnfolded := isFirstFile
-	if fileIdx > commitStartIdx {
+	// Check if previous node is unfolded (for header/bottom border visibility)
+	// For first file: check commit info if it exists (log/show view), else true (diff view)
+	// For other files: check if previous file is unfolded
+	var prevFileUnfolded bool
+	if isFirstFile {
+		commitIdx := m.commitForFile(fileIdx)
+		if commitIdx >= 0 && commitIdx < len(m.commits) && m.commits[commitIdx].Info.HasMetadata() {
+			// Log/show view: first file's "previous" is the commit info node
+			prevFileUnfolded = m.commits[commitIdx].FoldLevel == sidebyside.CommitExpanded
+		} else {
+			// Diff view: no node above first file, border follows file's own state
+			prevFileUnfolded = true
+		}
+	} else {
 		prevFileUnfolded = m.files[fileIdx-1].FoldLevel != sidebyside.FoldFolded
 	}
 
@@ -1122,6 +1141,10 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			rendered = m.renderCommitHeaderBottomBorder(row, isCursorRow)
 		} else if row.isCommitBody {
 			rendered = m.renderCommitBodyRow(row, isCursorRow)
+		} else if row.isCommitInfoHeader {
+			rendered = m.renderCommitInfoHeader(row, isCursorRow)
+		} else if row.isCommitInfoBody {
+			rendered = m.renderCommitInfoBody(row, isCursorRow)
 		} else if row.isStructuralDiff {
 			rendered = m.renderStructuralDiffRow(row, isCursorRow)
 		} else if row.isHeaderTopBorder {
@@ -1672,6 +1695,102 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	return fixedPart + dynamicPart + trailingFill
 }
 
+// renderCommitInfoHeader renders the commit info header row (foldable child node).
+// Uses yellow ▒ shaders (like file headers but yellow-colored).
+// Layout: [shader prefix] [fold icon] [header text] [trailing fill]
+func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
+	// Yellow style for shaders (Color 3)
+	yellowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+
+	// Fold icon: ◯ for CommitNormal (header only), ● for CommitExpanded (full content)
+	var foldIcon string
+	switch row.commitFoldLevel {
+	case sidebyside.CommitExpanded:
+		foldIcon = "●"
+	default:
+		foldIcon = "◯"
+	}
+
+	// Icon color: fg=8 normally, fg=15 when cursor is on row
+	iconColor := "8"
+	if isCursorRow {
+		iconColor = "15"
+	}
+	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(iconColor))
+	styledIcon := iconStyle.Render(foldIcon)
+
+	// Header text (e.g., "Date: Wed Jan 25 10:30:00 2025") - no bold
+	headerText := row.header
+	headerTextWidth := displayWidth(headerText)
+	styledHeader := headerText // plain text, no bold
+
+	// Calculate trailing fill width
+	// Layout: prefix(4) + space(1) + icon(1) + space(1) + header + trailing
+	prefixWidth := 4 + 1 + 1 + 1 + headerTextWidth
+	trailing := m.width - prefixWidth
+	if trailing < 1 {
+		trailing = 0
+	}
+	trailingFill := ""
+	if trailing > 0 {
+		trailingFill = " " + yellowStyle.Render(strings.Repeat("▒", trailing))
+	}
+
+	if isCursorRow && m.focused {
+		// Focused cursor: arrow + shader + [bg highlight] + shader + content
+		styledGutter := cursorStyle.Render(" ")
+		return cursorArrowStyle.Render("▶") + yellowStyle.Render("▒") + styledGutter + yellowStyle.Render("▒") + " " + styledIcon + " " + styledHeader + trailingFill
+	}
+
+	if isCursorRow && !m.focused {
+		// Unfocused cursor: outline arrow + shaders + content
+		return unfocusedCursorArrowStyle.Render("▷") + yellowStyle.Render("▒▒▒") + " " + styledIcon + " " + styledHeader + trailingFill
+	}
+
+	// Normal: shader prefix + content
+	prefixShader := yellowStyle.Render("▒▒▒▒")
+	return prefixShader + " " + styledIcon + " " + styledHeader + trailingFill
+}
+
+// renderCommitInfoBody renders a commit info body row (Author, Date, message content).
+// Uses the same styling as the legacy commit body rows.
+func (m Model) renderCommitInfoBody(row displayRow, isCursorRow bool) string {
+	// Styles
+	gutterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+
+	line := row.commitInfoLine
+	styledLine := line
+
+	// Apply SHA highlighting to the "commit <sha>" line if present
+	// (This line isn't in the info body - it's the header, but keep for future flexibility)
+
+	// Build gutter (arrow + padding) - 2 spaces to align slightly left
+	var gutter string
+	if isCursorRow {
+		if m.focused {
+			styledGutterSpace := cursorStyle.Render(" ")
+			gutter = cursorArrowStyle.Render("▶") + styledGutterSpace
+		} else {
+			gutter = unfocusedCursorArrowStyle.Render("▷") + " "
+		}
+	} else {
+		gutter = gutterStyle.Render("  ")
+	}
+
+	// Apply syntax highlighting for commit/Author/Date lines
+	if strings.HasPrefix(line, "commit ") {
+		// First line of body: "commit <full sha>"
+		styledLine = gutterStyle.Render("commit ") + shaStyle.Render(line[7:])
+	} else if strings.HasPrefix(line, "Author: ") {
+		styledLine = gutterStyle.Render("Author: ") + line[8:]
+	} else if strings.HasPrefix(line, "Date:   ") {
+		styledLine = gutterStyle.Render("Date:   ") + line[8:]
+	}
+
+	return gutter + styledLine
+}
+
 // buildCommitBodyRows creates display rows for the commit body (shown when expanded).
 // Format is similar to git log: full SHA, author, date, then message body.
 func (m Model) buildCommitBodyRows(commit *sidebyside.CommitSet, commitIdx int) []displayRow {
@@ -1797,6 +1916,135 @@ func (m Model) buildCommitBodyRowsSkipFirstBlank(commit *sidebyside.CommitSet, c
 	if len(rows) > 0 && rows[0].commitBodyIsBlank {
 		return rows[1:]
 	}
+	return rows
+}
+
+// buildCommitInfoRows creates the foldable commit info node rows.
+// This node appears as the first child under a commit, before any files.
+// - CommitFolded: returns empty (node hidden)
+// - CommitNormal: returns only header row ("commit abc1234")
+// - CommitExpanded: returns header + body rows (Author, Date, message)
+func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) []displayRow {
+	var rows []displayRow
+	info := commit.Info
+
+	// No info rows if commit has no metadata or is folded
+	if !info.HasMetadata() || commit.FoldLevel == sidebyside.CommitFolded {
+		return rows
+	}
+
+	// Commit info header: just "commit" in lowercase
+	rows = append(rows, displayRow{
+		kind:               RowKindCommitInfoHeader,
+		fileIndex:          -1,
+		isCommitInfoHeader: true,
+		header:             "commit",
+		commitFoldLevel:    commit.FoldLevel,
+		commitIndex:        commitIdx,
+	})
+
+	// If parent is CommitNormal, only show header (info folded)
+	if commit.FoldLevel == sidebyside.CommitNormal {
+		return rows
+	}
+
+	// CommitExpanded: show full info body
+
+	// Blank line after header
+	rows = append(rows, displayRow{
+		kind:             RowKindCommitInfoBody,
+		fileIndex:        -1,
+		isCommitInfoBody: true,
+		commitInfoLine:   "",
+		commitIndex:      commitIdx,
+	})
+
+	// commit <full sha>
+	rows = append(rows, displayRow{
+		kind:             RowKindCommitInfoBody,
+		fileIndex:        -1,
+		isCommitInfoBody: true,
+		commitInfoLine:   "commit " + info.SHA,
+		commitIndex:      commitIdx,
+	})
+
+	// Author line
+	authorLine := "Author: " + info.Author
+	if info.Email != "" {
+		authorLine += " <" + info.Email + ">"
+	}
+	rows = append(rows, displayRow{
+		kind:             RowKindCommitInfoBody,
+		fileIndex:        -1,
+		isCommitInfoBody: true,
+		commitInfoLine:   authorLine,
+		commitIndex:      commitIdx,
+	})
+
+	// Date line
+	rows = append(rows, displayRow{
+		kind:             RowKindCommitInfoBody,
+		fileIndex:        -1,
+		isCommitInfoBody: true,
+		commitInfoLine:   "Date:   " + info.Date,
+		commitIndex:      commitIdx,
+	})
+
+	// Blank line before message
+	rows = append(rows, displayRow{
+		kind:             RowKindCommitInfoBody,
+		fileIndex:        -1,
+		isCommitInfoBody: true,
+		commitInfoLine:   "",
+		commitIndex:      commitIdx,
+	})
+
+	// Subject line (indented)
+	if info.Subject != "" {
+		rows = append(rows, displayRow{
+			kind:             RowKindCommitInfoBody,
+			fileIndex:        -1,
+			isCommitInfoBody: true,
+			commitInfoLine:   "    " + info.Subject,
+			commitIndex:      commitIdx,
+		})
+	}
+
+	// Body lines (if present)
+	if info.Body != "" {
+		// Blank line between subject and body
+		rows = append(rows, displayRow{
+			kind:             RowKindCommitInfoBody,
+			fileIndex:        -1,
+			isCommitInfoBody: true,
+			commitInfoLine:   "",
+			commitIndex:      commitIdx,
+		})
+		bodyLines := strings.Split(info.Body, "\n")
+		for _, line := range bodyLines {
+			indentedLine := ""
+			if line != "" {
+				indentedLine = "    " + line
+			}
+			rows = append(rows, displayRow{
+				kind:             RowKindCommitInfoBody,
+				fileIndex:        -1,
+				isCommitInfoBody: true,
+				commitInfoLine:   indentedLine,
+				commitIndex:      commitIdx,
+			})
+		}
+	}
+
+	// Trailing blank line for the file border to draw into
+	rows = append(rows, displayRow{
+		kind:             RowKindCommitInfoBody,
+		fileIndex:        -1,
+		isCommitInfoBody: true,
+		commitInfoLine:   "",
+		commitIndex:      commitIdx,
+	})
+
 	return rows
 }
 

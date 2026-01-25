@@ -1311,11 +1311,11 @@ func TestRowMatchesIdentity_CommitHeader_RequiresMatchingCommitIndex(t *testing.
 	}
 
 	// Row 0 is commit 0's header - should NOT match
-	assert.False(t, m.rowMatchesIdentity(rows[0], identity, 0, 0, 0),
+	assert.False(t, m.rowMatchesIdentity(rows[0], identity, 0, 0, 0, 0),
 		"commit 0's header should not match identity for commit 1")
 
 	// Row 1 is commit 1's header - SHOULD match
-	assert.True(t, m.rowMatchesIdentity(rows[1], identity, 0, 0, 0),
+	assert.True(t, m.rowMatchesIdentity(rows[1], identity, 0, 0, 0, 0),
 		"commit 1's header should match identity for commit 1")
 }
 
