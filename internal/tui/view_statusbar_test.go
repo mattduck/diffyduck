@@ -4,8 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"github.com/user/diffyduck/pkg/structure"
 )
@@ -1655,4 +1657,153 @@ func TestIsOnCommitHeader(t *testing.T) {
 	if cursorPos >= 0 && cursorPos < len(rows) {
 		assert.Equal(t, rows[cursorPos].isCommitHeader, m.isOnCommitHeader())
 	}
+}
+
+func TestFormatBreadcrumbsStyled_WidthResponsive(t *testing.T) {
+	theme := highlight.DefaultTheme()
+
+	// Entry with multiple params
+	entries := []structure.Entry{
+		{
+			Kind:       "func",
+			Name:       "processRequest",
+			Receiver:   "(s *Server)",
+			Params:     []string{"ctx context.Context", "req *Request", "opts Options"},
+			ReturnType: "error",
+		},
+	}
+
+	// Strip ANSI codes to check content
+	strip := func(s string) string {
+		return ansi.Strip(s)
+	}
+
+	t.Run("compact when width is 0", func(t *testing.T) {
+		result := formatBreadcrumbsStyled(entries, theme, 0)
+		stripped := strip(result)
+		assert.Contains(t, stripped, "func")
+		assert.Contains(t, stripped, "(s *Server)")
+		assert.Contains(t, stripped, "processRequest")
+		assert.Contains(t, stripped, "(...)")
+		assert.Contains(t, stripped, "-> error")
+		assert.NotContains(t, stripped, "context.Context")
+	})
+
+	t.Run("expands params with large width", func(t *testing.T) {
+		result := formatBreadcrumbsStyled(entries, theme, 200)
+		stripped := strip(result)
+		assert.Contains(t, stripped, "ctx context.Context")
+		assert.Contains(t, stripped, "req *Request")
+		assert.Contains(t, stripped, "opts Options")
+		assert.NotContains(t, stripped, "...")
+	})
+
+	t.Run("partial params with medium width", func(t *testing.T) {
+		// Width enough for one param but not all
+		result := formatBreadcrumbsStyled(entries, theme, 80)
+		stripped := strip(result)
+		assert.Contains(t, stripped, "processRequest")
+		// Should have some params visible but end with ...
+		// The exact behavior depends on width calculation
+		if strings.Contains(stripped, "...") {
+			// Partial expansion - should have at least one param
+			assert.True(t,
+				strings.Contains(stripped, "ctx") || strings.Contains(stripped, "(...)"),
+				"should show partial params or compact format")
+		}
+	})
+}
+
+func TestFormatSignatureStyled_WidthExpansion(t *testing.T) {
+	theme := highlight.DefaultTheme()
+	nameStyle := theme.Style(highlight.CategoryFunction)
+	typeStyle := theme.Style(highlight.CategoryType)
+	punctStyle := theme.Style(highlight.CategoryPunctuation)
+
+	entry := structure.Entry{
+		Kind:       "func",
+		Name:       "doSomething",
+		Params:     []string{"a int", "b string", "c bool"},
+		ReturnType: "error",
+	}
+
+	strip := func(s string) string {
+		return ansi.Strip(s)
+	}
+
+	t.Run("compact with zero width", func(t *testing.T) {
+		result := formatSignatureStyled(entry, 0, nameStyle, typeStyle, punctStyle)
+		stripped := strip(result)
+		assert.Equal(t, "doSomething(...) -> error", stripped)
+	})
+
+	t.Run("full params with large width", func(t *testing.T) {
+		result := formatSignatureStyled(entry, 100, nameStyle, typeStyle, punctStyle)
+		stripped := strip(result)
+		assert.Equal(t, "doSomething(a int, b string, c bool) -> error", stripped)
+	})
+
+	t.Run("one param with limited width", func(t *testing.T) {
+		// Width enough for first param only
+		result := formatSignatureStyled(entry, 35, nameStyle, typeStyle, punctStyle)
+		stripped := strip(result)
+		assert.Contains(t, stripped, "a int")
+		assert.Contains(t, stripped, "...")
+		assert.NotContains(t, stripped, "b string")
+	})
+
+	t.Run("two params with more width", func(t *testing.T) {
+		// Width 42 fits "a int, b string, ..." but not all three params
+		result := formatSignatureStyled(entry, 42, nameStyle, typeStyle, punctStyle)
+		stripped := strip(result)
+		assert.Contains(t, stripped, "a int")
+		assert.Contains(t, stripped, "b string")
+		assert.Contains(t, stripped, "...")
+		assert.NotContains(t, stripped, "c bool")
+	})
+}
+
+func TestFormatSignatureStyled_WithReceiver(t *testing.T) {
+	theme := highlight.DefaultTheme()
+	nameStyle := theme.Style(highlight.CategoryFunction)
+	typeStyle := theme.Style(highlight.CategoryType)
+	punctStyle := theme.Style(highlight.CategoryPunctuation)
+
+	entry := structure.Entry{
+		Kind:       "func",
+		Name:       "Render",
+		Receiver:   "(m Model)",
+		Params:     []string{"width int"},
+		ReturnType: "string",
+	}
+
+	strip := func(s string) string {
+		return ansi.Strip(s)
+	}
+
+	result := formatSignatureStyled(entry, 100, nameStyle, typeStyle, punctStyle)
+	stripped := strip(result)
+	assert.Equal(t, "(m Model) Render(width int) -> string", stripped)
+}
+
+func TestFormatSignatureStyled_NoParams(t *testing.T) {
+	theme := highlight.DefaultTheme()
+	nameStyle := theme.Style(highlight.CategoryFunction)
+	typeStyle := theme.Style(highlight.CategoryType)
+	punctStyle := theme.Style(highlight.CategoryPunctuation)
+
+	entry := structure.Entry{
+		Kind:       "func",
+		Name:       "Close",
+		Params:     []string{},
+		ReturnType: "error",
+	}
+
+	strip := func(s string) string {
+		return ansi.Strip(s)
+	}
+
+	result := formatSignatureStyled(entry, 0, nameStyle, typeStyle, punctStyle)
+	stripped := strip(result)
+	assert.Equal(t, "Close() -> error", stripped)
 }

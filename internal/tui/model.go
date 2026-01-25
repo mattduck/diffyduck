@@ -501,18 +501,19 @@ func (m *Model) clampScroll() {
 
 // StatusInfo contains information for the status bar.
 type StatusInfo struct {
-	CurrentFile int                  // 1-based index of current file
-	TotalFiles  int                  // total number of files
-	FileName    string               // name of current file
-	CurrentLine int                  // 1-based line position in viewport
-	TotalLines  int                  // total lines in diff
-	Percentage  int                  // 0-100 percentage through diff
-	AtEnd       bool                 // true if scrolled to the end
-	FoldLevel   sidebyside.FoldLevel // fold level of current file
-	FileStatus  string               // file status (added, deleted, renamed, modified)
-	Added       int                  // number of added lines in current file
-	Removed     int                  // number of removed lines in current file
-	Breadcrumbs string               // code structure breadcrumb (e.g., "type MyStruct > func myMethod")
+	CurrentFile       int                  // 1-based index of current file
+	TotalFiles        int                  // total number of files
+	FileName          string               // name of current file
+	CurrentLine       int                  // 1-based line position in viewport
+	TotalLines        int                  // total lines in diff
+	Percentage        int                  // 0-100 percentage through diff
+	AtEnd             bool                 // true if scrolled to the end
+	FoldLevel         sidebyside.FoldLevel // fold level of current file
+	FileStatus        string               // file status (added, deleted, renamed, modified)
+	Added             int                  // number of added lines in current file
+	Removed           int                  // number of removed lines in current file
+	Breadcrumbs       string               // code structure breadcrumb (e.g., "type MyStruct > func myMethod")
+	BreadcrumbEntries []structure.Entry    // structure entries for styled breadcrumb rendering
 }
 
 // StatusInfo computes information for the status bar based on cursor position.
@@ -574,23 +575,24 @@ func (m Model) StatusInfo() StatusInfo {
 		info.Added, info.Removed = countFileStats(fp)
 
 		// Get breadcrumbs for current source line
-		info.Breadcrumbs = m.getBreadcrumbsForCursor(fileIdx, cursorPos)
+		info.BreadcrumbEntries = m.getEntriesForCursor(fileIdx, cursorPos)
+		info.Breadcrumbs = formatBreadcrumbs(info.BreadcrumbEntries, 0)
 	}
 	// Summary row: leave file-specific fields at zero values (no file info shown)
 
 	return info
 }
 
-// getBreadcrumbsForCursor returns formatted breadcrumbs for the cursor position.
+// getEntriesForCursor returns structure entries for the cursor position.
 // fileIdx is 0-based, cursorPos is the display row index.
-func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
+func (m Model) getEntriesForCursor(fileIdx int, cursorPos int) []structure.Entry {
 	// Get the display row at cursor position (use cache if valid)
 	rows := m.cachedRows
 	if !m.rowsCacheValid {
 		rows = m.buildRows()
 	}
 	if cursorPos < 0 || cursorPos >= len(rows) {
-		return ""
+		return nil
 	}
 
 	row := rows[cursorPos]
@@ -600,48 +602,44 @@ func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
 	if row.isHeader || row.isSeparatorTop ||
 		row.isBlank || row.isHeaderSpacer || row.isHeaderTopBorder ||
 		row.isStructuralDiff {
-		return ""
+		return nil
 	}
 
 	// For separator and separator bottom rows, use the chunk's start line for breadcrumbs
 	// This shows the breadcrumb when cursor is on or below the breadcrumb line in the separator
 	if row.isSeparator || row.isSeparatorBottom {
 		if row.chunkStartLine <= 0 {
-			return ""
+			return nil
 		}
-		entries := m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
-		if len(entries) == 0 {
-			return ""
-		}
-		// Use 0 for compact default (status bar will truncate as needed)
-		return formatBreadcrumbs(entries, 0)
+		return m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
 	}
 
 	// For comment rows, use the line number the comment belongs to
 	if row.kind == RowKindComment {
 		if row.commentLineNum <= 0 {
-			return ""
+			return nil
 		}
-		entries := m.getStructureAtLine(row.fileIndex, row.commentLineNum)
-		if len(entries) == 0 {
-			return ""
-		}
-		return formatBreadcrumbs(entries, 0)
+		return m.getStructureAtLine(row.fileIndex, row.commentLineNum)
 	}
 
 	// Get source line number from the new side only
 	// Don't show breadcrumbs for deleted lines to avoid confusion
 	if row.pair.New.Num <= 0 {
-		return ""
+		return nil
 	}
 	sourceLine := row.pair.New.Num
 
 	// Look up structure for this file (new side only)
-	entries := m.getStructureAtLine(fileIdx, sourceLine)
+	return m.getStructureAtLine(fileIdx, sourceLine)
+}
+
+// getBreadcrumbsForCursor returns formatted breadcrumbs for the cursor position.
+// fileIdx is 0-based, cursorPos is the display row index.
+func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
+	entries := m.getEntriesForCursor(fileIdx, cursorPos)
 	if len(entries) == 0 {
 		return ""
 	}
-
 	// Use 0 for compact default (status bar will truncate as needed)
 	return formatBreadcrumbs(entries, 0)
 }
