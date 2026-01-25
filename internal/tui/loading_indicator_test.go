@@ -237,6 +237,7 @@ func TestHeader_ShowsSpinnerWhenLoading(t *testing.T) {
 		0,     // fileIndex
 		0,     // rowIdx
 		false, // isCursorRow
+		false, // isLastFileInCommit
 	)
 
 	// Should contain spinner frame, not the ~ symbol

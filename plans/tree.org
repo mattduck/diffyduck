@@ -1,0 +1,617 @@
+#+TITLE: Tree Hierarchy Visual Indicator
+#+DATE: 2025-01-25
+
+* Overview
+
+Adding tree-style visual indicators (like the =tree= command) to show the
+hierarchy of commits, files, and content. Goal is to make it easier to see
+structure when paging through lots of file data, especially when scrolling
+through many files across multiple commits.
+
+* Problem Statement
+
+When viewing diffs with many files or multiple commits:
+- Easy to lose track of which commit you're in
+- Hard to see file boundaries when scrolling through content
+- No visual indication of hierarchy (commit > file > hunk > line)
+- Folded items don't clearly show their relationship to siblings
+
+* Current Implementation (Prototype)
+
+** Tree Characters Used
+| Char | Name                 | Usage                              |
+|------+----------------------+------------------------------------|
+| =─=  | Horizontal line      | Branch connector, root indicator   |
+| =├=  | Branch               | Node with more siblings below      |
+| =└=  | Last branch          | Final node at this level           |
+| =│=  | Vertical line        | Continuation (more children below) |
+
+** Current Hierarchy (2 levels)
+#+begin_example
+─ ◐ commit header (root)
+├─── ◯ commit info
+├─── ◐ file 1
+│    │ structural diff rows
+│    │ diff content rows
+│    │ hunk separators
+├─── ◐ file 2
+│    │ ...
+└─── ◐ file 3 (last)
+     │ ...
+#+end_example
+
+** Current Prefix Width
+- Tree prefix is 7 characters wide for content rows
+- Format: =[commit-level][4 spaces][file-level][space]=
+- Examples:
+  - =│    │ = (7 chars) - non-last file, expanded
+  - =     │ = (7 chars) - last file, expanded
+  - =│      = (7 chars) - non-last file, folded
+  - =       = (7 chars) - last file, folded
+
+** Row Types Currently Updated
+| Row Type              | Function                    | Tree Support |
+|-----------------------+-----------------------------+--------------|
+| Commit header         | =renderCommitHeaderRow=     | =─= prefix   |
+| Commit info header    | =renderCommitInfoHeader=    | =├───=       |
+| File headers          | =renderHeader=              | =├───/└───=  |
+| Structural diff       | =renderStructuralDiffRow=   | 2-level      |
+| Diff content          | =renderLinePair=            | 2-level      |
+| Hunk separator        | =renderHunkSeparator=       | 2-level      |
+| Hunk separator top    | =renderHunkSeparatorTop=    | 2-level      |
+
+** Fields Added to displayRow
+#+begin_src go
+isLastFileInCommit bool  // determines ├ vs └ on file headers
+isFileFolded       bool  // hides file-level │ when file is folded
+#+end_src
+
+** Files Modified
+- =internal/tui/view.go= - all rendering functions
+- =internal/tui/model.go= - displayRow struct
+
+* Row Types NOT Yet Updated
+
+These need tree prefixes for visual consistency:
+
+| Row Type              | Function                   | Notes                        |
+|-----------------------+----------------------------+------------------------------|
+| Header top border     | =renderHeaderTopBorder=    | Blue ━━━ line above header   |
+| Header bottom border  | =renderHeaderBottomBorder= | Blue ━━━ line below header   |
+| Truncation indicator  | =renderTruncationIndicator=| "... N lines truncated"      |
+| Binary indicator      | =renderBinaryIndicator=    | "Binary file changed"        |
+| Comment rows          | =renderCommentRow=         | User comments on lines       |
+| Blank rows            | =renderBlankWithCursor=    | Inter-file spacing           |
+| Inter-file blank      | =renderInterFileBlank=     | Blank between files          |
+| Commit top border     | =renderCommitHeaderTopBorder=   | Yellow ━━━ (now empty)  |
+| Commit bottom border  | =renderCommitHeaderBottomBorder=| Yellow ━━━              |
+
+* Generic Tree Representation
+
+** Why Generalize?
+
+Current problems:
+1. Tree logic is copy-pasted across 8+ render functions
+2. Each function has its own =if isLastFileInCommit= / =if isFileFolded= logic
+3. Adding hunks as a tree level would require modifying every function
+4. No single source of truth for tree structure
+5. Hard to change tree appearance (colors, characters, width)
+
+** Proposed Data Model
+
+#+begin_src go
+// TreeLevel represents one level in the tree hierarchy
+type TreeLevel struct {
+    IsLast   bool           // Is this the last child at its level?
+    IsFolded bool           // Is this node folded (hiding children)?
+    Style    lipgloss.Style // Color/style for tree chars at this level
+    Depth    int            // 0=commit, 1=file, 2=hunk, 3=content
+}
+
+// TreePath represents the full path from root to a node
+type TreePath struct {
+    Ancestors []TreeLevel // Parent levels (for continuation lines)
+    Current   *TreeLevel  // This node's level (for branch char), nil for content
+}
+#+end_src
+
+** Adding to displayRow
+
+#+begin_src go
+type displayRow struct {
+    // ... existing fields ...
+
+    // Tree hierarchy (replaces isLastFileInCommit, isFileFolded)
+    treePath TreePath
+}
+#+end_src
+
+** Generic Rendering Functions
+
+#+begin_src go
+// renderTreeContinuation renders the vertical continuation lines for ancestors
+// Example output: "│    │    " for depth 2 with no folded ancestors
+func renderTreeContinuation(ancestors []TreeLevel) string {
+    var b strings.Builder
+    for _, level := range ancestors {
+        if level.IsLast || level.IsFolded {
+            b.WriteString("     ") // 5 spaces - no continuation
+        } else {
+            b.WriteString(level.Style.Render("│"))
+            b.WriteString("    ") // │ + 4 spaces = 5 chars
+        }
+    }
+    return b.String()
+}
+
+// renderTreeBranch renders the branch character for a header node
+// Example output: "├───" or "└───"
+func renderTreeBranch(level TreeLevel) string {
+    if level.IsLast {
+        return level.Style.Render("└───")
+    }
+    return level.Style.Render("├───")
+}
+
+// renderTreePrefix renders the full prefix for any row
+// For headers: continuation + branch
+// For content: continuation + extra │ for parent
+func renderTreePrefix(path TreePath, isHeader bool) string {
+    continuation := renderTreeContinuation(path.Ancestors)
+    if isHeader && path.Current != nil {
+        return continuation + renderTreeBranch(*path.Current)
+    }
+    // Content row - add one more continuation level
+    if len(path.Ancestors) > 0 {
+        last := path.Ancestors[len(path.Ancestors)-1]
+        if last.IsFolded {
+            return continuation + "     "
+        }
+        return continuation + last.Style.Render("│") + " "
+    }
+    return continuation
+}
+#+end_src
+
+** Width Calculation
+
+#+begin_src go
+const (
+    TreeLevelWidth = 5  // "│    " or "     " per level
+    TreeBranchWidth = 4 // "├───" or "└───"
+)
+
+func treeWidth(depth int, isHeader bool) int {
+    if isHeader {
+        return (depth * TreeLevelWidth) + TreeBranchWidth
+    }
+    return ((depth + 1) * TreeLevelWidth) + 1 // +1 for space after last │
+}
+#+end_src
+
+* Target Hierarchy (3+ levels with hunks)
+
+** Visual Structure
+#+begin_example
+─ ◐ commit abc123 (root, level 0)
+├─── ◯ commit info (level 1)
+│    Author: John Doe
+│    Date: 2025-01-25
+├─── ◐ src/main.go (file, level 1)
+│    ├─── @@ -10,5 +10,7 @@ func main() (hunk, level 2)
+│    │    │ context line
+│    │    │+added line
+│    │    │-removed line
+│    │    │ context line
+│    ├─── @@ -50,3 +52,8 @@ func helper() (hunk, level 2)
+│    │    │ ...
+│    └─── @@ -100,2 +105,2 @@ func other() (last hunk, level 2)
+│         │ ...
+├─── ◐ src/util.go (file, level 1)
+│    └─── @@ -1,10 +1,15 @@ package util (single hunk)
+│         │ ...
+└─── ◐ README.md (last file, level 1)
+     └─── @@ -1,5 +1,8 @@ (single hunk)
+          │ ...
+#+end_example
+
+** Depth Levels
+| Depth | Node Type        | Example                            |
+|-------+------------------+------------------------------------|
+|     0 | Commit           | =─ ◐ abc123 feat: add feature=     |
+|     1 | Commit info      | =├─── ◯ commit=                    |
+|     1 | File             | =├─── ◐ src/main.go=               |
+|     2 | Hunk             | =│    ├─── @@ -10,5 +10,7 @@=      |
+|     3 | Content line     | =│    │    │ +added line=           |
+|     2 | Structural diff  | =│    │ ~ func Changed=             |
+
+** Hunk as Foldable Node
+
+Hunks become first-class tree nodes:
+
+#+begin_src go
+type HunkFoldLevel int
+
+const (
+    HunkNormal   HunkFoldLevel = iota // Show all content
+    HunkFolded                        // Show only header line
+)
+
+// In FilePair or separate structure:
+type HunkInfo struct {
+    Header     string        // "@@ -10,5 +10,7 @@ func main()"
+    FoldLevel  HunkFoldLevel
+    StartIndex int           // Index into Pairs slice
+    EndIndex   int           // Exclusive end index
+}
+#+end_src
+
+Benefits of foldable hunks:
+- Collapse uninteresting hunks while reviewing
+- See overview of all changes in a file
+- Jump between hunks easily
+- Reduce visual noise
+
+* Building the Tree
+
+** In buildRows()
+
+#+begin_src go
+func (m Model) buildRows() []displayRow {
+    var rows []displayRow
+
+    for commitIdx, commit := range m.commits {
+        isLastCommit := commitIdx == len(m.commits)-1
+        commitStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow
+
+        commitLevel := TreeLevel{
+            IsLast:   isLastCommit,
+            IsFolded: commit.FoldLevel == sidebyside.CommitFolded,
+            Style:    commitStyle,
+            Depth:    0,
+        }
+
+        // Commit header row
+        rows = append(rows, displayRow{
+            kind: RowKindCommitHeader,
+            treePath: TreePath{
+                Ancestors: nil,
+                Current:   nil, // root has no branch
+            },
+            // ...
+        })
+
+        // Build file rows with tree path
+        for fileIdx := range filesInCommit {
+            isLastFile := fileIdx == lastFileIdx
+            fileStyle := fileStatusStyle(files[fileIdx])
+
+            fileLevel := TreeLevel{
+                IsLast:   isLastFile,
+                IsFolded: files[fileIdx].FoldLevel == FoldFolded,
+                Style:    fileStyle,
+                Depth:    1,
+            }
+
+            // File header
+            rows = append(rows, displayRow{
+                kind: RowKindHeader,
+                treePath: TreePath{
+                    Ancestors: []TreeLevel{commitLevel},
+                    Current:   &fileLevel,
+                },
+                // ...
+            })
+
+            // Content rows
+            for _, pair := range filePairs {
+                rows = append(rows, displayRow{
+                    kind: RowKindContent,
+                    treePath: TreePath{
+                        Ancestors: []TreeLevel{commitLevel, fileLevel},
+                        Current:   nil, // content has no branch
+                    },
+                    // ...
+                })
+            }
+        }
+    }
+    return rows
+}
+#+end_src
+
+** Helper to Build Ancestors
+
+#+begin_src go
+func buildAncestors(levels ...TreeLevel) []TreeLevel {
+    result := make([]TreeLevel, len(levels))
+    copy(result, levels)
+    return result
+}
+
+// Usage:
+treePath: TreePath{
+    Ancestors: buildAncestors(commitLevel, fileLevel, hunkLevel),
+    Current:   nil,
+}
+#+end_src
+
+* Color Scheme
+
+** Current (Prototype)
+- Commit header: yellow (color 3)
+- Commit info: yellow (color 3)
+- File tree lines: file status color (green=added, red=deleted, blue=modified)
+
+** Proposed Scheme
+| Level       | Element          | Color                    | Rationale                |
+|-------------+------------------+--------------------------+--------------------------|
+| Commit      | Header, borders  | Yellow (3)               | Matches git log          |
+| Commit info | Header, lines    | Yellow (3) dim           | Subordinate to commit    |
+| File        | Header, branch   | Status color             | Visual diff indicator    |
+| File        | Continuation │   | Status color dim         | Less prominent           |
+| Hunk        | Header           | Cyan (6)                 | Distinct from file       |
+| Hunk        | Continuation │   | Gray (8)                 | Minimal visual noise     |
+| Content     | Tree lines       | Gray (8)                 | Focus on content         |
+
+** Style Definitions
+
+#+begin_src go
+var (
+    commitTreeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+    fileAddedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+    fileRemovedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+    fileModifiedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+    hunkTreeStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+    contentTreeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+)
+#+end_src
+
+* Width Considerations
+
+** Width Per Level
+| Levels | Header Width | Content Width | Example                |
+|--------+--------------+---------------+------------------------|
+|      1 | 4 chars      | 6 chars       | File only (diff view)  |
+|      2 | 9 chars      | 11 chars      | Commit + file          |
+|      3 | 14 chars     | 16 chars      | Commit + file + hunk   |
+
+** Minimum Terminal Width
+- Current minimum: ~40 chars for usable diff view
+- With 3-level tree: need ~50+ chars
+- Consider: collapse tree at narrow widths?
+
+** Adaptive Behavior
+
+#+begin_src go
+func (m Model) shouldShowTree() bool {
+    return m.width >= MinTreeWidth
+}
+
+func (m Model) treeDepthForWidth() int {
+    if m.width < 50 {
+        return 0 // no tree
+    }
+    if m.width < 80 {
+        return 1 // files only
+    }
+    return 2 // full tree with hunks
+}
+#+end_src
+
+* Cursor Interaction
+
+** Current Behavior
+- Cursor arrow =▶= replaces first character of tree prefix
+- Background highlight extends through line number area
+- Tree continuation lines not highlighted
+
+** Cursor in Tree Area
+
+#+begin_example
+Non-cursor row:
+│    │ +added line
+
+Cursor row (focused):
+▶    │ +added line
+     ^^^^ could highlight this area too
+
+Cursor row (unfocused):
+▷    │ +added line
+#+end_example
+
+** Proposed: Minimal Tree Disruption
+Keep tree lines visible even on cursor row:
+#+begin_example
+│    ▶ +added line
+     ^ arrow replaces the innermost │ only
+#+end_example
+
+* Diff View (No Commits)
+
+** Current State
+When viewing plain diff (=git diff=, no commit metadata):
+- =m.commits= is empty or has no metadata
+- Files are shown directly
+
+** Options
+
+1. *No tree* - files shown without any tree prefix
+   #+begin_example
+   ◐ src/main.go
+   +added line
+   ◐ src/util.go
+   #+end_example
+
+2. *Single-level tree* - files as roots with children
+   #+begin_example
+   ─ ◐ src/main.go
+     │ +added line
+   ─ ◐ src/util.go
+   #+end_example
+
+3. *Files as siblings* - implicit root
+   #+begin_example
+   ├─── ◐ src/main.go
+   │    │ +added line
+   └─── ◐ src/util.go
+        │ +added line
+   #+end_example
+
+** Recommendation
+Option 2 (single-level tree) - consistent visual language, clear that content
+belongs to file, no phantom parent node.
+
+* Keyboard Navigation
+
+** Existing Navigation
+| Key      | Action                     |
+|----------+----------------------------|
+| j/k      | Move by row                |
+| J/K      | Move by file               |
+| Tab      | Cycle fold level           |
+| g/G      | Top/bottom                 |
+
+** Proposed Tree Navigation
+| Key      | Action                           |
+|----------+----------------------------------|
+| h        | Go to parent (file→commit)       |
+| l        | Go to first child                |
+| {/}      | Prev/next sibling at same level  |
+| zc       | Fold current node                |
+| zo       | Unfold current node              |
+| zM       | Fold all                         |
+| zR       | Unfold all                       |
+| za       | Toggle fold                      |
+
+* Migration Path
+
+** Phase 1: Add Generic Infrastructure
+1. Define =TreeLevel= and =TreePath= types
+2. Add =treePath= field to =displayRow=
+3. Create =renderTreePrefix()= function
+4. Keep existing =isLastFileInCommit=, =isFileFolded= working
+
+** Phase 2: Migrate Existing Render Functions
+For each render function:
+1. Populate =treePath= in =buildRows()=
+2. Update render function to use =renderTreePrefix(row.treePath, isHeader)=
+3. Remove direct tree character generation
+4. Test that output matches
+
+Order of migration:
+1. =renderStructuralDiffRow= (simplest)
+2. =renderLinePair= (most common)
+3. =renderHunkSeparator= family
+4. =renderHeader=
+5. =renderCommitInfoHeader=
+6. Remaining row types
+
+** Phase 3: Add Hunk Level
+1. Add =HunkInfo= struct to track hunks within files
+2. Parse hunk boundaries in diff processing
+3. Create =RowKindHunkHeader= row type
+4. Add hunk fold state
+5. Update =buildRows()= to include hunk level in tree path
+6. Create =renderHunkHeader()=
+
+** Phase 4: Cleanup
+1. Remove =isLastFileInCommit=, =isFileFolded= fields
+2. Remove duplicate tree logic from render functions
+3. Update all tests
+4. Update golden files
+
+* Testing Strategy
+
+** Unit Tests for Tree Functions
+#+begin_src go
+func TestRenderTreeContinuation(t *testing.T) {
+    tests := []struct {
+        name      string
+        ancestors []TreeLevel
+        want      string
+    }{
+        {"empty", nil, ""},
+        {"single non-last", []TreeLevel{{IsLast: false}}, "│    "},
+        {"single last", []TreeLevel{{IsLast: true}}, "     "},
+        {"two levels", []TreeLevel{{IsLast: false}, {IsLast: false}}, "│    │    "},
+        {"folded parent", []TreeLevel{{IsFolded: true}}, "     "},
+    }
+    // ...
+}
+#+end_src
+
+** Integration Tests
+- Verify tree prefix appears on all row types
+- Test fold/unfold updates tree correctly
+- Test last-child detection at each level
+- Test diff view (no commits)
+- Test narrow terminal handling
+
+** Golden File Updates
+All golden files in =internal/tui/testdata/= will need regeneration:
+- Run =make update-golden= after implementation
+- Review changes carefully - tree adds ~7+ chars to left side
+- Some tests may need width adjustments
+
+* Performance Considerations
+
+** Memory
+- =TreePath= adds ~48+ bytes per row (slice header + 2-3 TreeLevel structs)
+- For 10,000 row diff: ~500KB additional
+- Acceptable for typical usage
+
+** Rendering
+- =renderTreePrefix()= called once per visible row
+- String concatenation is fast
+- No regex or complex parsing
+- Profile if issues arise
+
+** Optimization Opportunities
+#+begin_src go
+// Cache rendered prefixes by path signature
+type pathKey struct {
+    depth      int
+    lastFlags  uint8  // bit flags for IsLast at each level
+    foldFlags  uint8  // bit flags for IsFolded at each level
+}
+
+var prefixCache = make(map[pathKey]string)
+#+end_src
+
+* Open Questions
+
+1. Should right side of diff also show tree? (Probably no - cluttered)
+
+2. How to handle the border =│= at end of file headers? Currently conflicts
+   visually with tree =│=. Options:
+   - Remove header border
+   - Use different character
+   - Accept the visual similarity
+
+3. Should tree lines connect directly to fold icons (=◐=, =◯=)?
+   Current: =├─── ◐= (space between)
+   Alternative: =├───◐= (connected)
+
+4. What about very deep nesting? (Commit > file > hunk > inline comment?)
+   - Cap at 3-4 levels?
+   - Auto-collapse deep levels?
+
+5. Should folding a parent auto-fold children, or preserve their state?
+
+* Related Files
+
+| File                          | Purpose                              |
+|-------------------------------+--------------------------------------|
+| =internal/tui/view.go=        | Row building and rendering           |
+| =internal/tui/model.go=       | Model struct, displayRow definition  |
+| =internal/tui/update.go=      | Fold toggle handling                 |
+| =pkg/sidebyside/types.go=     | FoldLevel, CommitFoldLevel enums     |
+| =internal/tui/testdata/*.golden= | Golden file snapshots             |
+
+* References
+
+- Unix =tree= command output format
+- Vim's NERDTree plugin
+- VS Code's file explorer
+- Lazygit's file tree view

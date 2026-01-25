@@ -195,8 +195,11 @@ type displayRow struct {
 	commitBodyLine    string // the text content for this body line
 	commitBodyIsBlank bool   // true if this is a blank line in the body
 	// Commit info fields (foldable child node under commit)
-	isCommitInfoHeader bool   // true if this is a commit info header row
-	isCommitInfoBody   bool   // true if this is a commit info body row
+	isCommitInfoHeader bool // true if this is a commit info header row
+	isCommitInfoBody   bool // true if this is a commit info body row
+	// Tree hierarchy fields
+	isLastFileInCommit bool   // true if this file is the last file in its commit (for tree └─ vs ├─)
+	isFileFolded       bool   // true if the parent file is folded (hide commit-level tree line)
 	commitInfoLine     string // text content for info body lines
 	// Comment fields (for RowKindComment rows)
 	commentText      string // text of the comment (for rendering)
@@ -618,10 +621,10 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	switch fp.FoldLevel {
 	case sidebyside.FoldFolded:
 		header := formatFileHeader(fp)
-		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth})
+		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, isLastFileInCommit: isLastFile})
 
-		// Add structural diff rows (no borders in folded mode)
-		rows = append(rows, m.buildStructuralDiffRows(fileIdx, headerBoxWidth, false)...)
+		// Add structural diff rows (no borders in folded mode, file is folded)
+		rows = append(rows, m.buildStructuralDiffRows(fileIdx, headerBoxWidth, false, isLastFile, true)...)
 
 	case sidebyside.FoldExpanded:
 		if fp.HasContent() {
@@ -629,16 +632,17 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			// This prevents content shift when first file is unfolded
 
 			header := formatFileHeader(fp)
-			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded, isLastFileInCommit: isLastFile})
 
 			// Add structural diff rows BEFORE bottom border (inside the header box)
-			rows = append(rows, m.buildStructuralDiffRows(fileIdx, headerBoxWidth, prevFileUnfolded)...)
+			rows = append(rows, m.buildStructuralDiffRows(fileIdx, headerBoxWidth, prevFileUnfolded, isLastFile, false)...)
 
 			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
 			expandedRows := m.buildExpandedRows(fp)
 			for i := range expandedRows {
 				expandedRows[i].fileIndex = fileIdx
+				expandedRows[i].isLastFileInCommit = isLastFile
 				if i == 0 {
 					expandedRows[i].isFirstLine = true
 				}
@@ -692,10 +696,10 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		// This prevents content shift when first file is unfolded
 
 		header := formatFileHeader(fp)
-		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
+		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded, isLastFileInCommit: isLastFile})
 
 		// Add structural diff rows BEFORE bottom border (inside the header box)
-		rows = append(rows, m.buildStructuralDiffRows(fileIdx, headerBoxWidth, prevFileUnfolded)...)
+		rows = append(rows, m.buildStructuralDiffRows(fileIdx, headerBoxWidth, prevFileUnfolded, isLastFile, false)...)
 
 		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, borderVisible: prevFileUnfolded})
 
@@ -728,19 +732,19 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			for i, pair := range fp.Pairs {
 				if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
 					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
-					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
-					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
+					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true, isLastFileInCommit: isLastFile})
+					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile})
+					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile})
 				}
 
 				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
 					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true})
-					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine})
-					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine})
+					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true, isLastFileInCommit: isLastFile})
+					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile})
+					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile})
 				}
 
-				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair}
+				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair, isLastFileInCommit: isLastFile}
 				if i == 0 {
 					row.isFirstLine = true
 				}
@@ -1109,10 +1113,8 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			(len(m.commits) > 0 && !m.commits[0].Info.HasMetadata())
 
 		if firstCommitUnfolded {
-			// Render commit top border (yellow ━━━ line)
-			borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-			border := borderStyle.Render(strings.Repeat("━", m.width))
-			visible = append(visible, border)
+			// Render empty line (border styling removed)
+			visible = append(visible, "")
 		} else if isDiffView && firstFileUnfolded && rows[0].isHeader {
 			// Render first file's top border (matches the header box style)
 			visible = append(visible, m.renderHeaderTopBorder(rows[0].headerBoxWidth, true, rows[0].status, false))
@@ -1158,13 +1160,13 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 				rendered = m.renderInterFileBlank()
 			}
 		} else if row.isHeader {
-			rendered = m.renderHeader(row.header, row.foldLevel, row.borderVisible, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow)
+			rendered = m.renderHeader(row.header, row.foldLevel, row.borderVisible, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow, row.isLastFileInCommit)
 		} else if row.isSeparatorTop {
-			rendered = m.renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth, isCursorRow)
+			rendered = m.renderHunkSeparatorTop(row, leftHalfWidth, rightHalfWidth, isCursorRow)
 		} else if row.isSeparator {
 			rendered = m.renderHunkSeparator(row, leftHalfWidth, rightHalfWidth, isCursorRow)
 		} else if row.isSeparatorBottom {
-			rendered = m.renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth, isCursorRow) // same as top
+			rendered = m.renderHunkSeparatorTop(row, leftHalfWidth, rightHalfWidth, isCursorRow) // same as top
 		} else if row.isTruncationIndicator {
 			rendered = m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew)
 		} else if row.isBinaryIndicator {
@@ -1172,7 +1174,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.kind == RowKindComment {
 			rendered = m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow)
 		} else {
-			rendered = m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter)
+			rendered = m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.isLastFileInCommit)
 		}
 
 		// Apply focus colour dimming to rows outside the focus area
@@ -1193,11 +1195,28 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	shadeStyle := hunkSeparatorStyle
 	lineNumWidth := m.lineNumWidth()
 
+	// Tree continuation prefix - two levels: commit level + file level
+	var fileStatusStyle lipgloss.Style
+	if row.fileIndex >= 0 && row.fileIndex < len(m.files) {
+		status := fileStatusFromPair(m.files[row.fileIndex])
+		_, fileStatusStyle = fileStatusIndicator(status)
+	} else {
+		fileStatusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	}
+
+	var treeContinuation string
+	if row.isLastFileInCommit {
+		treeContinuation = "     " + fileStatusStyle.Render("│") + " "
+	} else {
+		treeContinuation = fileStatusStyle.Render("│") + "    " + fileStatusStyle.Render("│") + " "
+	}
+	treeWidth := 7
+
 	// Gutter width: indicator(1) + space(1) + lineNumWidth (one less than content lines for tighter breadcrumb)
 	gutterWidth := 2 + lineNumWidth
 
 	// Content width after gutter (breadcrumb starts here, aligned with code content)
-	leftContentWidth := leftHalfWidth - gutterWidth
+	leftContentWidth := leftHalfWidth - gutterWidth - treeWidth
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
@@ -1214,7 +1233,7 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	}
 
 	if !isCursorRow {
-		// Non-cursor: all shading
+		// Non-cursor: tree + all shading
 		leftGutter := shadeStyle.Render(strings.Repeat("░", gutterWidth))
 		rightGutter := shadeStyle.Render(strings.Repeat("░", gutterWidth))
 
@@ -1229,10 +1248,10 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 		}
 		rightContent := shadeStyle.Render(strings.Repeat("░", rightContentWidth))
 
-		return leftGutter + leftContent + shadeStyle.Render("░░░") + rightGutter + rightContent
+		return treeContinuation + leftGutter + leftContent + shadeStyle.Render("░░░") + rightGutter + rightContent
 	}
 
-	// Cursor row: arrow in gutter, lineNumWidth chars with cursor bg, then breadcrumb in content area
+	// Cursor row: tree + arrow in gutter, lineNumWidth chars with cursor bg, then breadcrumb in content area
 	// When unfocused, use outline arrow and no background highlighting
 	var leftGutter, rightGutter string
 	if m.focused {
@@ -1257,19 +1276,36 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	// Right side: all shading
 	rightContent := shadeStyle.Render(strings.Repeat("░", rightContentWidth))
 
-	return leftGutter + leftContent + shadeStyle.Render("░░░") + rightGutter + rightContent
+	return treeContinuation + leftGutter + leftContent + shadeStyle.Render("░░░") + rightGutter + rightContent
 }
 
 // renderHunkSeparatorTop renders the top line of a hunk separator (faint shader for visual separation).
-func (m Model) renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth int, isCursorRow bool) string {
+func (m Model) renderHunkSeparatorTop(row displayRow, leftHalfWidth, rightHalfWidth int, isCursorRow bool) string {
 	// Faint shader style - less visible than the main separator
 	faintShadeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 	lineNumWidth := m.lineNumWidth()
 
+	// Tree continuation prefix - two levels: commit level + file level
+	var fileStatusStyle lipgloss.Style
+	if row.fileIndex >= 0 && row.fileIndex < len(m.files) {
+		status := fileStatusFromPair(m.files[row.fileIndex])
+		_, fileStatusStyle = fileStatusIndicator(status)
+	} else {
+		fileStatusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	}
+
+	var treeContinuation string
+	if row.isLastFileInCommit {
+		treeContinuation = "     " + fileStatusStyle.Render("│") + " "
+	} else {
+		treeContinuation = fileStatusStyle.Render("│") + "    " + fileStatusStyle.Render("│") + " "
+	}
+	treeWidth := 7
+
 	// Arrow column width: indicator(1) + space(1) = 2
 	arrowWidth := 2
 
-	leftContentWidth := leftHalfWidth - arrowWidth
+	leftContentWidth := leftHalfWidth - arrowWidth - treeWidth
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
@@ -1279,15 +1315,15 @@ func (m Model) renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth int, isCurso
 	}
 
 	if !isCursorRow {
-		// Non-cursor: all faint shading
+		// Non-cursor: tree + all faint shading
 		leftArrow := faintShadeStyle.Render("░░")
 		rightArrow := faintShadeStyle.Render("░░")
 		leftContent := faintShadeStyle.Render(strings.Repeat("░", leftContentWidth))
 		rightContent := faintShadeStyle.Render(strings.Repeat("░", rightContentWidth))
-		return leftArrow + leftContent + faintShadeStyle.Render("░░░") + rightArrow + rightContent
+		return treeContinuation + leftArrow + leftContent + faintShadeStyle.Render("░░░") + rightArrow + rightContent
 	}
 
-	// Cursor row: arrow + faint shade, then lineNumWidth chars with cursor bg, rest is faint shading
+	// Cursor row: tree + arrow + faint shade, then lineNumWidth chars with cursor bg, rest is faint shading
 	// When unfocused, use outline arrow and no background highlighting
 	var leftArrow, rightArrow string
 	if m.focused {
@@ -1328,7 +1364,7 @@ func (m Model) renderHunkSeparatorTop(leftHalfWidth, rightHalfWidth int, isCurso
 		rightContent = rightCursorPart
 	}
 
-	return leftArrow + leftContent + faintShadeStyle.Render("░░░") + rightArrow + rightContent
+	return treeContinuation + leftArrow + leftContent + faintShadeStyle.Render("░░░") + rightArrow + rightContent
 }
 
 // renderBlankWithCursor renders a blank line with highlighted gutter areas when cursor is on it.
@@ -1477,42 +1513,17 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, borderVisible bool, 
 }
 
 // renderCommitHeaderTopBorder renders the top border of the commit header.
-// Uses heavy box drawing character ━ full-width (no corner).
+// Currently renders an empty line (border styling removed).
 func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) string {
-	// Use yellow color for commit borders (Color 3) when visible
-	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	if !row.commitBorderVisible {
-		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
-	}
-
-	// Full width border with heavy line character
-	borderWidth := m.width
-	if borderWidth < 0 {
-		borderWidth = 0
-	}
-
 	if isCursorRow && m.focused {
-		// Format: arrow + gap (yellow border) + cursor char (grey bg, fg=0) + rest of border
-		arrow := cursorArrowStyle.Render("▶")
-		styledGutter := cursorStyle.Render("━")
-		restWidth := borderWidth - 3 // arrow(1) + gap(1) + gutter(1)
-		if restWidth < 0 {
-			restWidth = 0
-		}
-		return arrow + borderStyle.Render("━") + styledGutter + borderStyle.Render(strings.Repeat("━", restWidth))
+		return cursorArrowStyle.Render("▶")
 	}
 
 	if isCursorRow && !m.focused {
-		// Unfocused: outline arrow, no background highlight
-		arrow := unfocusedCursorArrowStyle.Render("▷")
-		restWidth := borderWidth - 1
-		if restWidth < 0 {
-			restWidth = 0
-		}
-		return arrow + borderStyle.Render(strings.Repeat("━", restWidth))
+		return unfocusedCursorArrowStyle.Render("▷")
 	}
 
-	return borderStyle.Render(strings.Repeat("━", borderWidth))
+	return ""
 }
 
 // renderCommitHeaderBottomBorder renders the bottom border of the commit header.
@@ -1587,7 +1598,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	fileCount := endIdx - startIdx
 
 	// Cursor prefix
-	// Use commit-yellow color (Color 3) for the shader prefix
+	// Use commit-yellow color (Color 3) for the line prefix
 	commitFillStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	var prefix string
 	if isCursorRow {
@@ -1597,8 +1608,8 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 			prefix = unfocusedCursorArrowStyle.Render("▷") + " "
 		}
 	} else {
-		// Yellow shader prefix when cursor is not on this row
-		prefix = commitFillStyle.Render("░") + " "
+		// Yellow line prefix when cursor is not on this row
+		prefix = commitFillStyle.Render("─") + " "
 	}
 
 	// Build fixed columns
@@ -1633,10 +1644,6 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		author = runewidth.Truncate(author, maxAuthorLen, "...")
 		authorWidth = maxAuthorLen
 	}
-
-	// Calculate fixed width using display widths (not byte lengths)
-	// prefix(2) + fold(1) + space(1) + sha(7) + space(1) + files + space(1) + added + space(1) + removed + space(1) + time + space(1) + author
-	fixedWidth := 2 + 1 + 1 + len(shaText) + 1 + row.maxCommitFilesWidth + 1 + row.maxCommitAddWidth + 1 + row.maxCommitRemWidth + 1 + row.maxCommitTimeWidth + 1 + authorWidth
 
 	// Build the fixed part with styling
 	fixedPart := prefix +
@@ -1681,18 +1688,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		dynamicPart = " " + subject + subjectPadding
 	}
 
-	// Calculate trailing fill to extend to full width
-	contentWidth := fixedWidth + 1 + subjectDisplayWidth // +1 for space before subject
-	trailingWidth := m.width - contentWidth
-	if trailingWidth < 0 {
-		trailingWidth = 0
-	}
-	trailingFill := ""
-	if trailingWidth > 0 {
-		trailingFill = " " + commitFillStyle.Render(strings.Repeat("░", trailingWidth-1))
-	}
-
-	return fixedPart + dynamicPart + trailingFill
+	return fixedPart + dynamicPart
 }
 
 // renderCommitInfoHeader renders the commit info header row (foldable child node).
@@ -1720,36 +1716,24 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 	styledIcon := iconStyle.Render(foldIcon)
 
 	// Header text (e.g., "Date: Wed Jan 25 10:30:00 2025") - no bold
-	headerText := row.header
-	headerTextWidth := displayWidth(headerText)
-	styledHeader := headerText // plain text, no bold
+	styledHeader := row.header // plain text, no bold
 
-	// Calculate trailing fill width
-	// Layout: prefix(4) + space(1) + icon(1) + space(1) + header + trailing
-	prefixWidth := 4 + 1 + 1 + 1 + headerTextWidth
-	trailing := m.width - prefixWidth
-	if trailing < 1 {
-		trailing = 0
-	}
-	trailingFill := ""
-	if trailing > 0 {
-		trailingFill = " " + yellowStyle.Render(strings.Repeat("▒", trailing))
-	}
+	// Tree prefix: ├─── (commit info always has files after it)
+	treeLine := yellowStyle.Render("├───")
 
 	if isCursorRow && m.focused {
-		// Focused cursor: arrow + shader + [bg highlight] + shader + content
+		// Focused cursor: tree(1) + arrow + line + [bg highlight] + content
 		styledGutter := cursorStyle.Render(" ")
-		return cursorArrowStyle.Render("▶") + yellowStyle.Render("▒") + styledGutter + yellowStyle.Render("▒") + " " + styledIcon + " " + styledHeader + trailingFill
+		return yellowStyle.Render("├─") + cursorArrowStyle.Render("▶") + yellowStyle.Render("─") + styledGutter + " " + styledIcon + " " + styledHeader
 	}
 
 	if isCursorRow && !m.focused {
-		// Unfocused cursor: outline arrow + shaders + content
-		return unfocusedCursorArrowStyle.Render("▷") + yellowStyle.Render("▒▒▒") + " " + styledIcon + " " + styledHeader + trailingFill
+		// Unfocused cursor: tree + outline arrow + line + content
+		return yellowStyle.Render("├─") + unfocusedCursorArrowStyle.Render("▷") + yellowStyle.Render("─") + " " + styledIcon + " " + styledHeader
 	}
 
-	// Normal: shader prefix + content
-	prefixShader := yellowStyle.Render("▒▒▒▒")
-	return prefixShader + " " + styledIcon + " " + styledHeader + trailingFill
+	// Normal: tree line prefix + content
+	return treeLine + " " + styledIcon + " " + styledHeader
 }
 
 // renderCommitInfoBody renders a commit info body row (Author, Date, message content).
@@ -2163,7 +2147,7 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 // Shows which functions, methods, and types were added, modified, or deleted.
 // The rows are rendered inside the file header box, so they receive the same
 // headerBoxWidth and borderVisible settings as the header line.
-func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVisible bool) []displayRow {
+func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVisible bool, isLastFileInCommit bool, isFileFolded bool) []displayRow {
 	fs := m.structureMaps[fileIdx]
 	if fs == nil || fs.StructuralDiff == nil {
 		return nil
@@ -2296,6 +2280,8 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 			structuralDiffMaxRemLen: maxRemLen,
 			headerBoxWidth:          headerBoxWidth,
 			borderVisible:           borderVisible,
+			isLastFileInCommit:      isLastFileInCommit,
+			isFileFolded:            isFileFolded,
 		})
 
 		// Add children (methods within types) with extra indentation
@@ -2318,6 +2304,8 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 				structuralDiffMaxRemLen: maxRemLen,
 				headerBoxWidth:          headerBoxWidth,
 				borderVisible:           borderVisible,
+				isLastFileInCommit:      isLastFileInCommit,
+				isFileFolded:            isFileFolded,
 			})
 		}
 	}
@@ -2362,6 +2350,33 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 	content := row.structuralDiffLine
 	headerBoxWidth := row.headerBoxWidth
 	borderVisible := row.borderVisible
+
+	// Get file status style for tree continuation character
+	var fileStatusStyle lipgloss.Style
+	if row.fileIndex >= 0 && row.fileIndex < len(m.files) {
+		status := fileStatusFromPair(m.files[row.fileIndex])
+		_, fileStatusStyle = fileStatusIndicator(status)
+	} else {
+		fileStatusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	}
+
+	// Two-level tree: commit level + file level
+	// - Commit-level │: show if NOT last file in commit (more siblings below)
+	// - File-level │: show if file is NOT folded (has expanded content below)
+	var treeContinuation string
+	if row.isLastFileInCommit {
+		if row.isFileFolded {
+			treeContinuation = "       " // no commit │, no file │
+		} else {
+			treeContinuation = "     " + fileStatusStyle.Render("│") + " " // no commit │, file │
+		}
+	} else {
+		if row.isFileFolded {
+			treeContinuation = fileStatusStyle.Render("│") + "      " // commit │, no file │
+		} else {
+			treeContinuation = fileStatusStyle.Render("│") + "    " + fileStatusStyle.Render("│") + " " // commit │, file │
+		}
+	}
 
 	// Calculate symbol position (aligned with filename start)
 	totalFiles := len(m.files)
@@ -2470,19 +2485,33 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 	}
 
 	// Build the line content (stats go after symbol, before kind/name)
+	// Tree prefix is 7 chars wide: "│    │ " or "     │ "
+	treeWidth := 7
 	var result string
 	if isCursorRow && m.focused {
-		// Replace first 5 chars of prefix with cursor elements: ▶ + space + gutter(bg) + 2 spaces
+		// Replace first chars of prefix with cursor elements: tree(7) + ▶(1) + space(1) + gutter(1) + space(1) = 11
 		styledGutter := cursorStyle.Render(" ")
-		cursorPrefix := cursorArrowStyle.Render("▶") + " " + styledGutter + "  "
-		result = cursorPrefix + prefix[5:] + styledSymbol + statsStr + styledRest + padding
+		cursorPrefix := treeContinuation + cursorArrowStyle.Render("▶") + " " + styledGutter + " "
+		skipChars := 11 // cursor prefix width
+		if skipChars > len(prefix) {
+			skipChars = len(prefix)
+		}
+		result = cursorPrefix + prefix[skipChars:] + styledSymbol + statsStr + styledRest + padding
 	} else if isCursorRow && !m.focused {
-		// Unfocused: outline arrow + 4 spaces
-		cursorPrefix := unfocusedCursorArrowStyle.Render("▷") + "    "
-		result = cursorPrefix + prefix[5:] + styledSymbol + statsStr + styledRest + padding
+		// Unfocused: tree(7) + outline arrow(1) + 3 spaces = 11
+		cursorPrefix := treeContinuation + unfocusedCursorArrowStyle.Render("▷") + "   "
+		skipChars := 11
+		if skipChars > len(prefix) {
+			skipChars = len(prefix)
+		}
+		result = cursorPrefix + prefix[skipChars:] + styledSymbol + statsStr + styledRest + padding
 	} else {
-		// Non-cursor: use prefix as-is
-		result = prefix + styledSymbol + statsStr + styledRest + padding
+		// Non-cursor: tree + remaining prefix
+		skipChars := treeWidth
+		if skipChars > len(prefix) {
+			skipChars = len(prefix)
+		}
+		result = treeContinuation + prefix[skipChars:] + styledSymbol + statsStr + styledRest + padding
 	}
 
 	// Add border (│) - always present but no trailing fill unlike header
@@ -3629,7 +3658,7 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 	return left + " " + separator + " " + right
 }
 
-func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borderVisible bool, status FileStatus, added, removed, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth, fileIndex, rowIdx int, isCursorRow bool) string {
+func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borderVisible bool, status FileStatus, added, removed, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth, fileIndex, rowIdx int, isCursorRow bool, isLastFileInCommit bool) string {
 	// Calculate header width BEFORE applying search highlighting (ANSI codes affect width calculation)
 	headerTextWidth := displayWidth(header)
 
@@ -3685,18 +3714,6 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 		boxPadding = strings.Repeat(" ", headerBoxWidth-contentWidth)
 	}
 
-	// Calculate trailing fill to fill the width with status-colored shading
-	// Format: prefix(2) + content(headerBoxWidth) + space(1) + │(1) + space + trailing
-	prefixWidth := 2 + headerBoxWidth + 1 + 1 // prefix + content + space + │
-	trailing := m.width - prefixWidth
-	if trailing < 1 {
-		trailing = 0
-	}
-	trailingFill := ""
-	if trailing > 0 {
-		trailingFill = fileStatusStyle.Render(strings.Repeat("▒", trailing+1))
-	}
-
 	// Use darker color for border when not visible (file above is folded)
 	borderStyle := headerLineStyle
 	if !borderVisible {
@@ -3719,25 +3736,26 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(iconColor))
 	styledIcon := iconStyle.Render(icon)
 
-	// Prefix shader fills the area before the fold icon with file status-colored shader
-	// Leave one space before the fold icon
-	prefixShader := fileStatusStyle.Render("▒▒▒▒")
+	// Tree prefix: ├─── for non-last files, └─── for last file in commit
+	treeChar := "├"
+	if isLastFileInCommit {
+		treeChar = "└"
+	}
+	treeLine := fileStatusStyle.Render(treeChar + "───")
 
 	if isCursorRow && m.focused {
-		// Format: arrow + shader + [bg] + shader + space + icon + fileNum + status + header + padding + stats + boxPadding + space + │ + trailing
-		// Arrow and bg highlight, with visible spaces filled with blue shader
+		// Format: tree(1) + arrow + line + [bg] + space + icon + fileNum + status + header + padding + stats + boxPadding + space + │
 		styledGutter := cursorStyle.Render(" ")
-		return cursorArrowStyle.Render("▶") + fileStatusStyle.Render("▒") + styledGutter + fileStatusStyle.Render("▒") + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+		return fileStatusStyle.Render(treeChar+"─") + cursorArrowStyle.Render("▶") + fileStatusStyle.Render("─") + styledGutter + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│")
 	}
 
 	if isCursorRow && !m.focused {
-		// Unfocused: outline arrow, visible spaces filled with shader
-		return unfocusedCursorArrowStyle.Render("▷") + fileStatusStyle.Render("▒▒▒") + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+		// Unfocused: tree + outline arrow + line continuation
+		return fileStatusStyle.Render(treeChar+"─") + unfocusedCursorArrowStyle.Render("▷") + fileStatusStyle.Render("─") + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│")
 	}
 
-	// Normal rendering with shader prefix
-	// Format: shader(4) + space + icon + fileNum + status + header + padding + stats + boxPadding + space + │ + trailing
-	return prefixShader + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+	// Normal rendering with tree line prefix
+	return treeLine + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│")
 }
 
 // renderCommentRow renders a single comment row (part of a comment box).
@@ -3864,9 +3882,28 @@ func wrapText(text string, maxWidth int) []string {
 	return lines
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool) string {
-	leftContentWidth := leftHalfWidth - lineNumWidth - 3   // -3 for indicator, space after indicator, and space after line num
-	rightContentWidth := rightHalfWidth - lineNumWidth - 3 // same layout on right side
+func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool, isLastFileInCommit bool) string {
+	// Tree continuation prefix - two levels: commit level + file level
+	// Non-last file: "│    │ " (commit continuation + indent + file continuation)
+	// Last file:     "     │ " (indent + file continuation)
+	var fileStatusStyle lipgloss.Style
+	if fileIndex >= 0 && fileIndex < len(m.files) {
+		status := fileStatusFromPair(m.files[fileIndex])
+		_, fileStatusStyle = fileStatusIndicator(status)
+	} else {
+		fileStatusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	}
+
+	var treeContinuation string
+	if isLastFileInCommit {
+		treeContinuation = "     " + fileStatusStyle.Render("│") + " "
+	} else {
+		treeContinuation = fileStatusStyle.Render("│") + "    " + fileStatusStyle.Render("│") + " "
+	}
+	treeWidth := 7 // "│    │ " or "     │ "
+
+	leftContentWidth := leftHalfWidth - lineNumWidth - 3 - treeWidth // -3 for indicator, space after indicator, space after line num
+	rightContentWidth := rightHalfWidth - lineNumWidth - 3           // same layout on right side
 
 	// Vertical divider between left and right sides
 	separatorChar := "┃"
@@ -3892,7 +3929,7 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, 1, isCursorRow, hasWordDiff, hideRightTrailingGutter)
 
 	separator := centerDividerStyle.Render(separatorChar)
-	return left + " " + separator + " " + right
+	return treeContinuation + left + " " + separator + " " + right
 }
 
 func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool) string {

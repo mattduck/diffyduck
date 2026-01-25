@@ -1985,6 +1985,7 @@ func TestHeaderBoxBorderAlignment(t *testing.T) {
 				headerRow.fileIndex,
 				0,
 				false,
+				false, // isLastFileInCommit
 			)
 			bottomBorder := m.renderHeaderBottomBorder(headerBoxWidth, true, headerRow.status, false)
 
