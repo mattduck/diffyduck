@@ -166,4 +166,8 @@ type CommitSet struct {
 
 	// Truncation
 	TruncatedFileCount int // number of files omitted due to limit
+
+	// Cached stats (sum of all files, avoids recomputing in render loop)
+	TotalAdded   int
+	TotalRemoved int
 }

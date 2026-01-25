@@ -1114,6 +1114,14 @@ func (m *Model) loadCommitDiff(commitIdx int) {
 	commit.FilesLoaded = true
 	commit.TruncatedFileCount = truncatedCount
 
+	// Recalculate cached commit stats from loaded files
+	commit.TotalAdded = 0
+	commit.TotalRemoved = 0
+	for _, f := range files {
+		commit.TotalAdded += f.TotalAdded
+		commit.TotalRemoved += f.TotalRemoved
+	}
+
 	// Invalidate caches
 	m.rowsCacheValid = false
 }

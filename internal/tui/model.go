@@ -280,8 +280,11 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 	m.calculateTotalLines()
 
 	// Synchronously highlight the first file so initial render has highlighting.
+	// Skip if in log mode with folded commits (first file won't be visible anyway).
 	// The rest will be highlighted async in Init().
-	if len(m.files) > 0 {
+	firstFileVisible := len(m.files) > 0 &&
+		(len(m.commits) == 0 || m.commits[0].FoldLevel != sidebyside.CommitFolded)
+	if firstFileVisible {
 		m.highlightPairsSync(0)
 	}
 

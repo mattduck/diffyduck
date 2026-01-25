@@ -333,20 +333,26 @@ func (m Model) buildRows() []displayRow {
 	maxCommitTimeWidth := m.cachedCommitTimeWidth
 	maxCommitSubjectWidth := m.cachedCommitSubjWidth
 	if maxCommitFilesWidth == 0 && len(m.commits) > 0 {
-		for commitIdx := range m.commits {
+		for commitIdx, commit := range m.commits {
 			startIdx := m.commitFileStarts[commitIdx]
 			endIdx := len(m.files)
 			if commitIdx+1 < len(m.commits) {
 				endIdx = m.commitFileStarts[commitIdx+1]
 			}
 			commitFileCount := endIdx - startIdx
-			commitAdded := 0
-			commitRemoved := 0
-			for i := startIdx; i < endIdx; i++ {
-				added, removed := countFileStats(m.files[i])
-				commitAdded += added
-				commitRemoved += removed
+
+			// Use cached commit stats if available, otherwise sum from files
+			commitAdded := commit.TotalAdded
+			commitRemoved := commit.TotalRemoved
+			if commitAdded == 0 && commitRemoved == 0 && commitFileCount > 0 {
+				// Fallback: sum from files (for commits loaded via TransformDiff)
+				for i := startIdx; i < endIdx; i++ {
+					added, removed := countFileStats(m.files[i])
+					commitAdded += added
+					commitRemoved += removed
+				}
 			}
+
 			fw := len(fmt.Sprintf("%d", commitFileCount))
 			if fw > maxCommitFilesWidth {
 				maxCommitFilesWidth = fw
@@ -359,11 +365,11 @@ func (m Model) buildRows() []displayRow {
 			if rw > maxCommitRemWidth {
 				maxCommitRemWidth = rw
 			}
-			tw := len(formatShortRelativeDate(m.commits[commitIdx].Info.Date))
+			tw := len(formatShortRelativeDate(commit.Info.Date))
 			if tw > maxCommitTimeWidth {
 				maxCommitTimeWidth = tw
 			}
-			sw := displayWidth(m.commits[commitIdx].Info.Subject)
+			sw := displayWidth(commit.Info.Subject)
 			if sw > 120 {
 				sw = 120
 			}

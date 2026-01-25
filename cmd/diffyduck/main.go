@@ -290,8 +290,17 @@ func runLogMode(debugMode bool) error {
 	for _, c := range commits {
 		// Create skeleton FilePairs with just paths and stats
 		var files []sidebyside.FilePair
+		totalAdded := 0
+		totalRemoved := 0
 		for _, f := range c.Files {
 			files = append(files, sidebyside.SkeletonFilePair(f.Path, f.Added, f.Removed))
+			// Sum commit-level stats (skip negative values from binary files)
+			if f.Added > 0 {
+				totalAdded += f.Added
+			}
+			if f.Removed > 0 {
+				totalRemoved += f.Removed
+			}
 		}
 
 		commitSet := sidebyside.CommitSet{
@@ -303,9 +312,11 @@ func runLogMode(debugMode bool) error {
 				Subject: c.Meta.Subject,
 				Body:    c.Meta.Body,
 			},
-			Files:       files,
-			FoldLevel:   sidebyside.CommitFolded, // Start folded
-			FilesLoaded: false,                   // Diff content loaded on demand when unfolded
+			Files:        files,
+			FoldLevel:    sidebyside.CommitFolded, // Start folded
+			FilesLoaded:  false,                   // Diff content loaded on demand when unfolded
+			TotalAdded:   totalAdded,
+			TotalRemoved: totalRemoved,
 		}
 		commitSets = append(commitSets, commitSet)
 	}
