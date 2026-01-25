@@ -1527,7 +1527,11 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	authorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	foldIconColor := "8"
+	if isCursorRow {
+		foldIconColor = "15"
+	}
+	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(foldIconColor))
 
 	// Fold icon
 	var foldIcon string
@@ -3347,8 +3351,12 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 		styledHeader = " " + header + headerPadding
 	}
 
-	// Style the fold icon with fg=8 (same as commit header)
-	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	// Style the fold icon with fg=8 (same as commit header), fg=15 when cursor is on row
+	iconColor := "8"
+	if isCursorRow {
+		iconColor = "15"
+	}
+	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(iconColor))
 	styledIcon := iconStyle.Render(icon)
 
 	if isCursorRow && m.focused {
