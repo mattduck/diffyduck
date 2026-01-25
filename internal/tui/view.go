@@ -1564,6 +1564,8 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	fileCount := endIdx - startIdx
 
 	// Cursor prefix
+	// Use commit-yellow color (Color 3) for the shader prefix
+	commitFillStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	var prefix string
 	if isCursorRow {
 		if m.focused {
@@ -1572,7 +1574,8 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 			prefix = unfocusedCursorArrowStyle.Render("▷") + " "
 		}
 	} else {
-		prefix = "  "
+		// Yellow shader prefix when cursor is not on this row
+		prefix = commitFillStyle.Render("░") + " "
 	}
 
 	// Build fixed columns
@@ -1656,8 +1659,6 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	}
 
 	// Calculate trailing fill to extend to full width
-	// Use commit-yellow color (Color 3) for the fill
-	commitFillStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	contentWidth := fixedWidth + 1 + subjectDisplayWidth // +1 for space before subject
 	trailingWidth := m.width - contentWidth
 	if trailingWidth < 0 {
@@ -3470,21 +3471,25 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, borde
 	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(iconColor))
 	styledIcon := iconStyle.Render(icon)
 
+	// Prefix shader fills the area before the fold icon with file status-colored shader
+	// Leave one space before the fold icon
+	prefixShader := fileStatusStyle.Render("▒▒▒▒")
+
 	if isCursorRow && m.focused {
-		// Format: arrow + [small gutter](with bg) + indent + icon + fileNum + status + header + padding + stats + boxPadding + space + │ + trailing
-		// Just 1 char of cursor bg, then 2 more spaces to reach the icon position
+		// Format: arrow + shader + [bg] + shader + space + icon + fileNum + status + header + padding + stats + boxPadding + space + │ + trailing
+		// Arrow and bg highlight, with visible spaces filled with blue shader
 		styledGutter := cursorStyle.Render(" ")
-		return cursorArrowStyle.Render("▶") + " " + styledGutter + "  " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+		return cursorArrowStyle.Render("▶") + fileStatusStyle.Render("▒") + styledGutter + fileStatusStyle.Render("▒") + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 	}
 
 	if isCursorRow && !m.focused {
-		// Unfocused: outline arrow, no background highlight (use same style as non-cursor row)
-		return unfocusedCursorArrowStyle.Render("▷") + "    " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+		// Unfocused: outline arrow, visible spaces filled with shader
+		return unfocusedCursorArrowStyle.Render("▷") + fileStatusStyle.Render("▒▒▒") + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 	}
 
-	// Normal rendering
-	// Format: prefix(2) + indent(3) + icon + fileNum + status + header + padding + stats + boxPadding + space + │ + trailing
-	return "     " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
+	// Normal rendering with shader prefix
+	// Format: shader(4) + space + icon + fileNum + status + header + padding + stats + boxPadding + space + │ + trailing
+	return prefixShader + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding + " " + borderStyle.Render("│") + trailingFill
 }
 
 // renderCommentRow renders a single comment row (part of a comment box).

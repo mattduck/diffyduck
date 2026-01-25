@@ -359,11 +359,16 @@ func TestFileHeaderWithStats_ShadingAlignment(t *testing.T) {
 	header1 := lines[3] // +100
 	header2 := lines[4] // +5
 
-	// Find the display column position of the shading (▒ character)
+	// Find the display column position of the trailing shading (▒ character after │)
+	// Skip prefix shading by looking for ▒ after the │ border
 	findShadingStart := func(s string) int {
 		runes := []rune(s)
+		afterBorder := false
 		for i, ch := range runes {
-			if ch == '▒' {
+			if ch == '│' {
+				afterBorder = true
+			}
+			if afterBorder && ch == '▒' {
 				return i
 			}
 		}
