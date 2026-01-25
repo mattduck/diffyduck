@@ -1522,8 +1522,8 @@ func FuncB() {
 	}
 }
 
-func TestStoreHighlightSpans_InvalidatesCacheWhenCommitUnfolded(t *testing.T) {
-	// Test that row cache is invalidated when structural diff is stored
+func TestStoreHighlightSpans_UpdatesTotalLinesWhenCommitUnfolded(t *testing.T) {
+	// Test that totalLines is updated when structural diff is stored
 	// and the commit is not folded (so structural diff rows would be visible).
 	oldContent := `package main
 
@@ -1570,7 +1570,7 @@ func FuncA() {
 
 	// Build rows to populate cache
 	m.rebuildRowsCache()
-	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+	totalLinesBefore := m.totalLines
 
 	// Request and store highlighting
 	cmd := m.RequestHighlight(0)
@@ -1580,9 +1580,10 @@ func FuncA() {
 
 	m.storeHighlightSpans(hlMsg)
 
-	// Cache should be invalidated because commit is not folded
-	// and structural diff has changes
-	assert.False(t, m.rowsCacheValid, "cache should be invalidated when structural diff is stored for unfolded commit")
+	// totalLines should increase to include structural diff rows
+	// because commit is not folded and structural diff has changes
+	assert.Greater(t, m.totalLines, totalLinesBefore,
+		"totalLines should increase when structural diff is stored for unfolded commit")
 }
 
 func TestStoreHighlightSpans_DoesNotInvalidateCacheWhenCommitFolded(t *testing.T) {
@@ -1750,7 +1751,7 @@ func FuncA() {
 
 	// Build rows to populate cache
 	m.rebuildRowsCache()
-	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+	totalLinesBefore := m.totalLines
 
 	// Request and store highlighting
 	cmd := m.RequestHighlight(0)
@@ -1760,6 +1761,7 @@ func FuncA() {
 
 	m.storeHighlightSpans(hlMsg)
 
-	// Cache should be invalidated in diff mode (no commit to check fold status)
-	assert.False(t, m.rowsCacheValid, "cache should be invalidated in diff mode when structural diff has changes")
+	// totalLines should increase in diff mode when structural diff has changes
+	assert.Greater(t, m.totalLines, totalLinesBefore,
+		"totalLines should increase in diff mode when structural diff has changes")
 }

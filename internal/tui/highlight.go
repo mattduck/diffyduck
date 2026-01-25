@@ -292,19 +292,26 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 		StructuralDiff: structDiff,
 	}
 
-	// Invalidate row cache if structural diff would be visible.
+	// Recalculate rows if structural diff would be visible.
 	// Structural diff rows appear under file headers, which are only visible
-	// when the commit is not folded. Skip invalidation for folded commits
+	// when the commit is not folded. Skip recalculation for folded commits
 	// to avoid unnecessary cache rebuilds in log mode.
 	if structDiff != nil && structDiff.HasChanges() {
+		shouldRecalculate := false
 		commitIdx := m.commitForFile(msg.FileIndex)
 		if commitIdx >= 0 && commitIdx < len(m.commits) {
 			if m.commits[commitIdx].FoldLevel != sidebyside.CommitFolded {
-				m.rowsCacheValid = false
+				shouldRecalculate = true
 			}
 		} else {
-			// No commit structure (e.g., diff mode) - always invalidate
-			m.rowsCacheValid = false
+			// No commit structure (e.g., diff mode) - always recalculate
+			shouldRecalculate = true
+		}
+		if shouldRecalculate {
+			// Recalculate totalLines so scroll limits are correct.
+			// Just invalidating rowsCacheValid is not enough because totalLines
+			// is used directly by maxScroll() without triggering a cache rebuild.
+			m.calculateTotalLines()
 		}
 	}
 }
