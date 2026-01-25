@@ -274,8 +274,8 @@ func run() error {
 func runLogMode(debugMode bool) error {
 	g := git.New()
 
-	// Fetch commits with diffs (TODO: add pagination)
-	commits, err := g.LogWithMeta(500)
+	// Fetch commit metadata and file stats only (no patches) for fast startup
+	commits, err := g.LogMetaOnly(500)
 	if err != nil {
 		return fmt.Errorf("git log: %w", err)
 	}
@@ -285,17 +285,14 @@ func runLogMode(debugMode bool) error {
 		return nil
 	}
 
-	// Convert to CommitSets
+	// Convert to CommitSets with skeleton files (diffs loaded on demand)
 	var commitSets []sidebyside.CommitSet
 	for _, c := range commits {
-		// Parse the diff for this commit
-		d, err := diff.Parse(c.Diff)
-		if err != nil {
-			return fmt.Errorf("parse diff for %s: %w", c.Meta.SHA[:7], err)
+		// Create skeleton FilePairs with just paths and stats
+		var files []sidebyside.FilePair
+		for _, f := range c.Files {
+			files = append(files, sidebyside.SkeletonFilePair(f.Path, f.Added, f.Removed))
 		}
-
-		// Transform to side-by-side format
-		files, truncatedFileCount := sidebyside.TransformDiff(d)
 
 		commitSet := sidebyside.CommitSet{
 			Info: sidebyside.CommitInfo{
@@ -306,10 +303,9 @@ func runLogMode(debugMode bool) error {
 				Subject: c.Meta.Subject,
 				Body:    c.Meta.Body,
 			},
-			Files:              files,
-			FoldLevel:          sidebyside.CommitFolded, // Start folded
-			FilesLoaded:        true,
-			TruncatedFileCount: truncatedFileCount,
+			Files:       files,
+			FoldLevel:   sidebyside.CommitFolded, // Start folded
+			FilesLoaded: false,                   // Diff content loaded on demand when unfolded
 		}
 		commitSets = append(commitSets, commitSet)
 	}

@@ -17,6 +17,10 @@ type Git interface {
 	// The n parameter limits the number of commits returned.
 	LogWithMeta(n int) ([]CommitWithDiff, error)
 
+	// LogMetaOnly returns commit metadata with per-file stats (no patches).
+	// Much faster than LogWithMeta for large histories.
+	LogMetaOnly(n int) ([]CommitWithStats, error)
+
 	// Diff returns the diff output for git diff.
 	// Args are passed through to git diff.
 	Diff(args ...string) (string, error)

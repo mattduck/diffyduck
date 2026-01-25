@@ -128,3 +128,21 @@ func TransformDiff(d *diff.Diff) ([]FilePair, int) {
 	}
 	return fps, d.TruncatedFileCount
 }
+
+// SkeletonFilePair creates a FilePair with only path and stats (no Pairs).
+// Used for lazy loading where the full diff is fetched on demand.
+func SkeletonFilePair(path string, added, removed int) FilePair {
+	isBinary := added < 0 || removed < 0
+	if isBinary {
+		added = 0
+		removed = 0
+	}
+	return FilePair{
+		OldPath:      "a/" + path,
+		NewPath:      "b/" + path,
+		TotalAdded:   added,
+		TotalRemoved: removed,
+		IsBinary:     isBinary,
+		FoldLevel:    FoldFolded, // Start folded since no content yet
+	}
+}

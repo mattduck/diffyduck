@@ -3,6 +3,7 @@ package tui
 import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbletea"
+	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -1016,6 +1017,15 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	switch currentLevel {
 	case 1:
 		// Level 1 -> Level 2: Show file headings only
+		// Load diff content on demand if not already loaded
+		if !commit.FilesLoaded && m.git != nil {
+			m.loadCommitDiff(commitIdx)
+			// Update endIdx since file count may have changed
+			endIdx = len(m.files)
+			if commitIdx+1 < len(m.commits) {
+				endIdx = m.commitFileStarts[commitIdx+1]
+			}
+		}
 		commit.FoldLevel = sidebyside.CommitNormal
 		for i := startIdx; i < endIdx; i++ {
 			m.files[i].FoldLevel = sidebyside.FoldFolded
@@ -1039,6 +1049,73 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	m.calculateTotalLines()
 
 	return m, cmd
+}
+
+// loadCommitDiff fetches and parses the diff for a commit on demand.
+// This replaces the skeleton files with fully parsed FilePairs.
+func (m *Model) loadCommitDiff(commitIdx int) {
+	if commitIdx < 0 || commitIdx >= len(m.commits) {
+		return
+	}
+
+	commit := &m.commits[commitIdx]
+	if commit.FilesLoaded {
+		return
+	}
+
+	// Fetch the diff for this commit
+	diffStr, err := m.git.Show(commit.Info.SHA)
+	if err != nil {
+		// On error, mark as loaded to avoid retrying
+		commit.FilesLoaded = true
+		return
+	}
+
+	// Parse the diff
+	d, err := diff.Parse(diffStr)
+	if err != nil {
+		commit.FilesLoaded = true
+		return
+	}
+
+	// Transform to side-by-side format
+	files, truncatedCount := sidebyside.TransformDiff(d)
+
+	// Get the file range for this commit
+	startIdx := m.commitFileStarts[commitIdx]
+	endIdx := len(m.files)
+	if commitIdx+1 < len(m.commits) {
+		endIdx = m.commitFileStarts[commitIdx+1]
+	}
+	oldFileCount := endIdx - startIdx
+
+	// Replace skeleton files with real ones
+	// If file counts differ, we need to adjust the files slice and update commitFileStarts
+	if len(files) != oldFileCount {
+		// Build new files slice
+		newFiles := make([]sidebyside.FilePair, 0, len(m.files)-oldFileCount+len(files))
+		newFiles = append(newFiles, m.files[:startIdx]...)
+		newFiles = append(newFiles, files...)
+		newFiles = append(newFiles, m.files[endIdx:]...)
+		m.files = newFiles
+
+		// Update commitFileStarts for subsequent commits
+		delta := len(files) - oldFileCount
+		for i := commitIdx + 1; i < len(m.commitFileStarts); i++ {
+			m.commitFileStarts[i] += delta
+		}
+	} else {
+		// Same file count - just replace in place
+		for i, f := range files {
+			m.files[startIdx+i] = f
+		}
+	}
+
+	commit.FilesLoaded = true
+	commit.TruncatedFileCount = truncatedCount
+
+	// Invalidate caches
+	m.rowsCacheValid = false
 }
 
 // commitVisibilityLevel returns the current visibility level for the first commit (1, 2, or 3).
