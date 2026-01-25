@@ -2,7 +2,7 @@ package tui
 
 import (
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
@@ -124,6 +124,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case PairsHighlightReadyMsg:
 		m.storePairsHighlightSpans(msg)
+		return m, nil
+
+	case CommitStatsLoadedMsg:
+		if msg.Stats != nil {
+			// Apply stats to commits
+			for i := range m.commits {
+				sha := m.commits[i].Info.SHA
+				if stats, ok := msg.Stats[sha]; ok {
+					m.commits[i].TotalAdded = stats.TotalAdded
+					m.commits[i].TotalRemoved = stats.TotalRemoved
+					m.commits[i].StatsLoaded = true
+
+					// Apply per-file stats if they match
+					startIdx := m.commitFileStarts[i]
+					endIdx := len(m.files)
+					if i+1 < len(m.commits) {
+						endIdx = m.commitFileStarts[i+1]
+					}
+					for j, fs := range stats.FileStats {
+						fileIdx := startIdx + j
+						if fileIdx < endIdx {
+							m.files[fileIdx].TotalAdded = fs.Added
+							m.files[fileIdx].TotalRemoved = fs.Removed
+						}
+					}
+				}
+			}
+			// Invalidate row cache (widths stay at defaults until 'r' refresh)
+			m.rowsCacheValid = false
+		}
+
 		return m, nil
 
 	case spinner.TickMsg:

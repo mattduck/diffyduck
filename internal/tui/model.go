@@ -362,12 +362,96 @@ func (m *Model) updateMaxLessWidth() {
 
 // Init implements tea.Model.
 // Triggers async highlighting for all files except the first (which is highlighted sync in New).
+// Also triggers async stats loading if any commits don't have stats loaded.
 func (m Model) Init() tea.Cmd {
-	if len(m.files) <= 1 {
-		return nil // First file already highlighted sync, no more to do
+	var cmds []tea.Cmd
+
+	// Check if we need to load stats asynchronously
+	if m.needsStatsLoad() {
+		cmds = append(cmds, m.fetchCommitStats())
 	}
+
 	// Highlight remaining files async
-	return m.RequestHighlightFromPairsExcept(map[int]bool{0: true})
+	if len(m.files) > 1 {
+		cmds = append(cmds, m.RequestHighlightFromPairsExcept(map[int]bool{0: true}))
+	}
+
+	return tea.Batch(cmds...)
+}
+
+// needsStatsLoad returns true if any commit needs stats to be loaded.
+func (m Model) needsStatsLoad() bool {
+	for _, commit := range m.commits {
+		if commit.Info.HasMetadata() && !commit.StatsLoaded {
+			return true
+		}
+	}
+	return false
+}
+
+// fetchCommitStats returns a command that fetches all remaining commit stats asynchronously.
+// The first page of stats is loaded synchronously in main.go, this handles the rest.
+func (m Model) fetchCommitStats() tea.Cmd {
+	if m.git == nil {
+		return nil
+	}
+
+	// Find the first commit that needs stats
+	startOffset := 0
+	for i, commit := range m.commits {
+		if !commit.StatsLoaded {
+			startOffset = i
+			break
+		}
+	}
+
+	if startOffset >= len(m.commits) {
+		return nil // All stats already loaded
+	}
+
+	// Capture git interface for closure
+	gitClient := m.git
+	totalCommits := len(m.commits)
+
+	return func() tea.Msg {
+		// Fetch stats for remaining commits
+		remaining := totalCommits - startOffset
+		commits, err := gitClient.LogMetaOnlyRange(startOffset, remaining)
+		if err != nil {
+			return CommitStatsLoadedMsg{Stats: nil}
+		}
+
+		// Build stats map keyed by SHA
+		stats := make(map[string]CommitStats)
+		for _, c := range commits {
+			totalAdded := 0
+			totalRemoved := 0
+			var fileStats []FileStats
+			for _, f := range c.Files {
+				added := f.Added
+				removed := f.Removed
+				if added < 0 {
+					added = 0
+				}
+				if removed < 0 {
+					removed = 0
+				}
+				totalAdded += added
+				totalRemoved += removed
+				fileStats = append(fileStats, FileStats{
+					Added:   f.Added,
+					Removed: f.Removed,
+				})
+			}
+			stats[c.Meta.SHA] = CommitStats{
+				TotalAdded:   totalAdded,
+				TotalRemoved: totalRemoved,
+				FileStats:    fileStats,
+			}
+		}
+
+		return CommitStatsLoadedMsg{Stats: stats}
+	}
 }
 
 // commentMaxVisibleLines returns the maximum number of input lines to show.
@@ -879,36 +963,56 @@ func (m *Model) updateColumnWidths() {
 
 	// Calculate commit header widths
 	for commitIdx := range m.commits {
+		commit := m.commits[commitIdx]
 		startIdx := m.commitFileStarts[commitIdx]
 		endIdx := len(m.files)
 		if commitIdx+1 < len(m.commits) {
 			endIdx = m.commitFileStarts[commitIdx+1]
 		}
 		commitFileCount := endIdx - startIdx
-		commitAdded := 0
-		commitRemoved := 0
-		for i := startIdx; i < endIdx; i++ {
-			added, removed := countFileStats(m.files[i])
-			commitAdded += added
-			commitRemoved += removed
+
+		// Calculate stats column widths (matching renderCommitHeaderRow logic)
+		var commitAdded, commitRemoved int
+		var statsKnown bool
+		if commit.StatsLoaded {
+			commitAdded = commit.TotalAdded
+			commitRemoved = commit.TotalRemoved
+			statsKnown = true
+		} else {
+			// Compute from files (same as render code)
+			for i := startIdx; i < endIdx; i++ {
+				added, removed := countFileStats(m.files[i])
+				commitAdded += added
+				commitRemoved += removed
+			}
+			statsKnown = commitAdded > 0 || commitRemoved > 0 || commitFileCount == 0
 		}
+
+		var aw, rw int
+		if statsKnown {
+			aw = len(fmt.Sprintf("+%d", commitAdded))
+			rw = len(fmt.Sprintf("-%d", commitRemoved))
+		} else {
+			// Stats not loaded yet, use placeholder width ("+?" = 2 chars)
+			aw = 2
+			rw = 2
+		}
+
 		fw := len(fmt.Sprintf("%d", commitFileCount))
 		if fw > m.cachedCommitFileCount {
 			m.cachedCommitFileCount = fw
 		}
-		aw := len(fmt.Sprintf("+%d", commitAdded))
 		if aw > m.cachedCommitAddWidth {
 			m.cachedCommitAddWidth = aw
 		}
-		rw := len(fmt.Sprintf("-%d", commitRemoved))
 		if rw > m.cachedCommitRemWidth {
 			m.cachedCommitRemWidth = rw
 		}
-		tw := len(formatShortRelativeDate(m.commits[commitIdx].Info.Date))
+		tw := len(formatShortRelativeDate(commit.Info.Date))
 		if tw > m.cachedCommitTimeWidth {
 			m.cachedCommitTimeWidth = tw
 		}
-		sw := displayWidth(m.commits[commitIdx].Info.Subject)
+		sw := displayWidth(commit.Info.Subject)
 		if sw > 120 {
 			sw = 120
 		}

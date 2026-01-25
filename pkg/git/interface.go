@@ -21,6 +21,14 @@ type Git interface {
 	// Much faster than LogWithMeta for large histories.
 	LogMetaOnly(n int) ([]CommitWithStats, error)
 
+	// LogMetaOnlyRange returns commit metadata with per-file stats for a range.
+	// skip is commits to skip, limit is max commits to return.
+	LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error)
+
+	// LogPathsOnly returns commit metadata with file paths only (no stats or patches).
+	// This is the fastest option for large histories.
+	LogPathsOnly(n int) ([]CommitWithPaths, error)
+
 	// Diff returns the diff output for git diff.
 	// Args are passed through to git diff.
 	Diff(args ...string) (string, error)

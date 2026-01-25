@@ -341,27 +341,40 @@ func (m Model) buildRows() []displayRow {
 			}
 			commitFileCount := endIdx - startIdx
 
-			// Use cached commit stats if available, otherwise sum from files
-			commitAdded := commit.TotalAdded
-			commitRemoved := commit.TotalRemoved
-			if commitAdded == 0 && commitRemoved == 0 && commitFileCount > 0 {
-				// Fallback: sum from files (for commits loaded via TransformDiff)
+			// Calculate stats column widths (matching renderCommitHeaderRow logic)
+			var commitAdded, commitRemoved int
+			var statsKnown bool
+			if commit.StatsLoaded {
+				commitAdded = commit.TotalAdded
+				commitRemoved = commit.TotalRemoved
+				statsKnown = true
+			} else {
+				// Compute from files (same as render code)
 				for i := startIdx; i < endIdx; i++ {
 					added, removed := countFileStats(m.files[i])
 					commitAdded += added
 					commitRemoved += removed
 				}
+				statsKnown = commitAdded > 0 || commitRemoved > 0 || commitFileCount == 0
+			}
+
+			var aw, rw int
+			if statsKnown {
+				aw = len(fmt.Sprintf("+%d", commitAdded))
+				rw = len(fmt.Sprintf("-%d", commitRemoved))
+			} else {
+				// Stats not loaded yet, use placeholder width ("+?" = 2 chars)
+				aw = 2
+				rw = 2
 			}
 
 			fw := len(fmt.Sprintf("%d", commitFileCount))
 			if fw > maxCommitFilesWidth {
 				maxCommitFilesWidth = fw
 			}
-			aw := len(fmt.Sprintf("+%d", commitAdded))
 			if aw > maxCommitAddWidth {
 				maxCommitAddWidth = aw
 			}
-			rw := len(fmt.Sprintf("-%d", commitRemoved))
 			if rw > maxCommitRemWidth {
 				maxCommitRemWidth = rw
 			}
@@ -1553,20 +1566,36 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		foldIcon = "●"
 	}
 
-	// Calculate file stats for this commit only
+	// Get file count and stats for this commit
 	startIdx := m.commitFileStarts[row.commitIndex]
 	endIdx := len(m.files)
 	if row.commitIndex+1 < len(m.commits) {
 		endIdx = m.commitFileStarts[row.commitIndex+1]
 	}
-	totalAdded := 0
-	totalRemoved := 0
-	for i := startIdx; i < endIdx; i++ {
-		added, removed := countFileStats(m.files[i])
-		totalAdded += added
-		totalRemoved += removed
-	}
 	fileCount := endIdx - startIdx
+
+	// Determine stats to display:
+	// - If StatsLoaded, use cached commit-level stats
+	// - Otherwise, compute from files (handles diff mode and tests)
+	// - Show "?" only when neither source has stats (progressive loading initial state)
+	var totalAdded, totalRemoved int
+	var statsLoaded bool
+	if commit.StatsLoaded {
+		// Use cached commit-level stats
+		totalAdded = commit.TotalAdded
+		totalRemoved = commit.TotalRemoved
+		statsLoaded = true
+	} else {
+		// Compute from files
+		for i := startIdx; i < endIdx; i++ {
+			added, removed := countFileStats(m.files[i])
+			totalAdded += added
+			totalRemoved += removed
+		}
+		// Stats are "loaded" if we computed non-zero values OR there are no files
+		// (zero stats with files could mean progressive loading not yet complete)
+		statsLoaded = totalAdded > 0 || totalRemoved > 0 || fileCount == 0
+	}
 
 	// Cursor prefix
 	// Use commit-yellow color (Color 3) for the shader prefix
@@ -1588,8 +1617,14 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	shaText := commitInfo.ShortSHA()
 	filesText := fmt.Sprintf("%d", fileCount)
-	addedText := fmt.Sprintf("+%d", totalAdded)
-	removedText := fmt.Sprintf("-%d", totalRemoved)
+	var addedText, removedText string
+	if statsLoaded {
+		addedText = fmt.Sprintf("+%d", totalAdded)
+		removedText = fmt.Sprintf("-%d", totalRemoved)
+	} else {
+		addedText = "+?"
+		removedText = "-?"
+	}
 	timeText := formatShortRelativeDate(commitInfo.Date)
 
 	// Pad columns to max widths for alignment across commits (right-align numbers)

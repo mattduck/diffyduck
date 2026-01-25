@@ -163,6 +163,7 @@ type CommitSet struct {
 
 	// Loading state
 	FilesLoaded bool // true once files have been parsed (for async loading)
+	StatsLoaded bool // true once per-file stats have been loaded (for progressive loading)
 
 	// Truncation
 	TruncatedFileCount int // number of files omitted due to limit

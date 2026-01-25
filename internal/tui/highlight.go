@@ -82,6 +82,11 @@ func (m Model) RequestHighlightFromPairs(fileIndex int) tea.Cmd {
 
 		fp := m.files[fileIndex]
 
+		// Skip files with no pairs (e.g., skeleton files in folded commits)
+		if len(fp.Pairs) == 0 {
+			return nil
+		}
+
 		// Determine filename for language detection
 		filename := fp.NewPath
 		if filename == "/dev/null" {

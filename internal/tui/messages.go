@@ -73,3 +73,22 @@ type StructureEntry struct {
 	Params     []string // Function parameters
 	ReturnType string   // Return type annotation
 }
+
+// CommitStatsLoadedMsg is sent when stats for commits have been fetched asynchronously.
+type CommitStatsLoadedMsg struct {
+	// Stats maps commit SHA to per-file stats
+	Stats map[string]CommitStats
+}
+
+// CommitStats holds the stats for a single commit.
+type CommitStats struct {
+	TotalAdded   int
+	TotalRemoved int
+	FileStats    []FileStats // per-file stats, indexed same as CommitSet.Files
+}
+
+// FileStats holds stats for a single file.
+type FileStats struct {
+	Added   int
+	Removed int
+}

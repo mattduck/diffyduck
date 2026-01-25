@@ -146,3 +146,15 @@ func SkeletonFilePair(path string, added, removed int) FilePair {
 		FoldLevel:    FoldFolded, // Start folded since no content yet
 	}
 }
+
+// SkeletonFilePairNoStats creates a FilePair with only path (no stats or Pairs).
+// Used for progressive loading where stats are fetched asynchronously.
+func SkeletonFilePairNoStats(path string) FilePair {
+	return FilePair{
+		OldPath:      "a/" + path,
+		NewPath:      "b/" + path,
+		TotalAdded:   0,
+		TotalRemoved: 0,
+		FoldLevel:    FoldFolded, // Start folded since no content yet
+	}
+}
