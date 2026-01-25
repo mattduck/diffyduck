@@ -1558,25 +1558,22 @@ func TestCommitBorder_RowCountStability_FirstFolded(t *testing.T) {
 	rowsFolded := m.buildRows()
 	foldedCount := len(rowsFolded)
 
-	// Unfold second commit
+	// Unfold second commit to CommitNormal
 	m.commits[1].FoldLevel = sidebyside.CommitNormal
 	rowsUnfolded := m.buildRows()
 	unfoldedCount := len(rowsUnfolded)
 
-	// The second commit body adds rows, but NO extra row should be added for
-	// top border since first commit is folded (no separator to convert)
-	// The bottom border replaces the first body blank, so net effect is:
-	// - Body rows are added (this is expected behavior)
-	// - No extra top border row added
+	// With CommitNormal, only the commit info header is shown (not the full body).
+	// The difference should be:
+	// - 1 for bottom border
+	// - 1 for commit info header
+	// - No commit body rows (those only appear with CommitExpanded)
 	t.Logf("Folded: %d rows, Unfolded: %d rows", foldedCount, unfoldedCount)
 
-	// Count how many body rows the second commit would add
-	bodyRows := m.buildCommitBodyRowsSkipFirstBlank(&m.commits[1], 1)
-	expectedBodyRowCount := len(bodyRows) + 1 // +1 for bottom border (replaces first blank)
-
-	// The difference should be exactly the body rows (no extra top border)
+	// Expected: bottom border (1) + commit info header (1) = 2 new rows
+	expectedDiff := 2
 	actualDiff := unfoldedCount - foldedCount
-	assert.Equal(t, expectedBodyRowCount, actualDiff, "row count difference should be exactly body rows + bottom border")
+	assert.Equal(t, expectedDiff, actualDiff, "row count difference should be bottom border + commit info header")
 }
 
 // Test: With files - separator row converts to top border when both unfolded

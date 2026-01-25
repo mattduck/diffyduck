@@ -649,9 +649,10 @@ func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
 
 func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 	// When a file is expanded beyond just its header (FoldFolded),
-	// the parent commit should be updated to CommitExpanded (level 3).
+	// the visibility level becomes 3, but the commit stays at CommitNormal.
+	// This allows file expansion without automatically expanding commit info.
 	// Level 2 means "file headings only" - if any file shows content,
-	// the commit should be at level 3.
+	// the visibility level is 3 but commit fold level stays CommitNormal.
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
 			SHA:     "def5678",
@@ -703,13 +704,14 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel,
 		"file should be FoldNormal after toggle")
 
-	// The commit should now be at level 3 with CommitExpanded
+	// The commit should now be at level 3 but still CommitNormal
+	// (file expansion doesn't force commit info to expand)
 	assert.Equal(t, 3, m.commitVisibilityLevelFor(0),
 		"commit visibility should be level 3 after file expansion")
-	assert.Equal(t, sidebyside.CommitExpanded, m.commits[0].FoldLevel,
-		"commit.FoldLevel should be CommitExpanded when a file is expanded")
+	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel,
+		"commit.FoldLevel should stay CommitNormal when a file is expanded")
 
-	// Verify the commit header shows the full-fill icon
+	// Verify the commit header shows the half-fill icon (◐) since commit is CommitNormal
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
@@ -722,8 +724,8 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 	}
 
 	require.NotEmpty(t, commitHeaderLine, "should find commit header with SHA")
-	assert.Contains(t, commitHeaderLine, "●",
-		"commit header should show full-fill icon ● when file is expanded")
+	assert.Contains(t, commitHeaderLine, "◐",
+		"commit header should show half-fill icon ◐ when commit is CommitNormal")
 }
 
 func TestCommitBorder_CursorRendersArrowOnEmptyLine(t *testing.T) {

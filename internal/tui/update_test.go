@@ -367,11 +367,18 @@ func TestUpdate_NextHeading_gj_MultiCommit(t *testing.T) {
 	require.True(t, rows[cursorPos].isCommitHeader, "should start on commit header")
 	assert.Equal(t, 0, rows[cursorPos].commitIndex, "should be on commit 0")
 
+	// gj should go to commit info header
+	m = sendKeys(m, "g", "j")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isCommitInfoHeader, "gj from commit header should go to commit info header")
+	assert.Equal(t, 0, rows[cursorPos].commitIndex, "should be on commit 0's info header")
+
 	// gj should go to first file header
 	m = sendKeys(m, "g", "j")
 	rows = m.buildRows()
 	cursorPos = m.cursorLine()
-	require.True(t, rows[cursorPos].isHeader, "gj from commit header should go to file header")
+	require.True(t, rows[cursorPos].isHeader, "gj from commit info header should go to file header")
 	assert.Equal(t, 0, rows[cursorPos].fileIndex, "should be on file 0")
 
 	// gj should go to second file header
@@ -387,6 +394,13 @@ func TestUpdate_NextHeading_gj_MultiCommit(t *testing.T) {
 	cursorPos = m.cursorLine()
 	require.True(t, rows[cursorPos].isCommitHeader, "gj from last file should go to next commit header")
 	assert.Equal(t, 1, rows[cursorPos].commitIndex, "should be on commit 1")
+
+	// gj should go to commit 1's info header
+	m = sendKeys(m, "g", "j")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isCommitInfoHeader, "gj should go to commit 1's info header")
+	assert.Equal(t, 1, rows[cursorPos].commitIndex, "should be on commit 1's info header")
 
 	// gj should go to commit 1's first file
 	m = sendKeys(m, "g", "j")
@@ -409,7 +423,14 @@ func TestUpdate_PrevHeading_gk_MultiCommit(t *testing.T) {
 	require.True(t, rows[cursorPos].isHeader, "gk should go to file header")
 	assert.Equal(t, 2, rows[cursorPos].fileIndex, "should be on file 2")
 
-	// gk from file header should go to commit 1 header
+	// gk from file header should go to commit 1's info header
+	m = sendKeys(m, "g", "k")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isCommitInfoHeader, "gk should go to commit info header")
+	assert.Equal(t, 1, rows[cursorPos].commitIndex, "should be on commit 1's info header")
+
+	// gk should go to commit 1 header
 	m = sendKeys(m, "g", "k")
 	rows = m.buildRows()
 	cursorPos = m.cursorLine()
@@ -429,6 +450,13 @@ func TestUpdate_PrevHeading_gk_MultiCommit(t *testing.T) {
 	cursorPos = m.cursorLine()
 	require.True(t, rows[cursorPos].isHeader, "gk should go to previous file header")
 	assert.Equal(t, 0, rows[cursorPos].fileIndex, "should be on file 0")
+
+	// gk should go to commit 0's info header
+	m = sendKeys(m, "g", "k")
+	rows = m.buildRows()
+	cursorPos = m.cursorLine()
+	require.True(t, rows[cursorPos].isCommitInfoHeader, "gk should go to commit info header")
+	assert.Equal(t, 0, rows[cursorPos].commitIndex, "should be on commit 0's info header")
 
 	// gk should go to commit 0 header
 	m = sendKeys(m, "g", "k")

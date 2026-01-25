@@ -1068,7 +1068,9 @@ func TestCommitFoldCycleWithMixedFiles(t *testing.T) {
 }
 
 func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
-	// Test that commit body rows appear when commit is not folded (level 2+)
+	// Test that commit info body rows appear when commit is CommitExpanded
+	// With CommitNormal, only the commit info header shows.
+	// With CommitExpanded, the full commit info body shows.
 	files := []sidebyside.FilePair{
 		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
 	}
@@ -1082,7 +1084,7 @@ func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
 			Body:    "This is the commit body.\nIt has multiple lines.",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal, // Normal state (level 2)
+		FoldLevel:   sidebyside.CommitExpanded, // Expanded to show commit info body
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -1091,49 +1093,49 @@ func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
 	m.focused = true
 	m.calculateTotalLines()
 
-	// Build rows and check for commit body rows
+	// Build rows and check for commit info body rows
 	rows := m.buildRows()
 
 	// Should have commit header row first
 	require.Greater(t, len(rows), 1, "should have more than one row")
 	assert.True(t, rows[0].isCommitHeader, "first row should be commit header")
 
-	// Find commit body rows
+	// Find commit info body rows
 	var bodyRows []displayRow
 	for _, row := range rows {
-		if row.isCommitBody {
+		if row.isCommitInfoBody {
 			bodyRows = append(bodyRows, row)
 		}
 	}
 
-	// Should have body rows when expanded
-	require.Greater(t, len(bodyRows), 0, "should have commit body rows when expanded")
+	// Should have info body rows when CommitExpanded
+	require.Greater(t, len(bodyRows), 0, "should have commit info body rows when CommitExpanded")
 
 	// Check content of body rows
 	var foundSHA, foundAuthor, foundDate, foundSubject, foundBody bool
 	for _, row := range bodyRows {
-		if strings.Contains(row.commitBodyLine, "commit abc123def4567890fedcba9876543210") {
+		if strings.Contains(row.commitInfoLine, "commit abc123def4567890fedcba9876543210") {
 			foundSHA = true
 		}
-		if strings.Contains(row.commitBodyLine, "Author: Test Author") {
+		if strings.Contains(row.commitInfoLine, "Author: Test Author") {
 			foundAuthor = true
 		}
-		if strings.Contains(row.commitBodyLine, "Date:") {
+		if strings.Contains(row.commitInfoLine, "Date:") {
 			foundDate = true
 		}
-		if strings.Contains(row.commitBodyLine, "Add new feature") {
+		if strings.Contains(row.commitInfoLine, "Add new feature") {
 			foundSubject = true
 		}
-		if strings.Contains(row.commitBodyLine, "commit body") {
+		if strings.Contains(row.commitInfoLine, "commit body") {
 			foundBody = true
 		}
 	}
 
-	assert.True(t, foundSHA, "should have full SHA in body rows")
-	assert.True(t, foundAuthor, "should have author in body rows")
-	assert.True(t, foundDate, "should have date in body rows")
-	assert.True(t, foundSubject, "should have subject in body rows")
-	assert.True(t, foundBody, "should have body text in body rows")
+	assert.True(t, foundSHA, "should have full SHA in info body rows")
+	assert.True(t, foundAuthor, "should have author in info body rows")
+	assert.True(t, foundDate, "should have date in info body rows")
+	assert.True(t, foundSubject, "should have subject in info body rows")
+	assert.True(t, foundBody, "should have body text in info body rows")
 }
 
 func TestCommitBodyRow_Rendering(t *testing.T) {
@@ -1224,6 +1226,7 @@ func TestCommitBodyRows_NotShownWhenFolded(t *testing.T) {
 
 func TestCommitBodyRows_BlankLineBetweenSubjectAndBody(t *testing.T) {
 	// Test that there's a blank line between the subject and body (traditional git log format)
+	// Requires CommitExpanded to show the commit info body
 	files := []sidebyside.FilePair{
 		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
 	}
@@ -1237,7 +1240,7 @@ func TestCommitBodyRows_BlankLineBetweenSubjectAndBody(t *testing.T) {
 			Body:    "This is the first line of the body.\nThis is the second line.",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal,
+		FoldLevel:   sidebyside.CommitExpanded, // Need CommitExpanded to see body rows
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -1248,10 +1251,10 @@ func TestCommitBodyRows_BlankLineBetweenSubjectAndBody(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Find body rows and check for blank line between subject and body
+	// Find commit info body rows and check for blank line between subject and body
 	var bodyRows []displayRow
 	for _, row := range rows {
-		if row.isCommitBody {
+		if row.isCommitInfoBody {
 			bodyRows = append(bodyRows, row)
 		}
 	}
@@ -1259,7 +1262,7 @@ func TestCommitBodyRows_BlankLineBetweenSubjectAndBody(t *testing.T) {
 	// Find the subject row index
 	subjectIdx := -1
 	for i, row := range bodyRows {
-		if strings.Contains(row.commitBodyLine, "Add new feature") {
+		if strings.Contains(row.commitInfoLine, "Add new feature") {
 			subjectIdx = i
 			break
 		}
@@ -1269,13 +1272,12 @@ func TestCommitBodyRows_BlankLineBetweenSubjectAndBody(t *testing.T) {
 	// The row after the subject should be a blank line
 	require.Greater(t, len(bodyRows), subjectIdx+1, "should have rows after subject")
 	blankRow := bodyRows[subjectIdx+1]
-	assert.True(t, blankRow.commitBodyIsBlank, "row after subject should be blank")
-	assert.Empty(t, blankRow.commitBodyLine, "blank row should have empty content")
+	assert.Empty(t, blankRow.commitInfoLine, "row after subject should be blank (empty content)")
 
 	// The row after the blank should be the first body line
 	require.Greater(t, len(bodyRows), subjectIdx+2, "should have body rows after blank line")
 	firstBodyRow := bodyRows[subjectIdx+2]
-	assert.Contains(t, firstBodyRow.commitBodyLine, "first line of the body", "should have body content after blank line")
+	assert.Contains(t, firstBodyRow.commitInfoLine, "first line of the body", "should have body content after blank line")
 }
 
 func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
@@ -1338,7 +1340,8 @@ func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
 
 func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	// This test verifies that currentCommit() returns the commit the cursor is currently on,
-	// including when cursor is on commit body rows (not just the header).
+	// including when cursor is on commit info body rows (not just the header).
+	// Requires CommitExpanded to see the commit info body.
 	files1 := []sidebyside.FilePair{
 		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldFolded},
 	}
@@ -1353,7 +1356,7 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 				Subject: "First commit",
 			},
 			Files:       files1,
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitExpanded, // Need CommitExpanded to see body rows
 			FilesLoaded: true,
 		},
 		{
@@ -1363,7 +1366,7 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 				Subject: "Second commit",
 			},
 			Files:       files2,
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitExpanded, // Need CommitExpanded to see body rows
 			FilesLoaded: true,
 		},
 	}
@@ -1376,20 +1379,20 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	rows := m.buildRows()
 
 	// Find various rows for first and second commit
-	var firstCommitHeaderIdx, firstCommitBodyIdx, secondCommitHeaderIdx int
+	var firstCommitHeaderIdx, firstCommitInfoBodyIdx, secondCommitHeaderIdx int
 	for i, row := range rows {
 		if row.isCommitHeader && row.commitIndex == 0 && firstCommitHeaderIdx == 0 {
 			firstCommitHeaderIdx = i
 		}
-		if row.isCommitBody && row.commitIndex == 0 && firstCommitBodyIdx == 0 {
-			firstCommitBodyIdx = i
+		if row.isCommitInfoBody && row.commitIndex == 0 && firstCommitInfoBodyIdx == 0 {
+			firstCommitInfoBodyIdx = i
 		}
 		if row.isCommitHeader && row.commitIndex == 1 && secondCommitHeaderIdx == 0 {
 			secondCommitHeaderIdx = i
 			break
 		}
 	}
-	require.NotEqual(t, 0, firstCommitBodyIdx, "should find a body row belonging to first commit")
+	require.NotEqual(t, 0, firstCommitInfoBodyIdx, "should find an info body row belonging to first commit")
 	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find a row belonging to second commit")
 
 	// Position cursor on first commit header
@@ -1398,11 +1401,11 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "first111", commit.Info.SHA, "cursor on first commit header should return first commit")
 
-	// Position cursor on first commit body - should still return first commit
-	m.scroll = firstCommitBodyIdx
+	// Position cursor on first commit info body - should still return first commit
+	m.scroll = firstCommitInfoBodyIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
-	assert.Equal(t, "first111", commit.Info.SHA, "cursor on first commit body should return first commit")
+	assert.Equal(t, "first111", commit.Info.SHA, "cursor on first commit info body should return first commit")
 
 	// Position cursor on second commit header
 	m.scroll = secondCommitHeaderIdx
@@ -1410,21 +1413,21 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit header should return second commit")
 
-	// Find second commit body row
-	var secondCommitBodyIdx int
+	// Find second commit info body row
+	var secondCommitInfoBodyIdx int
 	for i, row := range rows {
-		if row.isCommitBody && row.commitIndex == 1 {
-			secondCommitBodyIdx = i
+		if row.isCommitInfoBody && row.commitIndex == 1 {
+			secondCommitInfoBodyIdx = i
 			break
 		}
 	}
-	require.NotEqual(t, 0, secondCommitBodyIdx, "should find a body row belonging to second commit")
+	require.NotEqual(t, 0, secondCommitInfoBodyIdx, "should find an info body row belonging to second commit")
 
-	// Position cursor on second commit body - should return second commit
-	m.scroll = secondCommitBodyIdx
+	// Position cursor on second commit info body - should return second commit
+	m.scroll = secondCommitInfoBodyIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
-	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit body should return second commit")
+	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit info body should return second commit")
 
 	// Find second commit's file row (the file header for bar.go)
 	var secondCommitFileIdx int

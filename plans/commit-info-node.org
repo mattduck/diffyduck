@@ -72,12 +72,17 @@ expanding just the commit info shouldn't necessarily imply all files should show
 content. May need to decouple commit info fold state from the commit fold level,
 or introduce a separate state for "commit info expanded but files at headers only".
 
-** TODO Update tests and golden files
-Once behavior is manually confirmed, update:
-- ~internal/tui/view_test.go~
-- ~internal/tui/testdata/*.golden~
-
 * Completed tasks
+
+** DONE Update tests and golden files
+Updated tests to reflect new commit info node behavior:
+- ~cursor_test.go~: Updated Shift+Tab tests to expect ~CommitExpanded~ at level 3;
+  Updated commit body tests to use ~CommitExpanded~ and ~RowKindCommitInfoBody~
+- ~update_test.go~: Updated gj/gk navigation tests to include commit info header
+- ~view_fold_test.go~: Updated file expansion test (file expand → ~CommitNormal~, not ~CommitExpanded~)
+- ~view_header_test.go~: Updated row count stability test for new structure
+- ~view_statusbar_test.go~: Updated commit body row tests to use ~CommitExpanded~ and ~isCommitInfoBody~
+- ~testdata/multi_commit_log.golden~: Updated to show new commit info header format
 
 ** DONE Remove permanent newline after commit info header before file header
 First file's top border row is now only added when commit info is expanded.
@@ -87,4 +92,9 @@ When folded, no blank line appears between "commit" header and first file.
 
 - ~internal/tui/view.go~ - Row types, displayRow struct, buildRows(), buildCommitInfoRows(), renderCommitInfoHeader(), renderCommitInfoBody(), getVisibleRows(), buildFileRows()
 - ~internal/tui/update.go~ - isOnCommitInfoHeader(), handleFoldToggle(), handleCommitInfoFoldToggle(), goToNextHeading(), goToPrevHeading(), cursor identity tracking
-- ~internal/tui/update_test.go~ - Fixed rowMatchesIdentity() call signature
+- ~internal/tui/update_test.go~ - gj/gk navigation tests updated for commit info header
+- ~internal/tui/cursor_test.go~ - Shift+Tab and commit body cursor tests updated
+- ~internal/tui/view_fold_test.go~ - File expansion test expectations updated
+- ~internal/tui/view_header_test.go~ - Row count stability test updated
+- ~internal/tui/view_statusbar_test.go~ - Commit body row tests updated
+- ~internal/tui/testdata/multi_commit_log.golden~ - Updated for new commit info header format
