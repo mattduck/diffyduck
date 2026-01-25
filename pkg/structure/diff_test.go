@@ -224,3 +224,53 @@ func TestElementChange_Entry(t *testing.T) {
 	assert.Nil(t, c.Entry())
 	assert.Equal(t, "", c.Name())
 }
+
+func TestComputeDiff_LineCounts(t *testing.T) {
+	// Test that LinesAdded and LinesRemoved are correctly counted
+	oldMap := NewMap([]Entry{
+		{StartLine: 1, EndLine: 10, Name: "Foo", Kind: "func"},  // modified: 2 lines removed
+		{StartLine: 12, EndLine: 20, Name: "Bar", Kind: "func"}, // deleted: 5 lines removed
+		{StartLine: 22, EndLine: 25, Name: "Baz", Kind: "func"}, // unchanged
+	})
+	newMap := NewMap([]Entry{
+		{StartLine: 1, EndLine: 12, Name: "Foo", Kind: "func"},  // modified: 3 lines added
+		{StartLine: 14, EndLine: 18, Name: "Baz", Kind: "func"}, // unchanged (moved)
+		{StartLine: 20, EndLine: 30, Name: "Qux", Kind: "func"}, // added: 8 lines added
+	})
+
+	// Foo: old lines 5,6 removed; new lines 10,11,12 added
+	// Bar: old lines 15,16,17,18,19 removed (deleted function)
+	// Qux: new lines 22,23,24,25,26,27,28,29 added (new function)
+	addedLines := map[int]bool{10: true, 11: true, 12: true, 22: true, 23: true, 24: true, 25: true, 26: true, 27: true, 28: true, 29: true}
+	removedLines := map[int]bool{5: true, 6: true, 15: true, 16: true, 17: true, 18: true, 19: true}
+
+	diff := ComputeDiff(oldMap, newMap, addedLines, removedLines)
+
+	require.Len(t, diff.Changes, 4)
+
+	// Find each change by name
+	byName := make(map[string]ElementChange)
+	for _, c := range diff.Changes {
+		byName[c.Name()] = c
+	}
+
+	// Foo: modified with 3 added (10,11,12 within 1-12), 2 removed (5,6 within 1-10)
+	assert.Equal(t, ChangeModified, byName["Foo"].Kind)
+	assert.Equal(t, 3, byName["Foo"].LinesAdded)
+	assert.Equal(t, 2, byName["Foo"].LinesRemoved)
+
+	// Bar: deleted with 5 removed (15,16,17,18,19 within 12-20)
+	assert.Equal(t, ChangeDeleted, byName["Bar"].Kind)
+	assert.Equal(t, 0, byName["Bar"].LinesAdded)
+	assert.Equal(t, 5, byName["Bar"].LinesRemoved)
+
+	// Baz: unchanged (no overlap)
+	assert.Equal(t, ChangeUnchanged, byName["Baz"].Kind)
+	assert.Equal(t, 0, byName["Baz"].LinesAdded)
+	assert.Equal(t, 0, byName["Baz"].LinesRemoved)
+
+	// Qux: added with 8 lines (22-29 within 20-30)
+	assert.Equal(t, ChangeAdded, byName["Qux"].Kind)
+	assert.Equal(t, 8, byName["Qux"].LinesAdded)
+	assert.Equal(t, 0, byName["Qux"].LinesRemoved)
+}

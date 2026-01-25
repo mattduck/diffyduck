@@ -44,9 +44,11 @@ func (k ChangeKind) Symbol() string {
 
 // ElementChange represents a structural element and how it changed.
 type ElementChange struct {
-	Kind     ChangeKind
-	OldEntry *Entry // nil for Added
-	NewEntry *Entry // nil for Deleted
+	Kind         ChangeKind
+	OldEntry     *Entry // nil for Added
+	NewEntry     *Entry // nil for Deleted
+	LinesAdded   int    // Number of added lines within this element's boundaries
+	LinesRemoved int    // Number of removed lines within this element's boundaries
 }
 
 // Name returns the element's name (from whichever entry is available).
@@ -135,29 +137,31 @@ func ComputeDiff(oldMap, newMap *Map, addedLines, removedLines map[int]bool) *St
 			key := entryKey(newEntry)
 
 			if oldEntry, ok := oldByName[key]; ok {
-				// Matched: check if modified
+				// Matched: count lines changed within this element
 				matched[key] = true
-				kind := ChangeUnchanged
 
-				// Check if any removed lines overlap with old entry's range
-				if linesOverlap(oldEntry.StartLine, oldEntry.EndLine, removedLines) {
-					kind = ChangeModified
-				}
-				// Check if any added lines overlap with new entry's range
-				if linesOverlap(newEntry.StartLine, newEntry.EndLine, addedLines) {
+				linesRemoved := countOverlap(oldEntry.StartLine, oldEntry.EndLine, removedLines)
+				linesAdded := countOverlap(newEntry.StartLine, newEntry.EndLine, addedLines)
+
+				kind := ChangeUnchanged
+				if linesRemoved > 0 || linesAdded > 0 {
 					kind = ChangeModified
 				}
 
 				diff.Changes = append(diff.Changes, ElementChange{
-					Kind:     kind,
-					OldEntry: oldEntry,
-					NewEntry: newEntry,
+					Kind:         kind,
+					OldEntry:     oldEntry,
+					NewEntry:     newEntry,
+					LinesAdded:   linesAdded,
+					LinesRemoved: linesRemoved,
 				})
 			} else {
-				// Only in new: added
+				// Only in new: added - count all added lines within its range
+				linesAdded := countOverlap(newEntry.StartLine, newEntry.EndLine, addedLines)
 				diff.Changes = append(diff.Changes, ElementChange{
-					Kind:     ChangeAdded,
-					NewEntry: newEntry,
+					Kind:       ChangeAdded,
+					NewEntry:   newEntry,
+					LinesAdded: linesAdded,
 				})
 			}
 		}
@@ -170,9 +174,12 @@ func ComputeDiff(oldMap, newMap *Map, addedLines, removedLines map[int]bool) *St
 			key := entryKey(oldEntry)
 
 			if !matched[key] {
+				// Deleted: count all removed lines within its range
+				linesRemoved := countOverlap(oldEntry.StartLine, oldEntry.EndLine, removedLines)
 				diff.Changes = append(diff.Changes, ElementChange{
-					Kind:     ChangeDeleted,
-					OldEntry: oldEntry,
+					Kind:         ChangeDeleted,
+					OldEntry:     oldEntry,
+					LinesRemoved: linesRemoved,
 				})
 			}
 		}
@@ -190,15 +197,16 @@ func entryKey(e *Entry) string {
 	return e.Kind + ":" + e.Name
 }
 
-// linesOverlap returns true if any line in the range [start, end] is in the lines set.
-func linesOverlap(start, end int, lines map[int]bool) bool {
+// countOverlap returns the number of lines in the range [start, end] that are in the lines set.
+func countOverlap(start, end int, lines map[int]bool) int {
 	if lines == nil {
-		return false
+		return 0
 	}
+	count := 0
 	for line := start; line <= end; line++ {
 		if lines[line] {
-			return true
+			count++
 		}
 	}
-	return false
+	return count
 }

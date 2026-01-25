@@ -199,9 +199,13 @@ type displayRow struct {
 	commentRowCount  int    // total rows in this comment box
 	commentLineIndex int    // which line of comment content this is (for content rows, -1 for borders)
 	// Structural diff fields (for RowKindStructuralDiff rows)
-	isStructuralDiff      bool   // true if this is a structural diff row
-	structuralDiffLine    string // the formatted line (e.g., "  ~ func FuncA")
-	structuralDiffIsBlank bool   // true if this is a blank separator line
+	isStructuralDiff        bool   // true if this is a structural diff row
+	structuralDiffLine      string // the formatted line (e.g., "  ~ func FuncA")
+	structuralDiffIsBlank   bool   // true if this is a blank separator line
+	structuralDiffAdded     int    // lines added within this element
+	structuralDiffRemoved   int    // lines removed within this element
+	structuralDiffMaxAddLen int    // max width of add counts (for alignment)
+	structuralDiffMaxRemLen int    // max width of remove counts (for alignment)
 }
 
 // buildCommentRows creates displayRow entries for a comment box.
@@ -1799,7 +1803,7 @@ func (m Model) buildCommitBodyRowsSkipFirstBlank(commit *sidebyside.CommitSet, c
 // structural diff lines for a file. This is used to expand the header box width
 // if structural diff entries are wider than the filename. Returns 0 if no
 // structural diff or no changes. The width is the content after the icon prefix:
-// extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name = 5 + kind_len + name_len
+// extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name + stats = 5 + kind_len + name_len + stats_len
 // For child items, add 2 more for child indent.
 func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 	fs := m.structureMaps[fileIdx]
@@ -1817,6 +1821,32 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 		return 0
 	}
 
+	// Calculate max widths for line count stats
+	maxAddLen, maxRemLen := 0, 0
+	for _, c := range changes {
+		if c.LinesAdded > 0 {
+			w := len(fmt.Sprintf("%d", c.LinesAdded))
+			if w > maxAddLen {
+				maxAddLen = w
+			}
+		}
+		if c.LinesRemoved > 0 {
+			w := len(fmt.Sprintf("%d", c.LinesRemoved))
+			if w > maxRemLen {
+				maxRemLen = w
+			}
+		}
+	}
+
+	// Stats width: " N M" = 1 + maxAddLen + 1 + maxRemLen (if both present)
+	statsWidth := 0
+	if maxAddLen > 0 {
+		statsWidth += 1 + maxAddLen // " N"
+	}
+	if maxRemLen > 0 {
+		statsWidth += 1 + maxRemLen // " M"
+	}
+
 	maxWidth := 0
 
 	// Build tree structure to identify children (same logic as buildStructuralDiffRows)
@@ -1829,9 +1859,9 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 			continue
 		}
 		if entry.Kind == "type" || entry.Kind == "class" {
-			// Width for parent: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name
+			// Width for parent: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name + stats
 			// extraIndent = symbolPrefix (11+numDigits) - iconPartWidth (9+numDigits) = 2
-			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name)
+			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name) + statsWidth
 			if width > maxWidth {
 				maxWidth = width
 			}
@@ -1849,8 +1879,8 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 					typeStart, typeEnd := entry.StartLine, entry.EndLine
 					otherStart := otherEntry.StartLine
 					if otherStart >= typeStart && otherStart <= typeEnd {
-						// Width for child: extraIndent(2) + symbol(1) + space(1) + childIndent(2) + kind + space(1) + name
-						childWidth := 2 + 1 + 1 + 2 + len(otherEntry.Kind) + 1 + len(otherEntry.Name)
+						// Width for child: extraIndent(2) + symbol(1) + space(1) + childIndent(2) + kind + space(1) + name + stats
+						childWidth := 2 + 1 + 1 + 2 + len(otherEntry.Kind) + 1 + len(otherEntry.Name) + statsWidth
 						if childWidth > maxWidth {
 							maxWidth = childWidth
 						}
@@ -1869,8 +1899,8 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 			if entry == nil {
 				continue
 			}
-			// Width for top-level: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name
-			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name)
+			// Width for top-level: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name + stats
+			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name) + statsWidth
 			if width > maxWidth {
 				maxWidth = width
 			}
@@ -1963,6 +1993,37 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 		}
 	}
 
+	// Calculate max widths for alignment of line counts
+	maxAddLen, maxRemLen := 0, 0
+	for _, node := range topLevel {
+		if node.change.LinesAdded > 0 {
+			w := len(fmt.Sprintf("%d", node.change.LinesAdded))
+			if w > maxAddLen {
+				maxAddLen = w
+			}
+		}
+		if node.change.LinesRemoved > 0 {
+			w := len(fmt.Sprintf("%d", node.change.LinesRemoved))
+			if w > maxRemLen {
+				maxRemLen = w
+			}
+		}
+		for _, child := range node.children {
+			if child.LinesAdded > 0 {
+				w := len(fmt.Sprintf("%d", child.LinesAdded))
+				if w > maxAddLen {
+					maxAddLen = w
+				}
+			}
+			if child.LinesRemoved > 0 {
+				w := len(fmt.Sprintf("%d", child.LinesRemoved))
+				if w > maxRemLen {
+					maxRemLen = w
+				}
+			}
+		}
+	}
+
 	// Render tree
 	for _, node := range topLevel {
 		c := node.change
@@ -1976,12 +2037,16 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 		line := symbolPrefix + symbol + " " + entry.Kind + " " + entry.Name
 
 		rows = append(rows, displayRow{
-			kind:               RowKindStructuralDiff,
-			fileIndex:          fileIdx,
-			isStructuralDiff:   true,
-			structuralDiffLine: line,
-			headerBoxWidth:     headerBoxWidth,
-			borderVisible:      borderVisible,
+			kind:                    RowKindStructuralDiff,
+			fileIndex:               fileIdx,
+			isStructuralDiff:        true,
+			structuralDiffLine:      line,
+			structuralDiffAdded:     c.LinesAdded,
+			structuralDiffRemoved:   c.LinesRemoved,
+			structuralDiffMaxAddLen: maxAddLen,
+			structuralDiffMaxRemLen: maxRemLen,
+			headerBoxWidth:          headerBoxWidth,
+			borderVisible:           borderVisible,
 		})
 
 		// Add children (methods within types) with extra indentation
@@ -1994,12 +2059,16 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, borderVi
 			childLine := childPrefix + childSymbol + " " + childEntry.Kind + " " + childEntry.Name
 
 			rows = append(rows, displayRow{
-				kind:               RowKindStructuralDiff,
-				fileIndex:          fileIdx,
-				isStructuralDiff:   true,
-				structuralDiffLine: childLine,
-				headerBoxWidth:     headerBoxWidth,
-				borderVisible:      borderVisible,
+				kind:                    RowKindStructuralDiff,
+				fileIndex:               fileIdx,
+				isStructuralDiff:        true,
+				structuralDiffLine:      childLine,
+				structuralDiffAdded:     child.LinesAdded,
+				structuralDiffRemoved:   child.LinesRemoved,
+				structuralDiffMaxAddLen: maxAddLen,
+				structuralDiffMaxRemLen: maxRemLen,
+				headerBoxWidth:          headerBoxWidth,
+				borderVisible:           borderVisible,
 			})
 		}
 	}
@@ -2063,13 +2132,15 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 		rest = ""
 	}
 
-	// Style the symbol based on change kind
+	// Style the symbol based on change kind (use dark color variants)
+	darkAddedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	darkRemovedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	var styledSymbol string
 	switch symbol {
 	case "+":
-		styledSymbol = addedStyle.Render("+")
+		styledSymbol = darkAddedStyle.Render("+")
 	case "-":
-		styledSymbol = removedStyle.Render("-")
+		styledSymbol = darkRemovedStyle.Render("-")
 	case "~":
 		styledSymbol = changedStyle.Render("~")
 	default:
@@ -2093,10 +2164,50 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 		styledRest = rest // fallback
 	}
 
+	// Format line count stats (e.g., "3 1") - placed after symbol, before kind
+	// Show stats if any element in the file has stats (for alignment)
+	// Numbers only (no +/- prefix), colors distinguish add vs remove
+	var statsStr string
+	var statsWidth int
+	if row.structuralDiffMaxAddLen > 0 || row.structuralDiffMaxRemLen > 0 {
+		// Build stats with padding for alignment
+		addPart := ""
+		remPart := ""
+		if row.structuralDiffMaxAddLen > 0 {
+			if row.structuralDiffAdded > 0 {
+				addPart = fmt.Sprintf("%*d", row.structuralDiffMaxAddLen, row.structuralDiffAdded)
+			} else {
+				addPart = strings.Repeat(" ", row.structuralDiffMaxAddLen)
+			}
+		}
+		if row.structuralDiffMaxRemLen > 0 {
+			if row.structuralDiffRemoved > 0 {
+				remPart = fmt.Sprintf("%*d", row.structuralDiffMaxRemLen, row.structuralDiffRemoved)
+			} else {
+				remPart = strings.Repeat(" ", row.structuralDiffMaxRemLen)
+			}
+		}
+
+		// Style them with dark colors
+		addStyled := darkAddedStyle.Render(addPart)
+		remStyled := darkRemovedStyle.Render(remPart)
+
+		if addPart != "" && remPart != "" {
+			statsStr = " " + addStyled + " " + remStyled
+			statsWidth = 1 + len(addPart) + 1 + len(remPart) // space + add + space + rem
+		} else if addPart != "" {
+			statsStr = " " + addStyled
+			statsWidth = 1 + len(addPart)
+		} else if remPart != "" {
+			statsStr = " " + remStyled
+			statsWidth = 1 + len(remPart)
+		}
+	}
+
 	// Calculate padding to reach headerBoxWidth (based on original content width)
 	// Calculate padding to reach headerBoxWidth, plus 2 extra to align with header border
 	// (the header has a 2-space prefix before headerBoxWidth content)
-	originalWidth := len(content) // All ASCII so len() works
+	originalWidth := len(content) + statsWidth // All ASCII so len() works
 	paddingNeeded := headerBoxWidth - originalWidth + 2
 	padding := ""
 	if paddingNeeded > 0 {
@@ -2109,20 +2220,20 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
 	}
 
-	// Build the line content
+	// Build the line content (stats go after symbol, before kind/name)
 	var result string
 	if isCursorRow && m.focused {
 		// Replace first 5 chars of prefix with cursor elements: ▶ + space + gutter(bg) + 2 spaces
 		styledGutter := cursorStyle.Render(" ")
 		cursorPrefix := cursorArrowStyle.Render("▶") + " " + styledGutter + "  "
-		result = cursorPrefix + prefix[5:] + styledSymbol + styledRest + padding
+		result = cursorPrefix + prefix[5:] + styledSymbol + statsStr + styledRest + padding
 	} else if isCursorRow && !m.focused {
 		// Unfocused: outline arrow + 4 spaces
 		cursorPrefix := unfocusedCursorArrowStyle.Render("▷") + "    "
-		result = cursorPrefix + prefix[5:] + styledSymbol + styledRest + padding
+		result = cursorPrefix + prefix[5:] + styledSymbol + statsStr + styledRest + padding
 	} else {
 		// Non-cursor: use prefix as-is
-		result = prefix + styledSymbol + styledRest + padding
+		result = prefix + styledSymbol + statsStr + styledRest + padding
 	}
 
 	// Add border (│) - always present but no trailing fill unlike header
