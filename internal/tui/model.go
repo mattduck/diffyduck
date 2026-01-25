@@ -238,7 +238,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		spinner:             s,
 		loadingFiles:        make(map[int]time.Time),
 		focused:             true,
-		focusColour:         true,
+		focusColour:         false,
 		comments:            make(map[commentKey]string),
 	}
 
