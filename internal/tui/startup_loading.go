@@ -4,12 +4,14 @@ import (
 	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // MaxStartupConcurrent is the maximum number of files to load concurrently on startup.
 const MaxStartupConcurrent = 8
 
-// initStartupQueue initializes the startup loading queue with all supported files.
+// initStartupQueue initializes the startup loading queue with supported files.
+// Only queues files in non-folded commits to avoid unnecessary work.
 // Should be called once on first WindowSizeMsg when we know the model is ready.
 func (m *Model) initStartupQueue() tea.Cmd {
 	if m.startupQueuedInit {
@@ -22,30 +24,91 @@ func (m *Model) initStartupQueue() tea.Cmd {
 		return nil
 	}
 
-	// Queue all supported files that don't already have content
+	// Queue supported files only in non-folded commits
 	for i, file := range m.files {
-		// Skip files that already have content loaded
-		if len(file.NewContent) > 0 || len(file.OldContent) > 0 {
-			continue
+		// Skip files in folded commits - they'll be loaded on demand when expanded
+		commitIdx := m.commitForFile(i)
+		if commitIdx >= 0 && commitIdx < len(m.commits) {
+			if m.commits[commitIdx].FoldLevel == sidebyside.CommitFolded {
+				continue
+			}
 		}
 
-		// Check if this file is supported by tree-sitter
-		filename := file.NewPath
-		if filename == "" {
-			filename = file.OldPath
-		}
-		if filename == "" {
-			continue
-		}
-
-		// Use the filename (not full path) for extension matching
-		basename := filepath.Base(filename)
-		if m.highlighter != nil && m.highlighter.SupportsFile(basename) {
+		if m.shouldQueueFile(file) {
 			m.startupQueue = append(m.startupQueue, i)
 		}
 	}
 
 	// Start loading up to MaxStartupConcurrent files
+	return m.processStartupQueue()
+}
+
+// shouldQueueFile returns true if the file should be queued for loading.
+func (m *Model) shouldQueueFile(file sidebyside.FilePair) bool {
+	// Skip files that already have content loaded
+	if len(file.NewContent) > 0 || len(file.OldContent) > 0 {
+		return false
+	}
+
+	// Check if this file is supported by tree-sitter
+	filename := file.NewPath
+	if filename == "" {
+		filename = file.OldPath
+	}
+	if filename == "" {
+		return false
+	}
+
+	// Use the filename (not full path) for extension matching
+	basename := filepath.Base(filename)
+	return m.highlighter != nil && m.highlighter.SupportsFile(basename)
+}
+
+// queueFilesForCommit queues all supported files for a specific commit.
+// Called when a commit is expanded from folded state.
+func (m *Model) queueFilesForCommit(commitIdx int) tea.Cmd {
+	if commitIdx < 0 || commitIdx >= len(m.commits) {
+		return nil
+	}
+
+	// Get file range for this commit
+	startIdx := m.commitFileStarts[commitIdx]
+	endIdx := len(m.files)
+	if commitIdx+1 < len(m.commits) {
+		endIdx = m.commitFileStarts[commitIdx+1]
+	}
+
+	// Queue supported files that don't already have content
+	for i := startIdx; i < endIdx; i++ {
+		if m.shouldQueueFile(m.files[i]) {
+			m.startupQueue = append(m.startupQueue, i)
+		}
+	}
+
+	return m.processStartupQueue()
+}
+
+// queueFilesForAllCommits queues files for all non-folded commits.
+// Called when shift-tab expands all commits at once.
+func (m *Model) queueFilesForAllCommits() tea.Cmd {
+	for i, commit := range m.commits {
+		if commit.FoldLevel != sidebyside.CommitFolded {
+			// Get file range for this commit
+			startIdx := m.commitFileStarts[i]
+			endIdx := len(m.files)
+			if i+1 < len(m.commits) {
+				endIdx = m.commitFileStarts[i+1]
+			}
+
+			// Queue supported files that don't already have content
+			for j := startIdx; j < endIdx; j++ {
+				if m.shouldQueueFile(m.files[j]) {
+					m.startupQueue = append(m.startupQueue, j)
+				}
+			}
+		}
+	}
+
 	return m.processStartupQueue()
 }
 

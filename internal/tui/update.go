@@ -642,7 +642,13 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
 
-	return m, nil
+	// If expanding to level 2+, queue files for all commits
+	var cmd tea.Cmd
+	if newLevel >= 2 {
+		cmd = m.queueFilesForAllCommits()
+	}
+
+	return m, cmd
 }
 
 // setAllCommitsToLevel sets all commits and their files to the specified visibility level.
@@ -1002,6 +1008,8 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	// Determine current level for this commit
 	currentLevel := m.commitVisibilityLevelFor(commitIdx)
 
+	var cmd tea.Cmd
+
 	switch currentLevel {
 	case 1:
 		// Level 1 -> Level 2: Show file headings only
@@ -1009,6 +1017,8 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 		for i := startIdx; i < endIdx; i++ {
 			m.files[i].FoldLevel = sidebyside.FoldFolded
 		}
+		// Queue files for loading now that the commit is expanded
+		cmd = m.queueFilesForCommit(commitIdx)
 	case 2:
 		// Level 2 -> Level 3: Show file hunks
 		commit.FoldLevel = sidebyside.CommitExpanded
@@ -1025,7 +1035,7 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 
 	m.calculateTotalLines()
 
-	return m, nil
+	return m, cmd
 }
 
 // commitVisibilityLevel returns the current visibility level for the first commit (1, 2, or 3).

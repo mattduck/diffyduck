@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/pprof"
 	"slices"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/internal/tui"
@@ -142,10 +144,35 @@ func extractAllFlag(args []string) ([]string, bool) {
 	return args, false
 }
 
+// extractCPUProfileFlag removes --cpuprofile=<path> from args and returns (remaining args, profilePath).
+func extractCPUProfileFlag(args []string) ([]string, string) {
+	for i, arg := range args {
+		if strings.HasPrefix(arg, "--cpuprofile=") {
+			path := strings.TrimPrefix(arg, "--cpuprofile=")
+			return slices.Delete(slices.Clone(args), i, i+1), path
+		}
+	}
+	return args, ""
+}
+
 func run() error {
 	rawArgs, debugMode := extractDebugFlag(os.Args[1:])
 	rawArgs, allMode := extractAllFlag(rawArgs)
+	rawArgs, cpuProfile := extractCPUProfileFlag(rawArgs)
 	args := parseArgs(rawArgs)
+
+	// Start CPU profiling if requested
+	if cpuProfile != "" {
+		f, err := os.Create(cpuProfile)
+		if err != nil {
+			return fmt.Errorf("create cpu profile: %w", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return fmt.Errorf("start cpu profile: %w", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	// Check for pager mode: explicit "pager" command or piped stdin
 	if args.cmd == "pager" || pager.IsStdinPipe() {
