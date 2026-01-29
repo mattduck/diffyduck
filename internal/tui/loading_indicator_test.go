@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
@@ -226,10 +227,15 @@ func TestHeader_ShowsSpinnerWhenLoading(t *testing.T) {
 	m.rebuildRowsCache()
 
 	// Render a file header
+	// Build a minimal TreePath for testing
+	testTreePath := TreePath{
+		Ancestors: []TreeLevel{{IsLast: true, Style: lipgloss.NewStyle()}},
+		Current:   &TreeLevel{IsLast: false, Style: lipgloss.NewStyle()},
+	}
 	header := m.renderHeader(
 		"test.go",
 		sidebyside.FoldNormal,
-		true,
+		HeaderThreeLine,
 		FileStatusModified,
 		5, 3, // added, removed
 		20, 3, 3, // maxHeaderWidth, maxAddWidth, maxRemWidth
@@ -237,7 +243,7 @@ func TestHeader_ShowsSpinnerWhenLoading(t *testing.T) {
 		0,     // fileIndex
 		0,     // rowIdx
 		false, // isCursorRow
-		false, // isLastFileInCommit
+		testTreePath,
 	)
 
 	// Should contain spinner frame, not the ~ symbol

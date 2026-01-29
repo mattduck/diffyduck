@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -265,40 +266,40 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-17 (top border + header + bottom + 10 pairs + 4 blank + trailing)
-			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 18 is header
+			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},
+			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs},
 		},
 		width:  80,
-		height: 10, // contentHeight=8, cursorOffset=1
+		height: 10,
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
-	// With cursorOffset=1:
-	// scroll=11 → cursor at line 12 (last pair of first file) → first.go
-	m.scroll = 11
+	// Build rows to find actual file boundaries dynamically
+	rows := m.buildRows()
+	fileNames := []string{"first.go", "second.go"}
+
+	// Find the first row of the second file
+	var secondFileFirstRow int
+	for i, row := range rows {
+		if row.fileIndex == 1 {
+			secondFileFirstRow = i
+			break
+		}
+	}
+	require.NotZero(t, secondFileFirstRow, "should find second file")
+
+	// Test: row before second file should show first.go
+	m.scroll = secondFileFirstRow - 1
 	info := m.StatusInfo()
-	assert.Equal(t, 1, info.CurrentFile)
-	assert.Equal(t, "first.go", info.FileName)
+	assert.Equal(t, 1, info.CurrentFile, "row before second file should show file 1")
+	assert.Equal(t, fileNames[0], info.FileName)
 
-	// scroll=12 → cursor at line 13 (first blank after first file) → first.go (blank belongs to file above)
-	m.scroll = 12
+	// Test: first row of second file should show second.go
+	m.scroll = secondFileFirstRow
 	info = m.StatusInfo()
-	assert.Equal(t, 1, info.CurrentFile)
-	assert.Equal(t, "first.go", info.FileName)
-
-	// scroll=16 → cursor at line 17 (top border of second file) → second.go
-	// The top border now belongs to the file it precedes (file 1), not the file above
-	m.scroll = 16
-	info = m.StatusInfo()
-	assert.Equal(t, 2, info.CurrentFile)
-	assert.Equal(t, "second.go", info.FileName)
-
-	// scroll=17 → cursor at line 18 (header of second file) → second.go
-	m.scroll = 17
-	info = m.StatusInfo()
-	assert.Equal(t, 2, info.CurrentFile)
-	assert.Equal(t, "second.go", info.FileName)
+	assert.Equal(t, 2, info.CurrentFile, "first row of second file should show file 2")
+	assert.Equal(t, fileNames[1], info.FileName)
 }
 
 func TestStatusBar_NonShrinkingWidth(t *testing.T) {

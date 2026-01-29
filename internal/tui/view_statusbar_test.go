@@ -1334,7 +1334,7 @@ func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
 	// When both commits are unfolded, the separator row becomes a top border for the second commit
 	separatorRow := rows[secondCommitHeaderIdx-1]
 	assert.True(t, separatorRow.isCommitHeaderTopBorder, "separator should be a top border when both commits unfolded")
-	assert.True(t, separatorRow.commitBorderVisible, "border should be visible when both commits unfolded")
+	assert.Equal(t, HeaderThreeLine, separatorRow.headerMode, "border should be visible when both commits unfolded")
 	assert.Equal(t, 1, separatorRow.commitIndex, "border should belong to second commit (index 1)")
 }
 

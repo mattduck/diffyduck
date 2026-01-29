@@ -517,30 +517,19 @@ func TestUpdate_WindowResize_SmallContent(t *testing.T) {
 	assert.Equal(t, cursorRowBefore, model.cursorLine())
 }
 
-func TestUpdate_WindowResize_PreservesCursorOnInterFileBlank(t *testing.T) {
+func TestUpdate_WindowResize_NoInterFileBlanks(t *testing.T) {
+	// In tree layout, there are no blank rows between files
 	m := makeMultiFileTestModel()
 
-	// Find inter-file blank rows (between files)
 	rows := m.buildRows()
-	var blankIndices []int
+	var interFileBlanks []int
 	for i, row := range rows {
+		// Inter-file blanks would be blank rows that aren't header spacers
 		if row.isBlank && !row.isHeaderSpacer {
-			blankIndices = append(blankIndices, i)
+			interFileBlanks = append(interFileBlanks, i)
 		}
 	}
-	require.NotEmpty(t, blankIndices, "should have inter-file blank rows")
-
-	// Test with the last blank row (not the first one)
-	lastBlankIdx := blankIndices[len(blankIndices)-1]
-	m.adjustScrollToRow(lastBlankIdx)
-	require.Equal(t, lastBlankIdx, m.cursorLine(), "cursor should be on blank row")
-
-	// Resize terminal
-	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	model := newM.(Model)
-
-	// Cursor should stay on the same blank row after resize
-	assert.Equal(t, lastBlankIdx, model.cursorLine(), "cursor should stay on same blank row after resize")
+	assert.Empty(t, interFileBlanks, "tree layout should have no inter-file blank rows")
 }
 
 func TestUpdate_WindowResize_PreservesCursorOnHeaderSpacer(t *testing.T) {

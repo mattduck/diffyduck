@@ -274,11 +274,11 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// In diff view (no commit metadata), first file has no top border in buildRows:
-	// Normal file (first): 1 header + 1 bottom border + 10 pairs + 4 blank + 1 trailing border = 17 lines
-	// Folded file (second): 1 header only (top border not added when folded)
-	// Total should be 17 + 1 = 18
-	assert.Equal(t, 18, m.totalLines, "totalLines should account for fold states")
+	// In tree layout:
+	// Normal file (first): 1 header + 1 bottom border + 10 pairs + 1 content indent row = 13 lines
+	// Folded file (second): 1 header only
+	// Total: 13 + 1 = 14 lines (no blank separators between files in tree layout)
+	assert.Equal(t, 14, m.totalLines, "totalLines should account for fold states")
 }
 
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {

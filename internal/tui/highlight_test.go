@@ -1419,7 +1419,8 @@ func FuncC() {
 }
 
 func TestStructuralDiff_RenderedInView(t *testing.T) {
-	// Test that structural diff rows appear in buildRows when structure is loaded
+	// Test that structural diff rows appear in buildRows when file is folded
+	// (structural diff rows are a preview shown only in folded state)
 	oldContent := `package main
 
 func FuncA() {
@@ -1444,7 +1445,7 @@ func FuncB() {
 		{
 			OldPath:    "a/test.go",
 			NewPath:    "b/test.go",
-			FoldLevel:  sidebyside.FoldNormal,
+			FoldLevel:  sidebyside.FoldFolded, // Structural diff rows only appear when folded
 			OldContent: oldLines,
 			NewContent: newLines,
 			Pairs: []sidebyside.LinePair{
