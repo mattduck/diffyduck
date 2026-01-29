@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// DefaultContext is the number of context lines to include around changes.
+// With 8 lines on each side, hunks within ~16 lines of each other get merged.
+const DefaultContext = 8
+
 // RealGit implements Git by executing actual git commands.
 type RealGit struct {
 	// Dir is the working directory for git commands.
@@ -74,7 +78,7 @@ var logMetaFormat = strings.Join([]string{
 // Show returns the diff output for a given commit reference.
 // Args are passed through to git show (e.g., ref, paths).
 func (g *RealGit) Show(args ...string) (string, error) {
-	gitArgs := append([]string{"show", "--format="}, args...)
+	gitArgs := append([]string{"show", "--format="}, prependContextFlag(args)...)
 	cmd := exec.Command("git", gitArgs...)
 	if g.Dir != "" {
 		cmd.Dir = g.Dir
@@ -98,7 +102,7 @@ func (g *RealGit) Show(args ...string) (string, error) {
 // The first return value is the parsed commit metadata.
 // The second return value is the diff output (starting from "diff --git").
 func (g *RealGit) ShowWithMeta(args ...string) (*CommitMeta, string, error) {
-	gitArgs := append([]string{"show", "--format=" + showMetaFormat}, args...)
+	gitArgs := append([]string{"show", "--format=" + showMetaFormat}, prependContextFlag(args)...)
 	cmd := exec.Command("git", gitArgs...)
 	if g.Dir != "" {
 		cmd.Dir = g.Dir
@@ -535,7 +539,7 @@ func parseShowOutput(output string) (*CommitMeta, string) {
 // Diff returns the diff output.
 // Args are passed through to git diff (e.g., --cached, refs, paths).
 func (g *RealGit) Diff(args ...string) (string, error) {
-	gitArgs := append([]string{"diff"}, args...)
+	gitArgs := append([]string{"diff"}, prependContextFlag(args)...)
 	cmd := exec.Command("git", gitArgs...)
 	if g.Dir != "" {
 		cmd.Dir = g.Dir
@@ -659,6 +663,16 @@ func (g *RealGit) DiffNewFile(path string) (string, error) {
 	}
 
 	return string(out), nil
+}
+
+// prependContextFlag adds -U<DefaultContext> to args unless the user already specified a -U flag.
+func prependContextFlag(args []string) []string {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-U") || strings.HasPrefix(arg, "--unified") {
+			return args
+		}
+	}
+	return append([]string{fmt.Sprintf("-U%d", DefaultContext)}, args...)
 }
 
 // GitError represents an error from a git command.

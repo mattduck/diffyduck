@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -383,6 +384,9 @@ func TestView_HunkSeparatorBreadcrumbs_NoBreadcrumbWithoutStructure(t *testing.T
 func TestView_HunkSeparatorBreadcrumbs_RealHighlightFlow(t *testing.T) {
 	// Test the real flow: content is loaded, highlighting extracts structure,
 	// then shrinking to normal view should show breadcrumbs in hunk separators
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
 	goCode := `package main
 
 func MyFunction() {
@@ -462,21 +466,33 @@ func AnotherFunction() {
 	m.height = 20
 	m.calculateTotalLines()
 
-	output := m.View()
-	outputLines := strings.Split(output, "\n")
+	// Semantic context expansion should have filled the gap between lines 2 and 4
+	// by inserting line 3 (func MyFunction). Verify this happened.
+	require.Equal(t, 6, len(m.files[0].Pairs), "should have 6 pairs after semantic expansion")
 
-	// Find the hunk separator line by looking for breadcrumb content
-	var hunkLine string
-	for _, line := range outputLines {
-		if strings.Contains(line, "func MyFunction") && !strings.Contains(line, "test.go") && !strings.Contains(line, "package") && !strings.Contains(line, "x :=") {
-			hunkLine = line
+	// Check that line 3 was inserted (no more gap)
+	hasLine3 := false
+	for _, p := range m.files[0].Pairs {
+		if p.New.Num == 3 {
+			hasLine3 = true
 			break
 		}
 	}
+	require.True(t, hasLine3, "semantic expansion should insert line 3")
 
-	require.NotEmpty(t, hunkLine, "should find hunk separator line with breadcrumb")
-	// The separator should contain the function name as a breadcrumb
-	assert.Contains(t, hunkLine, "func MyFunction", "hunk separator should show 'func MyFunction' breadcrumb")
+	// Verify the line numbers are now contiguous (1, 2, 3, 4, 5)
+	expectedNewNums := []int{1, 2, 3, 4, 0, 5} // 0 is for the removed line (empty on new side)
+	for i, p := range m.files[0].Pairs {
+		assert.Equal(t, expectedNewNums[i], p.New.Num, "pair %d should have New.Num=%d", i, expectedNewNums[i])
+	}
+
+	// Now render and verify the function signature appears in the output
+	output := m.View()
+	// Strip ANSI codes for easier assertion (syntax highlighting adds codes between chars)
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	strippedOutput := ansiRegex.ReplaceAllString(output, "")
+	// The function signature should now appear as a code line (not just breadcrumb)
+	assert.Contains(t, strippedOutput, "func MyFunction", "function signature should appear in expanded context")
 }
 
 func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {

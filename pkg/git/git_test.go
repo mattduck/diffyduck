@@ -602,3 +602,44 @@ func TestMockGit_LogPathsOnly(t *testing.T) {
 	assert.Equal(t, "bbb222", commits[1].Meta.SHA)
 	assert.Equal(t, 1, len(commits[1].Files))
 }
+
+func TestPrependContextFlag(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "empty args",
+			args: []string{},
+			want: []string{"-U8"},
+		},
+		{
+			name: "no context flag",
+			args: []string{"HEAD", "--", "file.go"},
+			want: []string{"-U8", "HEAD", "--", "file.go"},
+		},
+		{
+			name: "user specified -U3",
+			args: []string{"-U3", "HEAD"},
+			want: []string{"-U3", "HEAD"},
+		},
+		{
+			name: "user specified -U20",
+			args: []string{"HEAD", "-U20"},
+			want: []string{"HEAD", "-U20"},
+		},
+		{
+			name: "user specified --unified=5",
+			args: []string{"--unified=5", "HEAD"},
+			want: []string{"--unified=5", "HEAD"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := prependContextFlag(tt.args)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

@@ -297,6 +297,11 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 		StructuralDiff: structDiff,
 	}
 
+	// Expand context to include nearby scope boundaries (function/class starts)
+	if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
+		expandSemanticContext(&m.files[msg.FileIndex], newStruct, SemanticContextThreshold)
+	}
+
 	// Recalculate rows if structural diff would be visible.
 	// Structural diff rows appear under file headers, which are only visible
 	// when the commit is not folded. Skip recalculation for folded commits
