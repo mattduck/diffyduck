@@ -3,11 +3,11 @@
 
 ▶└━━━ ◐ #1 + new_file.go +5
       ┗━━━━━━━━━━━━━━━━━━━━
-   +    1 ░ package main             ░ ┃                                        
-   +    2 ░                          ░ ┃                                        
-   +    3 ░ func hello() {           ░ ┃                                        
-   +    4 ░     println("hello")     ░ ┃                                        
-   +    5 ░ }                        ░ ┃                                        
+   +    1 ░ package main                                           ░ ┃          
+   +    2 ░                                                        ░ ┃          
+   +    3 ░ func hello() {                                         ░ ┃          
+   +    4 ░     println("hello")                                   ░ ┃          
+   +    5 ░ }                                                      ░ ┃          
 
 
 

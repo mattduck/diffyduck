@@ -547,35 +547,37 @@ func (m Model) buildRows() []displayRow {
 		return m.buildRowsLegacy()
 	}
 
-	// Calculate max header width and max add/rem widths across all visible files
-	maxHeaderWidth := 0
-	maxAddWidth := 0
-	maxRemWidth := 0
-	for commitIdx, commit := range m.commits {
-		// Skip files in folded commits for width calculation
-		if commit.Info.HasMetadata() && commit.FoldLevel == sidebyside.CommitFolded {
-			continue
-		}
-		startIdx := m.commitFileStarts[commitIdx]
-		endIdx := len(m.files)
-		if commitIdx+1 < len(m.commits) {
-			endIdx = m.commitFileStarts[commitIdx+1]
-		}
-		for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
-			fp := m.files[fileIdx]
-			header := formatFileHeader(fp)
-			w := displayWidth(header)
-			if w > maxHeaderWidth {
-				maxHeaderWidth = w
+	// Use cached column widths (updated on 'r' refresh)
+	// Fall back to calculating if not initialized (e.g., in tests)
+	maxHeaderWidth := m.cachedFileHeaderWidth
+	maxAddWidth := m.cachedFileAddWidth
+	maxRemWidth := m.cachedFileRemWidth
+	if maxHeaderWidth == 0 {
+		for commitIdx, commit := range m.commits {
+			if commit.Info.HasMetadata() && commit.FoldLevel == sidebyside.CommitFolded {
+				continue
 			}
-			added, removed := countFileStats(fp)
-			aw := statsAddWidth(added)
-			if aw > maxAddWidth {
-				maxAddWidth = aw
+			startIdx := m.commitFileStarts[commitIdx]
+			endIdx := len(m.files)
+			if commitIdx+1 < len(m.commits) {
+				endIdx = m.commitFileStarts[commitIdx+1]
 			}
-			rw := statsRemWidth(removed)
-			if rw > maxRemWidth {
-				maxRemWidth = rw
+			for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
+				fp := m.files[fileIdx]
+				header := formatFileHeader(fp)
+				w := displayWidth(header)
+				if w > maxHeaderWidth {
+					maxHeaderWidth = w
+				}
+				added, removed := countFileStats(fp)
+				aw := statsAddWidth(added)
+				if aw > maxAddWidth {
+					maxAddWidth = aw
+				}
+				rw := statsRemWidth(removed)
+				if rw > maxRemWidth {
+					maxRemWidth = rw
+				}
 			}
 		}
 	}
@@ -588,16 +590,9 @@ func (m Model) buildRows() []displayRow {
 	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
 
-	// Check if structural diff content is wider than header content
-	maxStructuralDiffWidth := 0
-	for fileIdx := range m.files {
-		w := m.structuralDiffMaxContentWidth(fileIdx)
-		if w > maxStructuralDiffWidth {
-			maxStructuralDiffWidth = w
-		}
-	}
-	if maxStructuralDiffWidth > headerContentWidth {
-		headerContentWidth = maxStructuralDiffWidth
+	// Use cached structural diff width (updated on 'r' refresh)
+	if m.cachedStructDiffWidth > headerContentWidth {
+		headerContentWidth = m.cachedStructDiffWidth
 	}
 
 	// Calculate final box width, clamped to 80% of screen width
@@ -609,52 +604,70 @@ func (m Model) buildRows() []displayRow {
 		}
 	}
 
-	// Calculate max commit header column widths for alignment
-	maxCommitFilesWidth := 0
-	maxCommitAddWidth := 0
-	maxCommitRemWidth := 0
-	maxCommitTimeWidth := 0
-	maxCommitSubjectWidth := 0
-	for commitIdx := range m.commits {
-		// Get file range for this commit
-		startIdx := m.commitFileStarts[commitIdx]
-		endIdx := len(m.files)
-		if commitIdx+1 < len(m.commits) {
-			endIdx = m.commitFileStarts[commitIdx+1]
-		}
-		// Calculate stats for this commit
-		commitFileCount := endIdx - startIdx
-		commitAdded := 0
-		commitRemoved := 0
-		for i := startIdx; i < endIdx; i++ {
-			added, removed := countFileStats(m.files[i])
-			commitAdded += added
-			commitRemoved += removed
-		}
-		// Track max widths
-		fw := len(fmt.Sprintf("%d", commitFileCount))
-		if fw > maxCommitFilesWidth {
-			maxCommitFilesWidth = fw
-		}
-		aw := len(fmt.Sprintf("+%d", commitAdded))
-		if aw > maxCommitAddWidth {
-			maxCommitAddWidth = aw
-		}
-		rw := len(fmt.Sprintf("-%d", commitRemoved))
-		if rw > maxCommitRemWidth {
-			maxCommitRemWidth = rw
-		}
-		tw := len(formatShortRelativeDate(m.commits[commitIdx].Info.Date))
-		if tw > maxCommitTimeWidth {
-			maxCommitTimeWidth = tw
-		}
-		// Subject width (capped at 120) - use displayWidth for Unicode
-		sw := displayWidth(m.commits[commitIdx].Info.Subject)
-		if sw > 120 {
-			sw = 120
-		}
-		if sw > maxCommitSubjectWidth {
-			maxCommitSubjectWidth = sw
+	// Use cached commit column widths (updated on 'r' refresh)
+	// Fall back to calculating if not initialized
+	maxCommitFilesWidth := m.cachedCommitFileCount
+	maxCommitAddWidth := m.cachedCommitAddWidth
+	maxCommitRemWidth := m.cachedCommitRemWidth
+	maxCommitTimeWidth := m.cachedCommitTimeWidth
+	maxCommitSubjectWidth := m.cachedCommitSubjWidth
+	if maxCommitFilesWidth == 0 && len(m.commits) > 0 {
+		for commitIdx, commit := range m.commits {
+			startIdx := m.commitFileStarts[commitIdx]
+			endIdx := len(m.files)
+			if commitIdx+1 < len(m.commits) {
+				endIdx = m.commitFileStarts[commitIdx+1]
+			}
+			commitFileCount := endIdx - startIdx
+
+			// Calculate stats column widths (matching renderCommitHeaderRow logic)
+			var commitAdded, commitRemoved int
+			var statsKnown bool
+			if commit.StatsLoaded {
+				commitAdded = commit.TotalAdded
+				commitRemoved = commit.TotalRemoved
+				statsKnown = true
+			} else {
+				// Compute from files (same as render code)
+				for i := startIdx; i < endIdx; i++ {
+					added, removed := countFileStats(m.files[i])
+					commitAdded += added
+					commitRemoved += removed
+				}
+				statsKnown = commitAdded > 0 || commitRemoved > 0 || commitFileCount == 0
+			}
+
+			var aw, rw int
+			if statsKnown {
+				aw = len(fmt.Sprintf("+%d", commitAdded))
+				rw = len(fmt.Sprintf("-%d", commitRemoved))
+			} else {
+				// Stats not loaded yet, use placeholder width ("+?" = 2 chars)
+				aw = 2
+				rw = 2
+			}
+
+			fw := len(fmt.Sprintf("%d", commitFileCount))
+			if fw > maxCommitFilesWidth {
+				maxCommitFilesWidth = fw
+			}
+			if aw > maxCommitAddWidth {
+				maxCommitAddWidth = aw
+			}
+			if rw > maxCommitRemWidth {
+				maxCommitRemWidth = rw
+			}
+			tw := len(formatShortRelativeDate(commit.Info.Date))
+			if tw > maxCommitTimeWidth {
+				maxCommitTimeWidth = tw
+			}
+			sw := displayWidth(commit.Info.Subject)
+			if sw > 120 {
+				sw = 120
+			}
+			if sw > maxCommitSubjectWidth {
+				maxCommitSubjectWidth = sw
+			}
 		}
 	}
 
@@ -872,24 +885,27 @@ func (m Model) buildRows() []displayRow {
 func (m Model) buildRowsLegacy() []displayRow {
 	var rows []displayRow
 
-	// Calculate max header width and max add/rem widths across all files
-	maxHeaderWidth := 0
-	maxAddWidth := 0
-	maxRemWidth := 0
-	for _, fp := range m.files {
-		header := formatFileHeader(fp)
-		w := displayWidth(header)
-		if w > maxHeaderWidth {
-			maxHeaderWidth = w
-		}
-		added, removed := countFileStats(fp)
-		aw := statsAddWidth(added)
-		if aw > maxAddWidth {
-			maxAddWidth = aw
-		}
-		rw := statsRemWidth(removed)
-		if rw > maxRemWidth {
-			maxRemWidth = rw
+	// Use cached column widths (updated on 'r' refresh)
+	// Fall back to calculating if not initialized (e.g., in tests)
+	maxHeaderWidth := m.cachedFileHeaderWidth
+	maxAddWidth := m.cachedFileAddWidth
+	maxRemWidth := m.cachedFileRemWidth
+	if maxHeaderWidth == 0 {
+		for _, fp := range m.files {
+			header := formatFileHeader(fp)
+			w := displayWidth(header)
+			if w > maxHeaderWidth {
+				maxHeaderWidth = w
+			}
+			added, removed := countFileStats(fp)
+			aw := statsAddWidth(added)
+			if aw > maxAddWidth {
+				maxAddWidth = aw
+			}
+			rw := statsRemWidth(removed)
+			if rw > maxRemWidth {
+				maxRemWidth = rw
+			}
 		}
 	}
 
@@ -901,12 +917,14 @@ func (m Model) buildRowsLegacy() []displayRow {
 	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
 
-	// Check if structural diff content is wider than header content
-	maxStructuralDiffWidth := 0
-	for fileIdx := range m.files {
-		w := m.structuralDiffMaxContentWidth(fileIdx)
-		if w > maxStructuralDiffWidth {
-			maxStructuralDiffWidth = w
+	// Use cached structural diff width, or calculate if not set (for tests)
+	maxStructuralDiffWidth := m.cachedStructDiffWidth
+	if maxStructuralDiffWidth == 0 {
+		for fileIdx := range m.files {
+			w := m.structuralDiffMaxContentWidth(fileIdx)
+			if w > maxStructuralDiffWidth {
+				maxStructuralDiffWidth = w
+			}
 		}
 	}
 	if maxStructuralDiffWidth > headerContentWidth {
@@ -2054,20 +2072,36 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		foldIcon = "●"
 	}
 
-	// Calculate file stats for this commit only
+	// Get file count and stats for this commit
 	startIdx := m.commitFileStarts[row.commitIndex]
 	endIdx := len(m.files)
 	if row.commitIndex+1 < len(m.commits) {
 		endIdx = m.commitFileStarts[row.commitIndex+1]
 	}
-	totalAdded := 0
-	totalRemoved := 0
-	for i := startIdx; i < endIdx; i++ {
-		added, removed := countFileStats(m.files[i])
-		totalAdded += added
-		totalRemoved += removed
-	}
 	fileCount := endIdx - startIdx
+
+	// Determine stats to display:
+	// - If StatsLoaded, use cached commit-level stats
+	// - Otherwise, compute from files (handles diff mode and tests)
+	// - Show "?" only when neither source has stats (progressive loading initial state)
+	var totalAdded, totalRemoved int
+	var statsLoaded bool
+	if commit.StatsLoaded {
+		// Use cached commit-level stats
+		totalAdded = commit.TotalAdded
+		totalRemoved = commit.TotalRemoved
+		statsLoaded = true
+	} else {
+		// Compute from files
+		for i := startIdx; i < endIdx; i++ {
+			added, removed := countFileStats(m.files[i])
+			totalAdded += added
+			totalRemoved += removed
+		}
+		// Stats are "loaded" if we computed non-zero values OR there are no files
+		// (zero stats with files could mean progressive loading not yet complete)
+		statsLoaded = totalAdded > 0 || totalRemoved > 0 || fileCount == 0
+	}
 
 	// Cursor prefix
 	var prefix string
@@ -2087,8 +2121,14 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	shaText := commitInfo.ShortSHA()
 	filesText := fmt.Sprintf("%d", fileCount)
-	addedText := fmt.Sprintf("+%d", totalAdded)
-	removedText := fmt.Sprintf("-%d", totalRemoved)
+	var addedText, removedText string
+	if statsLoaded {
+		addedText = fmt.Sprintf("+%d", totalAdded)
+		removedText = fmt.Sprintf("-%d", totalRemoved)
+	} else {
+		addedText = "+?"
+		removedText = "-?"
+	}
 	timeText := formatShortRelativeDate(commitInfo.Date)
 
 	// Pad columns to max widths for alignment across commits (right-align numbers)
@@ -2695,6 +2735,30 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 		statsWidth += 1 + maxRemLen // " M"
 	}
 
+	// Calculate max width available for signatures (80% of terminal minus overhead)
+	maxSignatureWidth := 0
+	if m.width > 0 {
+		totalFiles := len(m.files)
+		numDigits := len(fmt.Sprintf("%d", totalFiles))
+		iconPartWidth := 9 + numDigits
+		maxBoxWidth := m.width * 80 / 100
+		// Overhead: 2 (extraIndent) + 1 (symbol) + 1 (space) + 5 (max kind) + 1 (space) + statsWidth
+		overhead := 2 + 1 + 1 + 5 + 1 + statsWidth
+		maxSignatureWidth = maxBoxWidth - iconPartWidth - overhead
+		if maxSignatureWidth < 20 {
+			maxSignatureWidth = 20
+		}
+	}
+
+	// Helper to get display width of name or signature (expanded to fill available space)
+	entryDisplayWidth := func(entry *structure.Entry) int {
+		sig := entry.FormatSignature(maxSignatureWidth)
+		if sig == "" {
+			return runewidth.StringWidth(entry.Name)
+		}
+		return runewidth.StringWidth(sig)
+	}
+
 	maxWidth := 0
 
 	// Build tree structure to identify children (same logic as buildStructuralDiffRows)
@@ -2707,9 +2771,9 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 			continue
 		}
 		if entry.Kind == "type" || entry.Kind == "class" {
-			// Width for parent: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name + stats
+			// Width for parent: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name/sig + stats
 			// extraIndent = symbolPrefix (11+numDigits) - iconPartWidth (9+numDigits) = 2
-			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name) + statsWidth
+			width := 2 + 1 + 1 + runewidth.StringWidth(entry.Kind) + 1 + entryDisplayWidth(entry) + statsWidth
 			if width > maxWidth {
 				maxWidth = width
 			}
@@ -2727,8 +2791,8 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 					typeStart, typeEnd := entry.StartLine, entry.EndLine
 					otherStart := otherEntry.StartLine
 					if otherStart >= typeStart && otherStart <= typeEnd {
-						// Width for child: extraIndent(2) + symbol(1) + space(1) + childIndent(2) + kind + space(1) + name + stats
-						childWidth := 2 + 1 + 1 + 2 + len(otherEntry.Kind) + 1 + len(otherEntry.Name) + statsWidth
+						// Width for child: extraIndent(2) + symbol(1) + space(1) + childIndent(2) + kind + space(1) + name/sig + stats
+						childWidth := 2 + 1 + 1 + 2 + runewidth.StringWidth(otherEntry.Kind) + 1 + entryDisplayWidth(otherEntry) + statsWidth
 						if childWidth > maxWidth {
 							maxWidth = childWidth
 						}
@@ -2747,8 +2811,8 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 			if entry == nil {
 				continue
 			}
-			// Width for top-level: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name + stats
-			width := 2 + 1 + 1 + len(entry.Kind) + 1 + len(entry.Name) + statsWidth
+			// Width for top-level: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name/sig + stats
+			width := 2 + 1 + 1 + runewidth.StringWidth(entry.Kind) + 1 + entryDisplayWidth(entry) + statsWidth
 			if width > maxWidth {
 				maxWidth = width
 			}
@@ -2872,6 +2936,36 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		}
 	}
 
+	// Calculate stats width for signature width calculation
+	statsWidth := 0
+	if maxAddLen > 0 || maxRemLen > 0 {
+		if maxAddLen > 0 && maxRemLen > 0 {
+			statsWidth = 1 + maxAddLen + 1 + maxRemLen // " add rem"
+		} else if maxAddLen > 0 {
+			statsWidth = 1 + maxAddLen
+		} else {
+			statsWidth = 1 + maxRemLen
+		}
+	}
+
+	// Helper to format entry name or signature
+	formatEntry := func(entry *structure.Entry, prefixLen int) string {
+		// For functions/methods, use FormatSignature to show params and return type
+		// For types/classes, FormatSignature returns "" so we fall back to Name
+		sig := entry.FormatSignature(0) // Check if it has a signature at all
+		if sig == "" {
+			return entry.Name
+		}
+		// Calculate available width for signature
+		kindLen := runewidth.StringWidth(entry.Kind)
+		fixedOverhead := prefixLen + 1 + 1 + kindLen + 1 + statsWidth // prefix + symbol + space + kind + space + stats
+		availableWidth := headerBoxWidth + 2 - fixedOverhead
+		if availableWidth < 10 {
+			availableWidth = 10 // minimum width to show something useful
+		}
+		return entry.FormatSignature(availableWidth)
+	}
+
 	// Render tree
 	for _, node := range topLevel {
 		c := node.change
@@ -2880,9 +2974,10 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 			continue
 		}
 
-		// Format: "<prefix>~ type MyStruct" where symbol aligns with file status
+		// Format: "<prefix>~ type MyStruct" or "<prefix>~ func Name(...) -> Type"
 		symbol := c.Kind.Symbol()
-		line := symbolPrefix + symbol + " " + entry.Kind + " " + entry.Name
+		nameOrSig := formatEntry(entry, len(symbolPrefix))
+		line := symbolPrefix + symbol + " " + entry.Kind + " " + nameOrSig
 
 		rows = append(rows, displayRow{
 			kind:                    RowKindStructuralDiff,
@@ -2906,7 +3001,8 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 				continue
 			}
 			childSymbol := child.Kind.Symbol()
-			childLine := childPrefix + childSymbol + " " + childEntry.Kind + " " + childEntry.Name
+			childNameOrSig := formatEntry(childEntry, len(childPrefix))
+			childLine := childPrefix + childSymbol + " " + childEntry.Kind + " " + childNameOrSig
 
 			rows = append(rows, displayRow{
 				kind:                    RowKindStructuralDiff,
@@ -3066,7 +3162,7 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 	// Calculate padding to reach headerBoxWidth (based on original content width)
 	// Calculate padding to reach headerBoxWidth, plus 2 extra to align with header border
 	// (the header has a 2-space prefix before headerBoxWidth content)
-	originalWidth := len(content) + statsWidth // All ASCII so len() works
+	originalWidth := runewidth.StringWidth(content) + statsWidth
 	paddingNeeded := headerBoxWidth - originalWidth + 2
 	padding := ""
 	if paddingNeeded > 0 {
@@ -3549,20 +3645,38 @@ func (m Model) formatStatusFileInfo(info StatusInfo) string {
 
 	// Format stats (only show if there are changes)
 	var stats string
+	var statsWidth int
 	if info.Added > 0 || info.Removed > 0 {
 		var parts []string
 		if info.Added > 0 {
-			parts = append(parts, addedStyle.Render(fmt.Sprintf("+%d", info.Added)))
+			addedText := fmt.Sprintf("+%d", info.Added)
+			parts = append(parts, addedStyle.Render(addedText))
+			statsWidth += len(addedText)
 		}
 		if info.Removed > 0 {
-			parts = append(parts, removedStyle.Render(fmt.Sprintf("-%d", info.Removed)))
+			removedText := fmt.Sprintf("-%d", info.Removed)
+			parts = append(parts, removedStyle.Render(removedText))
+			statsWidth += len(removedText)
 		}
 		stats = " " + strings.Join(parts, " ")
+		statsWidth += 1 + len(parts) - 1 // leading space + spaces between parts
 	}
 
-	// Format breadcrumbs (dimmed, after stats)
+	// Calculate available width for breadcrumbs
+	// Layout: statusIcon(1) + space(1) + fileName + stats + "  " + breadcrumbs
+	usedWidth := 1 + 1 + len(info.FileName) + statsWidth + 2
+	availableWidth := m.width - usedWidth
+	if availableWidth < 0 {
+		availableWidth = 0
+	}
+
+	// Format breadcrumbs with syntax highlighting if we have entries and a highlighter
 	var breadcrumbs string
-	if info.Breadcrumbs != "" {
+	if len(info.BreadcrumbEntries) > 0 && m.highlighter != nil {
+		theme := m.highlighter.Theme()
+		breadcrumbs = "  " + formatBreadcrumbsStyled(info.BreadcrumbEntries, theme, availableWidth)
+	} else if info.Breadcrumbs != "" {
+		// Fallback to plain grey if no highlighter
 		breadcrumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 		breadcrumbs = "  " + breadcrumbStyle.Render(info.Breadcrumbs)
 	}
@@ -5115,4 +5229,149 @@ func (m Model) getInlineDiff(fileIndex int, pair sidebyside.LinePair) ([]inlined
 	}
 
 	return oldSpans, newSpans
+}
+
+// formatBreadcrumbsStyled formats structure entries with syntax highlighting.
+// Applies semantic colors: keywords blue, function names bright blue, types magenta.
+// maxWidth controls param expansion (0 = compact with "...").
+func formatBreadcrumbsStyled(entries []structure.Entry, theme highlight.Theme, maxWidth int) string {
+	if len(entries) == 0 {
+		return ""
+	}
+
+	// Styles for different semantic parts
+	keywordStyle := theme.Style(highlight.CategoryKeyword)
+	funcStyle := theme.Style(highlight.CategoryFunction)
+	typeStyle := theme.Style(highlight.CategoryType)
+	punctStyle := theme.Style(highlight.CategoryPunctuation)
+
+	// Calculate width budget for innermost entry's signature
+	// (same logic as formatBreadcrumbs in model.go)
+	separatorWidth := 3 // " > "
+	totalSeparators := len(entries) - 1
+	reservedWidth := totalSeparators * separatorWidth
+
+	sigWidth := 0
+	if maxWidth > 0 {
+		sigWidth = maxWidth - reservedWidth
+		for _, e := range entries[:len(entries)-1] {
+			// Estimate width for outer entries (kind + space + name + buffer)
+			outerWidth := len(e.Kind) + 1 + len(e.Name) + 5
+			sigWidth -= outerWidth
+		}
+		if sigWidth < 20 {
+			sigWidth = 20
+		}
+	}
+
+	var result strings.Builder
+	for i, e := range entries {
+		if i > 0 {
+			result.WriteString(punctStyle.Render(" > "))
+		}
+
+		// Style the kind (func, type, class, def, etc.)
+		result.WriteString(keywordStyle.Render(e.Kind))
+		result.WriteString(" ")
+
+		// Determine name style based on kind
+		nameStyle := funcStyle
+		if e.Kind == "type" || e.Kind == "class" || e.Kind == "struct" || e.Kind == "interface" {
+			nameStyle = typeStyle
+		}
+
+		// Calculate width budget for this entry's signature
+		entryWidth := 0
+		if i == len(entries)-1 && sigWidth > 0 {
+			kindPrefixLen := len(e.Kind) + 1
+			entryWidth = sigWidth - kindPrefixLen
+			if entryWidth < 0 {
+				entryWidth = 0
+			}
+		}
+
+		// Format signature with styling (build directly from Entry fields)
+		if len(e.Params) > 0 || e.ReturnType != "" || e.Receiver != "" {
+			result.WriteString(formatSignatureStyled(e, entryWidth, nameStyle, typeStyle, punctStyle))
+		} else {
+			result.WriteString(nameStyle.Render(e.Name))
+		}
+	}
+
+	return result.String()
+}
+
+// formatSignatureStyled builds a styled signature directly from Entry fields.
+// Output format: "[receiver] name(params) -> returnType"
+// maxWidth controls param expansion (0 = compact with "...").
+func formatSignatureStyled(e structure.Entry, maxWidth int, nameStyle, typeStyle, punctStyle lipgloss.Style) string {
+	var result strings.Builder
+
+	// Handle receiver if present
+	if e.Receiver != "" {
+		result.WriteString(punctStyle.Render(e.Receiver))
+		result.WriteString(" ")
+	}
+
+	// Style the name
+	result.WriteString(nameStyle.Render(e.Name))
+
+	// Build params section - determine how many params to show based on width
+	result.WriteString(punctStyle.Render("("))
+	if len(e.Params) == 0 {
+		// No params - empty parens
+	} else if maxWidth <= 0 {
+		// Compact format - just show ellipsis
+		result.WriteString("...")
+	} else {
+		// Try to fit as many params as possible within width budget
+		// Calculate base width (receiver + name + parens + return type)
+		baseWidth := len(e.Receiver)
+		if e.Receiver != "" {
+			baseWidth++ // space after receiver
+		}
+		baseWidth += len(e.Name) + 2 // name + "()"
+		if e.ReturnType != "" {
+			baseWidth += 4 + len(e.ReturnType) // " -> " + returnType
+		}
+
+		availableForParams := maxWidth - baseWidth
+		if availableForParams < 3 {
+			// Not enough space, use compact
+			result.WriteString("...")
+		} else {
+			// Try progressively adding params
+			numParams := 0
+			for n := 1; n <= len(e.Params); n++ {
+				var testParams string
+				if n >= len(e.Params) {
+					testParams = strings.Join(e.Params, ", ")
+				} else {
+					testParams = strings.Join(e.Params[:n], ", ") + ", ..."
+				}
+				if len(testParams) <= availableForParams {
+					numParams = n
+				} else {
+					break
+				}
+			}
+
+			if numParams == 0 {
+				result.WriteString("...")
+			} else if numParams >= len(e.Params) {
+				result.WriteString(strings.Join(e.Params, ", "))
+			} else {
+				result.WriteString(strings.Join(e.Params[:numParams], ", ") + ", ...")
+			}
+		}
+	}
+	result.WriteString(punctStyle.Render(")"))
+
+	// Add return type if present
+	if e.ReturnType != "" {
+		result.WriteString(punctStyle.Render(" -> "))
+		result.WriteString(typeStyle.Render(e.ReturnType))
+	}
+
+	return result.String()
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/user/diffyduck/pkg/git"
 	"github.com/user/diffyduck/pkg/pager"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"golang.org/x/term"
 )
 
 func main() {
@@ -274,8 +275,9 @@ func run() error {
 func runLogMode(debugMode bool) error {
 	g := git.New()
 
-	// Fetch commits with diffs (TODO: add pagination)
-	commits, err := g.LogWithMeta(500)
+	// Fast startup: fetch only metadata and file paths (no stats)
+	// Stats are loaded asynchronously after the UI renders
+	commits, err := g.LogPathsOnly(500)
 	if err != nil {
 		return fmt.Errorf("git log: %w", err)
 	}
@@ -285,17 +287,51 @@ func runLogMode(debugMode bool) error {
 		return nil
 	}
 
-	// Convert to CommitSets
-	var commitSets []sidebyside.CommitSet
-	for _, c := range commits {
-		// Parse the diff for this commit
-		d, err := diff.Parse(c.Diff)
-		if err != nil {
-			return fmt.Errorf("parse diff for %s: %w", c.Meta.SHA[:7], err)
-		}
+	// Fetch stats for the first page of commits synchronously so they're visible immediately
+	// The rest will load asynchronously after the UI starts
+	// Use terminal height to determine how many commits are initially visible
+	initialStatsCount := 30 // fallback if we can't get terminal size
+	if _, height, err := term.GetSize(int(os.Stdout.Fd())); err == nil && height > 0 {
+		initialStatsCount = height
+	}
+	initialLimit := initialStatsCount
+	if initialLimit > len(commits) {
+		initialLimit = len(commits)
+	}
+	initialStats, _ := g.LogMetaOnlyRange(0, initialLimit) // ignore error, stats are optional
 
-		// Transform to side-by-side format
-		files, truncatedFileCount := sidebyside.TransformDiff(d)
+	// Build a map of SHA -> stats for quick lookup
+	statsMap := make(map[string]*git.CommitWithStats)
+	for i := range initialStats {
+		statsMap[initialStats[i].Meta.SHA] = &initialStats[i]
+	}
+
+	// Convert to CommitSets with skeleton files (stats and diffs loaded on demand)
+	var commitSets []sidebyside.CommitSet
+	for i, c := range commits {
+		// Check if we have stats for this commit
+		var files []sidebyside.FilePair
+		var totalAdded, totalRemoved int
+		statsLoaded := false
+
+		if stats, ok := statsMap[c.Meta.SHA]; ok && i < initialLimit {
+			// We have stats - create files with stats
+			for _, f := range stats.Files {
+				files = append(files, sidebyside.SkeletonFilePair(f.Path, f.Added, f.Removed))
+				if f.Added > 0 {
+					totalAdded += f.Added
+				}
+				if f.Removed > 0 {
+					totalRemoved += f.Removed
+				}
+			}
+			statsLoaded = true
+		} else {
+			// No stats yet - create skeleton files without stats
+			for _, f := range c.Files {
+				files = append(files, sidebyside.SkeletonFilePairNoStats(f.Path))
+			}
+		}
 
 		commitSet := sidebyside.CommitSet{
 			Info: sidebyside.CommitInfo{
@@ -306,10 +342,12 @@ func runLogMode(debugMode bool) error {
 				Subject: c.Meta.Subject,
 				Body:    c.Meta.Body,
 			},
-			Files:              files,
-			FoldLevel:          sidebyside.CommitFolded, // Start folded
-			FilesLoaded:        true,
-			TruncatedFileCount: truncatedFileCount,
+			Files:        files,
+			FoldLevel:    sidebyside.CommitFolded, // Start folded
+			FilesLoaded:  false,                   // Diff content loaded on demand when unfolded
+			StatsLoaded:  statsLoaded,
+			TotalAdded:   totalAdded,
+			TotalRemoved: totalRemoved,
 		}
 		commitSets = append(commitSets, commitSet)
 	}

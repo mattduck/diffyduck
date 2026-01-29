@@ -13,7 +13,9 @@ type MockGit struct {
 	ShowMeta   *CommitMeta // optional metadata for ShowWithMeta
 	DiffOutput string
 	DiffError  error
-	LogOutput  []CommitWithDiff // output for LogWithMeta
+	LogOutput  []CommitWithDiff  // output for LogWithMeta
+	LogStats   []CommitWithStats // output for LogMetaOnly
+	LogPaths   []CommitWithPaths // output for LogPathsOnly
 	LogError   error
 	// FileContents maps "ref:path" to file content for GetFileContent.
 	// Use empty ref for index, e.g., ":foo.go" for staged content.
@@ -47,6 +49,38 @@ func (m *MockGit) LogWithMeta(n int) ([]CommitWithDiff, error) {
 		return m.LogOutput, nil
 	}
 	return m.LogOutput[:n], nil
+}
+
+// LogMetaOnly returns the preconfigured log stats output.
+func (m *MockGit) LogMetaOnly(n int) ([]CommitWithStats, error) {
+	return m.LogMetaOnlyRange(0, n)
+}
+
+// LogMetaOnlyRange returns a range of the preconfigured log stats output.
+func (m *MockGit) LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error) {
+	if m.LogError != nil {
+		return nil, m.LogError
+	}
+	if skip >= len(m.LogStats) {
+		return nil, nil
+	}
+	end := skip + limit
+	if end > len(m.LogStats) {
+		end = len(m.LogStats)
+	}
+	return m.LogStats[skip:end], nil
+}
+
+// LogPathsOnly returns the preconfigured log paths output.
+func (m *MockGit) LogPathsOnly(n int) ([]CommitWithPaths, error) {
+	if m.LogError != nil {
+		return nil, m.LogError
+	}
+	// Return at most n commits
+	if n >= len(m.LogPaths) {
+		return m.LogPaths, nil
+	}
+	return m.LogPaths[:n], nil
 }
 
 // Diff returns the preconfigured output or error.

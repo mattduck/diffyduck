@@ -672,7 +672,7 @@ func TestView_MultiCommitLogView(t *testing.T) {
 	m.width = 100
 	m.height = 20
 	m.focused = true
-	m.calculateTotalLines()
+	m.RefreshLayout()
 
 	output := m.View()
 
@@ -829,4 +829,180 @@ func TestView_StructuralDiffBorderAlignment(t *testing.T) {
 	expected, err := os.ReadFile(goldenPath)
 	require.NoError(t, err, "Run with -update to create golden file")
 	assert.Equal(t, string(expected), output)
+}
+
+// TestView_StructuralDiffBoxWidthAdaptive tests that the header box width
+// adapts to content size rather than always expanding to 80% of terminal width.
+// With a wide terminal and short content, the border should be near the content,
+// not pushed out to the 80% mark.
+func TestView_StructuralDiffBoxWidthAdaptive(t *testing.T) {
+	// Create a model with a function that has a medium-length signature
+	// on a very wide terminal - box should size to fit the actual signature,
+	// not expand to fill 80% of the terminal
+	entry := &structure.Entry{
+		StartLine:  1,
+		EndLine:    10,
+		Name:       "ProcessRequest",
+		Kind:       "func",
+		Receiver:   "(m Model)",
+		Params:     []string{"ctx context.Context", "req *Request"},
+		ReturnType: "error",
+	}
+	// Full signature: "(m Model) ProcessRequest(ctx context.Context, req *Request) -> error"
+	// This is about 70 chars - well under 80% of 250 = 200
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/handler.go",
+				NewPath:   "b/handler.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  250, // Very wide terminal
+		height: 20,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure: structure.NewMap([]structure.Entry{*entry}),
+				NewStructure: structure.NewMap([]structure.Entry{*entry}),
+				StructuralDiff: &structure.StructuralDiff{
+					Changes: []structure.ElementChange{
+						{
+							Kind:     structure.ChangeModified,
+							OldEntry: entry,
+							NewEntry: entry,
+						},
+					},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+	// Find border position
+	var borderPos int
+	for _, line := range lines {
+		stripped := ansiRegex.ReplaceAllString(line, "")
+		if strings.Contains(stripped, "│") && !strings.Contains(stripped, "┃") {
+			for i, r := range []rune(stripped) {
+				if r == '│' {
+					borderPos = i
+					break
+				}
+			}
+			break
+		}
+	}
+
+	// Debug: print actual border position
+	t.Logf("Border position: %d, 80%% of 250 = %d", borderPos, 250*80/100)
+
+	// Full signature is ~70 chars, with overhead maybe ~90 chars total content
+	// 80% of 250 = 200, so border should be well under 200
+	// If it's at 200, we're unnecessarily expanding to the 80% budget
+	maxExpectedBorderPos := 120 // Should be sized to content (~90) plus some padding, not 80% (200)
+	assert.Less(t, borderPos, maxExpectedBorderPos,
+		"Header box should adapt to content width, not expand to 80%% of terminal.\n"+
+			"Border at position %d, expected less than %d.\n"+
+			"80%% of terminal (250) would be 200 - box should be much smaller for this content.",
+		borderPos, maxExpectedBorderPos)
+}
+
+// TestView_StructuralDiffBoxWidthAdaptive_MultipleEntries tests with multiple
+// entries similar to the user's scenario (type + functions with signatures)
+func TestView_StructuralDiffBoxWidthAdaptive_MultipleEntries(t *testing.T) {
+	// Entries similar to the screenshot: type + 3 functions with signatures
+	typeEntry := &structure.Entry{
+		StartLine: 7, EndLine: 20, Name: "displayRow", Kind: "type",
+	}
+	func1 := &structure.Entry{
+		StartLine: 32, EndLine: 38, Name: "structuralDiffMaxContentWidth", Kind: "func",
+		Receiver: "(m Model)", Params: []string{"fileIdx int"}, ReturnType: "int",
+	}
+	func2 := &structure.Entry{
+		StartLine: 51, EndLine: 63, Name: "buildStructuralDiffRows", Kind: "func",
+		Receiver: "(m Model)", Params: []string{"fileIdx int", "headerBoxWidth int", "borderVisible bool"}, ReturnType: "[]displayRow",
+	}
+	func3 := &structure.Entry{
+		StartLine: 50, EndLine: 58, Name: "renderStructuralDiffRow", Kind: "func",
+		Receiver: "(m Model)", Params: []string{"row displayRow", "isCursorRow bool"}, ReturnType: "string",
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/internal/tui/view.go",
+				NewPath:   "b/internal/tui/view.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width:  250, // Very wide terminal
+		height: 20,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure: structure.NewMap([]structure.Entry{*typeEntry, *func1, *func2, *func3}),
+				NewStructure: structure.NewMap([]structure.Entry{*typeEntry, *func1, *func2, *func3}),
+				StructuralDiff: &structure.StructuralDiff{
+					Changes: []structure.ElementChange{
+						{Kind: structure.ChangeModified, OldEntry: typeEntry, NewEntry: typeEntry, LinesAdded: 7, LinesRemoved: 0},
+						{Kind: structure.ChangeModified, OldEntry: func1, NewEntry: func1, LinesAdded: 6, LinesRemoved: 0},
+						{Kind: structure.ChangeModified, OldEntry: func2, NewEntry: func2, LinesAdded: 12, LinesRemoved: 0},
+						{Kind: structure.ChangeModified, OldEntry: func3, NewEntry: func3, LinesAdded: 8, LinesRemoved: 0},
+					},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+	// Find border position and print all border lines for debugging
+	var borderPos int
+	t.Log("Lines with borders:")
+	for i, line := range lines {
+		stripped := ansiRegex.ReplaceAllString(line, "")
+		if strings.Contains(stripped, "│") && !strings.Contains(stripped, "┃") {
+			for j, r := range []rune(stripped) {
+				if r == '│' {
+					if borderPos == 0 {
+						borderPos = j
+					}
+					t.Logf("  Line %d: border at %d: %s", i, j, stripped)
+					break
+				}
+			}
+		}
+	}
+
+	t.Logf("Border position: %d, 80%% of 250 = %d", borderPos, 250*80/100)
+
+	// The longest signature is buildStructuralDiffRows at about 100 chars
+	// With overhead, content should be around 115 chars, not 200 (80% of 250)
+	maxExpectedBorderPos := 140 // Content + overhead, well under 80% mark
+	assert.Less(t, borderPos, maxExpectedBorderPos,
+		"Header box should adapt to content width, not expand to 80%% of terminal.\n"+
+			"Border at position %d, expected less than %d.\n"+
+			"80%% of terminal (250) would be 200.",
+		borderPos, maxExpectedBorderPos)
 }

@@ -148,10 +148,258 @@ func (g *RealGit) LogWithMeta(n int) ([]CommitWithDiff, error) {
 	return parseLogOutput(string(out)), nil
 }
 
+// LogMetaOnly returns commit metadata with per-file stats (no patches).
+// Much faster than LogWithMeta for large histories since it doesn't fetch diff content.
+func (g *RealGit) LogMetaOnly(n int) ([]CommitWithStats, error) {
+	return g.LogMetaOnlyRange(0, n)
+}
+
+// LogMetaOnlyRange returns commit metadata with per-file stats for a range of commits.
+// skip is the number of commits to skip from the start, limit is the max number to return.
+func (g *RealGit) LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error) {
+	gitArgs := []string{
+		"log",
+		"--numstat", // gives "added<tab>removed<tab>path" per file
+		fmt.Sprintf("-n%d", limit),
+		"--format=" + logMetaFormat,
+	}
+	if skip > 0 {
+		gitArgs = append(gitArgs, fmt.Sprintf("--skip=%d", skip))
+	}
+	cmd := exec.Command("git", gitArgs...)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git log",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+
+	return parseLogMetaOnly(string(out)), nil
+}
+
+// LogPathsOnly returns commit metadata with file paths only (no stats or patches).
+// This is the fastest option for large histories since git only needs to list files.
+// Use LogMetaOnly or fetch stats separately when per-file stats are needed.
+func (g *RealGit) LogPathsOnly(n int) ([]CommitWithPaths, error) {
+	gitArgs := []string{
+		"log",
+		"--name-only", // gives just file paths, no stats
+		fmt.Sprintf("-n%d", n),
+		"--format=" + logMetaFormat,
+	}
+	cmd := exec.Command("git", gitArgs...)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git log",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+
+	return parseLogPathsOnly(string(out)), nil
+}
+
+// parseLogPathsOnly parses git log --name-only output into commits with paths.
+func parseLogPathsOnly(output string) []CommitWithPaths {
+	var results []CommitWithPaths
+
+	// Split by commit start marker
+	parts := strings.Split(output, metaCommitStart+"\n")
+
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+
+		meta, files := parsePathsOnlyOutput(part)
+		if meta.SHA != "" {
+			results = append(results, CommitWithPaths{
+				Meta:  meta,
+				Files: files,
+			})
+		}
+	}
+
+	return results
+}
+
+// parsePathsOnlyOutput parses a single commit's metadata and name-only output.
+func parsePathsOnlyOutput(output string) (*CommitMeta, []FilePath) {
+	meta := &CommitMeta{}
+	var files []FilePath
+	var bodyLines []string
+	inBody := false
+
+	lines := strings.Split(output, "\n")
+
+	for _, line := range lines {
+		// Parse metadata fields
+		switch {
+		case strings.HasPrefix(line, metaSHA):
+			meta.SHA = strings.TrimPrefix(line, metaSHA)
+		case strings.HasPrefix(line, metaAuthor):
+			meta.Author = strings.TrimPrefix(line, metaAuthor)
+		case strings.HasPrefix(line, metaEmail):
+			meta.Email = strings.TrimPrefix(line, metaEmail)
+		case strings.HasPrefix(line, metaDate):
+			meta.Date = strings.TrimPrefix(line, metaDate)
+		case strings.HasPrefix(line, metaSubject):
+			meta.Subject = strings.TrimPrefix(line, metaSubject)
+		case line == metaBodyStart:
+			inBody = true
+		case line == metaBodyEnd:
+			inBody = false
+		case inBody:
+			bodyLines = append(bodyLines, line)
+		default:
+			// Non-empty lines after body are file paths
+			if line != "" {
+				files = append(files, FilePath{Path: line})
+			}
+		}
+	}
+
+	meta.Body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
+	return meta, files
+}
+
+// parseLogMetaOnly parses git log --numstat output into commits with stats.
+func parseLogMetaOnly(output string) []CommitWithStats {
+	var results []CommitWithStats
+
+	// Split by commit start marker
+	parts := strings.Split(output, metaCommitStart+"\n")
+
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+
+		meta, files := parseMetaOnlyOutput(part)
+		if meta.SHA != "" {
+			results = append(results, CommitWithStats{
+				Meta:  meta,
+				Files: files,
+			})
+		}
+	}
+
+	return results
+}
+
+// parseMetaOnlyOutput parses a single commit's metadata and numstat output.
+func parseMetaOnlyOutput(output string) (*CommitMeta, []FileStats) {
+	meta := &CommitMeta{}
+	var files []FileStats
+	var bodyLines []string
+	inBody := false
+
+	lines := strings.Split(output, "\n")
+
+	for _, line := range lines {
+		// Parse metadata fields
+		switch {
+		case strings.HasPrefix(line, metaSHA):
+			meta.SHA = strings.TrimPrefix(line, metaSHA)
+		case strings.HasPrefix(line, metaAuthor):
+			meta.Author = strings.TrimPrefix(line, metaAuthor)
+		case strings.HasPrefix(line, metaEmail):
+			meta.Email = strings.TrimPrefix(line, metaEmail)
+		case strings.HasPrefix(line, metaDate):
+			meta.Date = strings.TrimPrefix(line, metaDate)
+		case strings.HasPrefix(line, metaSubject):
+			meta.Subject = strings.TrimPrefix(line, metaSubject)
+		case line == metaBodyStart:
+			inBody = true
+		case line == metaBodyEnd:
+			inBody = false
+		case inBody:
+			bodyLines = append(bodyLines, line)
+		default:
+			// Try to parse as numstat line: "added<tab>removed<tab>path"
+			if fs := parseNumstatLine(line); fs != nil {
+				files = append(files, *fs)
+			}
+		}
+	}
+
+	meta.Body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
+	return meta, files
+}
+
+// parseNumstatLine parses a single numstat line like "10\t5\tpath/to/file".
+// Returns nil if the line is not a valid numstat line.
+func parseNumstatLine(line string) *FileStats {
+	if line == "" {
+		return nil
+	}
+
+	parts := strings.Split(line, "\t")
+	if len(parts) != 3 {
+		return nil
+	}
+
+	added := -1 // -1 indicates binary
+	removed := -1
+
+	if parts[0] != "-" {
+		fmt.Sscanf(parts[0], "%d", &added)
+	}
+	if parts[1] != "-" {
+		fmt.Sscanf(parts[1], "%d", &removed)
+	}
+
+	return &FileStats{
+		Path:    parts[2],
+		Added:   added,
+		Removed: removed,
+	}
+}
+
 // CommitWithDiff holds a commit's metadata and its diff output.
 type CommitWithDiff struct {
 	Meta *CommitMeta
 	Diff string
+}
+
+// FileStats holds per-file statistics from git log --numstat.
+type FileStats struct {
+	Path    string
+	Added   int // -1 for binary files
+	Removed int // -1 for binary files
+}
+
+// CommitWithStats holds a commit's metadata and per-file stats (no patch content).
+type CommitWithStats struct {
+	Meta  *CommitMeta
+	Files []FileStats
+}
+
+// FilePath holds just a file path from git log --name-only.
+type FilePath struct {
+	Path string
+}
+
+// CommitWithPaths holds a commit's metadata and file paths (no stats or patch content).
+// This is faster to fetch than CommitWithStats since git doesn't need to compute diffs.
+type CommitWithPaths struct {
+	Meta  *CommitMeta
+	Files []FilePath
 }
 
 // parseLogOutput splits git log output into multiple commits.

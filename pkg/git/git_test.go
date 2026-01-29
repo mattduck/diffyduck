@@ -501,3 +501,104 @@ func TestMockGit_DiffNewFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", diff)
 }
+
+// =============================================================================
+// parseLogPathsOnly Tests (Name-Only Parsing)
+// =============================================================================
+
+func TestParseLogPathsOnly_MultipleCommits(t *testing.T) {
+	// Simulate git log --name-only output with multiple commits
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:aaa111111111111111111111111111111
+DIFFYDUCK_AUTHOR:Alice
+DIFFYDUCK_EMAIL:alice@example.com
+DIFFYDUCK_DATE:2024-01-15T10:00:00+00:00
+DIFFYDUCK_SUBJECT:First commit
+DIFFYDUCK_BODY_START
+First body
+DIFFYDUCK_BODY_END
+
+src/main.go
+src/util.go
+DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:bbb222222222222222222222222222222
+DIFFYDUCK_AUTHOR:Bob
+DIFFYDUCK_EMAIL:bob@example.com
+DIFFYDUCK_DATE:2024-01-14T09:00:00+00:00
+DIFFYDUCK_SUBJECT:Second commit
+DIFFYDUCK_BODY_START
+Second body
+DIFFYDUCK_BODY_END
+
+pkg/lib.go
+`
+
+	commits := parseLogPathsOnly(input)
+
+	require.Equal(t, 2, len(commits), "should parse 2 commits")
+
+	// First commit
+	assert.Equal(t, "aaa111111111111111111111111111111", commits[0].Meta.SHA)
+	assert.Equal(t, "Alice", commits[0].Meta.Author)
+	assert.Equal(t, "First commit", commits[0].Meta.Subject)
+	assert.Equal(t, "First body", commits[0].Meta.Body)
+	require.Equal(t, 2, len(commits[0].Files), "first commit should have 2 files")
+	assert.Equal(t, "src/main.go", commits[0].Files[0].Path)
+	assert.Equal(t, "src/util.go", commits[0].Files[1].Path)
+
+	// Second commit
+	assert.Equal(t, "bbb222222222222222222222222222222", commits[1].Meta.SHA)
+	assert.Equal(t, "Bob", commits[1].Meta.Author)
+	assert.Equal(t, "Second commit", commits[1].Meta.Subject)
+	require.Equal(t, 1, len(commits[1].Files), "second commit should have 1 file")
+	assert.Equal(t, "pkg/lib.go", commits[1].Files[0].Path)
+}
+
+func TestParseLogPathsOnly_NoFiles(t *testing.T) {
+	// A commit with no file changes (e.g., empty merge commit)
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:abc123
+DIFFYDUCK_AUTHOR:Jane
+DIFFYDUCK_EMAIL:jane@example.com
+DIFFYDUCK_DATE:2024-01-10
+DIFFYDUCK_SUBJECT:Merge commit
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+`
+
+	commits := parseLogPathsOnly(input)
+
+	require.Equal(t, 1, len(commits), "should parse 1 commit")
+	assert.Equal(t, 0, len(commits[0].Files), "commit should have no files")
+}
+
+func TestMockGit_LogPathsOnly(t *testing.T) {
+	mock := &MockGit{
+		LogPaths: []CommitWithPaths{
+			{
+				Meta: &CommitMeta{
+					SHA:     "aaa111",
+					Author:  "Alice",
+					Subject: "First",
+				},
+				Files: []FilePath{{Path: "file1.go"}, {Path: "file2.go"}},
+			},
+			{
+				Meta: &CommitMeta{
+					SHA:     "bbb222",
+					Author:  "Bob",
+					Subject: "Second",
+				},
+				Files: []FilePath{{Path: "file3.go"}},
+			},
+		},
+	}
+
+	commits, err := mock.LogPathsOnly(10)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(commits))
+	assert.Equal(t, "aaa111", commits[0].Meta.SHA)
+	assert.Equal(t, 2, len(commits[0].Files))
+	assert.Equal(t, "bbb222", commits[1].Meta.SHA)
+	assert.Equal(t, 1, len(commits[1].Files))
+}

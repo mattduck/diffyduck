@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -91,7 +92,18 @@ type Model struct {
 	totalLines         int // total number of displayable lines across all files
 	maxLineNumSeen     int // largest line number seen (for dynamic gutter width, only grows)
 	maxLessWidth       int // max width of less indicator (never shrinks to prevent jittering)
-	maxNewContentWidth int // max display width of new-side content (left side, only grows, for dynamic divider)
+	maxNewContentWidth int // display width of new-side content (left side); defaults to 90, updated on 'r' refresh
+
+	// Cached column widths for file/commit headers - updated on 'r' refresh
+	cachedFileHeaderWidth int // max file header display width
+	cachedFileAddWidth    int // max "+N" width for file stats
+	cachedFileRemWidth    int // max "-N" width for file stats
+	cachedCommitFileCount int // max commit file count width (e.g., "99" = 2)
+	cachedCommitAddWidth  int // max commit "+N" width
+	cachedCommitRemWidth  int // max commit "-N" width
+	cachedCommitTimeWidth int // max relative time width (e.g., "12 months")
+	cachedCommitSubjWidth int // max subject width (capped at 120)
+	cachedStructDiffWidth int // max structural diff content width
 
 	// Row cache - avoids rebuilding on every scroll
 	cachedRows     []displayRow // cached result of buildRows()
@@ -240,6 +252,18 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		focused:             true,
 		focusColour:         false,
 		comments:            make(map[commentKey]string),
+		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
+		maxLineNumSeen:      9999, // default gives 4-digit gutter; recalculated on 'r' refresh
+		// Column width defaults - recalculated on 'r' refresh
+		cachedFileHeaderWidth: 50, // typical file path length
+		cachedFileAddWidth:    4,  // "+999"
+		cachedFileRemWidth:    4,  // "-999"
+		cachedCommitFileCount: 2,  // "99" files
+		cachedCommitAddWidth:  5,  // "+9999"
+		cachedCommitRemWidth:  5,  // "-9999"
+		cachedCommitTimeWidth: 9,  // "12 months"
+		cachedCommitSubjWidth: 60, // reasonable subject length
+		cachedStructDiffWidth: 0,  // structural diff width; 0 until 'r' refresh
 	}
 
 	// Flatten files from all commits and track boundaries
@@ -256,8 +280,11 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 	m.calculateTotalLines()
 
 	// Synchronously highlight the first file so initial render has highlighting.
+	// Skip if in log mode with folded commits (first file won't be visible anyway).
 	// The rest will be highlighted async in Init().
-	if len(m.files) > 0 {
+	firstFileVisible := len(m.files) > 0 &&
+		(len(m.commits) == 0 || m.commits[0].FoldLevel != sidebyside.CommitFolded)
+	if firstFileVisible {
 		m.highlightPairsSync(0)
 	}
 
@@ -335,12 +362,96 @@ func (m *Model) updateMaxLessWidth() {
 
 // Init implements tea.Model.
 // Triggers async highlighting for all files except the first (which is highlighted sync in New).
+// Also triggers async stats loading if any commits don't have stats loaded.
 func (m Model) Init() tea.Cmd {
-	if len(m.files) <= 1 {
-		return nil // First file already highlighted sync, no more to do
+	var cmds []tea.Cmd
+
+	// Check if we need to load stats asynchronously
+	if m.needsStatsLoad() {
+		cmds = append(cmds, m.fetchCommitStats())
 	}
+
 	// Highlight remaining files async
-	return m.RequestHighlightFromPairsExcept(map[int]bool{0: true})
+	if len(m.files) > 1 {
+		cmds = append(cmds, m.RequestHighlightFromPairsExcept(map[int]bool{0: true}))
+	}
+
+	return tea.Batch(cmds...)
+}
+
+// needsStatsLoad returns true if any commit needs stats to be loaded.
+func (m Model) needsStatsLoad() bool {
+	for _, commit := range m.commits {
+		if commit.Info.HasMetadata() && !commit.StatsLoaded {
+			return true
+		}
+	}
+	return false
+}
+
+// fetchCommitStats returns a command that fetches all remaining commit stats asynchronously.
+// The first page of stats is loaded synchronously in main.go, this handles the rest.
+func (m Model) fetchCommitStats() tea.Cmd {
+	if m.git == nil {
+		return nil
+	}
+
+	// Find the first commit that needs stats
+	startOffset := 0
+	for i, commit := range m.commits {
+		if !commit.StatsLoaded {
+			startOffset = i
+			break
+		}
+	}
+
+	if startOffset >= len(m.commits) {
+		return nil // All stats already loaded
+	}
+
+	// Capture git interface for closure
+	gitClient := m.git
+	totalCommits := len(m.commits)
+
+	return func() tea.Msg {
+		// Fetch stats for remaining commits
+		remaining := totalCommits - startOffset
+		commits, err := gitClient.LogMetaOnlyRange(startOffset, remaining)
+		if err != nil {
+			return CommitStatsLoadedMsg{Stats: nil}
+		}
+
+		// Build stats map keyed by SHA
+		stats := make(map[string]CommitStats)
+		for _, c := range commits {
+			totalAdded := 0
+			totalRemoved := 0
+			var fileStats []FileStats
+			for _, f := range c.Files {
+				added := f.Added
+				removed := f.Removed
+				if added < 0 {
+					added = 0
+				}
+				if removed < 0 {
+					removed = 0
+				}
+				totalAdded += added
+				totalRemoved += removed
+				fileStats = append(fileStats, FileStats{
+					Added:   f.Added,
+					Removed: f.Removed,
+				})
+			}
+			stats[c.Meta.SHA] = CommitStats{
+				TotalAdded:   totalAdded,
+				TotalRemoved: totalRemoved,
+				FileStats:    fileStats,
+			}
+		}
+
+		return CommitStatsLoadedMsg{Stats: stats}
+	}
 }
 
 // commentMaxVisibleLines returns the maximum number of input lines to show.
@@ -477,18 +588,19 @@ func (m *Model) clampScroll() {
 
 // StatusInfo contains information for the status bar.
 type StatusInfo struct {
-	CurrentFile int                  // 1-based index of current file
-	TotalFiles  int                  // total number of files
-	FileName    string               // name of current file
-	CurrentLine int                  // 1-based line position in viewport
-	TotalLines  int                  // total lines in diff
-	Percentage  int                  // 0-100 percentage through diff
-	AtEnd       bool                 // true if scrolled to the end
-	FoldLevel   sidebyside.FoldLevel // fold level of current file
-	FileStatus  string               // file status (added, deleted, renamed, modified)
-	Added       int                  // number of added lines in current file
-	Removed     int                  // number of removed lines in current file
-	Breadcrumbs string               // code structure breadcrumb (e.g., "type MyStruct > func myMethod")
+	CurrentFile       int                  // 1-based index of current file
+	TotalFiles        int                  // total number of files
+	FileName          string               // name of current file
+	CurrentLine       int                  // 1-based line position in viewport
+	TotalLines        int                  // total lines in diff
+	Percentage        int                  // 0-100 percentage through diff
+	AtEnd             bool                 // true if scrolled to the end
+	FoldLevel         sidebyside.FoldLevel // fold level of current file
+	FileStatus        string               // file status (added, deleted, renamed, modified)
+	Added             int                  // number of added lines in current file
+	Removed           int                  // number of removed lines in current file
+	Breadcrumbs       string               // code structure breadcrumb (e.g., "type MyStruct > func myMethod")
+	BreadcrumbEntries []structure.Entry    // structure entries for styled breadcrumb rendering
 }
 
 // StatusInfo computes information for the status bar based on cursor position.
@@ -550,23 +662,24 @@ func (m Model) StatusInfo() StatusInfo {
 		info.Added, info.Removed = countFileStats(fp)
 
 		// Get breadcrumbs for current source line
-		info.Breadcrumbs = m.getBreadcrumbsForCursor(fileIdx, cursorPos)
+		info.BreadcrumbEntries = m.getEntriesForCursor(fileIdx, cursorPos)
+		info.Breadcrumbs = formatBreadcrumbs(info.BreadcrumbEntries, 0)
 	}
 	// Summary row: leave file-specific fields at zero values (no file info shown)
 
 	return info
 }
 
-// getBreadcrumbsForCursor returns formatted breadcrumbs for the cursor position.
+// getEntriesForCursor returns structure entries for the cursor position.
 // fileIdx is 0-based, cursorPos is the display row index.
-func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
+func (m Model) getEntriesForCursor(fileIdx int, cursorPos int) []structure.Entry {
 	// Get the display row at cursor position (use cache if valid)
 	rows := m.cachedRows
 	if !m.rowsCacheValid {
 		rows = m.buildRows()
 	}
 	if cursorPos < 0 || cursorPos >= len(rows) {
-		return ""
+		return nil
 	}
 
 	row := rows[cursorPos]
@@ -576,48 +689,44 @@ func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
 	if row.isHeader || row.isSeparatorTop ||
 		row.isBlank || row.isHeaderSpacer || row.isHeaderTopBorder ||
 		row.isStructuralDiff {
-		return ""
+		return nil
 	}
 
 	// For separator and separator bottom rows, use the chunk's start line for breadcrumbs
 	// This shows the breadcrumb when cursor is on or below the breadcrumb line in the separator
 	if row.isSeparator || row.isSeparatorBottom {
 		if row.chunkStartLine <= 0 {
-			return ""
+			return nil
 		}
-		entries := m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
-		if len(entries) == 0 {
-			return ""
-		}
-		// Use 0 for compact default (status bar will truncate as needed)
-		return formatBreadcrumbs(entries, 0)
+		return m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
 	}
 
 	// For comment rows, use the line number the comment belongs to
 	if row.kind == RowKindComment {
 		if row.commentLineNum <= 0 {
-			return ""
+			return nil
 		}
-		entries := m.getStructureAtLine(row.fileIndex, row.commentLineNum)
-		if len(entries) == 0 {
-			return ""
-		}
-		return formatBreadcrumbs(entries, 0)
+		return m.getStructureAtLine(row.fileIndex, row.commentLineNum)
 	}
 
 	// Get source line number from the new side only
 	// Don't show breadcrumbs for deleted lines to avoid confusion
 	if row.pair.New.Num <= 0 {
-		return ""
+		return nil
 	}
 	sourceLine := row.pair.New.Num
 
 	// Look up structure for this file (new side only)
-	entries := m.getStructureAtLine(fileIdx, sourceLine)
+	return m.getStructureAtLine(fileIdx, sourceLine)
+}
+
+// getBreadcrumbsForCursor returns formatted breadcrumbs for the cursor position.
+// fileIdx is 0-based, cursorPos is the display row index.
+func (m Model) getBreadcrumbsForCursor(fileIdx int, cursorPos int) string {
+	entries := m.getEntriesForCursor(fileIdx, cursorPos)
 	if len(entries) == 0 {
 		return ""
 	}
-
 	// Use 0 for compact default (status bar will truncate as needed)
 	return formatBreadcrumbs(entries, 0)
 }
@@ -763,9 +872,24 @@ func (m *Model) updateMaxLineNum(n int) {
 	}
 }
 
+// updateMaxLineNumSeen scans all file pairs to find the largest line number.
+// Called on 'r' refresh to adjust gutter width for large files.
+func (m *Model) updateMaxLineNumSeen() {
+	for _, fp := range m.files {
+		for _, pair := range fp.Pairs {
+			m.updateMaxLineNum(pair.Old.Num)
+			m.updateMaxLineNum(pair.New.Num)
+		}
+	}
+}
+
 // lineNumWidth returns the width needed for line numbers based on the largest seen.
 // Minimum width is 4 to handle typical files up to 9999 lines.
-func (m Model) lineNumWidth() int {
+func (m *Model) lineNumWidth() int {
+	// Fall back to scanning if not initialized (e.g., in tests)
+	if m.maxLineNumSeen == 0 {
+		m.updateMaxLineNumSeen()
+	}
 	width := 4 // minimum
 	n := m.maxLineNumSeen
 	for n >= 10000 {
@@ -806,21 +930,125 @@ func (m *Model) updateMaxNewContentWidth() {
 	}
 }
 
-// rebuildRowsCache unconditionally rebuilds the cached rows.
-// This also updates totalLines, maxLineNumSeen, and maxNewContentWidth.
-func (m *Model) rebuildRowsCache() {
-	// Pre-scan files to update maxLineNumSeen BEFORE building rows.
-	// This ensures lineNumWidth() returns the correct value during buildRows().
+// updateColumnWidths recalculates cached column widths for file and commit headers.
+// Called on 'r' refresh to align columns based on actual content.
+func (m *Model) updateColumnWidths() {
+	// Reset to allow shrinking on manual refresh
+	m.cachedFileHeaderWidth = 0
+	m.cachedFileAddWidth = 0
+	m.cachedFileRemWidth = 0
+	m.cachedCommitFileCount = 0
+	m.cachedCommitAddWidth = 0
+	m.cachedCommitRemWidth = 0
+	m.cachedCommitTimeWidth = 0
+	m.cachedCommitSubjWidth = 0
+
+	// Calculate file header widths
 	for _, fp := range m.files {
-		for _, pair := range fp.Pairs {
-			m.updateMaxLineNum(pair.Old.Num)
-			m.updateMaxLineNum(pair.New.Num)
+		header := formatFileHeader(fp)
+		w := displayWidth(header)
+		if w > m.cachedFileHeaderWidth {
+			m.cachedFileHeaderWidth = w
+		}
+		added, removed := countFileStats(fp)
+		aw := statsAddWidth(added)
+		if aw > m.cachedFileAddWidth {
+			m.cachedFileAddWidth = aw
+		}
+		rw := statsRemWidth(removed)
+		if rw > m.cachedFileRemWidth {
+			m.cachedFileRemWidth = rw
 		}
 	}
 
-	// Update maxNewContentWidth (only grows, never shrinks to prevent jitter).
-	// This enables dynamic divider positioning.
+	// Calculate commit header widths
+	for commitIdx := range m.commits {
+		commit := m.commits[commitIdx]
+		startIdx := m.commitFileStarts[commitIdx]
+		endIdx := len(m.files)
+		if commitIdx+1 < len(m.commits) {
+			endIdx = m.commitFileStarts[commitIdx+1]
+		}
+		commitFileCount := endIdx - startIdx
+
+		// Calculate stats column widths (matching renderCommitHeaderRow logic)
+		var commitAdded, commitRemoved int
+		var statsKnown bool
+		if commit.StatsLoaded {
+			commitAdded = commit.TotalAdded
+			commitRemoved = commit.TotalRemoved
+			statsKnown = true
+		} else {
+			// Compute from files (same as render code)
+			for i := startIdx; i < endIdx; i++ {
+				added, removed := countFileStats(m.files[i])
+				commitAdded += added
+				commitRemoved += removed
+			}
+			statsKnown = commitAdded > 0 || commitRemoved > 0 || commitFileCount == 0
+		}
+
+		var aw, rw int
+		if statsKnown {
+			aw = len(fmt.Sprintf("+%d", commitAdded))
+			rw = len(fmt.Sprintf("-%d", commitRemoved))
+		} else {
+			// Stats not loaded yet, use placeholder width ("+?" = 2 chars)
+			aw = 2
+			rw = 2
+		}
+
+		fw := len(fmt.Sprintf("%d", commitFileCount))
+		if fw > m.cachedCommitFileCount {
+			m.cachedCommitFileCount = fw
+		}
+		if aw > m.cachedCommitAddWidth {
+			m.cachedCommitAddWidth = aw
+		}
+		if rw > m.cachedCommitRemWidth {
+			m.cachedCommitRemWidth = rw
+		}
+		tw := len(formatShortRelativeDate(commit.Info.Date))
+		if tw > m.cachedCommitTimeWidth {
+			m.cachedCommitTimeWidth = tw
+		}
+		sw := displayWidth(commit.Info.Subject)
+		if sw > 120 {
+			sw = 120
+		}
+		if sw > m.cachedCommitSubjWidth {
+			m.cachedCommitSubjWidth = sw
+		}
+	}
+}
+
+// updateStructuralDiffWidth scans all files to find the max structural diff content width.
+// Called on 'r' refresh to expand header box if structural diffs are wider than filenames.
+func (m *Model) updateStructuralDiffWidth() {
+	m.cachedStructDiffWidth = 0
+	for fileIdx := range m.files {
+		w := m.structuralDiffMaxContentWidth(fileIdx)
+		if w > m.cachedStructDiffWidth {
+			m.cachedStructDiffWidth = w
+		}
+	}
+}
+
+// RefreshLayout recalculates all dynamic layout metrics based on actual content.
+// Called by 'r' key and useful in tests to get properly aligned output.
+func (m *Model) RefreshLayout() {
+	m.updateMaxLineNumSeen()
 	m.updateMaxNewContentWidth()
+	m.updateColumnWidths()
+	m.updateStructuralDiffWidth()
+	m.rowsCacheValid = false
+}
+
+// rebuildRowsCache unconditionally rebuilds the cached rows.
+// This also updates totalLines. Width metrics are updated on 'r' refresh.
+func (m *Model) rebuildRowsCache() {
+	// NOTE: maxLineNumSeen, maxNewContentWidth, and column widths are NOT updated
+	// automatically here for performance. Press 'r' to refresh layout.
 
 	m.cachedRows = m.buildRows()
 	m.rowsCacheValid = true

@@ -2,7 +2,8 @@ package tui
 
 import (
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -123,6 +124,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case PairsHighlightReadyMsg:
 		m.storePairsHighlightSpans(msg)
+		return m, nil
+
+	case CommitStatsLoadedMsg:
+		if msg.Stats != nil {
+			// Apply stats to commits
+			for i := range m.commits {
+				sha := m.commits[i].Info.SHA
+				if stats, ok := msg.Stats[sha]; ok {
+					m.commits[i].TotalAdded = stats.TotalAdded
+					m.commits[i].TotalRemoved = stats.TotalRemoved
+					m.commits[i].StatsLoaded = true
+
+					// Apply per-file stats if they match
+					startIdx := m.commitFileStarts[i]
+					endIdx := len(m.files)
+					if i+1 < len(m.commits) {
+						endIdx = m.commitFileStarts[i+1]
+					}
+					for j, fs := range stats.FileStats {
+						fileIdx := startIdx + j
+						if fileIdx < endIdx {
+							m.files[fileIdx].TotalAdded = fs.Added
+							m.files[fileIdx].TotalRemoved = fs.Removed
+						}
+					}
+				}
+			}
+			// Invalidate row cache (widths stay at defaults until 'r' refresh)
+			m.rowsCacheValid = false
+		}
+
 		return m, nil
 
 	case spinner.TickMsg:
@@ -276,6 +308,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case matchesKey(msg, keys.Yank):
 		return m.handleYank()
+
+	case matchesKey(msg, keys.RefreshLayout):
+		m.RefreshLayout()
 	}
 
 	return m, nil
@@ -1093,6 +1128,15 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	switch currentLevel {
 	case 1:
 		// Level 1 -> Level 2: Show file headings only
+		// Load diff content on demand if not already loaded
+		if !commit.FilesLoaded && m.git != nil {
+			m.loadCommitDiff(commitIdx)
+			// Update endIdx since file count may have changed
+			endIdx = len(m.files)
+			if commitIdx+1 < len(m.commits) {
+				endIdx = m.commitFileStarts[commitIdx+1]
+			}
+		}
 		commit.FoldLevel = sidebyside.CommitNormal
 		for i := startIdx; i < endIdx; i++ {
 			m.files[i].FoldLevel = sidebyside.FoldFolded
@@ -1145,6 +1189,81 @@ func (m Model) handleCommitInfoFoldToggle() (tea.Model, tea.Cmd) {
 	m.calculateTotalLines()
 
 	return m, nil
+}
+
+// loadCommitDiff fetches and parses the diff for a commit on demand.
+// This replaces the skeleton files with fully parsed FilePairs.
+func (m *Model) loadCommitDiff(commitIdx int) {
+	if commitIdx < 0 || commitIdx >= len(m.commits) {
+		return
+	}
+
+	commit := &m.commits[commitIdx]
+	if commit.FilesLoaded {
+		return
+	}
+
+	// Fetch the diff for this commit
+	diffStr, err := m.git.Show(commit.Info.SHA)
+	if err != nil {
+		// On error, mark as loaded to avoid retrying
+		commit.FilesLoaded = true
+		return
+	}
+
+	// Parse the diff
+	d, err := diff.Parse(diffStr)
+	if err != nil {
+		commit.FilesLoaded = true
+		return
+	}
+
+	// Transform to side-by-side format
+	files, truncatedCount := sidebyside.TransformDiff(d)
+
+	// Get the file range for this commit
+	startIdx := m.commitFileStarts[commitIdx]
+	endIdx := len(m.files)
+	if commitIdx+1 < len(m.commits) {
+		endIdx = m.commitFileStarts[commitIdx+1]
+	}
+	oldFileCount := endIdx - startIdx
+
+	// Replace skeleton files with real ones
+	// If file counts differ, we need to adjust the files slice and update commitFileStarts
+	if len(files) != oldFileCount {
+		// Build new files slice
+		newFiles := make([]sidebyside.FilePair, 0, len(m.files)-oldFileCount+len(files))
+		newFiles = append(newFiles, m.files[:startIdx]...)
+		newFiles = append(newFiles, files...)
+		newFiles = append(newFiles, m.files[endIdx:]...)
+		m.files = newFiles
+
+		// Update commitFileStarts for subsequent commits
+		delta := len(files) - oldFileCount
+		for i := commitIdx + 1; i < len(m.commitFileStarts); i++ {
+			m.commitFileStarts[i] += delta
+		}
+	} else {
+		// Same file count - just replace in place
+		for i, f := range files {
+			m.files[startIdx+i] = f
+		}
+	}
+
+	commit.FilesLoaded = true
+	commit.TruncatedFileCount = truncatedCount
+
+	// Recalculate cached commit stats from loaded files
+	commit.TotalAdded = 0
+	commit.TotalRemoved = 0
+	for _, f := range files {
+		commit.TotalAdded += f.TotalAdded
+		commit.TotalRemoved += f.TotalRemoved
+	}
+
+	// Invalidate caches
+	m.rowsCacheValid = false
 }
 
 // commitVisibilityLevel returns the current visibility level for the first commit (1, 2, or 3).
