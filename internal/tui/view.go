@@ -2156,12 +2156,28 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	}
 
 	// Build the fixed part with styling
+	// For zero counts, show just +/- right-aligned (no number)
+	var styledAdded, styledRemoved string
+	if totalAdded == 0 {
+		// Right-align just the + (shift it one position right where the 0 was)
+		padding := strings.TrimSuffix(addedText, "+0")
+		styledAdded = padding + " " + addedStyle.Render("+")
+	} else {
+		styledAdded = addedStyle.Render(addedText)
+	}
+	if totalRemoved == 0 {
+		// Right-align just the - (shift it one position right where the 0 was)
+		padding := strings.TrimSuffix(removedText, "-0")
+		styledRemoved = padding + " " + removedStyle.Render("-")
+	} else {
+		styledRemoved = removedStyle.Render(removedText)
+	}
 	fixedPart := prefix +
 		foldIconStyle.Render(foldIcon) + " " +
 		shaStyle.Render(shaText) + " " +
 		dimStyle.Render(filesText) + " " +
-		addedStyle.Render(addedText) + " " +
-		removedStyle.Render(removedText) + " " +
+		styledAdded + " " +
+		styledRemoved + " " +
 		dimStyle.Render(timeText) + " " +
 		authorStyle.Render(author)
 
@@ -2726,13 +2742,20 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 		}
 	}
 
-	// Stats width: " N M" = 1 + maxAddLen + 1 + maxRemLen (if both present)
+	// If either column has content, show both (zeros for empty column)
+	if maxAddLen > 0 || maxRemLen > 0 {
+		if maxAddLen == 0 {
+			maxAddLen = 1 // width of "0"
+		}
+		if maxRemLen == 0 {
+			maxRemLen = 1 // width of "0"
+		}
+	}
+
+	// Stats width: " +N -M" = 1 + 1 + maxAddLen + 1 + 1 + maxRemLen
 	statsWidth := 0
 	if maxAddLen > 0 {
-		statsWidth += 1 + maxAddLen // " N"
-	}
-	if maxRemLen > 0 {
-		statsWidth += 1 + maxRemLen // " M"
+		statsWidth = 1 + 1 + maxAddLen + 1 + 1 + maxRemLen
 	}
 
 	// Calculate max width available for signatures (80% of terminal minus overhead)
@@ -2936,16 +2959,20 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		}
 	}
 
+	// If either column has content, show both (zeros for empty column)
+	if maxAddLen > 0 || maxRemLen > 0 {
+		if maxAddLen == 0 {
+			maxAddLen = 1 // width of "0"
+		}
+		if maxRemLen == 0 {
+			maxRemLen = 1 // width of "0"
+		}
+	}
+
 	// Calculate stats width for signature width calculation
 	statsWidth := 0
-	if maxAddLen > 0 || maxRemLen > 0 {
-		if maxAddLen > 0 && maxRemLen > 0 {
-			statsWidth = 1 + maxAddLen + 1 + maxRemLen // " add rem"
-		} else if maxAddLen > 0 {
-			statsWidth = 1 + maxAddLen
-		} else {
-			statsWidth = 1 + maxRemLen
-		}
+	if maxAddLen > 0 {
+		statsWidth = 1 + 1 + maxAddLen + 1 + 1 + maxRemLen // " +add -rem"
 	}
 
 	// Helper to format entry name or signature
@@ -3087,20 +3114,22 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 		rest = ""
 	}
 
-	// Style the symbol based on change kind (use dark color variants)
-	darkAddedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	darkRemovedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	// Style the symbol based on change kind (use bright colors for status icon)
 	var styledSymbol string
 	switch symbol {
 	case "+":
-		styledSymbol = darkAddedStyle.Render("+")
+		styledSymbol = addedStyle.Render("+")
 	case "-":
-		styledSymbol = darkRemovedStyle.Render("-")
+		styledSymbol = removedStyle.Render("-")
 	case "~":
 		styledSymbol = changedStyle.Render("~")
 	default:
 		styledSymbol = symbol
 	}
+
+	// Dark colors for line count stats
+	darkAddedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	darkRemovedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 
 	// Style the rest: " kind name" -> space + styled kind (fg=8) + space + styled name (fg=7)
 	kindStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -3128,24 +3157,30 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 		// Build stats with padding for alignment
 		addPart := ""
 		remPart := ""
+		addStyled := ""
+		remStyled := ""
 		if row.structuralDiffMaxAddLen > 0 {
 			if row.structuralDiffAdded > 0 {
-				addPart = fmt.Sprintf("%*d", row.structuralDiffMaxAddLen, row.structuralDiffAdded)
+				// Show +N with the number
+				addPart = fmt.Sprintf("+%*d", row.structuralDiffMaxAddLen, row.structuralDiffAdded)
+				addStyled = darkAddedStyle.Render(addPart)
 			} else {
-				addPart = strings.Repeat(" ", row.structuralDiffMaxAddLen)
+				// Show just + right-aligned (padding before the +)
+				addPart = strings.Repeat(" ", row.structuralDiffMaxAddLen) + "+"
+				addStyled = darkAddedStyle.Render(addPart)
 			}
 		}
 		if row.structuralDiffMaxRemLen > 0 {
 			if row.structuralDiffRemoved > 0 {
-				remPart = fmt.Sprintf("%*d", row.structuralDiffMaxRemLen, row.structuralDiffRemoved)
+				// Show -N with the number
+				remPart = fmt.Sprintf("-%*d", row.structuralDiffMaxRemLen, row.structuralDiffRemoved)
+				remStyled = darkRemovedStyle.Render(remPart)
 			} else {
-				remPart = strings.Repeat(" ", row.structuralDiffMaxRemLen)
+				// Show just - right-aligned (padding before the -)
+				remPart = strings.Repeat(" ", row.structuralDiffMaxRemLen) + "-"
+				remStyled = darkRemovedStyle.Render(remPart)
 			}
 		}
-
-		// Style them with dark colors
-		addStyled := darkAddedStyle.Render(addPart)
-		remStyled := darkRemovedStyle.Render(remPart)
 
 		if addPart != "" && remPart != "" {
 			statsStr = " " + addStyled + " " + remStyled
@@ -3296,8 +3331,17 @@ func (m *Model) renderCommitLine() string {
 	if totalAdded > 0 || totalRemoved > 0 {
 		addedText := fmt.Sprintf("+%d", totalAdded)
 		removedText := fmt.Sprintf("-%d", totalRemoved)
-		rightText += " " + addedText + " " + removedText
-		rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText[:len(rightText)-len(addedText)-len(removedText)-2]) + " " + addedStyle.Render(addedText) + " " + removedStyle.Render(removedText)
+		// For zeros, show just +/- without the number
+		displayAdded := addedText
+		displayRemoved := removedText
+		if totalAdded == 0 {
+			displayAdded = "+"
+		}
+		if totalRemoved == 0 {
+			displayRemoved = "-"
+		}
+		rightText += " " + displayAdded + " " + displayRemoved
+		rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText[:len(rightText)-len(displayAdded)-len(displayRemoved)-2]) + " " + addedStyle.Render(displayAdded) + " " + removedStyle.Render(displayRemoved)
 	} else {
 		rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText)
 	}
@@ -3376,8 +3420,17 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		if totalAdded > 0 || totalRemoved > 0 {
 			addedText := fmt.Sprintf("+%d", totalAdded)
 			removedText := fmt.Sprintf("-%d", totalRemoved)
-			rightText += " " + addedText + " " + removedText
-			rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText[:len(rightText)-len(addedText)-len(removedText)-2]) + " " + addedStyle.Render(addedText) + " " + removedStyle.Render(removedText)
+			// For zeros, show just +/- without the number
+			displayAdded := addedText
+			displayRemoved := removedText
+			if totalAdded == 0 {
+				displayAdded = "+"
+			}
+			if totalRemoved == 0 {
+				displayRemoved = "-"
+			}
+			rightText += " " + displayAdded + " " + displayRemoved
+			rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText[:len(rightText)-len(displayAdded)-len(displayRemoved)-2]) + " " + addedStyle.Render(displayAdded) + " " + removedStyle.Render(displayRemoved)
 		} else {
 			rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText)
 		}
@@ -4128,8 +4181,9 @@ func formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth int) string 
 		}
 		parts = append(parts, addedStyle.Render(addStr))
 	} else if maxAddWidth > 0 {
-		// No additions but need to reserve space for alignment
-		parts = append(parts, strings.Repeat(" ", maxAddWidth))
+		// Show just + right-aligned (padding before the +)
+		addStr := strings.Repeat(" ", maxAddWidth-1) + "+"
+		parts = append(parts, addedStyle.Render(addStr))
 	}
 
 	// Build removal string with padding for alignment
@@ -4141,8 +4195,9 @@ func formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth int) string 
 		}
 		parts = append(parts, removedStyle.Render(remStr))
 	} else if maxRemWidth > 0 {
-		// No removals but need to reserve space for alignment
-		parts = append(parts, strings.Repeat(" ", maxRemWidth))
+		// Show just - right-aligned (padding before the -)
+		remStr := strings.Repeat(" ", maxRemWidth-1) + "-"
+		parts = append(parts, removedStyle.Render(remStr))
 	}
 
 	return " " + strings.Join(parts, " ")

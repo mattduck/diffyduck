@@ -1523,9 +1523,10 @@ func FuncB() {
 	}
 }
 
-func TestStoreHighlightSpans_InvalidatesCacheWhenCommitUnfolded(t *testing.T) {
-	// Test that row cache is invalidated when structural diff is stored
-	// and the commit is not folded (so structural diff rows would be visible).
+func TestStoreHighlightSpans_UpdatesTotalLinesWhenCommitUnfolded(t *testing.T) {
+	// Test that totalLines is updated when structural diff is stored
+	// and the commit is not folded. Structural diff rows appear as a preview
+	// under folded files, so the file must be FoldFolded for rows to appear.
 	oldContent := `package main
 
 func FuncA() {
@@ -1546,7 +1547,7 @@ func FuncA() {
 		{
 			OldPath:    "a/test.go",
 			NewPath:    "b/test.go",
-			FoldLevel:  sidebyside.FoldNormal,
+			FoldLevel:  sidebyside.FoldFolded, // Structural diff rows only appear when file is folded
 			OldContent: oldLines,
 			NewContent: newLines,
 			Pairs: []sidebyside.LinePair{
@@ -1559,11 +1560,11 @@ func FuncA() {
 		},
 	}
 
-	// Create model with a commit that is NOT folded
+	// Create model with a commit that is NOT folded (files visible but folded)
 	commit := sidebyside.CommitSet{
 		Info:        sidebyside.CommitInfo{SHA: "abc123"},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal, // Not folded
+		FoldLevel:   sidebyside.CommitNormal, // Not folded - files are visible
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -1571,7 +1572,7 @@ func FuncA() {
 
 	// Build rows to populate cache
 	m.rebuildRowsCache()
-	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+	totalLinesBefore := m.totalLines
 
 	// Request and store highlighting
 	cmd := m.RequestHighlight(0)
@@ -1581,9 +1582,10 @@ func FuncA() {
 
 	m.storeHighlightSpans(hlMsg)
 
-	// Cache should be invalidated because commit is not folded
-	// and structural diff has changes
-	assert.False(t, m.rowsCacheValid, "cache should be invalidated when structural diff is stored for unfolded commit")
+	// totalLines should increase to include structural diff rows
+	// because file is folded and structural diff has changes
+	assert.Greater(t, m.totalLines, totalLinesBefore,
+		"totalLines should increase when structural diff is stored for folded file")
 }
 
 func TestStoreHighlightSpans_DoesNotInvalidateCacheWhenCommitFolded(t *testing.T) {
@@ -1712,6 +1714,7 @@ func FuncA() {
 func TestStoreHighlightSpans_InvalidatesCacheInDiffMode(t *testing.T) {
 	// Test that row cache is invalidated in diff mode (no commit structure).
 	// This uses New() instead of NewWithCommits() to simulate diff command.
+	// Structural diff rows only appear when a file is folded (preview mode).
 	oldContent := `package main
 
 func FuncA() {
@@ -1732,7 +1735,7 @@ func FuncA() {
 		{
 			OldPath:    "a/test.go",
 			NewPath:    "b/test.go",
-			FoldLevel:  sidebyside.FoldNormal,
+			FoldLevel:  sidebyside.FoldFolded, // Structural diff rows only appear when file is folded
 			OldContent: oldLines,
 			NewContent: newLines,
 			Pairs: []sidebyside.LinePair{
@@ -1751,7 +1754,7 @@ func FuncA() {
 
 	// Build rows to populate cache
 	m.rebuildRowsCache()
-	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+	totalLinesBefore := m.totalLines
 
 	// Request and store highlighting
 	cmd := m.RequestHighlight(0)
@@ -1761,6 +1764,7 @@ func FuncA() {
 
 	m.storeHighlightSpans(hlMsg)
 
-	// Cache should be invalidated in diff mode (no commit to check fold status)
-	assert.False(t, m.rowsCacheValid, "cache should be invalidated in diff mode when structural diff has changes")
+	// totalLines should increase when structural diff has changes (file is folded, so preview rows appear)
+	assert.Greater(t, m.totalLines, totalLinesBefore,
+		"totalLines should increase in diff mode when structural diff has changes")
 }
