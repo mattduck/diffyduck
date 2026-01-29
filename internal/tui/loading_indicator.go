@@ -51,7 +51,7 @@ func (m *Model) clearFileLoading(fileIndex int) {
 
 // hasAnyLoadingFiles returns true if any files are currently loading.
 func (m Model) hasAnyLoadingFiles() bool {
-	return len(m.loadingFiles) > 0
+	return len(m.loadingFiles) > 0 || m.loadingMoreCommits
 }
 
 // fileStatusSymbol returns the status symbol for a file, or the spinner frame if loading.

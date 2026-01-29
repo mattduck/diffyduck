@@ -275,9 +275,10 @@ func run() error {
 func runLogMode(debugMode bool) error {
 	g := git.New()
 
-	// Fast startup: fetch only metadata and file paths (no stats)
+	// Fast startup: fetch only first batch of commits (pagination loads more on demand)
 	// Stats are loaded asynchronously after the UI renders
-	commits, err := g.LogPathsOnly(500)
+	initialBatch := tui.DefaultCommitBatchSize
+	commits, err := g.LogPathsOnly(initialBatch)
 	if err != nil {
 		return fmt.Errorf("git log: %w", err)
 	}
@@ -352,8 +353,11 @@ func runLogMode(debugMode bool) error {
 		commitSets = append(commitSets, commitSet)
 	}
 
-	// Pass git object for on-demand content fetching (per-commit fetchers)
-	opts := []tui.Option{tui.WithGit(g)}
+	// Pass git object for on-demand content fetching and pagination
+	opts := []tui.Option{
+		tui.WithGit(g),
+		tui.WithPagination(len(commitSets), initialBatch),
+	}
 	if debugMode {
 		opts = append(opts, tui.WithDebugMode())
 	}

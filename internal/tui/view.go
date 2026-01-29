@@ -401,6 +401,7 @@ const (
 	RowKindCommitInfoBody           // commit info body row (Author, Date, message content)
 	RowKindComment                  // inline comment row (belongs to line above)
 	RowKindStructuralDiff           // structural diff row (added/modified/deleted functions/types)
+	RowKindPaginationIndicator      // ellipsis row indicating more commits can be loaded
 )
 
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
@@ -874,6 +875,14 @@ func (m Model) buildRows() []displayRow {
 			fileIndex:             -1,
 			isTruncationIndicator: true,
 			truncationMessage:     fmt.Sprintf("[%d files truncated]", m.truncatedFileCount),
+		})
+	}
+
+	// Add pagination indicator if more commits may be available
+	if m.hasMoreCommitsToLoad() {
+		rows = append(rows, displayRow{
+			kind:      RowKindPaginationIndicator,
+			fileIndex: -1,
 		})
 	}
 
@@ -1571,6 +1580,8 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			rendered = m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew)
 		} else if row.isBinaryIndicator {
 			rendered = m.renderBinaryIndicator(row.binaryMessage, isCursorRow, row.binaryOld, row.binaryNew)
+		} else if row.kind == RowKindPaginationIndicator {
+			rendered = m.renderPaginationIndicator(isCursorRow)
 		} else if row.kind == RowKindComment {
 			rendered = m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow)
 		} else {
@@ -1807,6 +1818,18 @@ func (m Model) renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth
 // renderInterFileBlank renders a blank line between files.
 func (m Model) renderInterFileBlank() string {
 	return ""
+}
+
+// renderPaginationIndicator renders an ellipsis line indicating more commits can be loaded.
+func (m Model) renderPaginationIndicator(isCursorRow bool) string {
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // dim
+	indicator := "   …"
+	if isCursorRow && m.focused {
+		return cursorArrowStyle.Render("▶") + " " + style.Render("…")
+	} else if isCursorRow {
+		return unfocusedCursorArrowStyle.Render("▷") + " " + style.Render("…")
+	}
+	return style.Render(indicator)
 }
 
 // renderNodeBorder renders a top or bottom border for a tree node (file header, commit-info, etc).

@@ -139,10 +139,22 @@ type Model struct {
 	// Status message (echo area)
 	statusMessage     string    // message to display in status bar
 	statusMessageTime time.Time // when the message was set (for auto-clear)
+
+	// Pagination state (log mode only)
+	loadedCommitCount  int  // number of commits currently loaded
+	totalCommitCount   int  // total commits in repo (0=unknown, -1=error)
+	commitBatchSize    int  // commits per batch (default 100)
+	loadingMoreCommits bool // true when fetching next batch
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
 const DefaultHScrollStep = 4
+
+// DefaultCommitBatchSize is the number of commits to load per batch in log mode.
+const DefaultCommitBatchSize = 100
+
+// PaginationScrollThreshold is the number of rows from the end to trigger loading more commits.
+const PaginationScrollThreshold = 20
 
 // FileHighlight stores syntax highlighting spans for a file's old and new content.
 type FileHighlight struct {
@@ -203,6 +215,15 @@ func WithPagerMode() Option {
 func WithDebugMode() Option {
 	return func(m *Model) {
 		m.debugMode = true
+	}
+}
+
+// WithPagination configures pagination state for log mode.
+// loaded is the number of commits currently loaded, batchSize is commits per batch.
+func WithPagination(loaded, batchSize int) Option {
+	return func(m *Model) {
+		m.loadedCommitCount = loaded
+		m.commitBatchSize = batchSize
 	}
 }
 
@@ -365,6 +386,11 @@ func (m *Model) updateMaxLessWidth() {
 // Also triggers async stats loading if any commits don't have stats loaded.
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
+
+	// Fetch total commit count for pagination (if pagination is enabled)
+	if m.git != nil && m.loadedCommitCount > 0 {
+		cmds = append(cmds, m.fetchTotalCommitCount())
+	}
 
 	// Check if we need to load stats asynchronously
 	if m.needsStatsLoad() {

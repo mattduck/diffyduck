@@ -1,6 +1,10 @@
 package tui
 
-import "time"
+import (
+	"time"
+
+	"github.com/user/diffyduck/pkg/sidebyside"
+)
 
 // ClearStatusMsg is sent to clear the status message after a delay.
 type ClearStatusMsg struct {
@@ -91,4 +95,15 @@ type CommitStats struct {
 type FileStats struct {
 	Added   int
 	Removed int
+}
+
+// MoreCommitsLoadedMsg is sent when additional commits have been fetched for pagination.
+type MoreCommitsLoadedMsg struct {
+	Commits []sidebyside.CommitSet // newly loaded commits
+	Err     error                  // error if loading failed
+}
+
+// TotalCommitCountMsg is sent when the total commit count has been fetched.
+type TotalCommitCountMsg struct {
+	Count int // total commits in repo, -1 if error
 }

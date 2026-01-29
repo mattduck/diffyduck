@@ -29,6 +29,14 @@ type Git interface {
 	// This is the fastest option for large histories.
 	LogPathsOnly(n int) ([]CommitWithPaths, error)
 
+	// LogPathsOnlyRange returns commit metadata with file paths for a range.
+	// skip is commits to skip, limit is max commits to return.
+	LogPathsOnlyRange(skip, limit int) ([]CommitWithPaths, error)
+
+	// CommitCount returns the total number of commits in the repository.
+	// Returns -1 if count cannot be determined.
+	CommitCount() (int, error)
+
 	// Diff returns the diff output for git diff.
 	// Args are passed through to git diff.
 	Diff(args ...string) (string, error)

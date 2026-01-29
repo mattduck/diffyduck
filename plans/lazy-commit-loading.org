@@ -11,11 +11,16 @@ Two orthogonal dimensions:
 ** Current State (as of 2026-01-25)
 
 Implemented:
-- Commits load with =--numstat= (metadata + file paths + per-file stats)
+- Phase 1 DONE: Fast startup using =--name-only=, stats load async
+- Phase 2 DONE: Pagination with scroll-triggered loading
+  - Initial batch: 100 commits (configurable via DefaultCommitBatchSize)
+  - Scroll threshold: 20 rows from end triggers next batch load
+  - G key: first press jumps to end + shows message, double-G loads all
+  - Total commit count fetched async on startup
 - Full diff loads on-demand when commit is unfolded
 - File content loads on-demand when file is expanded
 
-Problem:
+Original problem (solved):
 - =git log --numstat -n500= takes ~750ms (computing stats requires diffing)
 - =git log --name-only -n500= takes ~48ms (just file paths, no stats)
 - =git log -n500= takes ~31ms (metadata only)

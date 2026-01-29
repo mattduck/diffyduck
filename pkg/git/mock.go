@@ -73,14 +73,30 @@ func (m *MockGit) LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error) {
 
 // LogPathsOnly returns the preconfigured log paths output.
 func (m *MockGit) LogPathsOnly(n int) ([]CommitWithPaths, error) {
+	return m.LogPathsOnlyRange(0, n)
+}
+
+// LogPathsOnlyRange returns a range of the preconfigured log paths output.
+func (m *MockGit) LogPathsOnlyRange(skip, limit int) ([]CommitWithPaths, error) {
 	if m.LogError != nil {
 		return nil, m.LogError
 	}
-	// Return at most n commits
-	if n >= len(m.LogPaths) {
-		return m.LogPaths, nil
+	if skip >= len(m.LogPaths) {
+		return nil, nil
 	}
-	return m.LogPaths[:n], nil
+	end := skip + limit
+	if end > len(m.LogPaths) {
+		end = len(m.LogPaths)
+	}
+	return m.LogPaths[skip:end], nil
+}
+
+// CommitCount returns the number of commits in LogPaths (for testing).
+func (m *MockGit) CommitCount() (int, error) {
+	if m.LogError != nil {
+		return -1, m.LogError
+	}
+	return len(m.LogPaths), nil
 }
 
 // Diff returns the preconfigured output or error.

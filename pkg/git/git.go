@@ -214,6 +214,64 @@ func (g *RealGit) LogPathsOnly(n int) ([]CommitWithPaths, error) {
 	return parseLogPathsOnly(string(out)), nil
 }
 
+// LogPathsOnlyRange returns commit metadata with file paths for a range of commits.
+// skip is the number of commits to skip from the start, limit is the max number to return.
+func (g *RealGit) LogPathsOnlyRange(skip, limit int) ([]CommitWithPaths, error) {
+	gitArgs := []string{
+		"log",
+		"--name-only",
+		fmt.Sprintf("-n%d", limit),
+		"--format=" + logMetaFormat,
+	}
+	if skip > 0 {
+		gitArgs = append(gitArgs, fmt.Sprintf("--skip=%d", skip))
+	}
+	cmd := exec.Command("git", gitArgs...)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git log",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+
+	return parseLogPathsOnly(string(out)), nil
+}
+
+// CommitCount returns the total number of commits in the repository.
+// Uses git rev-list --count HEAD which is fast even on large repos.
+func (g *RealGit) CommitCount() (int, error) {
+	cmd := exec.Command("git", "rev-list", "--count", "HEAD")
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return -1, &GitError{
+				Command: "git rev-list --count",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return -1, err
+	}
+
+	count := 0
+	_, err = fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &count)
+	if err != nil {
+		return -1, err
+	}
+	return count, nil
+}
+
 // parseLogPathsOnly parses git log --name-only output into commits with paths.
 func parseLogPathsOnly(output string) []CommitWithPaths {
 	var results []CommitWithPaths

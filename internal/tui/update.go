@@ -31,6 +31,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scroll += 3
 			m.clampScroll()
 			m.resetSearchMatchForRow()
+			// Check if we should load more commits after scrolling down
+			if m.shouldLoadMoreCommits() {
+				return m, m.fetchMoreCommits()
+			}
 		}
 		return m, nil
 
@@ -193,6 +197,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMessage = ""
 		}
 		return m, nil
+
+	case MoreCommitsLoadedMsg:
+		m.loadingMoreCommits = false
+		if msg.Err != nil {
+			// Remove the ellipsis since we can't load more
+			m.rowsCacheValid = false
+			return m, nil
+		}
+		if len(msg.Commits) == 0 {
+			// No more commits - we've loaded everything
+			if m.totalCommitCount <= 0 {
+				m.totalCommitCount = m.loadedCommitCount
+			}
+			// Rebuild rows to remove the pagination indicator
+			m.rowsCacheValid = false
+			m.calculateTotalLines()
+			return m, nil
+		}
+
+		// Append the new commits. Since rows are only appended at the end,
+		// existing row indices are unchanged — no scroll adjustment needed.
+		m.appendCommits(msg.Commits)
+
+		// Queue stats loading for the new commits
+		return m, m.fetchCommitStats()
+
+	case TotalCommitCountMsg:
+		m.totalCommitCount = msg.Count
+		// Rebuild rows in case the ellipsis should appear or disappear
+		m.rowsCacheValid = false
+		m.calculateTotalLines()
+		return m, nil
 	}
 
 	return m, nil
@@ -283,6 +319,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case matchesKey(msg, keys.Bottom):
 		m.scroll = m.maxScroll()
 		m.resetSearchMatchForRow()
+		// Trigger loading more commits if available
+		if m.shouldLoadMoreCommits() {
+			return m, m.fetchMoreCommits()
+		}
 
 	case matchesKey(msg, keys.Left):
 		m.hscroll -= m.hscrollStep
@@ -311,6 +351,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case matchesKey(msg, keys.RefreshLayout):
 		m.RefreshLayout()
+	}
+
+	// Check if we should load more commits after scroll changes
+	if m.shouldLoadMoreCommits() {
+		return m, m.fetchMoreCommits()
 	}
 
 	return m, nil
