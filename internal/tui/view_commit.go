@@ -12,6 +12,7 @@ import (
 )
 
 const maxStructuralDiffItems = 10
+const maxStructuralDiffSigWidth = 120
 
 // statsTextWidth returns the display width of an unaligned stats string like " +3 -4".
 // Returns 0 if both added and removed are zero.
@@ -922,6 +923,9 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 		if maxSignatureWidth < 20 {
 			maxSignatureWidth = 20
 		}
+		if maxSignatureWidth > maxStructuralDiffSigWidth {
+			maxSignatureWidth = maxStructuralDiffSigWidth
+		}
 	}
 
 	// Helper to get display width of name or signature (expanded to fill available space)
@@ -993,8 +997,29 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 		}
 		return totalI > totalJ
 	})
-	if len(topLevel) > maxStructuralDiffItems {
-		topLevel = topLevel[:maxStructuralDiffItems]
+	// Sort children within each node by lines changed (descending)
+	for i := range topLevel {
+		sort.SliceStable(topLevel[i].children, func(a, b int) bool {
+			ca := topLevel[i].children[a]
+			cb := topLevel[i].children[b]
+			return (ca.LinesAdded + ca.LinesRemoved) > (cb.LinesAdded + cb.LinesRemoved)
+		})
+	}
+	// Truncate to top N displayed rows (parent + children = 1 row each)
+	{
+		rowCount := 0
+		keptCount := 0
+		for _, node := range topLevel {
+			nodeRows := 1 + len(node.children)
+			if rowCount+nodeRows > maxStructuralDiffItems {
+				break
+			}
+			keptCount++
+			rowCount += nodeRows
+		}
+		if keptCount < len(topLevel) {
+			topLevel = topLevel[:keptCount]
+		}
 	}
 
 	// Calculate max width from visible items
@@ -1106,7 +1131,7 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		}
 	}
 
-	// Sort by total lines changed (added + removed), descending
+	// Sort top-level nodes by total lines changed (added + removed), descending
 	nodeTotalLines := func(n treeNode) int {
 		total := n.change.LinesAdded + n.change.LinesRemoved
 		for _, child := range n.children {
@@ -1114,15 +1139,36 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		}
 		return total
 	}
+	changeTotalLines := func(c structure.ElementChange) int {
+		return c.LinesAdded + c.LinesRemoved
+	}
 	sort.SliceStable(topLevel, func(i, j int) bool {
 		return nodeTotalLines(topLevel[i]) > nodeTotalLines(topLevel[j])
 	})
 
-	// Truncate to top N items
+	// Sort children within each node by lines changed (descending)
+	for i := range topLevel {
+		sort.SliceStable(topLevel[i].children, func(a, b int) bool {
+			return changeTotalLines(topLevel[i].children[a]) > changeTotalLines(topLevel[i].children[b])
+		})
+	}
+
+	// Truncate to top N displayed rows (parent + children each count as one row).
+	// Walk nodes in sorted order and include as many as fit within the limit.
 	truncatedCount := 0
-	if len(topLevel) > maxStructuralDiffItems {
-		truncatedCount = len(topLevel) - maxStructuralDiffItems
-		topLevel = topLevel[:maxStructuralDiffItems]
+	rowCount := 0
+	keptCount := 0
+	for _, node := range topLevel {
+		nodeRows := 1 + len(node.children) // parent + children
+		if rowCount+nodeRows > maxStructuralDiffItems {
+			break
+		}
+		keptCount++
+		rowCount += nodeRows
+	}
+	if keptCount < len(topLevel) {
+		truncatedCount = len(topLevel) - keptCount
+		topLevel = topLevel[:keptCount]
 	}
 
 	// Calculate max stats width across all entries for signature narrowing.
@@ -1154,6 +1200,9 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		maxSignatureWidth = maxBoxWidth - iconPartWidth - overhead
 		if maxSignatureWidth < 20 {
 			maxSignatureWidth = 20
+		}
+		if maxSignatureWidth > maxStructuralDiffSigWidth {
+			maxSignatureWidth = maxStructuralDiffSigWidth
 		}
 	}
 
@@ -1194,7 +1243,9 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 			treePath:                 structuralTreePath,
 		})
 
-		// Add children (methods within types) with extra indentation
+		// Add children (methods within types) with extra indentation.
+		// If the parent is added/deleted, children inherit that styling
+		// so their identifiers also show bold+underline in the diff color.
 		for _, child := range node.children {
 			childEntry := child.Entry()
 			if childEntry == nil {
@@ -1203,12 +1254,17 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 			childNameOrSig := formatEntry(childEntry)
 			childLine := childPrefix + childEntry.Kind + " " + childNameOrSig
 
+			childChangeKind := child.Kind
+			if c.Kind == structure.ChangeAdded || c.Kind == structure.ChangeDeleted {
+				childChangeKind = c.Kind
+			}
+
 			rows = append(rows, displayRow{
 				kind:                     RowKindStructuralDiff,
 				fileIndex:                fileIdx,
 				isStructuralDiff:         true,
 				structuralDiffLine:       childLine,
-				structuralDiffChangeKind: child.Kind,
+				structuralDiffChangeKind: childChangeKind,
 				structuralDiffAdded:      child.LinesAdded,
 				structuralDiffRemoved:    child.LinesRemoved,
 				headerBoxWidth:           headerBoxWidth,

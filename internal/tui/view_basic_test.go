@@ -2,6 +2,7 @@ package tui
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1282,4 +1283,544 @@ func TestView_StructuralDiffSignatureUsesTerminalWidth(t *testing.T) {
 	// shown, we should not see the compact "(...)" form (but "...Option" is fine)
 	assert.NotContains(t, funcLine, "(...)",
 		"Signature should not be truncated on a 200-wide terminal")
+}
+
+// TestView_StructuralDiffNoSymbolPrefix tests that structural diff lines do not
+// contain the old ~/+/- symbol prefix. The change kind is now conveyed through
+// identifier styling, not a leading symbol character.
+func TestView_StructuralDiffNoSymbolPrefix(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	entries := []structure.Entry{
+		{StartLine: 1, EndLine: 10, Name: "Added", Kind: "func"},
+		{StartLine: 15, EndLine: 25, Name: "Deleted", Kind: "func"},
+		{StartLine: 30, EndLine: 40, Name: "Modified", Kind: "func"},
+	}
+
+	changes := []structure.ElementChange{
+		{Kind: structure.ChangeAdded, NewEntry: &entries[0], LinesAdded: 10},
+		{Kind: structure.ChangeDeleted, OldEntry: &entries[1], LinesRemoved: 10},
+		{Kind: structure.ChangeModified, OldEntry: &entries[2], NewEntry: &entries[2], LinesAdded: 3, LinesRemoved: 2},
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go", NewPath: "b/test.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "package test", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package test", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 20, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap(entries),
+				NewStructure:   structure.NewMap(entries),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	for _, row := range rows {
+		if !row.isStructuralDiff || row.structuralDiffIsTruncated {
+			continue
+		}
+		line := row.structuralDiffLine
+		// The line should start with the kind (after optional child indent),
+		// not with a ~/+/- symbol.
+		trimmed := strings.TrimLeft(line, " ")
+		assert.True(t,
+			strings.HasPrefix(trimmed, "func ") || strings.HasPrefix(trimmed, "type ") ||
+				strings.HasPrefix(trimmed, "class ") || strings.HasPrefix(trimmed, "def "),
+			"Structural diff line should start with kind, not symbol: %q", line)
+	}
+}
+
+// TestView_StructuralDiffChangeKindOnDisplayRow tests that the structuralDiffChangeKind
+// field is set correctly on display rows for added, deleted, and modified items.
+func TestView_StructuralDiffChangeKindOnDisplayRow(t *testing.T) {
+	entries := []structure.Entry{
+		{StartLine: 1, EndLine: 10, Name: "AddedFunc", Kind: "func"},
+		{StartLine: 15, EndLine: 25, Name: "DeletedFunc", Kind: "func"},
+		{StartLine: 30, EndLine: 40, Name: "ModifiedFunc", Kind: "func"},
+	}
+
+	changes := []structure.ElementChange{
+		{Kind: structure.ChangeAdded, NewEntry: &entries[0], LinesAdded: 10},
+		{Kind: structure.ChangeDeleted, OldEntry: &entries[1], LinesRemoved: 10},
+		{Kind: structure.ChangeModified, OldEntry: &entries[2], NewEntry: &entries[2], LinesAdded: 3, LinesRemoved: 2},
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go", NewPath: "b/test.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "package test", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package test", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 20, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap(entries),
+				NewStructure:   structure.NewMap(entries),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	kindByName := make(map[string]structure.ChangeKind)
+	for _, row := range rows {
+		if !row.isStructuralDiff || row.structuralDiffIsTruncated {
+			continue
+		}
+		for _, name := range []string{"AddedFunc", "DeletedFunc", "ModifiedFunc"} {
+			if strings.Contains(row.structuralDiffLine, name) {
+				kindByName[name] = row.structuralDiffChangeKind
+			}
+		}
+	}
+
+	assert.Equal(t, structure.ChangeAdded, kindByName["AddedFunc"], "AddedFunc should have ChangeAdded")
+	assert.Equal(t, structure.ChangeDeleted, kindByName["DeletedFunc"], "DeletedFunc should have ChangeDeleted")
+	assert.Equal(t, structure.ChangeModified, kindByName["ModifiedFunc"], "ModifiedFunc should have ChangeModified")
+}
+
+// TestView_StructuralDiffChildInheritsParentChangeKind tests that when a parent
+// class/type is added or deleted, its child methods inherit that change kind
+// for identifier styling purposes.
+func TestView_StructuralDiffChildInheritsParentChangeKind(t *testing.T) {
+	// A class that is entirely new (added), containing two methods.
+	// The child methods should inherit ChangeAdded from the parent.
+	classEntry := structure.Entry{StartLine: 1, EndLine: 50, Name: "NewClass", Kind: "class"}
+	method1 := structure.Entry{StartLine: 5, EndLine: 20, Name: "method_one", Kind: "def"}
+	method2 := structure.Entry{StartLine: 25, EndLine: 45, Name: "method_two", Kind: "def"}
+
+	changes := []structure.ElementChange{
+		{Kind: structure.ChangeAdded, NewEntry: &classEntry, LinesAdded: 50},
+		{Kind: structure.ChangeAdded, NewEntry: &method1, LinesAdded: 15},
+		{Kind: structure.ChangeAdded, NewEntry: &method2, LinesAdded: 20},
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.py", NewPath: "b/test.py",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 20, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				NewStructure:   structure.NewMap([]structure.Entry{classEntry, method1, method2}),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	kindByName := make(map[string]structure.ChangeKind)
+	for _, row := range rows {
+		if !row.isStructuralDiff || row.structuralDiffIsTruncated {
+			continue
+		}
+		for _, name := range []string{"NewClass", "method_one", "method_two"} {
+			if strings.Contains(row.structuralDiffLine, name) {
+				kindByName[name] = row.structuralDiffChangeKind
+			}
+		}
+	}
+
+	assert.Equal(t, structure.ChangeAdded, kindByName["NewClass"], "Parent class should have ChangeAdded")
+	assert.Equal(t, structure.ChangeAdded, kindByName["method_one"], "Child method should inherit ChangeAdded from parent")
+	assert.Equal(t, structure.ChangeAdded, kindByName["method_two"], "Child method should inherit ChangeAdded from parent")
+}
+
+// TestView_StructuralDiffChildInheritsDeletedKind tests that children of a
+// deleted class inherit ChangeDeleted, even if the child's own Kind differs.
+func TestView_StructuralDiffChildInheritsDeletedKind(t *testing.T) {
+	classEntry := structure.Entry{StartLine: 1, EndLine: 30, Name: "OldClass", Kind: "class"}
+	method := structure.Entry{StartLine: 5, EndLine: 25, Name: "old_method", Kind: "def"}
+
+	changes := []structure.ElementChange{
+		{Kind: structure.ChangeDeleted, OldEntry: &classEntry, LinesRemoved: 30},
+		// The method is modified on its own, but since parent is deleted, it inherits deleted styling
+		{Kind: structure.ChangeModified, OldEntry: &method, NewEntry: &method, LinesAdded: 1, LinesRemoved: 5},
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.py", NewPath: "b/test.py",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 20, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap([]structure.Entry{classEntry, method}),
+				NewStructure:   structure.NewMap([]structure.Entry{classEntry, method}),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	kindByName := make(map[string]structure.ChangeKind)
+	for _, row := range rows {
+		if !row.isStructuralDiff || row.structuralDiffIsTruncated {
+			continue
+		}
+		if strings.Contains(row.structuralDiffLine, "OldClass") {
+			kindByName["OldClass"] = row.structuralDiffChangeKind
+		}
+		if strings.Contains(row.structuralDiffLine, "old_method") {
+			kindByName["old_method"] = row.structuralDiffChangeKind
+		}
+	}
+
+	assert.Equal(t, structure.ChangeDeleted, kindByName["OldClass"], "Parent should be ChangeDeleted")
+	assert.Equal(t, structure.ChangeDeleted, kindByName["old_method"], "Child should inherit ChangeDeleted from deleted parent")
+}
+
+// TestView_StructuralDiffChildrenSortedByLinesChanged tests that children within
+// a class/type are sorted by total lines changed (descending), so the most
+// impactful methods appear first.
+func TestView_StructuralDiffChildrenSortedByLinesChanged(t *testing.T) {
+	classEntry := structure.Entry{StartLine: 1, EndLine: 100, Name: "MyClass", Kind: "class"}
+	smallMethod := structure.Entry{StartLine: 5, EndLine: 10, Name: "small_change", Kind: "def"}
+	bigMethod := structure.Entry{StartLine: 20, EndLine: 50, Name: "big_change", Kind: "def"}
+	medMethod := structure.Entry{StartLine: 60, EndLine: 80, Name: "med_change", Kind: "def"}
+
+	changes := []structure.ElementChange{
+		{Kind: structure.ChangeModified, OldEntry: &classEntry, NewEntry: &classEntry, LinesAdded: 50, LinesRemoved: 10},
+		{Kind: structure.ChangeModified, OldEntry: &smallMethod, NewEntry: &smallMethod, LinesAdded: 1, LinesRemoved: 0},
+		{Kind: structure.ChangeModified, OldEntry: &bigMethod, NewEntry: &bigMethod, LinesAdded: 30, LinesRemoved: 5},
+		{Kind: structure.ChangeModified, OldEntry: &medMethod, NewEntry: &medMethod, LinesAdded: 10, LinesRemoved: 3},
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.py", NewPath: "b/test.py",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 20, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap([]structure.Entry{classEntry, smallMethod, bigMethod, medMethod}),
+				NewStructure:   structure.NewMap([]structure.Entry{classEntry, smallMethod, bigMethod, medMethod}),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Collect the structural diff lines in order (excluding the class parent and truncation)
+	var childNames []string
+	for _, row := range rows {
+		if !row.isStructuralDiff || row.structuralDiffIsTruncated {
+			continue
+		}
+		line := row.structuralDiffLine
+		// Children have 2-space indent prefix
+		if strings.HasPrefix(line, "  ") {
+			for _, name := range []string{"big_change", "med_change", "small_change"} {
+				if strings.Contains(line, name) {
+					childNames = append(childNames, name)
+				}
+			}
+		}
+	}
+
+	require.Equal(t, 3, len(childNames), "Should have 3 child methods")
+	assert.Equal(t, "big_change", childNames[0], "Biggest change should be first")
+	assert.Equal(t, "med_change", childNames[1], "Medium change should be second")
+	assert.Equal(t, "small_change", childNames[2], "Smallest change should be last")
+}
+
+// TestView_StructuralDiffTruncationCountsChildRows tests that the top-10 limit
+// counts each displayed row (parent + children) rather than just top-level nodes.
+// A class with many methods should consume multiple slots.
+func TestView_StructuralDiffTruncationCountsChildRows(t *testing.T) {
+	// Create a class with 8 methods (= 9 rows: 1 parent + 8 children).
+	// Then add 3 standalone functions.
+	// Total nodes = 4 (1 class + 3 funcs), but total rows = 9 + 3 = 12.
+	// With a limit of 10, the class (9 rows) + 1 standalone func = 10 rows.
+	// The remaining 2 funcs should be truncated.
+	classEntry := structure.Entry{StartLine: 1, EndLine: 200, Name: "BigClass", Kind: "class"}
+	var methods []structure.Entry
+	var allChanges []structure.ElementChange
+
+	// Class itself
+	allChanges = append(allChanges, structure.ElementChange{
+		Kind: structure.ChangeModified, OldEntry: &classEntry, NewEntry: &classEntry,
+		LinesAdded: 100, LinesRemoved: 50,
+	})
+
+	// 8 methods inside the class
+	for i := 0; i < 8; i++ {
+		m := structure.Entry{
+			StartLine: 10 + i*20, EndLine: 25 + i*20,
+			Name: fmt.Sprintf("method_%d", i), Kind: "def",
+		}
+		methods = append(methods, m)
+		allChanges = append(allChanges, structure.ElementChange{
+			Kind: structure.ChangeModified, OldEntry: &methods[i], NewEntry: &methods[i],
+			LinesAdded: 10 - i, LinesRemoved: i, // varying counts
+		})
+	}
+
+	// 3 standalone functions with smaller total changes
+	standaloneEntries := []structure.Entry{
+		{StartLine: 300, EndLine: 310, Name: "StandaloneA", Kind: "func"},
+		{StartLine: 320, EndLine: 330, Name: "StandaloneB", Kind: "func"},
+		{StartLine: 340, EndLine: 350, Name: "StandaloneC", Kind: "func"},
+	}
+	allChanges = append(allChanges,
+		structure.ElementChange{Kind: structure.ChangeModified, OldEntry: &standaloneEntries[0], NewEntry: &standaloneEntries[0], LinesAdded: 5, LinesRemoved: 2},
+		structure.ElementChange{Kind: structure.ChangeModified, OldEntry: &standaloneEntries[1], NewEntry: &standaloneEntries[1], LinesAdded: 3, LinesRemoved: 1},
+		structure.ElementChange{Kind: structure.ChangeModified, OldEntry: &standaloneEntries[2], NewEntry: &standaloneEntries[2], LinesAdded: 2, LinesRemoved: 0},
+	)
+
+	allEntries := append([]structure.Entry{classEntry}, methods...)
+	allEntries = append(allEntries, standaloneEntries...)
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/big.py", NewPath: "b/big.py",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "# big", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "# big", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 40, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap(allEntries),
+				NewStructure:   structure.NewMap(allEntries),
+				StructuralDiff: &structure.StructuralDiff{Changes: allChanges},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	var structRows []displayRow
+	var truncatedRow *displayRow
+	for i, row := range rows {
+		if row.isStructuralDiff {
+			if row.structuralDiffIsTruncated {
+				truncatedRow = &rows[i]
+			} else {
+				structRows = append(structRows, row)
+			}
+		}
+	}
+
+	// BigClass (1) + 8 methods = 9 rows. That's under 10 so the class fits.
+	// StandaloneA (1 row) would make 10 total. That fits.
+	// StandaloneB would be 11 — exceeds limit, so it and StandaloneC are truncated.
+	// But wait: nodes are sorted by total lines. BigClass has 150 total (including children).
+	// StandaloneA=7, StandaloneB=4, StandaloneC=2. BigClass is first (150 >> 7).
+	// BigClass takes 9 rows. Next is StandaloneA (1 row) = 10 total. Fits.
+	// StandaloneB would be 11. Doesn't fit. So 2 nodes truncated.
+
+	// The class and its methods should all appear
+	foundClass := false
+	methodCount := 0
+	foundStandaloneA := false
+	for _, row := range structRows {
+		if strings.Contains(row.structuralDiffLine, "BigClass") {
+			foundClass = true
+		}
+		if strings.Contains(row.structuralDiffLine, "method_") {
+			methodCount++
+		}
+		if strings.Contains(row.structuralDiffLine, "StandaloneA") {
+			foundStandaloneA = true
+		}
+	}
+
+	assert.True(t, foundClass, "BigClass should appear")
+	assert.Equal(t, 8, methodCount, "All 8 methods of BigClass should appear")
+	assert.True(t, foundStandaloneA, "StandaloneA should fit within the 10-row limit")
+
+	// StandaloneB and StandaloneC should NOT appear
+	for _, row := range structRows {
+		assert.NotContains(t, row.structuralDiffLine, "StandaloneB", "StandaloneB should be truncated")
+		assert.NotContains(t, row.structuralDiffLine, "StandaloneC", "StandaloneC should be truncated")
+	}
+
+	// Should have a truncation indicator for the remaining 2 nodes
+	require.NotNil(t, truncatedRow, "Should have a truncation row")
+	assert.Contains(t, truncatedRow.structuralDiffLine, "2 more", "Should indicate 2 truncated nodes")
+}
+
+// TestView_StructuralDiffSignatureMaxWidth tests that signatures are capped at
+// maxStructuralDiffSigWidth (120) even on very wide terminals.
+func TestView_StructuralDiffSignatureMaxWidth(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	// Create a function with an extremely long signature
+	entry := &structure.Entry{
+		StartLine:  1,
+		EndLine:    50,
+		Name:       "VeryLongFunctionName",
+		Kind:       "func",
+		Receiver:   "(m *Model)",
+		Params:     []string{"ctx context.Context", "request *LongRequestType", "options ...VeryLongOptionType", "callback func(int, string, error)", "extra ExtraParam"},
+		ReturnType: "VeryLongReturnType",
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/x.go", NewPath: "b/x.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "package x", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package x", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width:  500, // Extremely wide terminal
+		height: 20,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure: structure.NewMap([]structure.Entry{*entry}),
+				NewStructure: structure.NewMap([]structure.Entry{*entry}),
+				StructuralDiff: &structure.StructuralDiff{
+					Changes: []structure.ElementChange{
+						{Kind: structure.ChangeModified, OldEntry: entry, NewEntry: entry, LinesAdded: 10, LinesRemoved: 3},
+					},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Find the structural diff line
+	var sigLine string
+	for _, row := range rows {
+		if row.isStructuralDiff && !row.structuralDiffIsTruncated {
+			sigLine = row.structuralDiffLine
+			break
+		}
+	}
+	require.NotEmpty(t, sigLine, "Should have a structural diff line")
+
+	// Extract just the signature part (after "func ")
+	parts := strings.SplitN(sigLine, " ", 2)
+	require.Equal(t, 2, len(parts), "Line should have kind and signature")
+	sig := parts[1]
+
+	// The signature should be at most 120 chars wide. It might be truncated with "...".
+	assert.LessOrEqual(t, len(sig), maxStructuralDiffSigWidth,
+		"Signature should be capped at %d chars, got %d: %q", maxStructuralDiffSigWidth, len(sig), sig)
+}
+
+// TestView_StructuralDiffModifiedChildKeepsOwnKind tests that when a parent
+// class is modified (not added/deleted), children keep their own change kind
+// rather than inheriting from the parent.
+func TestView_StructuralDiffModifiedChildKeepsOwnKind(t *testing.T) {
+	classEntry := structure.Entry{StartLine: 1, EndLine: 50, Name: "MyClass", Kind: "class"}
+	addedMethod := structure.Entry{StartLine: 5, EndLine: 20, Name: "new_method", Kind: "def"}
+	modifiedMethod := structure.Entry{StartLine: 25, EndLine: 45, Name: "changed_method", Kind: "def"}
+
+	changes := []structure.ElementChange{
+		{Kind: structure.ChangeModified, OldEntry: &classEntry, NewEntry: &classEntry, LinesAdded: 20, LinesRemoved: 5},
+		{Kind: structure.ChangeAdded, NewEntry: &addedMethod, LinesAdded: 15},
+		{Kind: structure.ChangeModified, OldEntry: &modifiedMethod, NewEntry: &modifiedMethod, LinesAdded: 3, LinesRemoved: 2},
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.py", NewPath: "b/test.py",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 20, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap([]structure.Entry{classEntry, addedMethod, modifiedMethod}),
+				NewStructure:   structure.NewMap([]structure.Entry{classEntry, addedMethod, modifiedMethod}),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	kindByName := make(map[string]structure.ChangeKind)
+	for _, row := range rows {
+		if !row.isStructuralDiff || row.structuralDiffIsTruncated {
+			continue
+		}
+		if strings.Contains(row.structuralDiffLine, "MyClass") {
+			kindByName["MyClass"] = row.structuralDiffChangeKind
+		}
+		if strings.Contains(row.structuralDiffLine, "new_method") {
+			kindByName["new_method"] = row.structuralDiffChangeKind
+		}
+		if strings.Contains(row.structuralDiffLine, "changed_method") {
+			kindByName["changed_method"] = row.structuralDiffChangeKind
+		}
+	}
+
+	assert.Equal(t, structure.ChangeModified, kindByName["MyClass"], "Parent should be ChangeModified")
+	assert.Equal(t, structure.ChangeAdded, kindByName["new_method"], "Added child keeps its own ChangeAdded when parent is modified")
+	assert.Equal(t, structure.ChangeModified, kindByName["changed_method"], "Modified child keeps its own ChangeModified when parent is modified")
 }
