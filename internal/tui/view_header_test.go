@@ -170,15 +170,20 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
-			header := lines[3]
 
 			foldIcon := m.foldLevelIcon(tt.foldLevel)
 
-			// Header format: <foldIcon> filename (no file number or status symbol)
-			assert.Contains(t, header, foldIcon,
-				"header should contain fold icon: %s", foldIcon)
-			assert.Contains(t, header, tt.wantFile,
-				"header should contain filename: %s", tt.wantFile)
+			// Find the content file header by searching after the divider line
+			// Top bar is 3 content lines + divider = 4 lines, so content starts at index 4
+			var header string
+			for i := 4; i < len(lines); i++ {
+				if strings.Contains(lines[i], foldIcon) && strings.Contains(lines[i], tt.wantFile) {
+					header = lines[i]
+					break
+				}
+			}
+
+			require.NotEmpty(t, header, "should find header with fold icon %s and filename %s", foldIcon, tt.wantFile)
 			// File number and status symbol should NOT be in main view headers
 			assert.NotContains(t, header, "#1",
 				"main view header should not contain file number")

@@ -321,7 +321,7 @@ func TestView_LineNumberTruncation(t *testing.T) {
 			},
 		},
 		width:  100,
-		height: 10,
+		height: 15,
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()

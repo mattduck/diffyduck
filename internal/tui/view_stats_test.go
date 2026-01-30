@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -233,13 +234,17 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout at minScroll: [topBar, divider, padding, header, ...]
-	// lines[3] = header (at cursorOffset position)
-	header := lines[3]
-	assert.Contains(t, header, "main.go", "header should contain filename")
+	// Find the content header line by searching for the filename
+	var header string
+	for _, line := range lines {
+		if strings.Contains(line, "main.go") && strings.Contains(line, "+3") {
+			header = line
+			break
+		}
+	}
+	require.NotEmpty(t, header, "should find header line with main.go")
 	assert.Contains(t, header, "+3", "header should show addition count")
 	assert.Contains(t, header, "-2", "header should show deletion count")
-	// Note: With tree-style layout, headers no longer have trailing shading
 }
 
 func TestFileHeaderWithStats_StatsColumnAlignment(t *testing.T) {
@@ -287,11 +292,18 @@ func TestFileHeaderWithStats_StatsColumnAlignment(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Layout at minScroll: [topBar, divider, padding, header1, header2, ...]
-	header1 := lines[3] // +100
-	header2 := lines[4] // +5
-
-	// Both headers should contain their respective counts
+	// Find headers by content rather than hardcoded indices
+	var header1, header2 string
+	for _, line := range lines {
+		if strings.Contains(line, "view.go") && strings.Contains(line, "+100") {
+			header1 = line
+		}
+		if strings.Contains(line, "test.go") && strings.Contains(line, "+5") {
+			header2 = line
+		}
+	}
+	require.NotEmpty(t, header1, "should find header line with view.go")
+	require.NotEmpty(t, header2, "should find header line with test.go")
 	assert.Contains(t, header1, "+100", "first header should show +100")
 	assert.Contains(t, header2, "+5", "second header should show +5")
 }
@@ -325,12 +337,21 @@ func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	// Layout at minScroll: [topBar, divider, padding, header, ...]
-	header := lines[3]
 
-	assert.Contains(t, header, "newfile.go", "header should contain filename")
+	// Find the content file header (not the top bar summary line which contains "file")
+	var headers []string
+	for _, line := range lines {
+		if strings.Contains(line, "newfile.go") && strings.Contains(line, "+2") {
+			headers = append(headers, line)
+		}
+	}
+	// The content header is the one that doesn't contain the summary "file" count
+	require.GreaterOrEqual(t, len(headers), 1, "should find at least one header line with newfile.go")
+	header := headers[len(headers)-1] // content header comes after top bar
 	assert.Contains(t, header, "+2", "header should show addition count")
-	assert.NotContains(t, header, "-", "header should not show deletion count when zero")
+	// The content file header should not contain a deletion count like "-N"
+	// (The top bar summary may show "-" for zero, but we're checking the content header)
+	assert.NotRegexp(t, `-\d`, header, "header should not show deletion count when zero")
 }
 
 func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
@@ -366,10 +387,16 @@ func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
-	// Layout at minScroll: [topBar, divider, padding, header, ...]
-	header := lines[3]
 
-	assert.Contains(t, header, "deleted.go", "header should contain filename")
+	// Find header by content rather than hardcoded index
+	var header string
+	for _, line := range lines {
+		if strings.Contains(line, "deleted.go") && strings.Contains(line, "-3") {
+			header = line
+			break
+		}
+	}
+	require.NotEmpty(t, header, "should find header line with deleted.go")
 	assert.Contains(t, header, "-3", "header should show deletion count")
 	// Check there's no + count (but the filename might contain + in other contexts)
 	// The format should be "-3 ---" not "+0 -3 ---"

@@ -519,10 +519,7 @@ func (m Model) commentPromptHeight() int {
 // baseContentHeight returns the height available for content without the comment prompt.
 // This is used for cursor calculations to keep them stable when comment mode is active.
 func (m Model) baseContentHeight() int {
-	reserved := 3 // file line + divider + bottom bar
-	if m.hasCommitInfo() {
-		reserved++ // commit info line in top bar
-	}
+	reserved := 5 // top bar (3 content lines + divider) + bottom bar
 	h := m.height - reserved
 	if h < 1 {
 		return 1

@@ -30,13 +30,15 @@ func (m Model) renderTopBar() string {
 		lines = append(lines, fileLine)
 	}
 
-	// In log mode, ensure minimum height of 2 content lines (before divider)
-	// to avoid flickering as the top bar grows/shrinks while scrolling between
-	// commit sections and file sections.
-	if m.hasCommitInfo() {
-		for len(lines) < 2 {
-			lines = append(lines, "")
-		}
+	// Breadcrumb line (function/scope context from tree-sitter)
+	breadcrumbLine := m.renderBreadcrumbLine(info)
+	lines = append(lines, breadcrumbLine)
+
+	// Fixed height of 3 content lines before divider to avoid flickering.
+	// In log mode: commit + file + breadcrumbs (some may be blank).
+	// In diff mode: file + breadcrumbs + blank.
+	for len(lines) < 3 {
+		lines = append(lines, "")
 	}
 
 	// Divider line using upper 1/8 block (dim, faint when unfocused)
@@ -237,6 +239,27 @@ func (m Model) renderFileLine(info StatusInfo) string {
 	}
 
 	return leftSection + content + strings.Repeat(" ", padding) + rightSection
+}
+
+// renderBreadcrumbLine renders the breadcrumb line for the top bar.
+// Shows the function/scope context from tree-sitter structure analysis.
+// Indented to align with the # file number on the file line above.
+func (m Model) renderBreadcrumbLine(info StatusInfo) string {
+	// Indent: 2 spaces + fold icon(1) + space(1) = 4 columns, aligns with #
+	const indent = "    "
+	availableWidth := m.width - len(indent)
+	if availableWidth < 0 {
+		availableWidth = 0
+	}
+	if len(info.BreadcrumbEntries) > 0 && m.highlighter != nil {
+		theme := m.highlighter.Theme()
+		return indent + formatBreadcrumbsStyled(info.BreadcrumbEntries, theme, availableWidth)
+	}
+	if info.Breadcrumbs != "" {
+		breadcrumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		return indent + breadcrumbStyle.Render(info.Breadcrumbs)
+	}
+	return ""
 }
 
 // formatRelativeDate converts an ISO 8601 date string to a relative format like "2d ago".
@@ -483,26 +506,7 @@ func (m Model) formatStatusFileInfo(info StatusInfo) string {
 		statsWidth += 1 + len(parts) - 1 // leading space + spaces between parts
 	}
 
-	// Calculate available width for breadcrumbs
-	// Layout: statusIcon(1) + space(1) + fileName + stats + "  " + breadcrumbs
-	usedWidth := 1 + 1 + len(info.FileName) + statsWidth + 2
-	availableWidth := m.width - usedWidth
-	if availableWidth < 0 {
-		availableWidth = 0
-	}
-
-	// Format breadcrumbs with syntax highlighting if we have entries and a highlighter
-	var breadcrumbs string
-	if len(info.BreadcrumbEntries) > 0 && m.highlighter != nil {
-		theme := m.highlighter.Theme()
-		breadcrumbs = "  " + formatBreadcrumbsStyled(info.BreadcrumbEntries, theme, availableWidth)
-	} else if info.Breadcrumbs != "" {
-		// Fallback to plain grey if no highlighter
-		breadcrumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-		breadcrumbs = "  " + breadcrumbStyle.Render(info.Breadcrumbs)
-	}
-
-	return styledStatus + " " + info.FileName + stats + breadcrumbs
+	return styledStatus + " " + info.FileName + stats
 }
 
 // renderSearchPrompt renders the status bar as a search input prompt.

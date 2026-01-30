@@ -291,12 +291,12 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 
 		output := m.View()
 
-		// Layout: [topBar, divider, visibleRows..., bottomBar]
-		// At minScroll=-1, visibleRows[0]=blank (padding for negative scroll), visibleRows[1]=header
-		// So lines[0]=topBar file info, lines[1]=divider, lines[2]=blank, lines[3]=header (with cursor)
+		// Layout: [topBar(3 lines), divider, visibleRows..., bottomBar]
+		// At minScroll, visibleRows[0]=blank (padding), visibleRows[1]=header
+		// So lines[0..2]=topBar, lines[3]=divider, lines[4]=blank, lines[5]=header (with cursor)
 		lines := strings.Split(output, "\n")
-		require.True(t, len(lines) > 3, "should have more than 3 lines of output")
-		headerLine := lines[3]
+		require.True(t, len(lines) > 5, "should have more than 5 lines of output")
+		headerLine := lines[5]
 
 		// The header should contain the filename
 		assert.Contains(t, headerLine, "test.go", "header should contain filename")
@@ -330,10 +330,10 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 
 		output := m.View()
 		lines := strings.Split(output, "\n")
-		require.True(t, len(lines) > 3, "should have more than 3 lines of output")
-		// At minScroll=-1, visibleRows[0]=blank (padding), visibleRows[1]=header
-		// So lines[0]=topBar, lines[1]=divider, lines[2]=blank, lines[3]=header (with cursor)
-		headerLine := lines[3]
+		require.True(t, len(lines) > 5, "should have more than 5 lines of output")
+		// At minScroll, visibleRows[0]=blank (padding), visibleRows[1]=header
+		// So lines[0..2]=topBar, lines[3]=divider, lines[4]=blank, lines[5]=header (with cursor)
+		headerLine := lines[5]
 
 		// Headers show cursor arrow but NO background highlighting
 		assert.Contains(t, headerLine, "▶", "header should show cursor arrow")
@@ -369,8 +369,8 @@ func TestView_CursorHighlight_OnFileHeader_UnfocusedNoBg(t *testing.T) {
 
 		output := m.View()
 		lines := strings.Split(output, "\n")
-		// lines[0]=topBar, lines[1]=divider, lines[2]=top border, lines[3]=header (with cursor)
-		headerLine := lines[3]
+		// lines[0..2]=topBar, lines[3]=divider, lines[4]=top border, lines[5]=header (with cursor)
+		headerLine := lines[5]
 
 		// Should have outline arrow
 		assert.Contains(t, headerLine, "▷", "unfocused header should have outline arrow")
@@ -465,11 +465,11 @@ func TestView_CursorHighlight_OnDiffLine(t *testing.T) {
 		output := m.View()
 		lines := strings.Split(output, "\n")
 
-		// Layout: [topBar, divider, content..., bottomBar]
+		// Layout: [topBar(3 lines), divider, content..., bottomBar]
 		// With scroll=2, cursor on content line 2 (the diff line)
-		// lines[0]=topBar, lines[1]=divider, lines[2]=spacer, lines[3]=diffLine (with cursor)
-		assert.True(t, len(lines) > 3)
-		diffLine := lines[3]
+		// lines[0..2]=topBar, lines[3]=divider, lines[4]=spacer, lines[5]=diffLine (with cursor)
+		assert.True(t, len(lines) > 5)
+		diffLine := lines[5]
 
 		// The diff line gutters should have cursor highlighting
 		assert.Contains(t, diffLine, ansiCursorStyle, "diff line should have cursor highlighting on gutter")

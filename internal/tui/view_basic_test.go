@@ -425,7 +425,7 @@ func TestView_ScrolledToMax(t *testing.T) {
 			},
 		},
 		width:  80,
-		height: 5, // Small viewport
+		height: 7, // Small viewport (top bar=4 lines + 1 content + 1 bottom bar minimum)
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
@@ -434,14 +434,14 @@ func TestView_ScrolledToMax(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	assert.Equal(t, 5, len(lines), "should have exactly height lines")
+	assert.Equal(t, 7, len(lines), "should have exactly height lines")
 
-	// Layout: [topBar, divider, content[0..contentH-1], bottomBar]
-	// lines[0] = top bar (still shows file name since cursor is on file content)
+	// Layout: [topBar(3 lines), divider, content[0..contentH-1], bottomBar]
+	// lines[0] = top bar (shows file name since cursor is on file content)
 	assert.Contains(t, lines[0], "foo.go", "top bar should show file name")
 
-	// lines[4] = bottom bar with END
-	assert.Contains(t, lines[4], "END")
+	// last line = bottom bar with END
+	assert.Contains(t, lines[len(lines)-1], "END")
 }
 
 func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
@@ -484,13 +484,13 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	assert.Contains(t, lastLine, "END")
 }
 
-func TestContentHeight_ReservesThreeLines(t *testing.T) {
+func TestContentHeight_ReservesTopAndBottomBars(t *testing.T) {
 	m := Model{
 		height: 20,
 	}
 
-	// contentHeight should be height - 3 (for top bar, divider, and bottom bar)
-	assert.Equal(t, 17, m.contentHeight(), "contentHeight should be height - 3")
+	// contentHeight should be height - 5 (top bar: 3 content lines + divider, plus bottom bar)
+	assert.Equal(t, 15, m.contentHeight(), "contentHeight should be height - 5")
 }
 
 func TestContentHeight_MinimumOne(t *testing.T) {

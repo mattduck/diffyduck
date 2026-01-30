@@ -1,10 +1,10 @@
   ◐ #1 ~ foo.go +1 -1                                              1 file +1 -1
+
+
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
 ▶├━━━━◐ foo.go +1 -1 ┏━━…
  │    ┗━━━━━━━━━━━━━━┛
  │      1                              ┃      1                                 
  │ ~    2 ░ a much longer line that  ░ ┃ ~    2 ░ a much longer line that will ░
- │      3   89abcdefghij               ┃      3   89abcdefghij                  
- ┴ 
  line 1/6 0%                                                                    

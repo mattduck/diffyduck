@@ -688,8 +688,8 @@ func TestTopBar_WithoutCommitInfo(t *testing.T) {
 	topBar := m.renderTopBar()
 	lines := strings.Split(topBar, "\n")
 
-	// Should have 2 lines: file line and divider (no commit line)
-	require.Equal(t, 2, len(lines), "top bar without commit info should have file line and divider only")
+	// Should have 4 lines: file + breadcrumbs + blank + divider (fixed height of 3 content lines)
+	require.Equal(t, 4, len(lines), "top bar should have 3 content lines + divider")
 
 	// First line should contain file info (not commit info)
 	fileLine := lines[0]
@@ -702,9 +702,9 @@ func TestTopBar_WithoutCommitInfo(t *testing.T) {
 }
 
 func TestTopBar_DynamicHeight_OnCommitSection(t *testing.T) {
-	// When cursor is on a commit section (header/body), top bar should shrink
-	// to show only commit line + divider (no file line).
-	// When cursor is on a file, top bar should show commit + file + divider.
+	// Top bar has a fixed height of 3 content lines + divider.
+	// When on commit section: commit + blank + blank + divider.
+	// When on file: commit + file + breadcrumbs + divider.
 	files := []sidebyside.FilePair{
 		{
 			OldPath:   "a/foo.go",
@@ -741,21 +741,21 @@ func TestTopBar_DynamicHeight_OnCommitSection(t *testing.T) {
 	topBarOnCommit := m.renderTopBar()
 	linesOnCommit := strings.Split(topBarOnCommit, "\n")
 
-	// Should have 3 lines: commit line + blank (minimum height) + divider
-	assert.Equal(t, 3, len(linesOnCommit), "top bar on commit section should have 3 lines (commit + blank + divider)")
+	// Should have 4 lines: commit + breadcrumbs + blank + divider (fixed 3 content lines)
+	assert.Equal(t, 4, len(linesOnCommit), "top bar on commit section should have 4 lines")
 	assert.Contains(t, linesOnCommit[0], "abc123d", "first line should be commit line with SHA")
-	assert.Contains(t, linesOnCommit[2], "▔", "third line should be divider")
+	assert.Contains(t, linesOnCommit[3], "▔", "fourth line should be divider")
 
 	// Test 2: Cursor on file (scroll high enough to be past commit body)
 	m.scroll = 15
 	topBarOnFile := m.renderTopBar()
 	linesOnFile := strings.Split(topBarOnFile, "\n")
 
-	// Should have 3 lines: commit line + file line + divider
-	assert.Equal(t, 3, len(linesOnFile), "top bar on file should have 3 lines (commit + file + divider)")
+	// Should have 4 lines: commit + file + breadcrumbs + divider
+	assert.Equal(t, 4, len(linesOnFile), "top bar on file should have 4 lines")
 	assert.Contains(t, linesOnFile[0], "abc123d", "first line should be commit line")
 	assert.Contains(t, linesOnFile[1], "foo.go", "second line should be file line")
-	assert.Contains(t, linesOnFile[2], "▔", "third line should be divider")
+	assert.Contains(t, linesOnFile[3], "▔", "fourth line should be divider")
 }
 
 func TestView_NoPaddingLineAboveBottomBar(t *testing.T) {
@@ -868,13 +868,13 @@ func TestContentHeight_WithCommitInfo(t *testing.T) {
 	m2 := NewWithCommits([]sidebyside.CommitSet{commit})
 	m2.height = 20
 
-	// Content height should be 1 less when commit info is present (extra line for commit info)
-	assert.Equal(t, m1.contentHeight()-1, m2.contentHeight(),
-		"content height should be 1 less when commit info is present")
+	// Top bar is always 3 content lines + divider, same in both modes
+	assert.Equal(t, m1.contentHeight(), m2.contentHeight(),
+		"content height should be the same regardless of commit info (fixed 3-line top bar)")
 }
 
 func TestContentHeight_CommitFolded(t *testing.T) {
-	// With commit info but folded - top bar still shows
+	// With commit info but folded - top bar still shows fixed 3-line height
 	commit := sidebyside.CommitSet{
 		Info:        sidebyside.CommitInfo{SHA: "abc123", Author: "Test"},
 		Files:       []sidebyside.FilePair{{OldPath: "a/foo.go", NewPath: "b/foo.go"}},
@@ -884,10 +884,10 @@ func TestContentHeight_CommitFolded(t *testing.T) {
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
 	m.height = 20
 
-	// Top bar always shows: commit line + file line + divider + bottom bar = 4 reserved
-	// Content height = 20 - 4 = 16
-	assert.Equal(t, 16, m.contentHeight(),
-		"folded commit should still reserve 4 lines (commit + file + divider + bottom)")
+	// Top bar: 3 content lines + divider + bottom bar = 5 reserved
+	// Content height = 20 - 5 = 15
+	assert.Equal(t, 15, m.contentHeight(),
+		"folded commit should reserve 5 lines (3 top bar lines + divider + bottom bar)")
 }
 
 func TestCommitHeaderRow(t *testing.T) {
