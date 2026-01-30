@@ -1006,3 +1006,121 @@ func TestView_StructuralDiffBoxWidthAdaptive_MultipleEntries(t *testing.T) {
 			"80%% of terminal (250) would be 200.",
 		borderPos, maxExpectedBorderPos)
 }
+
+// TestView_StructuralDiffTruncation tests that structural diff preview is
+// sorted by total lines changed and truncated to top 10 with "...(N more)".
+func TestView_StructuralDiffTruncation(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	// Create 13 functions with varying line counts.
+	// After sorting by total lines changed (desc), the top 10 should appear
+	// and the remaining 3 should be summarized as "...(3 more)".
+	type funcDef struct {
+		name         string
+		startLine    int
+		endLine      int
+		linesAdded   int
+		linesRemoved int
+	}
+	funcs := []funcDef{
+		{"Alpha", 1, 5, 1, 0},      // total 1 (should be truncated)
+		{"Bravo", 10, 20, 10, 5},   // total 15
+		{"Charlie", 25, 35, 3, 0},  // total 3 (should be truncated)
+		{"Delta", 40, 50, 8, 2},    // total 10
+		{"Echo", 55, 65, 20, 0},    // total 20
+		{"Foxtrot", 70, 80, 5, 5},  // total 10
+		{"Golf", 85, 95, 12, 3},    // total 15
+		{"Hotel", 100, 110, 7, 1},  // total 8
+		{"India", 115, 125, 4, 0},  // total 4
+		{"Juliet", 130, 140, 6, 6}, // total 12
+		{"Kilo", 145, 155, 30, 10}, // total 40
+		{"Lima", 160, 170, 2, 0},   // total 2 (should be truncated)
+		{"Mike", 175, 185, 9, 9},   // total 18
+	}
+
+	var entries []structure.Entry
+	var changes []structure.ElementChange
+	for _, f := range funcs {
+		entry := structure.Entry{
+			StartLine: f.startLine, EndLine: f.endLine,
+			Name: f.name, Kind: "func",
+		}
+		entries = append(entries, entry)
+		entryCopy := entry
+		changes = append(changes, structure.ElementChange{
+			Kind:         structure.ChangeModified,
+			OldEntry:     &entryCopy,
+			NewEntry:     &entryCopy,
+			LinesAdded:   f.linesAdded,
+			LinesRemoved: f.linesRemoved,
+		})
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/big_file.go",
+				NewPath:   "b/big_file.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "package big", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package big", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width:  120,
+		height: 40,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap(entries),
+				NewStructure:   structure.NewMap(entries),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	lines := strings.Split(output, "\n")
+
+	var strippedLines []string
+	for _, line := range lines {
+		strippedLines = append(strippedLines, ansiRegex.ReplaceAllString(line, ""))
+	}
+
+	// Should contain the truncation indicator
+	foundMore := false
+	for _, s := range strippedLines {
+		if strings.Contains(s, "...(3 more)") {
+			foundMore = true
+			break
+		}
+	}
+	require.True(t, foundMore, "Expected '...(3 more)' truncation line in output.\nOutput lines:\n%s",
+		strings.Join(strippedLines, "\n"))
+
+	// The top entry by lines changed is Kilo (40 total) - it should appear
+	foundKilo := false
+	for _, s := range strippedLines {
+		if strings.Contains(s, "Kilo") {
+			foundKilo = true
+			break
+		}
+	}
+	assert.True(t, foundKilo, "Expected highest-change function 'Kilo' to appear in top 10")
+
+	// The lowest entries (Alpha=1, Lima=2, Charlie=3) should NOT appear
+	for _, name := range []string{"Alpha", "Lima", "Charlie"} {
+		found := false
+		for _, s := range strippedLines {
+			if strings.Contains(s, name) {
+				found = true
+				break
+			}
+		}
+		assert.False(t, found, "Expected truncated function '%s' to NOT appear in output", name)
+	}
+}

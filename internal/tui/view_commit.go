@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -9,6 +10,8 @@ import (
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"github.com/user/diffyduck/pkg/structure"
 )
+
+const maxStructuralDiffItems = 10
 
 // renderCommitHeaderRow renders a commit header row in the content area.
 // This is shown when viewing a commit and can be folded/unfolded.
@@ -758,6 +761,12 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 	maxWidth := 0
 
 	// Build tree structure to identify children (same logic as buildStructuralDiffRows)
+	type widthTreeNode struct {
+		change   structure.ElementChange
+		children []structure.ElementChange
+	}
+
+	var topLevel []widthTreeNode
 	methodsAssigned := make(map[int]bool)
 
 	// First pass: find types and their children
@@ -767,14 +776,7 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 			continue
 		}
 		if entry.Kind == "type" || entry.Kind == "class" {
-			// Width for parent: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name/sig + stats
-			// extraIndent = symbolPrefix (11+numDigits) - iconPartWidth (9+numDigits) = 2
-			width := 2 + 1 + 1 + runewidth.StringWidth(entry.Kind) + 1 + entryDisplayWidth(entry) + statsWidth
-			if width > maxWidth {
-				maxWidth = width
-			}
-
-			// Find children
+			node := widthTreeNode{change: c}
 			for j, other := range changes {
 				if i == j {
 					continue
@@ -787,15 +789,12 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 					typeStart, typeEnd := entry.StartLine, entry.EndLine
 					otherStart := otherEntry.StartLine
 					if otherStart >= typeStart && otherStart <= typeEnd {
-						// Width for child: extraIndent(2) + symbol(1) + space(1) + childIndent(2) + kind + space(1) + name/sig + stats
-						childWidth := 2 + 1 + 1 + 2 + runewidth.StringWidth(otherEntry.Kind) + 1 + entryDisplayWidth(otherEntry) + statsWidth
-						if childWidth > maxWidth {
-							maxWidth = childWidth
-						}
+						node.children = append(node.children, other)
 						methodsAssigned[j] = true
 					}
 				}
 			}
+			topLevel = append(topLevel, node)
 			methodsAssigned[i] = true
 		}
 	}
@@ -803,14 +802,46 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 	// Second pass: remaining top-level items
 	for i, c := range changes {
 		if !methodsAssigned[i] {
-			entry := c.Entry()
-			if entry == nil {
+			topLevel = append(topLevel, widthTreeNode{change: c})
+		}
+	}
+
+	// Sort by total lines changed and truncate (same as buildStructuralDiffRows)
+	sort.SliceStable(topLevel, func(i, j int) bool {
+		totalI := topLevel[i].change.LinesAdded + topLevel[i].change.LinesRemoved
+		for _, child := range topLevel[i].children {
+			totalI += child.LinesAdded + child.LinesRemoved
+		}
+		totalJ := topLevel[j].change.LinesAdded + topLevel[j].change.LinesRemoved
+		for _, child := range topLevel[j].children {
+			totalJ += child.LinesAdded + child.LinesRemoved
+		}
+		return totalI > totalJ
+	})
+	if len(topLevel) > maxStructuralDiffItems {
+		topLevel = topLevel[:maxStructuralDiffItems]
+	}
+
+	// Calculate max width from visible items
+	for _, node := range topLevel {
+		entry := node.change.Entry()
+		if entry == nil {
+			continue
+		}
+		// Width for parent: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name/sig + stats
+		width := 2 + 1 + 1 + runewidth.StringWidth(entry.Kind) + 1 + entryDisplayWidth(entry) + statsWidth
+		if width > maxWidth {
+			maxWidth = width
+		}
+		for _, child := range node.children {
+			childEntry := child.Entry()
+			if childEntry == nil {
 				continue
 			}
-			// Width for top-level: extraIndent(2) + symbol(1) + space(1) + kind + space(1) + name/sig + stats
-			width := 2 + 1 + 1 + runewidth.StringWidth(entry.Kind) + 1 + entryDisplayWidth(entry) + statsWidth
-			if width > maxWidth {
-				maxWidth = width
+			// Width for child: extraIndent(2) + symbol(1) + space(1) + childIndent(2) + kind + space(1) + name/sig + stats
+			childWidth := 2 + 1 + 1 + 2 + runewidth.StringWidth(childEntry.Kind) + 1 + entryDisplayWidth(childEntry) + statsWidth
+			if childWidth > maxWidth {
+				maxWidth = childWidth
 			}
 		}
 	}
@@ -899,6 +930,25 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		if !methodsAssigned[i] {
 			topLevel = append(topLevel, treeNode{change: c})
 		}
+	}
+
+	// Sort by total lines changed (added + removed), descending
+	nodeTotalLines := func(n treeNode) int {
+		total := n.change.LinesAdded + n.change.LinesRemoved
+		for _, child := range n.children {
+			total += child.LinesAdded + child.LinesRemoved
+		}
+		return total
+	}
+	sort.SliceStable(topLevel, func(i, j int) bool {
+		return nodeTotalLines(topLevel[i]) > nodeTotalLines(topLevel[j])
+	})
+
+	// Truncate to top N items
+	truncatedCount := 0
+	if len(topLevel) > maxStructuralDiffItems {
+		truncatedCount = len(topLevel) - maxStructuralDiffItems
+		topLevel = topLevel[:maxStructuralDiffItems]
 	}
 
 	// Calculate max widths for alignment of line counts
@@ -1021,6 +1071,24 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		}
 	}
 
+	// Add "...N more" row if we truncated
+	if truncatedCount > 0 {
+		moreLine := fmt.Sprintf("...(%d more)", truncatedCount)
+		rows = append(rows, displayRow{
+			kind:                      RowKindStructuralDiff,
+			fileIndex:                 fileIdx,
+			isStructuralDiff:          true,
+			structuralDiffLine:        moreLine,
+			structuralDiffIsTruncated: true,
+			structuralDiffMaxAddLen:   maxAddLen,
+			structuralDiffMaxRemLen:   maxRemLen,
+			headerBoxWidth:            headerBoxWidth,
+			isLastFileInCommit:        isLastFileInCommit,
+			isFileFolded:              isFileFolded,
+			treePath:                  structuralTreePath,
+		})
+	}
+
 	// No trailing blank here - margins are handled at the file level in buildFileRows
 
 	return rows
@@ -1064,6 +1132,29 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 
 	// Tree prefix using tight spacing for compact content
 	treeContinuation := renderTreePrefixTight(row.treePath)
+
+	// Handle truncated "...N more" row - plain fg7 text, no stats
+	if row.structuralDiffIsTruncated {
+		moreStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+		styledContent := moreStyle.Render(content)
+		contentWidth := runewidth.StringWidth(content)
+		paddingNeeded := headerBoxWidth - contentWidth + 2
+		padding := ""
+		if paddingNeeded > 0 {
+			padding = strings.Repeat(" ", paddingNeeded)
+		}
+		borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
+		var result string
+		if isCursorRow && m.focused {
+			result = cursorArrowStyle.Render("▶") + treeContinuation[1:] + styledContent + padding
+		} else if isCursorRow && !m.focused {
+			result = unfocusedCursorArrowStyle.Render("▷") + treeContinuation[1:] + styledContent + padding
+		} else {
+			result = treeContinuation + styledContent + padding
+		}
+		result += " " + borderStyle.Render("│")
+		return result
+	}
 
 	// Extract parts: prefix (spaces for child indent), symbol, rest (kind + name)
 	// Format: "" + symbol + " kind name" (top-level) or "  " + symbol + " kind name" (child)
