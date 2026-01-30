@@ -650,17 +650,20 @@ func (m Model) buildRows() []displayRow {
 				// First file's prev sibling is commit-info, not another file
 				firstFileHeaderMode := determineFileHeaderMode(firstFileFolded, false, commitInfoExpanded)
 				firstIsLastFile := startIdx == endIdx-1
-				firstBorderTreePath := m.buildFileTreePath(startIdx, firstIsLastFile, firstFileFolded, TreeRowContent)
+				// Force IsLast=false so │ continuation shows on the top border row;
+				// the branch point (├/└) appears on the header row below, not here.
+				firstBorderTreePath := m.buildFileTreePath(startIdx, false, firstFileFolded, TreeRowContent)
 				rows = append(rows, displayRow{
-					kind:              RowKindHeaderTopBorder,
-					fileIndex:         startIdx,
-					isHeaderTopBorder: true,
-					foldLevel:         sidebyside.FoldNormal,
-					status:            fileStatusFromPair(m.files[startIdx]),
-					headerBoxWidth:    headerBoxWidth,
-					treePrefixWidth:   treeWidth(0, true) + 1, // +1 to align with fold icon
-					headerMode:        firstFileHeaderMode,
-					treePath:          firstBorderTreePath,
+					kind:               RowKindHeaderTopBorder,
+					fileIndex:          startIdx,
+					isHeaderTopBorder:  true,
+					foldLevel:          sidebyside.FoldNormal,
+					status:             fileStatusFromPair(m.files[startIdx]),
+					headerBoxWidth:     headerBoxWidth,
+					treePrefixWidth:    treeWidth(0, true) + 1, // +1 to align with fold icon
+					headerMode:         firstFileHeaderMode,
+					treePath:           firstBorderTreePath,
+					isLastFileInCommit: firstIsLastFile,
 				})
 			}
 		}
@@ -910,7 +913,20 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				})
 			}
 
-			// No bottom margin in expanded mode - content flows directly to next file
+			// Bottom margin: two blank rows with tree continuation after expanded content (log mode only).
+			// Force IsLast=false so │ continuation always shows; the branch point (├/└) is on the header row.
+			if len(m.commits) > 0 && m.commits[0].Info.HasMetadata() {
+				marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
+				for range 2 {
+					rows = append(rows, displayRow{
+						kind:               RowKindBlank,
+						fileIndex:          fileIdx,
+						isBlank:            true,
+						isLastFileInCommit: isLastFile,
+						treePath:           marginTreePath,
+					})
+				}
+			}
 
 			if !isLastFile {
 				// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
@@ -919,8 +935,10 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				nextFileFolded := m.files[fileIdx+1].FoldLevel == sidebyside.FoldFolded
 				nextFileHeaderMode := determineFileHeaderMode(nextFileFolded, false, true)
 				nextIsLastFile := fileIdx+1 == commitEndIdx-1
-				nextBorderTreePath := m.buildFileTreePath(fileIdx+1, nextIsLastFile, nextFileFolded, TreeRowContent)
-				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath})
+				// Force IsLast=false so │ continuation shows on the top border row;
+				// the branch point (├/└) appears on the header row below, not here.
+				nextBorderTreePath := m.buildFileTreePath(fileIdx+1, false, nextFileFolded, TreeRowContent)
+				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath, isLastFileInCommit: nextIsLastFile})
 			}
 			return rows
 		}
@@ -1024,7 +1042,20 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			}
 		}
 
-		// No bottom margin in normal mode - content flows directly to next file
+		// Bottom margin: two blank rows with tree continuation after normal content (log mode only).
+		// Force IsLast=false so │ continuation always shows; the branch point (├/└) is on the header row.
+		if len(m.commits) > 0 && m.commits[0].Info.HasMetadata() {
+			marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
+			for range 2 {
+				rows = append(rows, displayRow{
+					kind:               RowKindBlank,
+					fileIndex:          fileIdx,
+					isBlank:            true,
+					isLastFileInCommit: isLastFile,
+					treePath:           marginTreePath,
+				})
+			}
+		}
 
 		if !isLastFile {
 			// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
@@ -1033,8 +1064,10 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			nextFileFolded := m.files[fileIdx+1].FoldLevel == sidebyside.FoldFolded
 			nextFileHeaderMode := determineFileHeaderMode(nextFileFolded, false, true)
 			nextIsLastFile := fileIdx+1 == commitEndIdx-1
-			nextBorderTreePath := m.buildFileTreePath(fileIdx+1, nextIsLastFile, nextFileFolded, TreeRowContent)
-			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath})
+			// Force IsLast=false so │ continuation shows on the top border row;
+			// the branch point (├/└) appears on the header row below, not here.
+			nextBorderTreePath := m.buildFileTreePath(fileIdx+1, false, nextFileFolded, TreeRowContent)
+			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath, isLastFileInCommit: nextIsLastFile})
 		}
 	}
 
