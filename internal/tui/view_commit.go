@@ -13,6 +13,147 @@ import (
 
 const maxStructuralDiffItems = 10
 
+// styleSig applies syntax-style highlighting to a structural diff signature.
+// Input format from FormatSignature: "Name(params) -> ReturnType"
+// or with receiver: "(m *Model) Name(params) -> ReturnType"
+// or for types (no signature): just "Name"
+func styleSig(sig string) string {
+	// Theme-matching styles
+	funcStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // bright blue
+	typeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")) // bright magenta
+	punctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // white
+	paramStyle := lipgloss.NewStyle()                                 // default
+
+	// No parens at all — plain type name
+	if !strings.Contains(sig, "(") {
+		return typeStyle.Render(sig)
+	}
+
+	var result strings.Builder
+
+	// Handle optional receiver prefix: "(m *Model) "
+	rest := sig
+	if strings.HasPrefix(rest, "(") {
+		// Could be receiver or params — receiver is followed by ") Name("
+		closeParen := strings.Index(rest, ") ")
+		if closeParen > 0 && closeParen < strings.Index(rest[1:], "(")+1 {
+			// It's a receiver
+			receiver := rest[:closeParen+1]
+			result.WriteString(styleReceiver(receiver, punctStyle, typeStyle, paramStyle))
+			result.WriteString(" ")
+			rest = rest[closeParen+2:]
+		}
+	}
+
+	// Now rest is "Name(params)" or "Name(params) -> ReturnType"
+	parenIdx := strings.Index(rest, "(")
+	if parenIdx < 0 {
+		// No parens — just a name (shouldn't happen after receiver check, but safe)
+		result.WriteString(funcStyle.Render(rest))
+		return result.String()
+	}
+
+	// Function name
+	name := rest[:parenIdx]
+	result.WriteString(funcStyle.Render(name))
+	rest = rest[parenIdx:]
+
+	// Split on " -> " for return type
+	arrowIdx := strings.Index(rest, " -> ")
+	var paramsPart, returnPart string
+	if arrowIdx >= 0 {
+		paramsPart = rest[:arrowIdx]
+		returnPart = rest[arrowIdx:]
+	} else {
+		paramsPart = rest
+	}
+
+	// Style the params part: "(param1 Type1, param2 Type2)" or "(...)"
+	result.WriteString(styleParams(paramsPart, punctStyle, typeStyle, paramStyle))
+
+	// Style " -> ReturnType"
+	if returnPart != "" {
+		result.WriteString(" ")
+		result.WriteString(punctStyle.Render("->"))
+		result.WriteString(" ")
+		retType := returnPart[4:] // skip " -> "
+		result.WriteString(typeStyle.Render(retType))
+	}
+
+	return result.String()
+}
+
+// styleReceiver highlights a Go receiver like "(m *Model)".
+func styleReceiver(recv string, punctStyle, typeStyle, paramStyle lipgloss.Style) string {
+	// recv is "(m *Model)" — strip parens, split on space
+	inner := recv[1 : len(recv)-1] // "m *Model"
+	parts := strings.SplitN(inner, " ", 2)
+
+	var result strings.Builder
+	result.WriteString(punctStyle.Render("("))
+	if len(parts) == 2 {
+		result.WriteString(paramStyle.Render(parts[0]))
+		result.WriteString(" ")
+		result.WriteString(typeStyle.Render(parts[1]))
+	} else {
+		result.WriteString(paramStyle.Render(inner))
+	}
+	result.WriteString(punctStyle.Render(")"))
+	return result.String()
+}
+
+// styleParams highlights a parameter list like "(ctx context.Context, req *Request)".
+func styleParams(params string, punctStyle, typeStyle, paramStyle lipgloss.Style) string {
+	// Handle "(...)" or "()" or "(param Type, ...)"
+	if params == "(...)" || params == "()" {
+		return punctStyle.Render(params)
+	}
+
+	// Strip outer parens
+	if !strings.HasPrefix(params, "(") || !strings.HasSuffix(params, ")") {
+		return params
+	}
+	inner := params[1 : len(params)-1]
+
+	// Check for trailing ", ...)" -> inner ends with ", ..."
+	hasEllipsis := strings.HasSuffix(inner, ", ...")
+	if hasEllipsis {
+		inner = strings.TrimSuffix(inner, ", ...")
+	}
+
+	var result strings.Builder
+	result.WriteString(punctStyle.Render("("))
+
+	paramList := strings.Split(inner, ", ")
+	for i, p := range paramList {
+		if i > 0 {
+			result.WriteString(punctStyle.Render(","))
+			result.WriteString(" ")
+		}
+		// Each param is "name Type" or "...Type" (variadic) or just "self" (Python)
+		spaceIdx := strings.Index(p, " ")
+		if spaceIdx >= 0 {
+			paramName := p[:spaceIdx]
+			paramType := p[spaceIdx+1:]
+			result.WriteString(paramStyle.Render(paramName))
+			result.WriteString(" ")
+			result.WriteString(typeStyle.Render(paramType))
+		} else {
+			// No space — could be "self", "...Option", etc.
+			result.WriteString(paramStyle.Render(p))
+		}
+	}
+
+	if hasEllipsis {
+		result.WriteString(punctStyle.Render(","))
+		result.WriteString(" ")
+		result.WriteString(punctStyle.Render("..."))
+	}
+
+	result.WriteString(punctStyle.Render(")"))
+	return result.String()
+}
+
 // renderCommitHeaderRow renders a commit header row in the content area.
 // This is shown when viewing a commit and can be folded/unfolded.
 //
@@ -1227,16 +1368,15 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 	darkAddedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	darkRemovedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 
-	// Style the rest: " kind name" -> space + styled kind (fg=8) + space + styled name (fg=7)
+	// Style the rest: " kind signature" with syntax-style highlighting
 	kindStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	var styledRest string
 	if strings.HasPrefix(rest, " ") {
-		// Parse: " kind name"
+		// Parse: " kind signature"
 		trimmed := strings.TrimPrefix(rest, " ")
 		parts := strings.SplitN(trimmed, " ", 2)
 		if len(parts) == 2 {
-			styledRest = " " + kindStyle.Render(parts[0]) + " " + nameStyle.Render(parts[1])
+			styledRest = " " + kindStyle.Render(parts[0]) + " " + styleSig(parts[1])
 		} else {
 			styledRest = rest // fallback
 		}
