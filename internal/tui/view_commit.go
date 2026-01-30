@@ -34,12 +34,12 @@ func statsTextWidth(added, removed int) int {
 // Input format from FormatSignature: "Name(params) -> ReturnType"
 // or with receiver: "(m *Model) Name(params) -> ReturnType"
 // or for types (no signature): just "Name"
-// The changeKind controls identifier styling: added/deleted items get bold+underline
+// The changeKind controls identifier styling: added/deleted items get underline
 // in the corresponding inline diff color; modified items use normal syntax colors.
 func styleSig(sig string, changeKind structure.ChangeKind) string {
 	// Theme-matching styles
-	funcStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // bright blue
-	typeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")) // bright magenta
+	funcStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("4"))  // blue (dark, not bright)
+	typeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("5"))  // magenta (dark, not bright)
 	punctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // white
 	paramStyle := lipgloss.NewStyle()                                 // default
 
