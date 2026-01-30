@@ -801,29 +801,15 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	// (single diff), preserve the original IsLast behavior.
 	isLogMode := len(m.commits) > 0 && m.commits[0].Info.HasMetadata()
 	contentIsLast := isLastFile && !isLogMode
-	// isLastFileOverall is true when this is the very last file across all commits (end of tree).
-	isLastFileOverall := fileIdx == len(m.files)-1
 
 	// Per-file header box width for unfolded headers (tighter border around own content)
 	header := formatFileHeader(fp)
 	ownBoxWidth := fileHeaderBoxWidth(header, added, removed)
 
 	// Determine whether the last file's header should use ├ (has content below) or └ (no content).
-	// In log mode, if the file has visible content below its header, use ├ so the tree
-	// line continues through the content area. Otherwise use └ as the terminal branch.
-	hasContentBelow := false
-	switch fp.FoldLevel {
-	case sidebyside.FoldFolded:
-		// Folded files show content only if they have structural diff preview
-		if fs := m.structureMaps[fileIdx]; fs != nil && fs.StructuralDiff != nil && fs.StructuralDiff.HasChanges() && len(fs.StructuralDiff.ChangedOnly()) > 0 {
-			hasContentBelow = true
-		}
-	case sidebyside.FoldExpanded:
-		hasContentBelow = fp.HasContent()
-	default: // FoldNormal
-		hasContentBelow = len(fp.Pairs) > 0
-	}
-	headerIsLast := isLastFile && !(isLogMode && hasContentBelow)
+	// In log mode, the last file always has something below its header: either content rows
+	// or a ┴ terminator row. So headerIsLast is always false in log mode.
+	headerIsLast := isLastFile && !isLogMode
 
 	switch fp.FoldLevel {
 	case sidebyside.FoldFolded:
@@ -843,11 +829,11 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				fileIndex:          fileIdx,
 				isBlank:            true,
 				isLastFileInCommit: isLastFile,
-				treeTerminator:     isLastFileOverall && isLogMode,
+				treeTerminator:     isLastFile && isLogMode,
 				treePath:           marginTreePath,
 			})
-		} else if isLastFileOverall && isLogMode {
-			// Last file overall with no preview content: add ┴ terminator after the bare header.
+		} else if isLastFile && isLogMode {
+			// Last file with no preview content: add ┴ terminator after the bare header.
 			// Force IsLast=false so the ancestor renders ┴ (not blank space).
 			terminatorPath := m.buildFileTreePath(fileIdx, false, true, TreeRowContent)
 			rows = append(rows, displayRow{
@@ -924,7 +910,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				fileIndex:          fileIdx,
 				isBlank:            true,
 				isLastFileInCommit: isLastFile,
-				treeTerminator:     isLastFileOverall && isLogMode,
+				treeTerminator:     isLastFile && isLogMode,
 				treePath:           marginTreePath,
 			})
 
@@ -1051,7 +1037,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			fileIndex:          fileIdx,
 			isBlank:            true,
 			isLastFileInCommit: isLastFile,
-			treeTerminator:     isLastFileOverall && isLogMode,
+			treeTerminator:     isLastFile && isLogMode,
 			treePath:           marginTreePath,
 		})
 

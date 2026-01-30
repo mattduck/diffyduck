@@ -1711,18 +1711,17 @@ func TestCommitBorder_TreeLayoutConnectsCommitsDirectly(t *testing.T) {
 	}
 	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
 
-	// Verify tree layout - no blank separator rows between commits
-	// In tree layout, commits connect directly via tree branches
-	var blankBetweenCommits bool
+	// Verify tree layout - no stray blank separator rows between commits
+	// Tree terminator blanks (┴) are expected; other blanks are not
+	var strayBlanks bool
 	for i := 0; i < secondCommitHeaderIdx; i++ {
 		row := rows[i]
-		// Check if there's a blank row that's not part of commit structure
-		if row.isBlank && !row.isHeaderSpacer && !row.isCommitBody {
-			blankBetweenCommits = true
+		if row.isBlank && !row.isHeaderSpacer && !row.isCommitBody && !row.treeTerminator {
+			strayBlanks = true
 			break
 		}
 	}
-	assert.False(t, blankBetweenCommits, "tree layout should not have blank separator rows between commits")
+	assert.False(t, strayBlanks, "tree layout should not have stray blank rows between commits (tree terminators are OK)")
 }
 
 func TestBorderAlignmentWithCursor(t *testing.T) {

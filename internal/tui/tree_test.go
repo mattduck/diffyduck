@@ -269,8 +269,8 @@ func TestTree_LastFileHeader_WithHunkContent_UsesTBranch(t *testing.T) {
 		"last file with hunk content should use ├ (IsLast=false)")
 }
 
-// Test: Last file when folded with no preview uses └ in log mode
-func TestTree_LastFileHeader_FoldedNoPreview_UsesLBranch(t *testing.T) {
+// Test: Last file when folded with no preview uses ├ in log mode (┴ terminator follows)
+func TestTree_LastFileHeader_FoldedNoPreview_UsesTBranch(t *testing.T) {
 	m := makeLogModeModel([]sidebyside.FilePair{
 		{
 			OldPath:   "a/first.go",
@@ -291,8 +291,10 @@ func TestTree_LastFileHeader_FoldedNoPreview_UsesLBranch(t *testing.T) {
 	header := findLastFileHeader(rows)
 	require.NotNil(t, header, "should find last file header")
 	require.NotNil(t, header.treePath.Current, "header should have Current tree level")
-	assert.True(t, header.treePath.Current.IsLast,
-		"last file folded with no preview should use └ (IsLast=true)")
+	// When a terminator row follows the bare header, IsLast is false so we get ├ (not └).
+	// The ┴ terminator row below provides the visual end-of-tree.
+	assert.False(t, header.treePath.Current.IsLast,
+		"last file folded with no preview should use ├ (IsLast=false) because ┴ terminator follows")
 }
 
 // Test: Last file with expanded content uses ├ in log mode
