@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -401,8 +402,13 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(iconColor))
 	styledIcon := iconStyle.Render(foldIcon)
 
-	// Header text (e.g., "details") - no bold
-	styledHeader := row.header
+	// Header text (formatted date) - dim parts in fg=7, date part in fg=15
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	brightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	styledHeader := dimStyle.Render(row.dateParts.Day) +
+		brightStyle.Render(row.dateParts.Date) +
+		dimStyle.Render(row.dateParts.Offset) +
+		dimStyle.Render(row.dateParts.Ago)
 
 	// Tree prefix using the generic tree infrastructure
 	treeLine := renderTreePrefix(row.treePath, true) // true = header row
@@ -721,8 +727,10 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 		Current:   &detailsLevel,
 	}
 
-	// Header text for the commit-info node
-	headerText := "details"
+	// Header text for the commit-info node - show formatted date if available
+	now := time.Now()
+	dateParts := info.FormattedDateParts(now)
+	headerText := dateParts.Plain()
 
 	// Calculate header box width for borders
 	// treePrefixWidth includes the space before the icon (+1), matching file headers.
@@ -744,6 +752,7 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 		fileIndex:          -1,
 		isCommitInfoHeader: true,
 		header:             headerText,
+		dateParts:          dateParts,
 		headerMode:         infoHeaderMode,
 		commitFoldLevel:    commit.FoldLevel,
 		commitIndex:        commitIdx,

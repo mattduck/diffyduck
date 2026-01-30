@@ -482,7 +482,7 @@ func TestCommitInfoHeader_ExpandedHasTrailingConnector(t *testing.T) {
 	rendered := m.renderCommitInfoHeader(*infoHeaderRow, false)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "details", "commit info header should contain 'details' text")
+	assert.Contains(t, stripped, "Jan 1st", "commit info header should contain date text")
 	assert.Contains(t, stripped, "●", "expanded commit info should show ● fold icon")
 	assert.Contains(t, stripped, "┏", "expanded commit info header should contain ┏ trailing connector")
 }

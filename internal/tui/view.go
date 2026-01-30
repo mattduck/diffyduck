@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -287,10 +288,11 @@ type displayRow struct {
 	// Tree hierarchy fields (generic representation)
 	treePath TreePath // full path from root to this node (for tree prefix rendering)
 	// Legacy tree fields - kept during migration, will be removed in Phase 4
-	isLastFileInCommit bool   // true if this file is the last file in its commit (for tree └─ vs ├─)
-	treeTerminator     bool   // true if this blank row should render ┴ instead of │ (end of tree)
-	isFileFolded       bool   // true if the parent file is folded (hide commit-level tree line)
-	commitInfoLine     string // text content for info body lines
+	isLastFileInCommit bool                 // true if this file is the last file in its commit (for tree └─ vs ├─)
+	treeTerminator     bool                 // true if this blank row should render ┴ instead of │ (end of tree)
+	isFileFolded       bool                 // true if the parent file is folded (hide commit-level tree line)
+	commitInfoLine     string               // text content for info body lines
+	dateParts          sidebyside.DateParts // structured date parts for styled rendering
 	// Comment fields (for RowKindComment rows)
 	commentText      string // text of the comment (for rendering)
 	commentLineNum   int    // line number this comment belongs to (for association)
@@ -580,8 +582,8 @@ func (m Model) buildRows() []displayRow {
 			// Calculate commit-info header box width for the top border slot
 			treePrefixWidth := treeWidth(0, true) + 1
 			iconPartWidth := treePrefixWidth + 2
-			headerText := "details"
-			infoHeaderBoxWidth := iconPartWidth + len(headerText) + 2
+			headerText := commit.Info.FormattedDate(time.Now())
+			infoHeaderBoxWidth := iconPartWidth + displayWidth(headerText) + 2
 
 			// Build tree path for commit-info top border.
 			detailsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // grey for details

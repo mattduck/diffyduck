@@ -1,5 +1,11 @@
 package sidebyside
 
+import (
+	"fmt"
+	"math"
+	"time"
+)
+
 // FoldLevel represents the fold state of a file in the diff view.
 type FoldLevel int
 
@@ -146,6 +152,130 @@ func (c CommitInfo) ShortSHA() string {
 // HasMetadata returns true if any commit metadata is present.
 func (c CommitInfo) HasMetadata() bool {
 	return c.SHA != "" || c.Author != "" || c.Subject != ""
+}
+
+// DateParts holds the segments of a formatted commit date for styled rendering.
+type DateParts struct {
+	Day    string // e.g. "Wednesday, " — dim
+	Date   string // e.g. "Jan 6th 15:03" — bright
+	Offset string // e.g. " +00:00" — dim
+	Ago    string // e.g. " (3 days ago)" — dim
+}
+
+// Plain returns all parts concatenated without styling.
+func (d DateParts) Plain() string {
+	return d.Day + d.Date + d.Offset + d.Ago
+}
+
+// FormattedDate returns the commit date as a plain string (for header width
+// calculations and fallback). Prefer FormattedDateParts for styled rendering.
+func (c CommitInfo) FormattedDate(now time.Time) string {
+	return c.FormattedDateParts(now).Plain()
+}
+
+// dateFormats lists formats to try when parsing commit dates.
+var dateFormats = []string{
+	time.RFC3339,
+	"2006-01-02T15:04:05Z07:00",
+	"Mon Jan 2 15:04:05 2006 -0700",
+	"2006-01-02",
+}
+
+// FormattedDateParts returns the commit date split into segments for styled
+// rendering: day (dim), date (bright), offset (dim), relative time (dim).
+func (c CommitInfo) FormattedDateParts(now time.Time) DateParts {
+	if c.Date == "" {
+		return DateParts{Date: "details"}
+	}
+	var t time.Time
+	var err error
+	for _, layout := range dateFormats {
+		t, err = time.Parse(layout, c.Date)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return DateParts{Date: c.Date}
+	}
+
+	_, offset := t.Zone()
+	sign := "+"
+	if offset < 0 {
+		sign = "-"
+		offset = -offset
+	}
+	tzHours := offset / 3600
+	tzMins := (offset % 3600) / 60
+
+	return DateParts{
+		Day:    fmt.Sprintf("%s, ", t.Weekday()),
+		Date:   fmt.Sprintf("%s %d%s %02d:%02d", t.Month().String()[:3], t.Day(), daySuffix(t.Day()), t.Hour(), t.Minute()),
+		Offset: fmt.Sprintf(" %s%02d:%02d", sign, tzHours, tzMins),
+		Ago:    fmt.Sprintf(" (%s)", relativeTime(now.Sub(t))),
+	}
+}
+
+// daySuffix returns the ordinal suffix for a day number.
+func daySuffix(day int) string {
+	switch {
+	case day == 11 || day == 12 || day == 13:
+		return "th"
+	case day%10 == 1:
+		return "st"
+	case day%10 == 2:
+		return "nd"
+	case day%10 == 3:
+		return "rd"
+	default:
+		return "th"
+	}
+}
+
+// relativeTime returns a human-readable relative time string.
+func relativeTime(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	seconds := d.Seconds()
+	switch {
+	case seconds < 60:
+		n := int(math.Round(seconds))
+		if n == 1 {
+			return "1 second ago"
+		}
+		return fmt.Sprintf("%d seconds ago", n)
+	case seconds < 3600:
+		n := int(math.Round(seconds / 60))
+		if n == 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", n)
+	case seconds < 86400:
+		n := int(math.Round(seconds / 3600))
+		if n == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", n)
+	case seconds < 86400*30:
+		n := int(math.Round(seconds / 86400))
+		if n == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", n)
+	case seconds < 86400*365:
+		n := int(math.Round(seconds / (86400 * 30)))
+		if n == 1 {
+			return "1 month ago"
+		}
+		return fmt.Sprintf("%d months ago", n)
+	default:
+		n := int(math.Round(seconds / (86400 * 365)))
+		if n == 1 {
+			return "1 year ago"
+		}
+		return fmt.Sprintf("%d years ago", n)
+	}
 }
 
 // CommitSet represents a single commit or diff-set containing files.
