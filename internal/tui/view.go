@@ -412,10 +412,7 @@ func (m Model) buildRows() []displayRow {
 	}
 
 	// Calculate consistent header box width for borders
-	totalFiles := len(m.files)
-	numDigits := len(fmt.Sprintf("%d", totalFiles))
-	fileNumWidth := 1 + numDigits
-	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1 // "   ◐ #01 ~ "
+	iconPartWidth := 3 + 1 + 1 // "   ◐ "
 	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
 
@@ -764,10 +761,7 @@ func (m Model) buildRowsLegacy() []displayRow {
 	}
 
 	// Calculate consistent header box width for borders
-	totalFiles := len(m.files)
-	numDigits := len(fmt.Sprintf("%d", totalFiles))
-	fileNumWidth := 1 + numDigits
-	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1
+	iconPartWidth := 3 + 1 + 1 // "   ◐ "
 	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
 
@@ -842,8 +836,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 
 	// Per-file header box width for unfolded headers (tighter border around own content)
 	header := formatFileHeader(fp)
-	totalFiles := commitEndIdx - commitStartIdx
-	ownBoxWidth := fileHeaderBoxWidth(header, added, removed, totalFiles)
+	ownBoxWidth := fileHeaderBoxWidth(header, added, removed)
 	ownAddWidth := statsAddWidth(added)
 	ownRemWidth := statsRemWidth(removed)
 

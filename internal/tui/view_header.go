@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -109,40 +110,16 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 
 	// Apply search highlighting if there's a query
 	// Headers are always considered "side 0" for search purposes
-	if m.searchQuery != "" {
+	hasSearch := m.searchQuery != ""
+	if hasSearch {
 		header = m.highlightSearchInVisible(header, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide())
 	}
 
-	// Get fold level icon and file status indicator
-	// Shows spinner if file is loading
+	// Get fold level icon and file status style (for trailing fill color)
 	icon := m.foldLevelIcon(foldLevel)
-	_, fileStatusStyle := fileStatusIndicator(status) // for coloring file number and trailing fill
-	styledStatus := m.fileStatusSymbolStyled(fileIndex, status)
+	_, fileStatusStyle := fileStatusIndicator(status)
 
-	// File number with # prefix and leading zeros
-	// Color matches the file status (green=added, red=deleted, blue=modified/renamed)
-	// File numbers reset to 1 for each commit
-	var totalFilesInCommit int
-	var fileNumInCommit int
-	if len(m.commits) > 0 && len(m.commitFileStarts) > 0 {
-		commitIdx := m.commitForFile(fileIndex)
-		startIdx := m.commitFileStarts[commitIdx]
-		endIdx := len(m.files)
-		if commitIdx+1 < len(m.commits) {
-			endIdx = m.commitFileStarts[commitIdx+1]
-		}
-		totalFilesInCommit = endIdx - startIdx
-		fileNumInCommit = fileIndex - startIdx + 1
-	} else {
-		// Legacy mode: no commits, use global file index
-		totalFilesInCommit = len(m.files)
-		fileNumInCommit = fileIndex + 1
-	}
-	numDigits := len(fmt.Sprintf("%d", totalFilesInCommit))
-	fileNum := fmt.Sprintf("#%0*d", numDigits, fileNumInCommit) // #01
-	fileNumWidth := 1 + numDigits                               // # + digits
-
-	// All headers use same format: indent + icon + fileNum + status + header + stats + │ + trailing
+	// All headers use same format: indent + icon + header + stats + trailing
 	statsBar := formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth)
 	statsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
 	headerPadding := ""
@@ -151,21 +128,19 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	}
 
 	// Calculate content width and pad to match headerBoxWidth
-	// Layout: indent(3) + icon(1) + space(1) + fileNum + space(1) + status(1) + space(1) + header
-	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1 // "   ◐ #01 ~ "
+	// Layout: indent(3) + icon(1) + space(1) + header
+	iconPartWidth := 3 + 1 + 1 // "   ◐ "
 	contentWidth := iconPartWidth + headerTextWidth + len(headerPadding) + statsBarWidth
 	boxPadding := ""
 	if headerBoxWidth > contentWidth {
 		boxPadding = strings.Repeat(" ", headerBoxWidth-contentWidth)
 	}
 
-	// Style the header text - but if search highlighting was applied, don't override it
-	// (search highlighting sets fg=0 which would be overridden by headerStyle's fg=15)
-	styledHeader := headerStyle.Render(" " + header + headerPadding)
-	if m.searchQuery != "" {
-		// Search highlighting was applied; don't wrap with headerStyle to preserve fg color
-		styledHeader = " " + header + headerPadding
-	}
+	// Style the header text:
+	// - For added/deleted files, style the basename with inline diff style (bold+underline+color)
+	// - For other files, use normal headerStyle (fg=15)
+	// - Skip custom styling when search highlighting was applied (preserve search fg colors)
+	styledHeader := m.styleFileHeaderText(header, headerPadding, status, hasSearch)
 
 	// Style the fold icon with fg=8 (same as commit header), fg=15 when cursor is on row
 	iconColor := "8"
@@ -194,7 +169,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 		}
 	}
 
-	result := treeLine + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding
+	result := treeLine + " " + styledIcon + styledHeader + statsBar + boxPadding
 
 	// Add trailing border fill for unfolded files: ┏━━━━━━━ to screen edge
 	if headerMode != HeaderSingleLine && m.width > 0 {
@@ -207,6 +182,37 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	}
 
 	return result
+}
+
+// styleFileHeaderText applies styling to the file header text.
+// For added/deleted files, the basename gets inline diff styling (bold+underline+color).
+// For other statuses, normal headerStyle (fg=15) is used.
+func (m Model) styleFileHeaderText(header, headerPadding string, status FileStatus, hasSearch bool) string {
+	headerWithPadding := header + headerPadding
+
+	// When search highlighting was applied, don't wrap with any style to preserve fg color
+	if hasSearch {
+		return " " + headerWithPadding
+	}
+
+	// For added or deleted files, style the basename with inline diff style
+	if status == FileStatusAdded || status == FileStatusDeleted {
+		var diffStyle lipgloss.Style
+		if status == FileStatusAdded {
+			diffStyle = inlineAddedStyle
+		} else {
+			diffStyle = inlineRemovedStyle
+		}
+
+		// Find the basename boundary: last '/' in the header text (before any padding)
+		basename := path.Base(header)
+		dir := header[:len(header)-len(basename)]
+
+		return " " + headerStyle.Render(dir) + diffStyle.Render(basename) + headerPadding
+	}
+
+	// Default: normal white styling
+	return headerStyle.Render(" " + headerWithPadding)
 }
 
 // renderCommentRow renders a single comment row (part of a comment box).

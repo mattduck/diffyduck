@@ -218,16 +218,15 @@ func TestTopBar_ShowsSpinnerForCurrentFile(t *testing.T) {
 	assert.Contains(t, topBar, spinnerFrame, "top bar should contain spinner when file is loading")
 }
 
-func TestHeader_ShowsSpinnerWhenLoading(t *testing.T) {
+func TestHeader_NoSpinnerInMainView(t *testing.T) {
+	// Main view headers no longer show status symbol or spinner
+	// (spinner still appears in the top bar via fileStatusSymbolStyled)
 	m := makeMultiFileModel(1, 10)
 	m.width = 80
 	m.height = 20
-	// Set loading time in the past to exceed PerFileSpinnerDelay
 	m.loadingFiles[0] = time.Now().Add(-200 * time.Millisecond)
 	m.rebuildRowsCache()
 
-	// Render a file header
-	// Build a minimal TreePath for testing
 	testTreePath := TreePath{
 		Ancestors: []TreeLevel{{IsLast: true, Style: lipgloss.NewStyle()}},
 		Current:   &TreeLevel{IsLast: false, Style: lipgloss.NewStyle()},
@@ -237,18 +236,20 @@ func TestHeader_ShowsSpinnerWhenLoading(t *testing.T) {
 		sidebyside.FoldNormal,
 		HeaderThreeLine,
 		FileStatusModified,
-		5, 3, // added, removed
-		20, 3, 3, // maxHeaderWidth, maxAddWidth, maxRemWidth
-		50,    // headerBoxWidth
-		0,     // fileIndex
-		0,     // rowIdx
-		false, // isCursorRow
+		5, 3,
+		20, 3, 3,
+		50,
+		0,
+		0,
+		false,
 		testTreePath,
 	)
 
-	// Should contain spinner frame, not the ~ symbol
+	// Main view headers no longer contain spinner (removed status symbol area)
 	spinnerFrame := m.spinner.View()
-	assert.Contains(t, header, spinnerFrame, "header should contain spinner when file is loading")
+	assert.NotContains(t, header, spinnerFrame, "main view header should not contain spinner (status symbol removed)")
+	// But should still show the filename
+	assert.Contains(t, header, "test.go", "header should still contain filename")
 }
 
 // =============================================================================

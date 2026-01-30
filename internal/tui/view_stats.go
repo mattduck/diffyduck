@@ -237,10 +237,8 @@ func formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth int) string 
 
 // fileHeaderBoxWidth computes the header box width for a single file based on its own content.
 // Used for unfolded headers so the border hugs the actual content instead of aligning to shared max.
-func fileHeaderBoxWidth(headerText string, added, removed, totalFilesInCommit int) int {
-	numDigits := len(fmt.Sprintf("%d", totalFilesInCommit))
-	fileNumWidth := 1 + numDigits
-	iconPartWidth := 3 + 1 + 1 + fileNumWidth + 1 + 1 + 1
+func fileHeaderBoxWidth(headerText string, added, removed int) int {
+	iconPartWidth := 3 + 1 + 1 // "   ◐ "
 	aw := statsAddWidth(added)
 	rw := statsRemWidth(removed)
 	return iconPartWidth + displayWidth(headerText) + statsBarDisplayWidth(aw, rw) + 1 // +1 for gap before ┏

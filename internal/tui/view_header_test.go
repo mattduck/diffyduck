@@ -102,55 +102,48 @@ func TestFileStatusIndicator(t *testing.T) {
 }
 
 func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
-	// Test that file status indicators appear in headers for all fold levels
+	// Test that file headers show fold icon and filename (no file number or status symbol in main view)
 	tests := []struct {
-		name          string
-		oldPath       string
-		newPath       string
-		foldLevel     sidebyside.FoldLevel
-		wantIndicator string
+		name      string
+		oldPath   string
+		newPath   string
+		foldLevel sidebyside.FoldLevel
+		wantFile  string // expected filename in header
 	}{
 		{
-			name:          "added file - folded",
-			oldPath:       "/dev/null",
-			newPath:       "b/new.go",
-			foldLevel:     sidebyside.FoldFolded,
-			wantIndicator: "+",
+			name:      "added file - folded",
+			oldPath:   "/dev/null",
+			newPath:   "b/new.go",
+			foldLevel: sidebyside.FoldFolded,
+			wantFile:  "new.go",
 		},
 		{
-			name:          "deleted file - folded",
-			oldPath:       "a/old.go",
-			newPath:       "/dev/null",
-			foldLevel:     sidebyside.FoldFolded,
-			wantIndicator: "-",
+			name:      "deleted file - folded",
+			oldPath:   "a/old.go",
+			newPath:   "/dev/null",
+			foldLevel: sidebyside.FoldFolded,
+			wantFile:  "old.go",
 		},
 		{
-			name:          "renamed file - folded",
-			oldPath:       "a/old.go",
-			newPath:       "b/new.go",
-			foldLevel:     sidebyside.FoldFolded,
-			wantIndicator: "→",
+			name:      "modified file - folded",
+			oldPath:   "a/file.go",
+			newPath:   "b/file.go",
+			foldLevel: sidebyside.FoldFolded,
+			wantFile:  "file.go",
 		},
 		{
-			name:          "modified file - folded",
-			oldPath:       "a/file.go",
-			newPath:       "b/file.go",
-			foldLevel:     sidebyside.FoldFolded,
-			wantIndicator: "~",
+			name:      "added file - normal",
+			oldPath:   "/dev/null",
+			newPath:   "b/new.go",
+			foldLevel: sidebyside.FoldNormal,
+			wantFile:  "new.go",
 		},
 		{
-			name:          "added file - normal",
-			oldPath:       "/dev/null",
-			newPath:       "b/new.go",
-			foldLevel:     sidebyside.FoldNormal,
-			wantIndicator: "+",
-		},
-		{
-			name:          "modified file - expanded",
-			oldPath:       "a/file.go",
-			newPath:       "b/file.go",
-			foldLevel:     sidebyside.FoldExpanded,
-			wantIndicator: "~",
+			name:      "modified file - expanded",
+			oldPath:   "a/file.go",
+			newPath:   "b/file.go",
+			foldLevel: sidebyside.FoldExpanded,
+			wantFile:  "file.go",
 		},
 	}
 
@@ -173,28 +166,22 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 				keys:   DefaultKeyMap(),
 			}
 			m.calculateTotalLines()
-			// Set scroll to minScroll so header is visible at top of content
 			m.scroll = m.minScroll()
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
-			// Layout in diff view (at minScroll with cursorOffset padding):
-			// lines[0] = topBar
-			// lines[1] = divider
-			// lines[2] = padding/top border
-			// lines[3] = header (at cursorOffset position)
-			// The header is always at lines[3] because cursorOffset=1 for height=10
-			// (padding line at lines[2], header at lines[3])
 			header := lines[3]
 
-			// Get the expected fold icon
 			foldIcon := m.foldLevelIcon(tt.foldLevel)
 
-			// Header format should be: <foldIcon> <#fileNum> <statusIndicator> filename
-			// e.g., "○ #1 + new.go" or "◐ #1 ~ file.go"
-			expectedPattern := foldIcon + " #1 " + tt.wantIndicator + " "
-			assert.Contains(t, header, expectedPattern,
-				"header should contain fold icon, file number, then status indicator: %s", expectedPattern)
+			// Header format: <foldIcon> filename (no file number or status symbol)
+			assert.Contains(t, header, foldIcon,
+				"header should contain fold icon: %s", foldIcon)
+			assert.Contains(t, header, tt.wantFile,
+				"header should contain filename: %s", tt.wantFile)
+			// File number and status symbol should NOT be in main view headers
+			assert.NotContains(t, header, "#1",
+				"main view header should not contain file number")
 		})
 	}
 }

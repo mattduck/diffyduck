@@ -359,17 +359,16 @@ func TestFileHeaderBoxWidth_MatchesRenderedWidth(t *testing.T) {
 		header  string
 		added   int
 		removed int
-		total   int
 	}{
-		{"simple file", "hello.go", 10, 5, 3},
-		{"no changes", "empty.go", 0, 0, 1},
-		{"large stats", "big.go", 9999, 1234, 15},
-		{"long filename", "internal/tui/view_commit_border_alignment.go", 42, 0, 5},
+		{"simple file", "hello.go", 10, 5},
+		{"no changes", "empty.go", 0, 0},
+		{"large stats", "big.go", 9999, 1234},
+		{"long filename", "internal/tui/view_commit_border_alignment.go", 42, 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			width := fileHeaderBoxWidth(tt.header, tt.added, tt.removed, tt.total)
+			width := fileHeaderBoxWidth(tt.header, tt.added, tt.removed)
 			assert.Greater(t, width, 0, "fileHeaderBoxWidth should be positive")
 			// Width should include the header text display width
 			assert.GreaterOrEqual(t, width, displayWidth(tt.header),

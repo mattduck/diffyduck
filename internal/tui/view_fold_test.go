@@ -90,9 +90,8 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 			// lines[3] = header (at cursorOffset position)
 			headerLine := lines[3]
 			assert.Contains(t, headerLine, tt.wantIcon, "header should contain %s icon for %s level", tt.wantIcon, tt.level)
-			// Header format is: <foldIcon> <fileNum> <statusIndicator> filename [stats]
-			// For modified files (a/test.go -> b/test.go with same name), status is "~"
-			assert.Contains(t, headerLine, tt.wantIcon+" #1 ~ test.go", "header format should be: <icon> <#fileNum> <status> filename")
+			// Header format is: <foldIcon> filename (no file number or status symbol in main view)
+			assert.Contains(t, headerLine, tt.wantIcon+" test.go", "header format should be: <icon> filename")
 		})
 	}
 }
