@@ -1503,14 +1503,14 @@ func FuncB() {
 		}
 	}
 
-	// Verify we can find expected symbols in the lines
+	// Verify we can find expected change kinds and names in the lines
 	foundModified := false
 	foundAdded := false
 	for _, row := range structDiffRows {
-		if strings.Contains(row.structuralDiffLine, "~") && strings.Contains(row.structuralDiffLine, "FuncA") {
+		if row.structuralDiffChangeKind == structure.ChangeModified && strings.Contains(row.structuralDiffLine, "FuncA") {
 			foundModified = true
 		}
-		if strings.Contains(row.structuralDiffLine, "+") && strings.Contains(row.structuralDiffLine, "FuncB") {
+		if row.structuralDiffChangeKind == structure.ChangeAdded && strings.Contains(row.structuralDiffLine, "FuncB") {
 			foundAdded = true
 		}
 	}

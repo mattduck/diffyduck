@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 var (
@@ -298,14 +299,13 @@ type displayRow struct {
 	commentRowCount  int    // total rows in this comment box
 	commentLineIndex int    // which line of comment content this is (for content rows, -1 for borders)
 	// Structural diff fields (for RowKindStructuralDiff rows)
-	isStructuralDiff          bool   // true if this is a structural diff row
-	structuralDiffLine        string // the formatted line (e.g., "  ~ func FuncA")
-	structuralDiffIsBlank     bool   // true if this is a blank separator line
-	structuralDiffAdded       int    // lines added within this element
-	structuralDiffRemoved     int    // lines removed within this element
-	structuralDiffMaxAddLen   int    // max width of add counts (for alignment)
-	structuralDiffMaxRemLen   int    // max width of remove counts (for alignment)
-	structuralDiffIsTruncated bool   // true if this is a "...N more" overflow row
+	isStructuralDiff          bool                 // true if this is a structural diff row
+	structuralDiffLine        string               // the formatted line (e.g., "  func FuncA(...)")
+	structuralDiffIsBlank     bool                 // true if this is a blank separator line
+	structuralDiffChangeKind  structure.ChangeKind // change kind for styling the identifier
+	structuralDiffAdded       int                  // lines added within this element
+	structuralDiffRemoved     int                  // lines removed within this element
+	structuralDiffIsTruncated bool                 // true if this is a "...N more" overflow row
 }
 
 // buildCommentRows creates displayRow entries for a comment box.

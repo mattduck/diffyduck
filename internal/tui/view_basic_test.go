@@ -759,17 +759,6 @@ func TestView_StructuralDiffBorderAlignment(t *testing.T) {
 	lines := strings.Split(output, "\n")
 	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-	// Helper to find rune (display) position of a character
-	findRunePos := func(s string, target rune) int {
-		runes := []rune(s)
-		for i, r := range runes {
-			if r == target {
-				return i
-			}
-		}
-		return -1
-	}
-
 	// Helper to find rune position of a substring
 	findSubstringRunePos := func(s, substr string) int {
 		idx := strings.Index(s, substr)
@@ -789,8 +778,8 @@ func TestView_StructuralDiffBorderAlignment(t *testing.T) {
 		if strings.Contains(stripped, "example.go") && (strings.Contains(stripped, "├") || strings.Contains(stripped, "└")) {
 			headerLine = stripped
 		}
-		// Find a structural diff line (contains ~ and "func")
-		if strings.Contains(stripped, "~ func") {
+		// Find a structural diff line (contains "func" kind keyword)
+		if strings.Contains(stripped, "func ") && !strings.Contains(stripped, "example.go") {
 			structDiffLine = stripped
 		}
 	}
@@ -803,18 +792,18 @@ func TestView_StructuralDiffBorderAlignment(t *testing.T) {
 		filenamePos := findSubstringRunePos(headerLine, "example.go")
 		require.GreaterOrEqual(t, filenamePos, 0, "should find filename position")
 
-		// Find position of the symbol (~) in structural diff line
-		symbolPos := findRunePos(structDiffLine, '~')
-		require.GreaterOrEqual(t, symbolPos, 0, "should find symbol position")
+		// Find position of the kind keyword ("func") in structural diff line
+		kindPos := findSubstringRunePos(structDiffLine, "func")
+		require.GreaterOrEqual(t, kindPos, 0, "should find kind position")
 
-		// The symbol should be near the filename's start position (within tree indent)
+		// The kind should be near the filename's start position (within tree indent)
 		// In tree layout, exact alignment may differ due to tree structure
-		diff := symbolPos - filenamePos
+		diff := kindPos - filenamePos
 		if diff < 0 {
 			diff = -diff
 		}
 		assert.LessOrEqual(t, diff, 5,
-			"structural diff symbol should be near filename start\n  header: %q\n  struct: %q",
+			"structural diff kind should be near filename start\n  header: %q\n  struct: %q",
 			headerLine, structDiffLine)
 	}
 
@@ -1125,16 +1114,16 @@ func TestView_StructuralDiffTruncation(t *testing.T) {
 	}
 }
 
-// TestView_StructuralDiffStatsRightAligned tests that the +N/-M stats in
-// structural diff rows are right-aligned within their columns, and that
-// zero-count stats show a dim placeholder symbol rather than a number.
-func TestView_StructuralDiffStatsRightAligned(t *testing.T) {
+// TestView_StructuralDiffStatsAfterSignature tests that the +N/-M stats in
+// structural diff rows appear straight after the signature with no alignment
+// padding, and that zero counts are omitted entirely.
+func TestView_StructuralDiffStatsAfterSignature(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	// Three functions with varying added/removed counts:
-	// - Alpha: +115 -3   (3-digit add, 1-digit rem)
-	// - Bravo: +7   -0   (1-digit add, zero rem -> placeholder)
-	// - Charlie: +0  -12  (zero add -> placeholder, 2-digit rem)
+	// - Alpha: +115 -3   (both add and remove)
+	// - Bravo: +7        (add only, no remove)
+	// - Charlie: -12     (remove only, no add)
 	entries := []structure.Entry{
 		{StartLine: 1, EndLine: 20, Name: "Alpha", Kind: "func"},
 		{StartLine: 25, EndLine: 35, Name: "Bravo", Kind: "func"},
@@ -1144,7 +1133,7 @@ func TestView_StructuralDiffStatsRightAligned(t *testing.T) {
 	changes := []structure.ElementChange{
 		{Kind: structure.ChangeModified, OldEntry: &entries[0], NewEntry: &entries[0], LinesAdded: 115, LinesRemoved: 3},
 		{Kind: structure.ChangeModified, OldEntry: &entries[1], NewEntry: &entries[1], LinesAdded: 7, LinesRemoved: 0},
-		{Kind: structure.ChangeAdded, NewEntry: &entries[2], LinesAdded: 0, LinesRemoved: 12},
+		{Kind: structure.ChangeDeleted, OldEntry: &entries[2], LinesAdded: 0, LinesRemoved: 12},
 	}
 
 	m := Model{
@@ -1200,30 +1189,19 @@ func TestView_StructuralDiffStatsRightAligned(t *testing.T) {
 	require.NotEmpty(t, bravoLine, "Expected Bravo line in output")
 	require.NotEmpty(t, charlieLine, "Expected Charlie line in output")
 
-	// Alpha has +115: the "+" should be adjacent to "115" (right-aligned, no space between)
+	// Alpha has both: should show +115 and -3
 	assert.Contains(t, alphaLine, "+115", "Alpha should show +115")
 	assert.Contains(t, alphaLine, "-3", "Alpha should show -3")
 
-	// Bravo has +7: should be right-aligned as "  +7" (spaces before +7 to match +115 width)
-	// The +7 should NOT appear as "+  7" (left-aligned sign with padded number)
-	assert.Contains(t, bravoLine, "+7", "Bravo should show +7 with sign adjacent to number")
-	// Verify right-alignment: there should be spaces before +7 to align with +115
-	bravoAddIdx := strings.Index(bravoLine, "+7")
-	alphaAddIdx := strings.Index(alphaLine, "+115")
-	require.True(t, bravoAddIdx > 0 && alphaAddIdx > 0, "Should find stats positions")
-	// The "7" in +7 should end at the same column as "5" in +115
-	// +115 occupies columns [alphaAddIdx..alphaAddIdx+3], +7 occupies [bravoAddIdx..bravoAddIdx+1]
-	alphaAddEnd := alphaAddIdx + len("+115")
-	bravoAddEnd := bravoAddIdx + len("+7")
-	assert.Equal(t, alphaAddEnd, bravoAddEnd,
-		"Stats should be right-aligned: +115 ends at col %d, +7 ends at col %d",
-		alphaAddEnd, bravoAddEnd)
+	// Bravo has +7 only: should show +7, no remove stat at all
+	assert.Contains(t, bravoLine, "+7", "Bravo should show +7")
+	// No "-" stat should appear (no placeholder for zero)
+	bravoAfterName := bravoLine[strings.Index(bravoLine, "Bravo")+5:]
+	assert.NotContains(t, bravoAfterName, "-", "Bravo should not show any remove stat")
 
-	// Bravo has 0 removed: should show "-" placeholder, not "-0"
-	assert.NotContains(t, bravoLine, "-0", "Bravo should not show -0, should show dim placeholder")
-
-	// Charlie has 0 added: should show "+" placeholder, not "+0"
-	assert.NotContains(t, charlieLine, "+0", "Charlie should not show +0, should show dim placeholder")
+	// Charlie has -12 only: should show -12, no add stat at all
+	assert.Contains(t, charlieLine, "-12", "Charlie should show -12")
+	assert.NotContains(t, charlieLine, "+", "Charlie should not show any add stat")
 }
 
 // TestView_StructuralDiffSignatureUsesTerminalWidth tests that structural diff
