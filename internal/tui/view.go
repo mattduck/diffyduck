@@ -834,8 +834,11 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 
 	isLastFile := fileIdx == commitEndIdx-1
 
-	// Build tree paths for this file (header vs content have different paths)
-	headerTreePath := m.buildFileTreePath(fileIdx, isLastFile, fp.FoldLevel == sidebyside.FoldFolded, TreeRowHeader)
+	// In log mode, content rows of the last file should still show │ continuation
+	// because the └ on the header already signals the last child. In non-log mode
+	// (single diff), preserve the original IsLast behavior.
+	isLogMode := len(m.commits) > 0 && m.commits[0].Info.HasMetadata()
+	contentIsLast := isLastFile && !isLogMode
 
 	// Per-file header box width for unfolded headers (tighter border around own content)
 	header := formatFileHeader(fp)
@@ -844,17 +847,36 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	ownAddWidth := statsAddWidth(added)
 	ownRemWidth := statsRemWidth(removed)
 
+	// Determine whether the last file's header should use ├ (has content below) or └ (no content).
+	// In log mode, if the file has visible content below its header, use ├ so the tree
+	// line continues through the content area. Otherwise use └ as the terminal branch.
+	hasContentBelow := false
 	switch fp.FoldLevel {
 	case sidebyside.FoldFolded:
+		// Folded files show content only if they have structural diff preview
+		if fs := m.structureMaps[fileIdx]; fs != nil && fs.StructuralDiff != nil && fs.StructuralDiff.HasChanges() && len(fs.StructuralDiff.ChangedOnly()) > 0 {
+			hasContentBelow = true
+		}
+	case sidebyside.FoldExpanded:
+		hasContentBelow = fp.HasContent()
+	default: // FoldNormal
+		hasContentBelow = len(fp.Pairs) > 0
+	}
+	headerIsLast := isLastFile && !(isLogMode && hasContentBelow)
+
+	switch fp.FoldLevel {
+	case sidebyside.FoldFolded:
+		headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, true, TreeRowHeader)
 		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
 
-		// Add structural diff rows (no borders in folded mode, file is folded)
-		structuralRows := m.buildStructuralDiffRows(fileIdx, headerBoxWidth, isLastFile, true)
+		// Add structural diff rows (no borders in folded mode, file is folded).
+		// Use contentIsLast so │ continuation shows in log mode when preview content is visible.
+		structuralRows := m.buildStructuralDiffRows(fileIdx, headerBoxWidth, contentIsLast, true)
 		rows = append(rows, structuralRows...)
 
 		// Only add bottom margin if there was preview content (structural diff rows)
 		if len(structuralRows) > 0 {
-			marginTreePath := m.buildFileTreePath(fileIdx, isLastFile, true, TreeRowContent)
+			marginTreePath := m.buildFileTreePath(fileIdx, contentIsLast, true, TreeRowContent)
 			rows = append(rows, displayRow{
 				kind:               RowKindBlank,
 				fileIndex:          fileIdx,
@@ -868,8 +890,9 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		if fp.HasContent() {
 			// Note: First file's top border is added after commit body rows, not here
 			// This prevents content shift when first file is unfolded
-			expandedHeaderTreePath := m.buildFileTreePath(fileIdx, isLastFile, false, TreeRowHeader)
-			expandedContentTreePath := m.buildFileTreePath(fileIdx, isLastFile, false, TreeRowContent)
+			expandedHeaderTreePath := m.buildFileTreePath(fileIdx, headerIsLast, false, TreeRowHeader)
+			// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.
+			expandedContentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 
 			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: displayWidth(header), maxAddWidth: ownAddWidth, maxRemWidth: ownRemWidth, maxCountWidth: statsCountWidth(added, removed, ownAddWidth), headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: expandedHeaderTreePath, headerMode: headerMode})
 
@@ -953,8 +976,9 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	default: // FoldNormal
 		// Note: First file's top border is added after commit body rows, not here
 		// This prevents content shift when first file is unfolded
-		normalHeaderTreePath := m.buildFileTreePath(fileIdx, isLastFile, false, TreeRowHeader)
-		normalContentTreePath := m.buildFileTreePath(fileIdx, isLastFile, false, TreeRowContent)
+		normalHeaderTreePath := m.buildFileTreePath(fileIdx, headerIsLast, false, TreeRowHeader)
+		// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.
+		normalContentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 
 		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: displayWidth(header), maxAddWidth: ownAddWidth, maxRemWidth: ownRemWidth, maxCountWidth: statsCountWidth(added, removed, ownAddWidth), headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: normalHeaderTreePath, headerMode: headerMode})
 
@@ -988,7 +1012,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			})
 		} else {
 			var prevLeft, prevRight int
-			contentTreePath := m.buildFileTreePath(fileIdx, isLastFile, false, TreeRowContent)
+			contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 			for i, pair := range fp.Pairs {
 				if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
 					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
@@ -1004,7 +1028,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
 				}
 
-				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair, isLastFileInCommit: isLastFile, treePath: m.buildFileTreePath(fileIdx, isLastFile, false, TreeRowContent)}
+				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair, isLastFileInCommit: isLastFile, treePath: m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)}
 				if i == 0 {
 					row.isFirstLine = true
 				}

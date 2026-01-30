@@ -4,6 +4,9 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func TestRenderTreeContinuation(t *testing.T) {
@@ -201,6 +204,195 @@ func TestRenderTreePrefix(t *testing.T) {
 			}
 		})
 	}
+}
+
+// =============================================================================
+// headerIsLast: last file uses ├ when content exists, └ when no content
+// =============================================================================
+
+// makeLogModeModel creates a log-mode model with one commit containing the given files.
+func makeLogModeModel(files []sidebyside.FilePair) Model {
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "abc123",
+				Author:  "Test",
+				Date:    "Mon Jan 1 00:00:00 2024 +0000",
+				Subject: "Test commit",
+			},
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+			Files:       files,
+		},
+	}
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+	m.focused = true
+	m.RefreshLayout()
+	return m
+}
+
+// findLastFileHeader returns the header displayRow for the last file in the model's rows.
+func findLastFileHeader(rows []displayRow) *displayRow {
+	var lastHeader *displayRow
+	for i := range rows {
+		if rows[i].isHeader && !rows[i].isCommitHeader {
+			lastHeader = &rows[i]
+		}
+	}
+	return lastHeader
+}
+
+// Test: Last file with hunk content uses ├ (not └) in log mode
+func TestTree_LastFileHeader_WithHunkContent_UsesTBranch(t *testing.T) {
+	m := makeLogModeModel([]sidebyside.FilePair{
+		{
+			OldPath:   "a/first.go",
+			NewPath:   "b/first.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "y"}}},
+		},
+		{
+			OldPath:   "a/last.go",
+			NewPath:   "b/last.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
+		},
+	})
+
+	rows := m.buildRows()
+	header := findLastFileHeader(rows)
+	require.NotNil(t, header, "should find last file header")
+	require.NotNil(t, header.treePath.Current, "header should have Current tree level")
+	assert.False(t, header.treePath.Current.IsLast,
+		"last file with hunk content should use ├ (IsLast=false)")
+}
+
+// Test: Last file when folded with no preview uses └ in log mode
+func TestTree_LastFileHeader_FoldedNoPreview_UsesLBranch(t *testing.T) {
+	m := makeLogModeModel([]sidebyside.FilePair{
+		{
+			OldPath:   "a/first.go",
+			NewPath:   "b/first.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "y"}}},
+		},
+		{
+			OldPath:   "a/last.go",
+			NewPath:   "b/last.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
+		},
+	})
+	// No structureMaps set, so no structural diff preview
+
+	rows := m.buildRows()
+	header := findLastFileHeader(rows)
+	require.NotNil(t, header, "should find last file header")
+	require.NotNil(t, header.treePath.Current, "header should have Current tree level")
+	assert.True(t, header.treePath.Current.IsLast,
+		"last file folded with no preview should use └ (IsLast=true)")
+}
+
+// Test: Last file with expanded content uses ├ in log mode
+func TestTree_LastFileHeader_Expanded_UsesTBranch(t *testing.T) {
+	m := makeLogModeModel([]sidebyside.FilePair{
+		{
+			OldPath:    "a/only.go",
+			NewPath:    "b/only.go",
+			FoldLevel:  sidebyside.FoldExpanded,
+			Pairs:      []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
+			NewContent: []string{"new"},
+		},
+	})
+
+	rows := m.buildRows()
+	header := findLastFileHeader(rows)
+	require.NotNil(t, header, "should find last file header")
+	require.NotNil(t, header.treePath.Current, "header should have Current tree level")
+	assert.False(t, header.treePath.Current.IsLast,
+		"last file with expanded content should use ├ (IsLast=false)")
+}
+
+// Test: Non-last files always use ├ regardless of content
+func TestTree_NonLastFileHeader_AlwaysUsesTBranch(t *testing.T) {
+	m := makeLogModeModel([]sidebyside.FilePair{
+		{
+			OldPath:   "a/first.go",
+			NewPath:   "b/first.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "y"}}},
+		},
+		{
+			OldPath:   "a/last.go",
+			NewPath:   "b/last.go",
+			FoldLevel: sidebyside.FoldFolded,
+			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}}},
+		},
+	})
+
+	rows := m.buildRows()
+	// Find the FIRST file header
+	for _, r := range rows {
+		if r.isHeader && !r.isCommitHeader {
+			require.NotNil(t, r.treePath.Current, "header should have Current tree level")
+			assert.False(t, r.treePath.Current.IsLast,
+				"non-last file should always use ├ (IsLast=false)")
+			return
+		}
+	}
+	t.Fatal("did not find first file header")
+}
+
+// Test: In non-log mode (single diff), last file uses └ even with content
+func TestTree_LastFileHeader_NonLogMode_UsesLBranch(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/only.go",
+				NewPath:   "b/only.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+	header := findLastFileHeader(rows)
+	require.NotNil(t, header, "should find last file header")
+	require.NotNil(t, header.treePath.Current, "header should have Current tree level")
+	assert.True(t, header.treePath.Current.IsLast,
+		"non-log mode last file should use └ (IsLast=true) even with content")
+}
+
+// Test: Content rows of last file in log mode show │ continuation
+func TestTree_LastFileContentRows_LogMode_ShowContinuation(t *testing.T) {
+	m := makeLogModeModel([]sidebyside.FilePair{
+		{
+			OldPath:   "a/only.go",
+			NewPath:   "b/only.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
+		},
+	})
+
+	rows := m.buildRows()
+	for _, r := range rows {
+		if r.kind == RowKindContent {
+			require.Greater(t, len(r.treePath.Ancestors), 0,
+				"content row should have tree ancestors")
+			assert.False(t, r.treePath.Ancestors[0].IsLast,
+				"last file's content row in log mode should have IsLast=false for │ continuation")
+			return
+		}
+	}
+	t.Fatal("did not find content row")
 }
 
 func TestTreeWidth(t *testing.T) {
