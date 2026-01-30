@@ -45,9 +45,10 @@ func styleSig(sig string, changeKind structure.ChangeKind) string {
 	paramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // white (not default/bright)
 
 	// nameStyle is used only for the identifier name (func name or type name).
-	// For added/deleted items it gets bold+underline in the inline diff color.
-	// typeStyle (receiver types, param types, return types) keeps its normal color.
-	nameStyle := typeStyle // default: use typeStyle for type names
+	// For added/deleted items it gets underline in the inline diff color.
+	// Otherwise the identifier uses fg7 (white) instead of syntax colors.
+	plainStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	nameStyle := plainStyle
 	switch changeKind {
 	case structure.ChangeAdded:
 		s := lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("2"))
@@ -57,6 +58,8 @@ func styleSig(sig string, changeKind structure.ChangeKind) string {
 		s := lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("1"))
 		funcStyle = s
 		nameStyle = s
+	default:
+		funcStyle = plainStyle
 	}
 
 	// No parens at all — plain type name
