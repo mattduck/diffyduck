@@ -138,12 +138,11 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	// - Skip custom styling when search highlighting was applied (preserve search fg colors)
 	styledHeader := m.styleFileHeaderText(header, status, hasSearch)
 
-	// Style the fold icon with fg=8 (same as commit header), fg=15 when cursor is on row
-	iconColor := "8"
+	// Style the fold icon to match the border colour for this file status, fg=15 when cursor is on row
+	iconStyle := fileStatusStyle
 	if isCursorRow {
-		iconColor = "15"
+		iconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	}
-	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(iconColor))
 	styledIcon := iconStyle.Render(icon)
 
 	// Tree prefix using the generic tree infrastructure

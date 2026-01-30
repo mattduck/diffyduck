@@ -207,11 +207,11 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	authorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	foldIconColor := "8"
+	// Fold icon colour matches commit border (yellow/color 3), fg=15 when cursor is on row
+	foldIconStyle := commitTreeStyle
 	if isCursorRow {
-		foldIconColor = "15"
+		foldIconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	}
-	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(foldIconColor))
 
 	// Fold icon
 	var foldIcon string
@@ -400,12 +400,11 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 		foldIcon = "◯"
 	}
 
-	// Icon color: fg=8 normally, fg=15 when cursor is on row
-	iconColor := "8"
+	// Icon colour matches commit info border (grey/color 7), fg=15 when cursor is on row
+	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	if isCursorRow {
-		iconColor = "15"
+		iconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	}
-	iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(iconColor))
 	styledIcon := iconStyle.Render(foldIcon)
 
 	// Header text (formatted date) - dim parts in fg=7, date part in fg=15
