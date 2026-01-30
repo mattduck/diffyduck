@@ -272,7 +272,10 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	// Format: [prefix][fold] [sha] [files] [+added] [-removed] [time] [author] [subject]
 
 	shaText := commitInfo.ShortSHA()
-	filesText := fmt.Sprintf("%d", fileCount)
+	filesText := "-"
+	if fileCount > 0 {
+		filesText = fmt.Sprintf("%d", fileCount)
+	}
 	var addedText, removedText string
 	if statsLoaded {
 		addedText = fmt.Sprintf("+%d", totalAdded)
