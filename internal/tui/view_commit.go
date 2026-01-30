@@ -423,7 +423,12 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 		}
 	}
 
-	result := treeLine + " " + styledIcon + " " + styledHeader
+	// Connect branch to fold icon with ━ (same style as horizontal branch)
+	branchConnector := " "
+	if row.treePath.Current != nil {
+		branchConnector = row.treePath.Current.Style.Render("━")
+	}
+	result := treeLine + branchConnector + styledIcon + " " + styledHeader
 
 	// Add trailing border fill for expanded commit info: ┏━━━━━ to screen edge
 	if row.headerMode != HeaderSingleLine && m.width > 0 {

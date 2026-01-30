@@ -124,8 +124,8 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	statsBarWidth := statsBarDisplayWidth(added, removed)
 
 	// Calculate content width and pad to match headerBoxWidth
-	// Layout: indent(3) + icon(1) + space(1) + header
-	iconPartWidth := 3 + 1 + 1 // "   ◐ "
+	// Layout: indent(3) + connector(1) + icon(1) + header
+	iconPartWidth := 3 + 1 + 1 // "   ━◐"
 	contentWidth := iconPartWidth + headerTextWidth + statsBarWidth
 	boxPadding := ""
 	if headerBoxWidth > contentWidth {
@@ -165,7 +165,12 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 		}
 	}
 
-	result := treeLine + " " + styledIcon + styledHeader + statsBar + boxPadding
+	// Connect branch to fold icon with ━ (same style as horizontal branch)
+	branchConnector := " "
+	if treePath.Current != nil {
+		branchConnector = treePath.Current.Style.Render("━")
+	}
+	result := treeLine + branchConnector + styledIcon + styledHeader + statsBar + boxPadding
 
 	// Add trailing border fill for unfolded files: ┏━━━━━━━ to screen edge
 	if headerMode != HeaderSingleLine && m.width > 0 {
