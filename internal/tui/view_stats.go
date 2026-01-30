@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -210,9 +211,10 @@ func formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth int) string 
 		}
 		parts = append(parts, addedStyle.Render(addStr))
 	} else if maxAddWidth > 0 {
-		// Show just + right-aligned (padding before the +)
+		// Show just + right-aligned in dim grey (no additions)
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 		addStr := strings.Repeat(" ", maxAddWidth-1) + "+"
-		parts = append(parts, addedStyle.Render(addStr))
+		parts = append(parts, dimStyle.Render(addStr))
 	}
 
 	// Build removal string with padding for alignment
@@ -224,9 +226,10 @@ func formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth int) string 
 		}
 		parts = append(parts, removedStyle.Render(remStr))
 	} else if maxRemWidth > 0 {
-		// Show just - right-aligned (padding before the -)
+		// Show just - right-aligned in dim grey (no removals)
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 		remStr := strings.Repeat(" ", maxRemWidth-1) + "-"
-		parts = append(parts, removedStyle.Render(remStr))
+		parts = append(parts, dimStyle.Render(remStr))
 	}
 
 	return " " + strings.Join(parts, " ")

@@ -135,16 +135,16 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	// For zero counts, show just +/- right-aligned (no number)
 	var styledAdded, styledRemoved string
 	if totalAdded == 0 {
-		// Right-align just the + (shift it one position right where the 0 was)
+		// Right-align just the + in dim grey (no additions)
 		padding := strings.TrimSuffix(addedText, "+0")
-		styledAdded = padding + " " + addedStyle.Render("+")
+		styledAdded = padding + " " + dimStyle.Render("+")
 	} else {
 		styledAdded = addedStyle.Render(addedText)
 	}
 	if totalRemoved == 0 {
-		// Right-align just the - (shift it one position right where the 0 was)
+		// Right-align just the - in dim grey (no removals)
 		padding := strings.TrimSuffix(removedText, "-0")
-		styledRemoved = padding + " " + removedStyle.Render("-")
+		styledRemoved = padding + " " + dimStyle.Render("-")
 	} else {
 		styledRemoved = removedStyle.Render(removedText)
 	}
@@ -1223,26 +1223,31 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 		remPart := ""
 		addStyled := ""
 		remStyled := ""
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 		if row.structuralDiffMaxAddLen > 0 {
+			colWidth := 1 + row.structuralDiffMaxAddLen // sign + digits
 			if row.structuralDiffAdded > 0 {
-				// Show +N with the number
-				addPart = fmt.Sprintf("+%*d", row.structuralDiffMaxAddLen, row.structuralDiffAdded)
+				// Show +N right-aligned within column
+				raw := fmt.Sprintf("+%d", row.structuralDiffAdded)
+				addPart = fmt.Sprintf("%*s", colWidth, raw)
 				addStyled = darkAddedStyle.Render(addPart)
 			} else {
-				// Show just + right-aligned (padding before the +)
-				addPart = strings.Repeat(" ", row.structuralDiffMaxAddLen) + "+"
-				addStyled = darkAddedStyle.Render(addPart)
+				// Show + right-aligned as dim placeholder for no additions
+				addPart = fmt.Sprintf("%*s", colWidth, "+")
+				addStyled = dimStyle.Render(addPart)
 			}
 		}
 		if row.structuralDiffMaxRemLen > 0 {
+			colWidth := 1 + row.structuralDiffMaxRemLen // sign + digits
 			if row.structuralDiffRemoved > 0 {
-				// Show -N with the number
-				remPart = fmt.Sprintf("-%*d", row.structuralDiffMaxRemLen, row.structuralDiffRemoved)
+				// Show -N right-aligned within column
+				raw := fmt.Sprintf("-%d", row.structuralDiffRemoved)
+				remPart = fmt.Sprintf("%*s", colWidth, raw)
 				remStyled = darkRemovedStyle.Render(remPart)
 			} else {
-				// Show just - right-aligned (padding before the -)
-				remPart = strings.Repeat(" ", row.structuralDiffMaxRemLen) + "-"
-				remStyled = darkRemovedStyle.Render(remPart)
+				// Show - right-aligned as dim placeholder for no removals
+				remPart = fmt.Sprintf("%*s", colWidth, "-")
+				remStyled = dimStyle.Render(remPart)
 			}
 		}
 

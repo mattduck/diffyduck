@@ -1124,3 +1124,104 @@ func TestView_StructuralDiffTruncation(t *testing.T) {
 		assert.False(t, found, "Expected truncated function '%s' to NOT appear in output", name)
 	}
 }
+
+// TestView_StructuralDiffStatsRightAligned tests that the +N/-M stats in
+// structural diff rows are right-aligned within their columns, and that
+// zero-count stats show a dim placeholder symbol rather than a number.
+func TestView_StructuralDiffStatsRightAligned(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	// Three functions with varying added/removed counts:
+	// - Alpha: +115 -3   (3-digit add, 1-digit rem)
+	// - Bravo: +7   -0   (1-digit add, zero rem -> placeholder)
+	// - Charlie: +0  -12  (zero add -> placeholder, 2-digit rem)
+	entries := []structure.Entry{
+		{StartLine: 1, EndLine: 20, Name: "Alpha", Kind: "func"},
+		{StartLine: 25, EndLine: 35, Name: "Bravo", Kind: "func"},
+		{StartLine: 40, EndLine: 55, Name: "Charlie", Kind: "func"},
+	}
+
+	changes := []structure.ElementChange{
+		{Kind: structure.ChangeModified, OldEntry: &entries[0], NewEntry: &entries[0], LinesAdded: 115, LinesRemoved: 3},
+		{Kind: structure.ChangeModified, OldEntry: &entries[1], NewEntry: &entries[1], LinesAdded: 7, LinesRemoved: 0},
+		{Kind: structure.ChangeAdded, NewEntry: &entries[2], LinesAdded: 0, LinesRemoved: 12},
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/stats.go",
+				NewPath:   "b/stats.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "package stats", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package stats", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width:  120,
+		height: 20,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap(entries),
+				NewStructure:   structure.NewMap(entries),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	lines := strings.Split(output, "\n")
+
+	var strippedLines []string
+	for _, line := range lines {
+		strippedLines = append(strippedLines, ansiRegex.ReplaceAllString(line, ""))
+	}
+
+	// Find structural diff lines by looking for function names
+	findLine := func(name string) string {
+		for _, s := range strippedLines {
+			if strings.Contains(s, name) && strings.Contains(s, "func") {
+				return s
+			}
+		}
+		return ""
+	}
+
+	alphaLine := findLine("Alpha")
+	bravoLine := findLine("Bravo")
+	charlieLine := findLine("Charlie")
+
+	require.NotEmpty(t, alphaLine, "Expected Alpha line in output")
+	require.NotEmpty(t, bravoLine, "Expected Bravo line in output")
+	require.NotEmpty(t, charlieLine, "Expected Charlie line in output")
+
+	// Alpha has +115: the "+" should be adjacent to "115" (right-aligned, no space between)
+	assert.Contains(t, alphaLine, "+115", "Alpha should show +115")
+	assert.Contains(t, alphaLine, "-3", "Alpha should show -3")
+
+	// Bravo has +7: should be right-aligned as "  +7" (spaces before +7 to match +115 width)
+	// The +7 should NOT appear as "+  7" (left-aligned sign with padded number)
+	assert.Contains(t, bravoLine, "+7", "Bravo should show +7 with sign adjacent to number")
+	// Verify right-alignment: there should be spaces before +7 to align with +115
+	bravoAddIdx := strings.Index(bravoLine, "+7")
+	alphaAddIdx := strings.Index(alphaLine, "+115")
+	require.True(t, bravoAddIdx > 0 && alphaAddIdx > 0, "Should find stats positions")
+	// The "7" in +7 should end at the same column as "5" in +115
+	// +115 occupies columns [alphaAddIdx..alphaAddIdx+3], +7 occupies [bravoAddIdx..bravoAddIdx+1]
+	alphaAddEnd := alphaAddIdx + len("+115")
+	bravoAddEnd := bravoAddIdx + len("+7")
+	assert.Equal(t, alphaAddEnd, bravoAddEnd,
+		"Stats should be right-aligned: +115 ends at col %d, +7 ends at col %d",
+		alphaAddEnd, bravoAddEnd)
+
+	// Bravo has 0 removed: should show "-" placeholder, not "-0"
+	assert.NotContains(t, bravoLine, "-0", "Bravo should not show -0, should show dim placeholder")
+
+	// Charlie has 0 added: should show "+" placeholder, not "+0"
+	assert.NotContains(t, charlieLine, "+0", "Charlie should not show +0, should show dim placeholder")
+}
