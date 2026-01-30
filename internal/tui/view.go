@@ -598,26 +598,19 @@ func (m Model) buildRows() []displayRow {
 			headerText := "details"
 			infoHeaderBoxWidth := iconPartWidth + len(headerText) + 2
 
-			// Build tree path for commit-info borders
-			// Details is a child of the commit; check if there are files to determine if it's last
-			startFileIdx := 0
-			if commitIdx < len(m.commitFileStarts) {
-				startFileIdx = m.commitFileStarts[commitIdx]
-			}
-			endFileIdx := len(m.files)
-			if commitIdx+1 < len(m.commitFileStarts) {
-				endFileIdx = m.commitFileStarts[commitIdx+1]
-			}
-			hasFiles := startFileIdx < endFileIdx
+			// Build tree path for commit-info top border.
 			detailsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // grey for details
-			detailsLevel := TreeLevel{
-				IsLast:   !hasFiles,
-				IsFolded: commit.FoldLevel == sidebyside.CommitNormal,
+			// The border sits between commit header and details header, always showing
+			// commit trunk continuation (│). Use a level that's never folded/last since
+			// at least the details header always follows below this row.
+			commitTrunkLevel := TreeLevel{
+				IsLast:   false,
+				IsFolded: false,
 				Style:    detailsStyle,
 				Depth:    0,
 			}
 			detailsBorderTreePath := TreePath{
-				Ancestors: []TreeLevel{detailsLevel},
+				Ancestors: []TreeLevel{commitTrunkLevel},
 				Current:   nil,
 			}
 
@@ -1373,7 +1366,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 		if firstCommitUnfolded {
 			// Render first commit's top border in the margin (not cursor-selectable)
-			visible = append(visible, m.renderCommitBorderLine(true, true, 0, false))
+			visible = append(visible, m.renderCommitBorderLine(true, true, 0, false, TreePath{}))
 		} else if isDiffView && firstFileUnfolded && rows[0].isHeader {
 			// Render first file's top border (matches the header box style)
 			// In diff view, files are roots so no tree ancestors
@@ -1418,14 +1411,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.isHeaderSpacer {
 			rendered = m.renderHeaderBottomBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
 		} else if row.isBlank {
-			if isCursorRow {
-				rendered = m.renderBlankWithCursor(leftHalfWidth, rightHalfWidth, lineNumWidth)
-			} else if len(row.treePath.Ancestors) > 0 {
-				// Blank row with tree continuation (e.g., after preview rows)
-				rendered = renderTreePrefixTight(row.treePath)
-			} else {
-				rendered = m.renderInterFileBlank()
-			}
+			rendered = renderEmptyTreeRow(row.treePath, isCursorRow, m.focused)
 		} else if row.isHeader {
 			rendered = m.renderHeader(row.header, row.foldLevel, row.headerMode, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow, row.treePath)
 		} else if row.isSeparatorTop {

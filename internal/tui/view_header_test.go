@@ -884,6 +884,16 @@ func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
 	// Non-cursor row should not have arrow
 	normalOutput := m.renderHeaderTopBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true), TreePath{})
 	assert.NotContains(t, normalOutput, "▶", "non-cursor row should not have arrow")
+
+	// Cursor row WITH tree path should have both arrow and tree continuation
+	treePath := TreePath{
+		Ancestors: []TreeLevel{{IsLast: false, Style: lipgloss.NewStyle()}},
+		Current:   nil,
+	}
+	cursorTreeOutput := m.renderHeaderTopBorder(30, HeaderThreeLine, FileStatusModified, true, treeWidth(1, true), treePath)
+	assert.Contains(t, cursorTreeOutput, "▶", "cursor+tree should have arrow")
+	assert.Contains(t, cursorTreeOutput, "│", "cursor+tree should preserve tree continuation")
+	assert.NotContains(t, cursorTreeOutput, "░", "cursor+tree should not have shading")
 }
 
 // Test: renderHeaderBottomBorder uses correct corner character

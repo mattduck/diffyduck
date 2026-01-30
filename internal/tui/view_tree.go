@@ -103,6 +103,26 @@ func renderTreePrefixTight(path TreePath) string {
 	return margin + renderTreeContinuationTight(path.Ancestors)
 }
 
+// renderEmptyTreeRow renders an empty/spacer row with tree continuation and optional cursor.
+// Used for blank rows, top borders, and other visually-empty rows that still need to
+// maintain the tree branch. The cursor arrow replaces the left margin space.
+func renderEmptyTreeRow(treePath TreePath, isCursorRow bool, focused bool) string {
+	if isCursorRow {
+		var arrow string
+		if focused {
+			arrow = cursorArrowStyle.Render("▶")
+		} else {
+			arrow = unfocusedCursorArrowStyle.Render("▷")
+		}
+		// Arrow replaces the left margin space
+		return arrow + renderTreeContinuationTight(treePath.Ancestors)
+	}
+	if len(treePath.Ancestors) > 0 {
+		return renderTreePrefixTight(treePath)
+	}
+	return ""
+}
+
 // treeWidthTight calculates the character width of tight tree prefixes.
 // Uses 2 chars per ancestor instead of 5, for compact content rows.
 func treeWidthTight(numAncestors int) int {

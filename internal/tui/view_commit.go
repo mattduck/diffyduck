@@ -441,18 +441,7 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 // renderCommitInfoTopBorder renders the top border row above the commit info header.
 // Renders as empty space with tree continuation (keeping the row for layout consistency).
 func (m Model) renderCommitInfoTopBorder(row displayRow, isCursorRow bool) string {
-	// Always show tree continuation on this line to connect commit border to children
-	margin := strings.Repeat(" ", TreeLeftMargin)
-	treeCont := treeContinuationStyle.Render("│")
-
-	if isCursorRow {
-		if m.focused {
-			return cursorArrowStyle.Render("▶") + treeCont
-		}
-		return unfocusedCursorArrowStyle.Render("▷") + treeCont
-	}
-
-	return margin + treeCont
+	return renderEmptyTreeRow(row.treePath, isCursorRow, m.focused)
 }
 
 // renderCommitInfoBottomBorder renders the bottom border of the commit info header.

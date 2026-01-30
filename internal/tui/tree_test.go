@@ -395,6 +395,74 @@ func TestTree_LastFileContentRows_LogMode_ShowContinuation(t *testing.T) {
 	t.Fatal("did not find content row")
 }
 
+func TestRenderEmptyTreeRow(t *testing.T) {
+	plainStyle := lipgloss.NewStyle()
+
+	t.Run("no ancestors, no cursor", func(t *testing.T) {
+		path := TreePath{}
+		got := renderEmptyTreeRow(path, false, true)
+		assert.Equal(t, "", got, "empty tree path with no cursor should render nothing")
+	})
+
+	t.Run("no ancestors, cursor focused", func(t *testing.T) {
+		path := TreePath{}
+		got := renderEmptyTreeRow(path, true, true)
+		assert.Contains(t, got, "▶", "cursor row should have arrow")
+		assert.NotContains(t, got, "│", "no ancestors means no continuation")
+	})
+
+	t.Run("no ancestors, cursor unfocused", func(t *testing.T) {
+		path := TreePath{}
+		got := renderEmptyTreeRow(path, true, false)
+		assert.Contains(t, got, "▷", "unfocused cursor should have outline arrow")
+		assert.NotContains(t, got, "│", "no ancestors means no continuation")
+	})
+
+	t.Run("one ancestor non-last, no cursor", func(t *testing.T) {
+		path := TreePath{
+			Ancestors: []TreeLevel{{IsLast: false, Style: plainStyle}},
+		}
+		got := renderEmptyTreeRow(path, false, true)
+		assert.Contains(t, got, "│", "non-last ancestor should show continuation")
+	})
+
+	t.Run("one ancestor non-last, cursor focused", func(t *testing.T) {
+		path := TreePath{
+			Ancestors: []TreeLevel{{IsLast: false, Style: plainStyle}},
+		}
+		got := renderEmptyTreeRow(path, true, true)
+		assert.Contains(t, got, "▶", "cursor row should have arrow")
+		assert.Contains(t, got, "│", "tree continuation must survive cursor rendering")
+	})
+
+	t.Run("one ancestor last, no cursor", func(t *testing.T) {
+		path := TreePath{
+			Ancestors: []TreeLevel{{IsLast: true, Style: plainStyle}},
+		}
+		got := renderEmptyTreeRow(path, false, true)
+		assert.NotContains(t, got, "│", "last ancestor should not show continuation")
+	})
+
+	t.Run("one ancestor folded, no cursor", func(t *testing.T) {
+		path := TreePath{
+			Ancestors: []TreeLevel{{IsFolded: true, Style: plainStyle}},
+		}
+		got := renderEmptyTreeRow(path, false, true)
+		assert.NotContains(t, got, "│", "folded ancestor should not show continuation")
+	})
+
+	t.Run("no shading characters", func(t *testing.T) {
+		// Verify empty rows never contain ░ shading
+		path := TreePath{
+			Ancestors: []TreeLevel{{IsLast: false, Style: plainStyle}},
+		}
+		for _, cursor := range []bool{true, false} {
+			got := renderEmptyTreeRow(path, cursor, true)
+			assert.NotContains(t, got, "░", "empty tree rows should never contain shading")
+		}
+	})
+}
+
 func TestTreeWidth(t *testing.T) {
 	tests := []struct {
 		name         string
