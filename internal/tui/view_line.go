@@ -187,11 +187,15 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 }
 
 func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, lineNumWidth int, isCursorRow bool) string {
+	// Tree prefix using tight spacing (same as content rows)
+	treeContinuation := renderTreePrefixTight(row.treePath)
+	currentTreeWidth := treeWidthTight(len(row.treePath.Ancestors))
+
 	// Gutter: arrow(1) + space(1) + lineNum area
 	gutterWidth := 2 + lineNumWidth
 
-	// Box spans from after gutter to the left half width
-	boxWidth := leftHalfWidth - gutterWidth
+	// Box spans from after gutter and tree prefix to the left half width
+	boxWidth := leftHalfWidth - gutterWidth - currentTreeWidth
 	if boxWidth < 6 {
 		boxWidth = 6
 	}
@@ -236,13 +240,13 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	isBottomBorder := row.commentRowIndex == row.commentRowCount-1
 
 	if isTopBorder {
-		topBorder := "┌" + strings.Repeat("─", boxWidth-2) + "┐"
-		return leftGutter + commentBorderStyle.Render(topBorder) + sep + rightGutter + rightContent
+		topBorder := "╓" + strings.Repeat("─", boxWidth-2) + "╖"
+		return treeContinuation + leftGutter + commentBorderStyle.Render(topBorder) + sep + rightGutter + rightContent
 	}
 
 	if isBottomBorder {
-		bottomBorder := "└" + strings.Repeat("─", boxWidth-2) + "┘"
-		return leftGutter + commentBorderStyle.Render(bottomBorder) + sep + rightGutter + rightContent
+		bottomBorder := "╙" + strings.Repeat("─", boxWidth-2) + "╜"
+		return treeContinuation + leftGutter + commentBorderStyle.Render(bottomBorder) + sep + rightGutter + rightContent
 	}
 
 	// Content line - wrap the comment text the same way buildCommentRows does,
@@ -271,7 +275,7 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	// Note: padding must be added after highlighting to maintain box alignment
 	paddedText := highlightedText + strings.Repeat(" ", padding)
 
-	return leftGutter + commentBorderStyle.Render("│ ") + paddedText + " " + commentBorderStyle.Render("│") + sep + rightGutter + rightContent
+	return treeContinuation + leftGutter + commentBorderStyle.Render("║ ") + paddedText + " " + commentBorderStyle.Render("║") + sep + rightGutter + rightContent
 }
 
 // wrapComment wraps a single line of text to fit within maxWidth using

@@ -310,7 +310,7 @@ type displayRow struct {
 
 // buildCommentRows creates displayRow entries for a comment box.
 // contentWidth is the text width available inside the box; lines are word-wrapped to fit.
-func buildCommentRows(fileIndex int, lineNum int, comment string, contentWidth int) []displayRow {
+func buildCommentRows(fileIndex int, lineNum int, comment string, contentWidth int, treePath TreePath) []displayRow {
 	if comment == "" {
 		return nil
 	}
@@ -334,6 +334,7 @@ func buildCommentRows(fileIndex int, lineNum int, comment string, contentWidth i
 		commentRowIndex:  0,
 		commentRowCount:  rowCount,
 		commentLineIndex: -1, // border, not content
+		treePath:         treePath,
 	}
 
 	// Content lines
@@ -346,6 +347,7 @@ func buildCommentRows(fileIndex int, lineNum int, comment string, contentWidth i
 			commentRowIndex:  i + 1,
 			commentRowCount:  rowCount,
 			commentLineIndex: i,
+			treePath:         treePath,
 		}
 	}
 
@@ -358,6 +360,7 @@ func buildCommentRows(fileIndex int, lineNum int, comment string, contentWidth i
 		commentRowIndex:  rowCount - 1,
 		commentRowCount:  rowCount,
 		commentLineIndex: -1, // border, not content
+		treePath:         treePath,
 	}
 
 	return rows
@@ -871,7 +874,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				if expRow.kind == RowKindContent && expRow.pair.New.Num > 0 {
 					key := commentKey{fileIndex: fileIdx, newLineNum: expRow.pair.New.Num}
 					if comment, ok := m.comments[key]; ok {
-						commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, comment, m.commentContentWidth())
+						commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, comment, m.commentContentWidth(), expandedContentTreePath)
 						rows = append(rows, commentRows...)
 					}
 				}
@@ -978,7 +981,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				if pair.New.Num > 0 {
 					key := commentKey{fileIndex: fileIdx, newLineNum: pair.New.Num}
 					if comment, ok := m.comments[key]; ok {
-						commentRows := buildCommentRows(fileIdx, pair.New.Num, comment, m.commentContentWidth())
+						commentRows := buildCommentRows(fileIdx, pair.New.Num, comment, m.commentContentWidth(), contentTreePath)
 						rows = append(rows, commentRows...)
 					}
 				}

@@ -2431,6 +2431,168 @@ func TestCommentCursorVisualPos(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Comment Tree Prefix Tests
+// =============================================================================
+
+// Test: buildCommentRows propagates treePath to all rows (top border, content, bottom border)
+func TestComment_BuildCommentRows_PropagatesTreePath(t *testing.T) {
+	tp := TreePath{
+		Ancestors: []TreeLevel{
+			{IsLast: false, Depth: 0},
+			{IsLast: false, Depth: 1},
+		},
+	}
+
+	rows := buildCommentRows(0, 1, "hello", 40, tp)
+	require.GreaterOrEqual(t, len(rows), 3, "should have top border, content, and bottom border")
+
+	for i, r := range rows {
+		assert.Equal(t, tp, r.treePath, "row %d should carry the treePath", i)
+	}
+}
+
+// Test: buildCommentRows with empty treePath still works (no ancestors)
+func TestComment_BuildCommentRows_EmptyTreePath(t *testing.T) {
+	tp := TreePath{}
+
+	rows := buildCommentRows(0, 1, "hello", 40, tp)
+	require.GreaterOrEqual(t, len(rows), 3)
+
+	for i, r := range rows {
+		assert.Equal(t, tp, r.treePath, "row %d should carry empty treePath", i)
+	}
+}
+
+// Test: Comment rows in buildRows() carry the same treePath as adjacent content rows
+func TestComment_BuildRows_CommentTreePathMatchesContent(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.comments = map[commentKey]string{
+		{fileIndex: 0, newLineNum: 2}: "A comment",
+	}
+	m.rowsCacheValid = false
+
+	rows := m.buildRows()
+
+	// Find the content row for line 2 and the comment rows that follow it
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Num == 2 {
+			contentTreePath := r.treePath
+			// The next rows should be comment rows with the same treePath
+			for j := i + 1; j < len(rows) && rows[j].kind == RowKindComment; j++ {
+				assert.Equal(t, contentTreePath, rows[j].treePath,
+					"comment row %d should have same treePath as parent content row", j)
+			}
+			return
+		}
+	}
+	t.Fatal("did not find content row for line 2")
+}
+
+// Test: renderCommentRow includes tree continuation when ancestors are present
+func TestComment_RenderCommentRow_IncludesTreePrefix(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.focused = true
+
+	tp := TreePath{
+		Ancestors: []TreeLevel{
+			{IsLast: false, Depth: 0},
+		},
+	}
+
+	// Build a comment content row with a treePath
+	row := displayRow{
+		kind:             RowKindComment,
+		fileIndex:        0,
+		commentText:      "test",
+		commentLineNum:   1,
+		commentRowIndex:  1,
+		commentRowCount:  3,
+		commentLineIndex: 0,
+		treePath:         tp,
+	}
+
+	rendered := m.renderCommentRow(row, 60, 60, 4, false)
+
+	// The tree prefix for a non-last ancestor should contain │
+	assert.Contains(t, rendered, "│",
+		"rendered comment row should include tree continuation character")
+}
+
+// Test: renderCommentRow without ancestors has no tree continuation
+func TestComment_RenderCommentRow_NoTreePrefixWithoutAncestors(t *testing.T) {
+	m := makeCommentableTestModel(5)
+	m.focused = true
+
+	row := displayRow{
+		kind:             RowKindComment,
+		fileIndex:        0,
+		commentText:      "test",
+		commentLineNum:   1,
+		commentRowIndex:  1,
+		commentRowCount:  3,
+		commentLineIndex: 0,
+		treePath:         TreePath{},
+	}
+
+	rendered := m.renderCommentRow(row, 60, 60, 4, false)
+
+	// Without ancestors, tree prefix is just margin spaces — should still render the comment
+	assert.Contains(t, rendered, "test",
+		"rendered comment row should contain comment text")
+}
+
+// Test: Comment rows in log mode (with commits) carry tree path with ancestors
+func TestComment_LogMode_CommentRowsHaveTreePath(t *testing.T) {
+	pairs := []sidebyside.LinePair{
+		{
+			Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added},
+		},
+		{
+			Old: sidebyside.Line{Num: 2, Content: "old2", Type: sidebyside.Removed},
+			New: sidebyside.Line{Num: 2, Content: "new2", Type: sidebyside.Added},
+		},
+	}
+
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "abc123",
+				Author:  "Test",
+				Date:    "Mon Jan 1 00:00:00 2024 +0000",
+				Subject: "Test commit",
+			},
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldNormal, Pairs: pairs},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+	m.comments = map[commentKey]string{
+		{fileIndex: 0, newLineNum: 1}: "Log mode comment",
+	}
+	m.RefreshLayout()
+
+	rows := m.buildRows()
+
+	// Find comment rows and verify they have non-empty tree paths
+	foundComment := false
+	for _, r := range rows {
+		if r.kind == RowKindComment {
+			foundComment = true
+			assert.Greater(t, len(r.treePath.Ancestors), 0,
+				"comment row in log mode should have tree ancestors")
+		}
+	}
+	assert.True(t, foundComment, "should find comment rows in log mode")
+}
+
 // Test: commentVisualLines wraps multiline input correctly
 func TestCommentVisualLines(t *testing.T) {
 	lines := commentVisualLines("hello world\nfoo bar baz", 5)
