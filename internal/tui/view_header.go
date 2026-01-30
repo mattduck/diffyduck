@@ -170,16 +170,27 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	if treePath.Current != nil {
 		branchConnector = treePath.Current.Style.Render("━")
 	}
-	result := treeLine + branchConnector + styledIcon + styledHeader + statsBar + boxPadding
-
-	// Add trailing border fill for unfolded files: ┏━━━━━━━ to screen edge
-	if headerMode != HeaderSingleLine && m.width > 0 {
+	// Trailing indicator based on fold level:
+	// - Folded: ellipsis right after content (no box padding)
+	// - Normal: box padding + short border + ellipsis
+	// - Expanded: box padding + full-width border to screen edge
+	result := treeLine + branchConnector + styledIcon + styledHeader + statsBar
+	switch {
+	case foldLevel == sidebyside.FoldFolded:
+		// No trailing indicator
+	case foldLevel == sidebyside.FoldNormal && m.width > 0:
+		result += boxPadding + fileStatusStyle.Render("┏━━…")
+	case headerMode != HeaderSingleLine && m.width > 0:
+		// FoldExpanded: full-width border
+		result += boxPadding
 		treePrefixWidth := treeWidth(len(treePath.Ancestors), true)
 		headerLineWidth := treePrefixWidth + headerBoxWidth - 2
 		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
 		if trailingFill > 0 {
 			result += fileStatusStyle.Render("┏" + strings.Repeat("━", trailingFill))
 		}
+	default:
+		result += boxPadding
 	}
 
 	return result

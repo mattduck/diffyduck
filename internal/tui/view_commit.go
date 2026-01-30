@@ -219,7 +219,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	case sidebyside.CommitFolded:
 		foldIcon = "◯"
 	case sidebyside.CommitNormal:
-		foldIcon = "◐"
+		foldIcon = "●"
 	case sidebyside.CommitExpanded:
 		foldIcon = "●"
 	}
@@ -354,11 +354,8 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		subjectWidth = displayWidth(subject)
 	}
 
-	// Pad subject to max width for alignment (only when folded; unfolded hugs content)
+	// No subject padding — ellipsis/border hugs content at all fold levels
 	subjectPadding := ""
-	if row.headerMode == HeaderSingleLine && subjectWidth < subjectDisplayWidth {
-		subjectPadding = strings.Repeat(" ", subjectDisplayWidth-subjectWidth)
-	}
 
 	// Build the dynamic part with padding
 	var dynamicPart string
@@ -368,12 +365,21 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	result := fixedPart + dynamicPart
 
-	// Add trailing border fill for unfolded commits: ╔═══════ to screen edge
-	if row.headerMode != HeaderSingleLine && m.width > 0 {
-		headerLineWidth := row.headerBoxWidth
-		trailingFill := m.width - headerLineWidth - 1 // -1 for ╔
-		if trailingFill > 0 {
-			result += " " + commitTreeStyle.Render("╔"+strings.Repeat("═", trailingFill))
+	// Trailing indicator based on commit fold level:
+	// - Folded: ellipsis right after content
+	// - Normal: short border + ellipsis (can expand further)
+	// - Expanded: full-width border to screen edge
+	switch row.commitFoldLevel {
+	case sidebyside.CommitFolded:
+		// No trailing indicator
+	default:
+		// CommitNormal and CommitExpanded: full-width border to screen edge
+		if m.width > 0 {
+			headerLineWidth := row.headerBoxWidth
+			trailingFill := m.width - headerLineWidth - 1 // -1 for ╔
+			if trailingFill > 0 {
+				result += " " + commitTreeStyle.Render("╔"+strings.Repeat("═", trailingFill))
+			}
 		}
 	}
 
@@ -436,13 +442,16 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 	}
 	result := treeLine + branchConnector + styledIcon + " " + styledHeader
 
-	// Add trailing border fill for expanded commit info: ┏━━━━━ to screen edge
-	if row.headerMode != HeaderSingleLine && m.width > 0 {
+	// Trailing indicator: ellipsis when folded, full border when expanded
+	greyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	if row.headerMode == HeaderSingleLine {
+		// Folded commit info: no trailing indicator
+	} else if m.width > 0 {
+		// Expanded: full-width border to screen edge
 		treePrefixWidth := treeWidth(len(row.treePath.Ancestors), true)
 		headerLineWidth := treePrefixWidth + row.headerBoxWidth - 2
 		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
 		if trailingFill > 0 {
-			greyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 			result += " " + greyStyle.Render("┏"+strings.Repeat("━", trailingFill))
 		}
 	}

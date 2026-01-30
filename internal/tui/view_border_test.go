@@ -13,8 +13,8 @@ import (
 
 // --- File header border connector tests ---
 
-func TestFileHeader_UnfoldedHasTrailingConnector(t *testing.T) {
-	// Unfolded file headers should end with ┏━━━ trailing fill to screen edge
+func TestFileHeader_NormalHasShortTrailingConnector(t *testing.T) {
+	// FoldNormal file headers should have short ┏━━… trailing indicator
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
@@ -29,7 +29,6 @@ func TestFileHeader_UnfoldedHasTrailingConnector(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Find an unfolded header row
 	var headerRow *displayRow
 	for i := range rows {
 		if rows[i].kind == RowKindHeader && rows[i].headerMode == HeaderThreeLine {
@@ -46,9 +45,47 @@ func TestFileHeader_UnfoldedHasTrailingConnector(t *testing.T) {
 	)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "┏", "unfolded header should contain ┏ trailing connector")
-	assert.True(t, strings.Contains(stripped, "┏") && strings.Contains(stripped, "━"),
-		"unfolded header should have ┏━━━ trailing fill")
+	assert.Contains(t, stripped, "┏━━…", "FoldNormal header should have short ┏━━… trailing indicator")
+}
+
+func TestFileHeader_ExpandedHasFullTrailingConnector(t *testing.T) {
+	// FoldExpanded file headers should have full-width ┏━━━ trailing fill to screen edge
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/hello.go", NewPath: "b/hello.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
+	})
+	m.width = 80
+	m.height = 40
+	m.initialFoldSet = true
+	m.focused = true
+	m.keys = DefaultKeyMap()
+
+	rows := m.buildRows()
+
+	var headerRow *displayRow
+	for i := range rows {
+		if rows[i].kind == RowKindHeader {
+			headerRow = &rows[i]
+			break
+		}
+	}
+	require.NotNil(t, headerRow, "should find header row")
+
+	rendered := m.renderHeader(
+		headerRow.header, headerRow.foldLevel, headerRow.headerMode,
+		headerRow.status, headerRow.added, headerRow.removed,
+		headerRow.headerBoxWidth, headerRow.fileIndex, 0, false, headerRow.treePath,
+	)
+	stripped := stripANSI(rendered)
+
+	assert.Contains(t, stripped, "┏", "expanded header should contain ┏ trailing connector")
+	assert.NotContains(t, stripped, "…", "expanded header should not contain ellipsis")
+	// Full-width: ┏ should be followed by many ━ characters (more than just 2)
+	idx := strings.Index(stripped, "┏")
+	trailingSection := stripped[idx:]
+	dashCount := strings.Count(trailingSection, "━")
+	assert.Greater(t, dashCount, 2, "expanded header should have full-width trailing fill, not short ┏━━")
 }
 
 func TestFileHeader_FoldedHasNoTrailingConnector(t *testing.T) {
@@ -84,6 +121,7 @@ func TestFileHeader_FoldedHasNoTrailingConnector(t *testing.T) {
 	stripped := stripANSI(rendered)
 
 	assert.NotContains(t, stripped, "┏", "folded header should not contain ┏ trailing connector")
+	assert.NotContains(t, stripped, "…", "folded header should not contain ellipsis")
 }
 
 func TestFileBottomBorder_HasClosingCorner(t *testing.T) {
