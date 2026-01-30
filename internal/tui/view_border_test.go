@@ -459,8 +459,8 @@ func TestCommitHeader_UnfoldedUsesPerCommitSubjectWidth(t *testing.T) {
 
 // --- Commit info header border connector tests ---
 
-func TestCommitInfoHeader_RendersDetailsText(t *testing.T) {
-	// Commit info header should show "details" text with fold icon
+func TestCommitInfoHeader_ExpandedHasTrailingConnector(t *testing.T) {
+	// Expanded commit info header ("details") should have ┏━━━ trailing fill
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := makeCommitModel(
@@ -480,13 +480,82 @@ func TestCommitInfoHeader_RendersDetailsText(t *testing.T) {
 		}
 	}
 	require.NotNil(t, infoHeaderRow, "should find commit info header row")
+	assert.Equal(t, HeaderThreeLine, infoHeaderRow.headerMode,
+		"expanded commit info should have HeaderThreeLine mode")
 
 	rendered := m.renderCommitInfoHeader(*infoHeaderRow, false)
 	stripped := stripANSI(rendered)
 
 	assert.Contains(t, stripped, "details", "commit info header should contain 'details' text")
-	// When expanded (CommitExpanded), should show ● icon
 	assert.Contains(t, stripped, "●", "expanded commit info should show ● fold icon")
+	assert.Contains(t, stripped, "┏", "expanded commit info header should contain ┏ trailing connector")
+}
+
+func TestCommitInfoHeader_NormalHasNoTrailingConnector(t *testing.T) {
+	// CommitNormal info header should NOT have ┏ trailing fill (info is folded)
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := makeCommitModel(
+		commitSpec{sha: "abc1234", subject: "Add feature X", author: "Alice", date: "2024-01-01", fileCount: 1},
+	)
+	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.width = 100
+	m.rowsCacheValid = false
+
+	rows := m.buildRows()
+
+	var infoHeaderRow *displayRow
+	for i := range rows {
+		if rows[i].kind == RowKindCommitInfoHeader {
+			infoHeaderRow = &rows[i]
+			break
+		}
+	}
+	require.NotNil(t, infoHeaderRow, "should find commit info header row")
+	assert.Equal(t, HeaderSingleLine, infoHeaderRow.headerMode,
+		"normal commit info should have HeaderSingleLine mode")
+
+	rendered := m.renderCommitInfoHeader(*infoHeaderRow, false)
+	stripped := stripANSI(rendered)
+
+	assert.NotContains(t, stripped, "┏", "normal commit info header should not contain ┏")
+}
+
+func TestCommitInfoHeader_ConnectorAlignsBetweenHeaderAndBorder(t *testing.T) {
+	// The ┏ on the info header and ┛ on its bottom border should be vertically aligned
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := makeCommitModel(
+		commitSpec{sha: "abc1234", subject: "Add feature X", author: "Alice", date: "2024-01-01", fileCount: 1},
+	)
+	m.commits[0].FoldLevel = sidebyside.CommitExpanded
+	m.width = 100
+	m.rowsCacheValid = false
+
+	rows := m.buildRows()
+
+	var infoHeaderRow, infoBorderRow *displayRow
+	for i := range rows {
+		if rows[i].kind == RowKindCommitInfoHeader {
+			infoHeaderRow = &rows[i]
+		}
+		if rows[i].kind == RowKindCommitInfoBottomBorder {
+			infoBorderRow = &rows[i]
+		}
+	}
+	require.NotNil(t, infoHeaderRow, "should find commit info header")
+	require.NotNil(t, infoBorderRow, "should find commit info bottom border")
+
+	header := stripANSI(m.renderCommitInfoHeader(*infoHeaderRow, false))
+	border := stripANSI(m.renderCommitInfoBottomBorder(*infoBorderRow, false))
+
+	headerPos := findRuneIndex(header, "┏")
+	borderPos := findRuneIndex(border, "┛")
+
+	require.NotEqual(t, -1, headerPos, "info header should contain ┏")
+	require.NotEqual(t, -1, borderPos, "info border should contain ┛")
+	assert.Equal(t, headerPos, borderPos,
+		"┏ (col %d) and ┛ (col %d) should be vertically aligned", headerPos, borderPos)
 }
 
 func TestCommitInfoBottomBorder_HasClosingCorner(t *testing.T) {

@@ -398,7 +398,7 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
 		if trailingFill > 0 {
 			greyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-			result += greyStyle.Render("┏" + strings.Repeat("━", trailingFill))
+			result += " " + greyStyle.Render("┏"+strings.Repeat("━", trailingFill))
 		}
 	}
 
@@ -455,7 +455,8 @@ func (m Model) renderCommitInfoBottomBorder(row displayRow, isCursorRow bool) st
 	spacing := strings.Repeat(" ", spacesBeforeCorner)
 
 	// Border width: from corner to end of header content
-	borderWidth := row.headerBoxWidth - row.treePrefixWidth
+	// +2 matches the -2 offset in the header render formula (treePrefixWidth + headerBoxWidth - 2)
+	borderWidth := row.headerBoxWidth - row.treePrefixWidth + 2
 	if borderWidth < 1 {
 		borderWidth = 1
 	}
@@ -696,9 +697,18 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 	headerText := "details"
 
 	// Calculate header box width for borders
+	// treePrefixWidth includes the space before the icon (+1), matching file headers.
+	// headerBoxWidth uses the same tree-overlap offset (3) as fileHeaderBoxWidth,
+	// ensuring the render formula (treePrefixWidth + headerBoxWidth - 2) gives the
+	// correct content width and the bottom border aligns with ┏.
 	treePrefixWidth := treeWidth(0, true) + 1
-	iconPartWidth := treePrefixWidth + 2
-	headerBoxWidth := iconPartWidth + len(headerText) + 2
+	headerBoxWidth := 3 + 1 + 1 + displayWidth(headerText) + 1 // overlap(3) + icon(1) + space(1) + text + gap(1)
+
+	// Determine header mode: expanded shows borders, normal shows single line
+	infoHeaderMode := HeaderSingleLine
+	if commit.FoldLevel == sidebyside.CommitExpanded {
+		infoHeaderMode = HeaderThreeLine
+	}
 
 	// Commit info header (child node showing commit metadata)
 	rows = append(rows, displayRow{
@@ -706,6 +716,7 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 		fileIndex:          -1,
 		isCommitInfoHeader: true,
 		header:             headerText,
+		headerMode:         infoHeaderMode,
 		commitFoldLevel:    commit.FoldLevel,
 		commitIndex:        commitIdx,
 		treePath:           detailsTreePath,
@@ -731,6 +742,7 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 		kind:                     RowKindCommitInfoBottomBorder,
 		fileIndex:                -1,
 		isCommitInfoBottomBorder: true,
+		headerMode:               infoHeaderMode,
 		commitIndex:              commitIdx,
 		headerBoxWidth:           headerBoxWidth,
 		treePrefixWidth:          treePrefixWidth,
