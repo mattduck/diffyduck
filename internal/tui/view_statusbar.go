@@ -547,29 +547,13 @@ func (m Model) renderSearchPrompt() string {
 
 // renderCommentPrompt renders the comment input as a multi-line prompt.
 func (m Model) renderCommentPrompt() string {
-	// Split input into lines
-	lines := strings.Split(m.commentInput, "\n")
-	if len(lines) == 0 {
-		lines = []string{""}
-	}
+	wrapWidth := m.commentPromptWrapWidth()
 
-	// Find which line the cursor is on and the position within that line
-	cursorLine := 0
-	cursorCol := m.commentCursor
-	pos := 0
-	for i, line := range lines {
-		lineEnd := pos + len(line)
-		if i < len(lines)-1 {
-			lineEnd++ // account for newline
-		}
-		// Use < so cursor right after newline is on the next line
-		if m.commentCursor < lineEnd || i == len(lines)-1 {
-			cursorLine = i
-			cursorCol = m.commentCursor - pos
-			break
-		}
-		pos = lineEnd
-	}
+	// Build visual (wrapped) lines from comment input
+	lines := commentVisualLines(m.commentInput, wrapWidth)
+
+	// Find cursor position in visual lines
+	cursorLine, cursorCol := commentCursorVisualPos(m.commentInput, m.commentCursor, wrapWidth)
 
 	// Calculate visible range based on scroll
 	maxVisible := m.commentMaxVisibleLines()
@@ -612,16 +596,17 @@ func (m Model) renderCommentPrompt() string {
 		var renderedLine string
 		if i == cursorLine {
 			// This line has the cursor
-			if cursorCol > len(line) {
-				cursorCol = len(line)
+			col := cursorCol
+			if col > len(line) {
+				col = len(line)
 			}
 
-			beforeCursor := line[:cursorCol]
+			beforeCursor := line[:col]
 			var cursorChar string
 			var afterCursor string
 
-			if cursorCol < len(line) {
-				runes := []rune(line[cursorCol:])
+			if col < len(line) {
+				runes := []rune(line[col:])
 				cursorChar = string(runes[0])
 				afterCursor = string(runes[1:])
 			} else {

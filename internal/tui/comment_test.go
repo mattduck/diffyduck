@@ -386,9 +386,9 @@ func TestComment_SubmitInvalidatesCache(t *testing.T) {
 	m.commentInput = "New comment"
 	m.submitComment()
 
-	// Cache should be invalidated after submit
-	assert.False(t, m.rowsCacheValid,
-		"row cache should be invalidated after submitting a comment")
+	// Cache should be rebuilt (valid) with updated totalLines after submit
+	assert.True(t, m.rowsCacheValid,
+		"row cache should be rebuilt after submitting a comment")
 }
 
 // Test: Deleting a comment (submitting empty) should invalidate the row cache
@@ -413,8 +413,8 @@ func TestComment_DeleteInvalidatesCache(t *testing.T) {
 	m.commentInput = ""
 	m.submitComment()
 
-	assert.False(t, m.rowsCacheValid,
-		"row cache should be invalidated after deleting a comment")
+	assert.True(t, m.rowsCacheValid,
+		"row cache should be rebuilt after deleting a comment")
 	assert.NotContains(t, m.comments, key, "comment should be deleted")
 }
 
@@ -2279,4 +2279,166 @@ func TestComment_HandleInput_AllKeys(t *testing.T) {
 			assert.Equal(t, tt.wantMode, m2.commentMode, "mode mismatch")
 		})
 	}
+}
+
+// =============================================================================
+// Word Wrap Tests
+// =============================================================================
+
+// Test: wrapWithOffsets wraps at word boundaries and returns correct byte offsets
+func TestWrapWithOffsets(t *testing.T) {
+	tests := []struct {
+		name        string
+		line        string
+		maxWidth    int
+		wantLines   []string
+		wantOffsets []int
+	}{
+		{
+			name:        "short line no wrap",
+			line:        "hello",
+			maxWidth:    20,
+			wantLines:   []string{"hello"},
+			wantOffsets: []int{0},
+		},
+		{
+			name:        "exact width no wrap",
+			line:        "hello",
+			maxWidth:    5,
+			wantLines:   []string{"hello"},
+			wantOffsets: []int{0},
+		},
+		{
+			name:        "two words wrap",
+			line:        "hello world",
+			maxWidth:    5,
+			wantLines:   []string{"hello", "world"},
+			wantOffsets: []int{0, 6},
+		},
+		{
+			name:        "three words two wraps",
+			line:        "one two three",
+			maxWidth:    7,
+			wantLines:   []string{"one two", "three"},
+			wantOffsets: []int{0, 8},
+		},
+		{
+			name:        "empty line",
+			line:        "",
+			maxWidth:    10,
+			wantLines:   []string{""},
+			wantOffsets: []int{0},
+		},
+		{
+			name:        "single long word no break possible",
+			line:        "abcdefghij",
+			maxWidth:    5,
+			wantLines:   []string{"abcdefghij"},
+			wantOffsets: []int{0},
+		},
+		{
+			name:        "zero width returns original",
+			line:        "hello",
+			maxWidth:    0,
+			wantLines:   []string{"hello"},
+			wantOffsets: []int{0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines, offsets := wrapWithOffsets(tt.line, tt.maxWidth)
+			assert.Equal(t, tt.wantLines, lines, "lines mismatch")
+			assert.Equal(t, tt.wantOffsets, offsets, "offsets mismatch")
+		})
+	}
+}
+
+// Test: commentCursorVisualPos maps cursor position through word wrapping
+func TestCommentCursorVisualPos(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		cursor    int
+		wrapWidth int
+		wantLine  int
+		wantCol   int
+	}{
+		{
+			name:      "cursor at start of unwrapped line",
+			input:     "hello",
+			cursor:    0,
+			wrapWidth: 20,
+			wantLine:  0,
+			wantCol:   0,
+		},
+		{
+			name:      "cursor at end of unwrapped line",
+			input:     "hello",
+			cursor:    5,
+			wrapWidth: 20,
+			wantLine:  0,
+			wantCol:   5,
+		},
+		{
+			name:      "cursor on second wrapped line",
+			input:     "hello world",
+			cursor:    6, // 'w' in "world"
+			wrapWidth: 5,
+			wantLine:  1,
+			wantCol:   0,
+		},
+		{
+			name:      "cursor mid second wrapped line",
+			input:     "hello world",
+			cursor:    8, // 'r' in "world"
+			wrapWidth: 5,
+			wantLine:  1,
+			wantCol:   2,
+		},
+		{
+			name:      "multiline input cursor on second logical line",
+			input:     "first\nsecond line here",
+			cursor:    6, // 's' in "second"
+			wrapWidth: 20,
+			wantLine:  1,
+			wantCol:   0,
+		},
+		{
+			name:      "multiline with wrap on second logical line",
+			input:     "first\nhello world",
+			cursor:    12, // 'w' in "world"
+			wrapWidth: 5,
+			wantLine:  2, // line 0: "first", line 1: "hello", line 2: "world"
+			wantCol:   0,
+		},
+		{
+			name:      "empty input",
+			input:     "",
+			cursor:    0,
+			wrapWidth: 20,
+			wantLine:  0,
+			wantCol:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			line, col := commentCursorVisualPos(tt.input, tt.cursor, tt.wrapWidth)
+			assert.Equal(t, tt.wantLine, line, "visual line mismatch")
+			assert.Equal(t, tt.wantCol, col, "visual col mismatch")
+		})
+	}
+}
+
+// Test: commentVisualLines wraps multiline input correctly
+func TestCommentVisualLines(t *testing.T) {
+	lines := commentVisualLines("hello world\nfoo bar baz", 5)
+	assert.Equal(t, []string{"hello", "world", "foo", "bar", "baz"}, lines)
+}
+
+// Test: commentVisualLines handles empty input
+func TestCommentVisualLinesEmpty(t *testing.T) {
+	lines := commentVisualLines("", 20)
+	assert.Equal(t, []string{""}, lines)
 }

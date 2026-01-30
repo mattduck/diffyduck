@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -496,8 +495,8 @@ func (m Model) commentPromptHeight() int {
 	if !m.commentMode {
 		return 1
 	}
-	// Count newlines in the input, plus 1 for the current line
-	totalLines := strings.Count(m.commentInput, "\n") + 1
+	// Count visual (wrapped) lines
+	totalLines := m.commentVisualLineCount()
 	maxVisible := m.commentMaxVisibleLines()
 
 	// Calculate visible content lines
@@ -907,6 +906,45 @@ func (m *Model) updateMaxLineNumSeen() {
 			m.updateMaxLineNum(pair.New.Num)
 		}
 	}
+}
+
+// commentContentWidth returns the text width available inside a comment box.
+// This mirrors the layout math in renderCommentRow and getVisibleRows.
+func (m *Model) commentContentWidth() int {
+	lineNumW := m.lineNumWidth()
+	gutterWidth := 2 + lineNumW // arrow(1) + space(1) + lineNum
+
+	// Compute leftHalfWidth the same way getVisibleRows does.
+	gutterOverhead := 1 + 1 + lineNumW + 1 + 4
+	targetLeftContent := 90
+	if m.maxNewContentWidth < targetLeftContent {
+		targetLeftContent = m.maxNewContentWidth
+	}
+	defaultHalf := (m.width - 3) / 2
+	leftContentAt50 := defaultHalf - gutterOverhead
+	minRightWidth := 1 + 1 + lineNumW + 1 + 2
+
+	var leftHalfWidth int
+	if leftContentAt50 >= targetLeftContent {
+		leftHalfWidth = defaultHalf
+	} else {
+		targetLeftWidth := gutterOverhead + targetLeftContent
+		maxLeftWidth := m.width - 3 - minRightWidth
+		leftHalfWidth = targetLeftWidth
+		if leftHalfWidth > maxLeftWidth {
+			leftHalfWidth = maxLeftWidth
+		}
+	}
+
+	boxWidth := leftHalfWidth - gutterWidth
+	if boxWidth < 6 {
+		boxWidth = 6
+	}
+	contentWidth := boxWidth - 4 // │ + space + space + │
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+	return contentWidth
 }
 
 // lineNumWidth returns the width needed for line numbers based on the largest seen.

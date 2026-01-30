@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // handleCommentInput handles keypresses while in comment input mode.
@@ -182,8 +183,8 @@ func (m *Model) submitComment() {
 	m.commentCursor = 0
 	m.commentScroll = 0
 
-	// Invalidate row cache since comment rows changed
-	m.rowsCacheValid = false
+	// Rebuild row cache immediately so totalLines is current for navigation
+	m.rebuildRowsCache()
 }
 
 // cancelComment exits comment mode without saving.
@@ -380,10 +381,118 @@ func isProblematicUnicode(r rune) bool {
 	return false
 }
 
-// commentCursorLineIndex returns the 0-based line index where the cursor is.
+// commentPromptWrapWidth returns the text width available for wrapping in the prompt.
+// Accounts for the " > " / " . " prefix.
+func (m *Model) commentPromptWrapWidth() int {
+	w := m.width - 3 // 3 = len(" > ")
+	if w < 1 {
+		return 1
+	}
+	return w
+}
+
+// wrapWithOffsets wraps a single line using ansi.Wordwrap and derives
+// the byte start offset within the original line for each visual line.
+// ansi.Wordwrap inserts newlines and drops spaces at break points, so
+// we walk both strings to recover where each visual line starts in the original.
+func wrapWithOffsets(line string, maxWidth int) ([]string, []int) {
+	if maxWidth <= 0 || displayWidth(line) <= maxWidth {
+		return []string{line}, []int{0}
+	}
+
+	wrapped := ansi.Wordwrap(line, maxWidth, "")
+	visualLines := strings.Split(wrapped, "\n")
+	offsets := make([]int, len(visualLines))
+
+	// Walk the original and wrapped bytes in parallel to find offsets.
+	// ansi.Wordwrap replaces whitespace at break points with '\n' and
+	// may drop trailing spaces, so we skip spaces in the original when
+	// we encounter a '\n' in the wrapped output.
+	oi := 0 // position in original
+	wi := 0 // position in wrapped
+	li := 0 // visual line index
+
+	for wi < len(wrapped) && oi < len(line) {
+		if wrapped[wi] == '\n' {
+			wi++
+			// Skip whitespace in original that was consumed as the break
+			for oi < len(line) && (line[oi] == ' ' || line[oi] == '\t') {
+				oi++
+			}
+			li++
+			if li < len(offsets) {
+				offsets[li] = oi
+			}
+		} else {
+			wi++
+			oi++
+		}
+	}
+
+	return visualLines, offsets
+}
+
+// commentVisualLines returns the visual (wrapped) lines for the comment input.
+// Each logical line is word-wrapped to wrapWidth.
+func commentVisualLines(input string, wrapWidth int) []string {
+	var visual []string
+	for _, para := range strings.Split(input, "\n") {
+		wrapped, _ := wrapWithOffsets(para, wrapWidth)
+		visual = append(visual, wrapped...)
+	}
+	if len(visual) == 0 {
+		visual = []string{""}
+	}
+	return visual
+}
+
+// commentVisualLineCount returns the total number of visual lines after wrapping.
+func (m *Model) commentVisualLineCount() int {
+	return len(commentVisualLines(m.commentInput, m.commentPromptWrapWidth()))
+}
+
+// commentCursorVisualPos maps the byte cursor position to a visual line index
+// and column offset within that visual line, after word-wrapping.
+func commentCursorVisualPos(input string, cursor int, wrapWidth int) (visualLine int, visualCol int) {
+	logicalLines := strings.Split(input, "\n")
+	// Find which logical line the cursor is on
+	logicalLine := 0
+	logicalCol := cursor
+	pos := 0
+	for i, line := range logicalLines {
+		lineEnd := pos + len(line)
+		if i < len(logicalLines)-1 {
+			lineEnd++ // newline char
+		}
+		if cursor < lineEnd || i == len(logicalLines)-1 {
+			logicalLine = i
+			logicalCol = cursor - pos
+			break
+		}
+		pos = lineEnd
+	}
+
+	// Count visual lines from all logical lines before this one
+	visualOffset := 0
+	for i := 0; i < logicalLine; i++ {
+		wrapped, _ := wrapWithOffsets(logicalLines[i], wrapWidth)
+		visualOffset += len(wrapped)
+	}
+
+	// Now wrap the cursor's logical line and find which visual sub-line the cursor falls on
+	wrapped, wrappedOffsets := wrapWithOffsets(logicalLines[logicalLine], wrapWidth)
+	for i := len(wrapped) - 1; i >= 0; i-- {
+		if logicalCol >= wrappedOffsets[i] {
+			return visualOffset + i, logicalCol - wrappedOffsets[i]
+		}
+	}
+	return visualOffset, logicalCol
+}
+
+// commentCursorLineIndex returns the 0-based visual line index where the cursor is.
 func (m *Model) commentCursorLineIndex() int {
-	before := m.commentInput[:m.commentCursor]
-	return strings.Count(before, "\n")
+	line, _ := commentCursorVisualPos(m.commentInput, m.commentCursor, m.commentPromptWrapWidth())
+	return line
 }
 
 // commentEnsureCursorVisible adjusts commentScroll to keep the cursor visible.
@@ -402,7 +511,7 @@ func (m *Model) commentEnsureCursorVisible() {
 	}
 
 	// Clamp scroll to valid range
-	totalLines := strings.Count(m.commentInput, "\n") + 1
+	totalLines := m.commentVisualLineCount()
 	maxScroll := totalLines - maxVisible
 	if maxScroll < 0 {
 		maxScroll = 0

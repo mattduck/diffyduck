@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/highlight"
@@ -244,12 +245,16 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 		return leftGutter + commentBorderStyle.Render(bottomBorder) + sep + rightGutter + rightContent
 	}
 
-	// Content line - get the specific line from the comment
-	lines := strings.Split(row.commentText, "\n")
+	// Content line - wrap the comment text the same way buildCommentRows does,
+	// then index into the wrapped lines.
+	var wrappedLines []string
+	for _, para := range strings.Split(row.commentText, "\n") {
+		wrappedLines = append(wrappedLines, wrapComment(para, contentWidth)...)
+	}
 	lineIdx := row.commentLineIndex
 	var lineText string
-	if lineIdx >= 0 && lineIdx < len(lines) {
-		lineText = lines[lineIdx]
+	if lineIdx >= 0 && lineIdx < len(wrappedLines) {
+		lineText = wrappedLines[lineIdx]
 	}
 
 	// Apply search highlighting to the comment text
@@ -269,42 +274,14 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	return leftGutter + commentBorderStyle.Render("│ ") + paddedText + " " + commentBorderStyle.Render("│") + sep + rightGutter + rightContent
 }
 
-// wrapText wraps text to fit within maxWidth, preserving words where possible.
-func wrapText(text string, maxWidth int) []string {
+// wrapComment wraps a single line of text to fit within maxWidth using
+// ansi.Wordwrap from the charmbracelet/x library.
+func wrapComment(line string, maxWidth int) []string {
 	if maxWidth <= 0 {
-		return []string{text}
+		return []string{line}
 	}
-
-	var lines []string
-	// Split by explicit newlines first
-	paragraphs := strings.Split(text, "\n")
-
-	for _, para := range paragraphs {
-		if para == "" {
-			lines = append(lines, "")
-			continue
-		}
-
-		words := strings.Fields(para)
-		if len(words) == 0 {
-			lines = append(lines, "")
-			continue
-		}
-
-		currentLine := words[0]
-		for _, word := range words[1:] {
-			testLine := currentLine + " " + word
-			if displayWidth(testLine) <= maxWidth {
-				currentLine = testLine
-			} else {
-				lines = append(lines, currentLine)
-				currentLine = word
-			}
-		}
-		lines = append(lines, currentLine)
-	}
-
-	return lines
+	wrapped := ansi.Wordwrap(line, maxWidth, "")
+	return strings.Split(wrapped, "\n")
 }
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool, treePath TreePath) string {
