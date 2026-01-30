@@ -551,8 +551,14 @@ func (m Model) buildRows() []displayRow {
 			// per-commit subject width so the border hugs actual content
 			useHeaderBoxWidth := commitHeaderWidth
 			if !commitFolded {
+				// Cap subject to what the render will actually display
+				// (render truncates to maxCommitSubjectWidth)
+				renderSubjWidth := subjectWidth
+				if renderSubjWidth > maxCommitSubjectWidth {
+					renderSubjWidth = maxCommitSubjectWidth
+				}
 				// Recompute with shared fixed columns + per-commit subject/author
-				useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitTimeWidth + 1 + authorWidth + 1 + subjectWidth + 1 // +1 for gap before ╔
+				useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitTimeWidth + 1 + authorWidth + 1 + renderSubjWidth + 1 // +1 for gap before ╔
 			}
 
 			rows = append(rows, displayRow{
