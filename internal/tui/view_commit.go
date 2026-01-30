@@ -41,7 +41,7 @@ func styleSig(sig string, changeKind structure.ChangeKind) string {
 	funcStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("4"))  // blue (dark, not bright)
 	typeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("5"))  // magenta (dark, not bright)
 	punctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // white
-	paramStyle := lipgloss.NewStyle()                                 // default
+	paramStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // white (not default/bright)
 
 	// nameStyle is used only for the identifier name (func name or type name).
 	// For added/deleted items it gets bold+underline in the inline diff color.
