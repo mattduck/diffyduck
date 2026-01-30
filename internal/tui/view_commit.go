@@ -49,11 +49,11 @@ func styleSig(sig string, changeKind structure.ChangeKind) string {
 	nameStyle := typeStyle // default: use typeStyle for type names
 	switch changeKind {
 	case structure.ChangeAdded:
-		s := lipgloss.NewStyle().Underline(true).Bold(true).Foreground(lipgloss.Color("10"))
+		s := lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("2"))
 		funcStyle = s
 		nameStyle = s
 	case structure.ChangeDeleted:
-		s := lipgloss.NewStyle().Underline(true).Bold(true).Foreground(lipgloss.Color("9"))
+		s := lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color("1"))
 		funcStyle = s
 		nameStyle = s
 	}
