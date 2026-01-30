@@ -427,10 +427,10 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// In diff view (no commit metadata), first file has no top border slot in buildRows
-	// The top border is rendered in the padding area instead
-	require.Len(t, rows, 1, "folded file should have header only (no border slot in diff view)")
+	// In diff view, folded file has header + terminator row
+	require.Len(t, rows, 2, "folded file should have header + terminator row")
 	assert.True(t, rows[0].isHeader, "first row should be header")
+	assert.True(t, rows[1].isBlank, "second row should be terminator blank")
 }
 
 // Test: First file unfolded has header as first row (top border is in padding area in diff view)

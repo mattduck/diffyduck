@@ -369,8 +369,8 @@ func TestTree_LastFileHeader_NonLogMode_UsesLBranch(t *testing.T) {
 	header := findLastFileHeader(rows)
 	require.NotNil(t, header, "should find last file header")
 	require.NotNil(t, header.treePath.Current, "header should have Current tree level")
-	assert.True(t, header.treePath.Current.IsLast,
-		"non-log mode last file should use └ (IsLast=true) even with content")
+	assert.False(t, header.treePath.Current.IsLast,
+		"last file should use ├ (IsLast=false) since ┴ terminator follows")
 }
 
 // Test: Content rows of last file in log mode show │ continuation

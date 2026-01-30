@@ -796,20 +796,17 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 
 	isLastFile := fileIdx == commitEndIdx-1
 
-	// In log mode, content rows of the last file should still show │ continuation
-	// because the └ on the header already signals the last child. In non-log mode
-	// (single diff), preserve the original IsLast behavior.
-	isLogMode := len(m.commits) > 0 && m.commits[0].Info.HasMetadata()
-	contentIsLast := isLastFile && !isLogMode
+	// Content rows of the last file always show │ continuation because the
+	// ┴ terminator row (added after content) provides the visual end-of-tree.
+	contentIsLast := false
 
 	// Per-file header box width for unfolded headers (tighter border around own content)
 	header := formatFileHeader(fp)
 	ownBoxWidth := fileHeaderBoxWidth(header, added, removed)
 
-	// Determine whether the last file's header should use ├ (has content below) or └ (no content).
-	// In log mode, the last file always has something below its header: either content rows
-	// or a ┴ terminator row. So headerIsLast is always false in log mode.
-	headerIsLast := isLastFile && !isLogMode
+	// The last file's header always uses ├ (not └) because there is always something
+	// below it: either content rows or a ┴ terminator row.
+	headerIsLast := false
 
 	switch fp.FoldLevel {
 	case sidebyside.FoldFolded:
@@ -829,10 +826,10 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				fileIndex:          fileIdx,
 				isBlank:            true,
 				isLastFileInCommit: isLastFile,
-				treeTerminator:     isLastFile && isLogMode,
+				treeTerminator:     isLastFile,
 				treePath:           marginTreePath,
 			})
-		} else if isLastFile && isLogMode {
+		} else if isLastFile {
 			// Last file with no preview content: add ┴ terminator after the bare header.
 			// Force IsLast=false so the ancestor renders ┴ (not blank space).
 			terminatorPath := m.buildFileTreePath(fileIdx, false, true, TreeRowContent)
@@ -910,7 +907,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				fileIndex:          fileIdx,
 				isBlank:            true,
 				isLastFileInCommit: isLastFile,
-				treeTerminator:     isLastFile && isLogMode,
+				treeTerminator:     isLastFile,
 				treePath:           marginTreePath,
 			})
 
@@ -1037,7 +1034,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			fileIndex:          fileIdx,
 			isBlank:            true,
 			isLastFileInCommit: isLastFile,
-			treeTerminator:     isLastFile && isLogMode,
+			treeTerminator:     isLastFile,
 			treePath:           marginTreePath,
 		})
 

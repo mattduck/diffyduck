@@ -108,9 +108,9 @@ func TestView_TreeConnectsFilesDirectly(t *testing.T) {
 	require.NotEqual(t, -1, firstHeaderIdx, "should find first file header")
 	require.NotEqual(t, -1, secondHeaderIdx, "should find second file header")
 
-	// First file should have ├ branch (non-last), second should have └ branch (last)
+	// Both files should have ├ branch (never └, since ┴ terminator follows last file)
 	assert.Contains(t, lines[firstHeaderIdx], "├", "first file should have non-last tree branch")
-	assert.Contains(t, lines[secondHeaderIdx], "└", "second file should have last tree branch")
+	assert.Contains(t, lines[secondHeaderIdx], "├", "second file should have ├ branch (┴ terminator follows)")
 
 	// There should be no blank lines between last content of first file and second file header
 	// Check that lines between files contain tree continuation (│) or are content/borders
@@ -165,8 +165,8 @@ func TestView_FirstFileHasTreeBranch(t *testing.T) {
 	}
 	require.NotEqual(t, -1, headerIdx, "should find file header with tree branch")
 
-	// Single file should have └ branch (it's the last/only file)
-	assert.Contains(t, lines[headerIdx], "└", "single file should have last tree branch (└)")
+	// Single file should have ├ branch (┴ terminator follows)
+	assert.Contains(t, lines[headerIdx], "├", "single file should have ├ branch (┴ terminator follows)")
 	assert.Contains(t, lines[headerIdx], "━━━", "tree branch should have heavy horizontal line")
 }
 
@@ -562,8 +562,9 @@ func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
 	require.NotEmpty(t, hunkLine, "should find hunk separator with breadcrumb (partial or full)")
 
 	// The breadcrumb should appear in the left half of the line
-	// In tree layout, the tree prefix takes additional space, so check for partial match
-	halfWidth := (m.width - 3) / 2
+	// In tree layout, the tree prefix (│) with ANSI styling takes additional bytes,
+	// so use a generous byte budget to account for escape sequences
+	halfWidth := m.width // use full width to avoid cutting through ANSI escapes
 	leftHalf := hunkLine
 	if len(hunkLine) > halfWidth {
 		leftHalf = hunkLine[:halfWidth]
