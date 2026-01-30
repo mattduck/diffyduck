@@ -430,7 +430,11 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 	// In diff view, folded file has header + terminator row
 	require.Len(t, rows, 2, "folded file should have header + terminator row")
 	assert.True(t, rows[0].isHeader, "first row should be header")
+	assert.False(t, rows[0].treePath.Current.IsLast, "header should use ├ (terminator follows)")
 	assert.True(t, rows[1].isBlank, "second row should be terminator blank")
+	assert.True(t, rows[1].treeTerminator, "second row should be a tree terminator")
+	require.Greater(t, len(rows[1].treePath.Ancestors), 0, "terminator should have ancestors")
+	assert.False(t, rows[1].treePath.Ancestors[0].IsLast, "terminator ancestor IsLast=false so ┴ renders")
 }
 
 // Test: First file unfolded has header as first row (top border is in padding area in diff view)

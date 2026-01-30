@@ -347,8 +347,8 @@ func TestTree_NonLastFileHeader_AlwaysUsesTBranch(t *testing.T) {
 	t.Fatal("did not find first file header")
 }
 
-// Test: In non-log mode (single diff), last file uses └ even with content
-func TestTree_LastFileHeader_NonLogMode_UsesLBranch(t *testing.T) {
+// Test: In diff mode (no commits), last file uses ├ since ┴ terminator follows
+func TestTree_LastFileHeader_DiffMode_UsesTBranch(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
@@ -395,6 +395,87 @@ func TestTree_LastFileContentRows_LogMode_ShowContinuation(t *testing.T) {
 		}
 	}
 	t.Fatal("did not find content row")
+}
+
+// Test: Content rows of last file in diff mode show │ continuation (same as log mode)
+func TestTree_LastFileContentRows_DiffMode_ShowContinuation(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/only.go",
+				NewPath:   "b/only.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+	for _, r := range rows {
+		if r.kind == RowKindContent {
+			require.Greater(t, len(r.treePath.Ancestors), 0,
+				"content row should have tree ancestors")
+			assert.False(t, r.treePath.Ancestors[0].IsLast,
+				"last file's content row in diff mode should have IsLast=false for │ continuation")
+			return
+		}
+	}
+	t.Fatal("did not find content row")
+}
+
+// Test: In diff mode with multiple files, only last file gets ┴ terminator
+func TestTree_DiffMode_MultiFile_TerminatorOnlyLast(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "y"}}},
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}}},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Both headers should use ├ (IsLast=false)
+	var headers []displayRow
+	for _, r := range rows {
+		if r.isHeader {
+			headers = append(headers, r)
+		}
+	}
+	require.Len(t, headers, 2, "should have 2 file headers")
+	assert.False(t, headers[0].treePath.Current.IsLast, "first file header should use ├")
+	assert.False(t, headers[1].treePath.Current.IsLast, "last file header should use ├ (terminator follows)")
+
+	// Only the last file should have a terminator blank
+	var terminators []displayRow
+	for _, r := range rows {
+		if r.treeTerminator {
+			terminators = append(terminators, r)
+		}
+	}
+	require.Len(t, terminators, 1, "only one terminator row expected")
+	assert.Equal(t, 1, terminators[0].fileIndex, "terminator should belong to the last file")
+	assert.False(t, terminators[0].treePath.Ancestors[0].IsLast,
+		"terminator treePath should have IsLast=false so ┴ renders")
 }
 
 func TestRenderEmptyTreeRow(t *testing.T) {
