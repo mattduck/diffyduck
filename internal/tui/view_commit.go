@@ -998,22 +998,30 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		statsWidth = 1 + 1 + maxAddLen + 1 + 1 + maxRemLen // " +add -rem"
 	}
 
+	// Calculate max width available for signatures (80% of terminal minus overhead)
+	maxSignatureWidth := 0
+	if m.width > 0 {
+		totalFiles := len(m.files)
+		numDigits := len(fmt.Sprintf("%d", totalFiles))
+		iconPartWidth := 9 + numDigits
+		maxBoxWidth := m.width * 80 / 100
+		// Overhead: 2 (extraIndent) + 1 (symbol) + 1 (space) + 5 (max kind) + 1 (space) + statsWidth
+		overhead := 2 + 1 + 1 + 5 + 1 + statsWidth
+		maxSignatureWidth = maxBoxWidth - iconPartWidth - overhead
+		if maxSignatureWidth < 20 {
+			maxSignatureWidth = 20
+		}
+	}
+
 	// Helper to format entry name or signature
-	formatEntry := func(entry *structure.Entry, prefixLen int) string {
+	formatEntry := func(entry *structure.Entry) string {
 		// For functions/methods, use FormatSignature to show params and return type
 		// For types/classes, FormatSignature returns "" so we fall back to Name
 		sig := entry.FormatSignature(0) // Check if it has a signature at all
 		if sig == "" {
 			return entry.Name
 		}
-		// Calculate available width for signature
-		kindLen := runewidth.StringWidth(entry.Kind)
-		fixedOverhead := prefixLen + 1 + 1 + kindLen + 1 + statsWidth // prefix + symbol + space + kind + space + stats
-		availableWidth := headerBoxWidth + 2 - fixedOverhead
-		if availableWidth < 10 {
-			availableWidth = 10 // minimum width to show something useful
-		}
-		return entry.FormatSignature(availableWidth)
+		return entry.FormatSignature(maxSignatureWidth)
 	}
 
 	// Render tree
@@ -1026,7 +1034,7 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 
 		// Format: "<prefix>~ type MyStruct" or "<prefix>~ func Name(...) -> Type"
 		symbol := c.Kind.Symbol()
-		nameOrSig := formatEntry(entry, len(symbolPrefix))
+		nameOrSig := formatEntry(entry)
 		line := symbolPrefix + symbol + " " + entry.Kind + " " + nameOrSig
 
 		rows = append(rows, displayRow{
@@ -1051,7 +1059,7 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 				continue
 			}
 			childSymbol := child.Kind.Symbol()
-			childNameOrSig := formatEntry(childEntry, len(childPrefix))
+			childNameOrSig := formatEntry(childEntry)
 			childLine := childPrefix + childSymbol + " " + childEntry.Kind + " " + childNameOrSig
 
 			rows = append(rows, displayRow{

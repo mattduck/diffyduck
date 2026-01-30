@@ -1225,3 +1225,83 @@ func TestView_StructuralDiffStatsRightAligned(t *testing.T) {
 	// Charlie has 0 added: should show "+" placeholder, not "+0"
 	assert.NotContains(t, charlieLine, "+0", "Charlie should not show +0, should show dim placeholder")
 }
+
+// TestView_StructuralDiffSignatureUsesTerminalWidth tests that structural diff
+// signatures are sized based on terminal width (80%), not the file header box
+// width. A short filename should not cause signature truncation on a wide terminal.
+func TestView_StructuralDiffSignatureUsesTerminalWidth(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	// A function with a long signature that would be truncated if constrained
+	// to a narrow header box, but should fit within 80% of a wide terminal.
+	// Full signature: "(m *Model) ProcessRequest(ctx context.Context, request *Request, options ...Option) -> error"
+	// That's ~90 chars — needs a wide terminal to show fully.
+	entry := &structure.Entry{
+		StartLine:  1,
+		EndLine:    50,
+		Name:       "ProcessRequest",
+		Kind:       "func",
+		Receiver:   "(m *Model)",
+		Params:     []string{"ctx context.Context", "request *Request", "options ...Option"},
+		ReturnType: "error",
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				// Short filename = narrow header box
+				OldPath:   "a/x.go",
+				NewPath:   "b/x.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "package x", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package x", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width:  200, // Wide terminal — 80% = 160 columns, plenty of room
+		height: 20,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure: structure.NewMap([]structure.Entry{*entry}),
+				NewStructure: structure.NewMap([]structure.Entry{*entry}),
+				StructuralDiff: &structure.StructuralDiff{
+					Changes: []structure.ElementChange{
+						{Kind: structure.ChangeModified, OldEntry: entry, NewEntry: entry, LinesAdded: 10, LinesRemoved: 3},
+					},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	lines := strings.Split(output, "\n")
+
+	// Find the structural diff line containing our function
+	var funcLine string
+	for _, line := range lines {
+		stripped := ansiRegex.ReplaceAllString(line, "")
+		if strings.Contains(stripped, "ProcessRequest") {
+			funcLine = stripped
+			break
+		}
+	}
+	require.NotEmpty(t, funcLine, "Expected ProcessRequest in output")
+
+	// With 200-wide terminal, the full signature should be visible — all params shown
+	assert.Contains(t, funcLine, "ctx context.Context",
+		"Full params should be visible on wide terminal, not truncated to header box width")
+	assert.Contains(t, funcLine, "options ...Option",
+		"All params should be visible on wide terminal")
+	assert.Contains(t, funcLine, "-> error",
+		"Return type should be visible")
+
+	// FormatSignature uses "(...)" when truncating params — if all params are
+	// shown, we should not see the compact "(...)" form (but "...Option" is fine)
+	assert.NotContains(t, funcLine, "(...)",
+		"Signature should not be truncated on a 200-wide terminal")
+}
