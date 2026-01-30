@@ -8,6 +8,7 @@
    ~    3 ░ func Hello() {                     ░ ┃ ~    3 ░ func Hello() {                         ░
    ~    4 ░     println("hello")               ░ ┃ ~    4 ░     println("hi")                      ░
         5   }                                    ┃      5   }                                       
+ │ 
 
 
 
@@ -16,5 +17,4 @@
 
 
 
-
- line 1/7 0%                                                                                        
+ line 1/8 0%                                                                                        

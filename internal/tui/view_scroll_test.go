@@ -38,7 +38,7 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	// With new cursor model: cursorLine = scroll = 0
 	// CurrentLine = cursorLine + 1 = 1
 	assert.Equal(t, 1, info.CurrentLine)
-	assert.Equal(t, 52, info.TotalLines) // In diff view: 1 header + 1 bottom border + 50 pairs (no top border for first file)
+	assert.Equal(t, 53, info.TotalLines) // In diff view: 1 header + 1 bottom border + 50 pairs + 1 blank margin (no top border for first file)
 	// Percentage: cursorLine(0) / maxCursor(51) * 100 = 0%
 	assert.Equal(t, 0, info.Percentage)
 	assert.False(t, info.AtEnd)

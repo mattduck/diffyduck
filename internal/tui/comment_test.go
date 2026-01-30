@@ -642,8 +642,8 @@ func TestComment_ScrollPastComment(t *testing.T) {
 		// Last few rows are the last content line (possibly followed by comment rows for it)
 		// Find what line number we're on
 		row := rows[cursorPos]
-		assert.True(t, row.kind == RowKindContent || row.kind == RowKindComment,
-			"cursor should be on content or comment row at bottom")
+		assert.True(t, row.kind == RowKindContent || row.kind == RowKindComment || row.kind == RowKindBlank,
+			"cursor should be on content, comment, or blank margin row at bottom")
 	}
 }
 

@@ -86,7 +86,7 @@ func (m Model) renderNodeBorder(headerBoxWidth int, treePrefixWidth int, style l
 // Renders as empty space (keeping the row for layout consistency).
 func (m Model) renderHeaderTopBorder(headerBoxWidth int, headerMode HeaderMode, status FileStatus, isCursorRow bool, treePrefixWidth int, treePath TreePath) string {
 	_, _ = status, headerBoxWidth // not used
-	return renderEmptyTreeRow(treePath, isCursorRow, m.focused)
+	return renderEmptyTreeRow(treePath, isCursorRow, m.focused, false)
 }
 
 // renderHeaderBottomBorder renders the bottom border of the file header.
@@ -167,7 +167,7 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMod
 func (m Model) renderCommitBorderLine(visible bool, isTop bool, contentWidth int, isCursorRow bool, treePath TreePath) string {
 	// Top border: render as empty line with tree continuation
 	if isTop {
-		return renderEmptyTreeRow(treePath, isCursorRow, m.focused)
+		return renderEmptyTreeRow(treePath, isCursorRow, m.focused, false)
 	}
 
 	// Use commit tree style (yellow) for border, or dark when not visible

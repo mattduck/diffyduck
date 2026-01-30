@@ -8,6 +8,7 @@
    ~    3 ░     fmt.Println("new")                                 ░ ┃ ~    3 ░ 
    +    4 ░     fmt.Println("added")                               ░ ┃          
         5   }                                                        ┃      4   
+ │ 
 
 
 
@@ -16,5 +17,4 @@
 
 
 
-
- line 1/7 0%                                                                    
+ line 1/8 0%                                                                    

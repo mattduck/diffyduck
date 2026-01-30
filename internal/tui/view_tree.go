@@ -106,7 +106,12 @@ func renderTreePrefixTight(path TreePath) string {
 // renderEmptyTreeRow renders an empty/spacer row with tree continuation and optional cursor.
 // Used for blank rows, top borders, and other visually-empty rows that still need to
 // maintain the tree branch. The cursor arrow replaces the left margin space.
-func renderEmptyTreeRow(treePath TreePath, isCursorRow bool, focused bool) string {
+// When terminator is true, renders ┴ instead of │ to signal the end of the tree.
+func renderEmptyTreeRow(treePath TreePath, isCursorRow bool, focused bool, terminator bool) string {
+	continuation := renderTreeContinuationTight(treePath.Ancestors)
+	if terminator {
+		continuation = renderTreeTerminatorTight(treePath.Ancestors)
+	}
 	if isCursorRow {
 		var arrow string
 		if focused {
@@ -115,12 +120,28 @@ func renderEmptyTreeRow(treePath TreePath, isCursorRow bool, focused bool) strin
 			arrow = unfocusedCursorArrowStyle.Render("▷")
 		}
 		// Arrow replaces the left margin space
-		return arrow + renderTreeContinuationTight(treePath.Ancestors)
+		return arrow + continuation
 	}
 	if len(treePath.Ancestors) > 0 {
-		return renderTreePrefixTight(treePath)
+		margin := strings.Repeat(" ", TreeLeftMargin)
+		return margin + continuation
 	}
 	return ""
+}
+
+// renderTreeTerminatorTight renders tree termination with ┴ instead of │.
+// Used on the last blank row to visually signal the end of the tree.
+func renderTreeTerminatorTight(ancestors []TreeLevel) string {
+	var b strings.Builder
+	for _, level := range ancestors {
+		if level.IsLast || level.IsFolded {
+			b.WriteString("  ") // 2 spaces - no continuation needed
+		} else {
+			b.WriteString(treeContinuationStyle.Render("┴"))
+			b.WriteString(" ") // ┴ + 1 space = 2 chars
+		}
+	}
+	return b.String()
 }
 
 // treeWidthTight calculates the character width of tight tree prefixes.

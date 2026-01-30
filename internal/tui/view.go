@@ -288,6 +288,7 @@ type displayRow struct {
 	treePath TreePath // full path from root to this node (for tree prefix rendering)
 	// Legacy tree fields - kept during migration, will be removed in Phase 4
 	isLastFileInCommit bool   // true if this file is the last file in its commit (for tree └─ vs ├─)
+	treeTerminator     bool   // true if this blank row should render ┴ instead of │ (end of tree)
 	isFileFolded       bool   // true if the parent file is folded (hide commit-level tree line)
 	commitInfoLine     string // text content for info body lines
 	// Comment fields (for RowKindComment rows)
@@ -800,6 +801,8 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	// (single diff), preserve the original IsLast behavior.
 	isLogMode := len(m.commits) > 0 && m.commits[0].Info.HasMetadata()
 	contentIsLast := isLastFile && !isLogMode
+	// isLastFileOverall is true when this is the very last file across all commits (end of tree).
+	isLastFileOverall := fileIdx == len(m.files)-1
 
 	// Per-file header box width for unfolded headers (tighter border around own content)
 	header := formatFileHeader(fp)
@@ -832,15 +835,28 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		structuralRows := m.buildStructuralDiffRows(fileIdx, headerBoxWidth, contentIsLast, true)
 		rows = append(rows, structuralRows...)
 
-		// Only add bottom margin if there was preview content (structural diff rows)
 		if len(structuralRows) > 0 {
+			// Bottom margin after preview content
 			marginTreePath := m.buildFileTreePath(fileIdx, contentIsLast, true, TreeRowContent)
 			rows = append(rows, displayRow{
 				kind:               RowKindBlank,
 				fileIndex:          fileIdx,
 				isBlank:            true,
 				isLastFileInCommit: isLastFile,
+				treeTerminator:     isLastFileOverall && isLogMode,
 				treePath:           marginTreePath,
+			})
+		} else if isLastFileOverall && isLogMode {
+			// Last file overall with no preview content: add ┴ terminator after the bare header.
+			// Force IsLast=false so the ancestor renders ┴ (not blank space).
+			terminatorPath := m.buildFileTreePath(fileIdx, false, true, TreeRowContent)
+			rows = append(rows, displayRow{
+				kind:               RowKindBlank,
+				fileIndex:          fileIdx,
+				isBlank:            true,
+				isLastFileInCommit: isLastFile,
+				treeTerminator:     true,
+				treePath:           terminatorPath,
 			})
 		}
 
@@ -900,20 +916,17 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				})
 			}
 
-			// Bottom margin: two blank rows with tree continuation after expanded content (log mode only).
-			// Force IsLast=false so │ continuation always shows; the branch point (├/└) is on the header row.
-			if len(m.commits) > 0 && m.commits[0].Info.HasMetadata() {
-				marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
-				for range 2 {
-					rows = append(rows, displayRow{
-						kind:               RowKindBlank,
-						fileIndex:          fileIdx,
-						isBlank:            true,
-						isLastFileInCommit: isLastFile,
-						treePath:           marginTreePath,
-					})
-				}
-			}
+			// Bottom margin: one blank row after expanded content.
+			// The next file's HeaderTopBorder or next commit's top border provides a second line of spacing.
+			marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
+			rows = append(rows, displayRow{
+				kind:               RowKindBlank,
+				fileIndex:          fileIdx,
+				isBlank:            true,
+				isLastFileInCommit: isLastFile,
+				treeTerminator:     isLastFileOverall && isLogMode,
+				treePath:           marginTreePath,
+			})
 
 			if !isLastFile {
 				// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
@@ -1030,20 +1043,17 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			}
 		}
 
-		// Bottom margin: two blank rows with tree continuation after normal content (log mode only).
-		// Force IsLast=false so │ continuation always shows; the branch point (├/└) is on the header row.
-		if len(m.commits) > 0 && m.commits[0].Info.HasMetadata() {
-			marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
-			for range 2 {
-				rows = append(rows, displayRow{
-					kind:               RowKindBlank,
-					fileIndex:          fileIdx,
-					isBlank:            true,
-					isLastFileInCommit: isLastFile,
-					treePath:           marginTreePath,
-				})
-			}
-		}
+		// Bottom margin: one blank row after normal content.
+		// The next file's HeaderTopBorder or next commit's top border provides a second line of spacing.
+		marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
+		rows = append(rows, displayRow{
+			kind:               RowKindBlank,
+			fileIndex:          fileIdx,
+			isBlank:            true,
+			isLastFileInCommit: isLastFile,
+			treeTerminator:     isLastFileOverall && isLogMode,
+			treePath:           marginTreePath,
+		})
 
 		if !isLastFile {
 			// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
@@ -1381,7 +1391,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.isHeaderSpacer {
 			rendered = m.renderHeaderBottomBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
 		} else if row.isBlank {
-			rendered = renderEmptyTreeRow(row.treePath, isCursorRow, m.focused)
+			rendered = renderEmptyTreeRow(row.treePath, isCursorRow, m.focused, row.treeTerminator)
 		} else if row.isHeader {
 			rendered = m.renderHeader(row.header, row.foldLevel, row.headerMode, row.status, row.added, row.removed, row.headerBoxWidth, row.fileIndex, i, isCursorRow, row.treePath)
 		} else if row.isSeparatorTop {

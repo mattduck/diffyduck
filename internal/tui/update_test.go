@@ -517,19 +517,25 @@ func TestUpdate_WindowResize_SmallContent(t *testing.T) {
 	assert.Equal(t, cursorRowBefore, model.cursorLine())
 }
 
-func TestUpdate_WindowResize_NoInterFileBlanks(t *testing.T) {
-	// In tree layout, there are no blank rows between files
+func TestUpdate_WindowResize_BottomMarginBlanks(t *testing.T) {
+	// Each unfolded file should have exactly one blank margin row after its content
 	m := makeMultiFileTestModel()
 
 	rows := m.buildRows()
-	var interFileBlanks []int
+	var marginBlanks []int
 	for i, row := range rows {
-		// Inter-file blanks would be blank rows that aren't header spacers
 		if row.isBlank && !row.isHeaderSpacer {
-			interFileBlanks = append(interFileBlanks, i)
+			marginBlanks = append(marginBlanks, i)
 		}
 	}
-	assert.Empty(t, interFileBlanks, "tree layout should have no inter-file blank rows")
+	// Count unfolded files (FoldNormal has content)
+	unfoldedCount := 0
+	for _, fp := range m.files {
+		if fp.FoldLevel != sidebyside.FoldFolded {
+			unfoldedCount++
+		}
+	}
+	assert.Equal(t, unfoldedCount, len(marginBlanks), "each unfolded file should have one bottom margin blank row")
 }
 
 func TestUpdate_WindowResize_PreservesCursorOnHeaderSpacer(t *testing.T) {

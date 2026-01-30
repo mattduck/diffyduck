@@ -126,7 +126,7 @@ func TestStartup_ScrollIsZero_NoBlankSpaceAtTop(t *testing.T) {
 func TestScrollDown_ToLastLine(t *testing.T) {
 	// Scrolling down should allow cursor to reach the last line of content
 	// In diff view (no commit metadata), first file has:
-	// header (1) + bottom border (1) + 10 pairs = 12 total lines (indices 0-11)
+	// header (1) + bottom border (1) + 10 pairs + 1 blank margin = 13 total lines (indices 0-12)
 	m := makeTestModel(10)
 	m.height = 50
 	m.scroll = 0
@@ -135,9 +135,9 @@ func TestScrollDown_ToLastLine(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
-	// In new model: scroll = cursorLine, so scroll should equal last line index (11)
-	assert.Equal(t, 11, model.scroll, "G should put cursor on last line (scroll=11)")
-	assert.Equal(t, 11, model.cursorLine(), "cursor should be on line 11")
+	// In new model: scroll = cursorLine, so scroll should equal last line index (12)
+	assert.Equal(t, 12, model.scroll, "G should put cursor on last line (scroll=12)")
+	assert.Equal(t, 12, model.cursorLine(), "cursor should be on line 12")
 }
 
 func TestMaxScroll_AllowsCursorOnLastLine(t *testing.T) {
@@ -514,14 +514,15 @@ func TestView_NoBlankSeparatorBetweenFiles(t *testing.T) {
 
 		rows := m.buildRows()
 
-		// Verify no blank rows exist between the two file headers
+		// Each unfolded file should have exactly one bottom margin blank row
 		var blankCount int
 		for _, row := range rows {
-			if row.isBlank {
+			if row.isBlank && !row.isHeaderSpacer {
 				blankCount++
 			}
 		}
-		assert.Equal(t, 0, blankCount, "should have no blank separator rows between files in tree-style layout")
+		// Both files are FoldNormal (unfolded), so expect 2 margin blanks
+		assert.Equal(t, 2, blankCount, "each unfolded file should have one bottom margin blank row")
 	})
 }
 

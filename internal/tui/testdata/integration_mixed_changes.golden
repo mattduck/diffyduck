@@ -11,10 +11,10 @@
         6   func main() {                                            ┃      3   
    ~    7 ░     fmt.Println(os.Args)                               ░ ┃ ~    4 ░ 
         8   }                                                        ┃      5   
+ │ 
 
 
 
 
 
-
- line 1/10 0%                                                                   
+ line 1/11 0%                                                                   
