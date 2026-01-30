@@ -10,13 +10,14 @@ import (
 type FoldLevel int
 
 const (
-	FoldNormal   FoldLevel = iota // default: hunk-based view with gaps
-	FoldExpanded                  // full file contents side-by-side
-	FoldFolded                    // header line only
+	FoldNormal   FoldLevel = iota // part-expanded: structural diff preview
+	FoldExpanded                  // full-expanded: hunk-based diff view
+	FoldFolded                    // folded: header line only
 )
 
 // NextLevel returns the next fold level in the cycle.
 // Cycles: Normal -> Expanded -> Folded -> Normal
+// (structural diff -> hunks -> header only -> structural diff)
 func (f FoldLevel) NextLevel() FoldLevel {
 	return (f + 1) % 3
 }

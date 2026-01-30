@@ -21,7 +21,7 @@ func makeTestModel(numLines int) Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 20
@@ -190,9 +190,9 @@ func makeMultiFileTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: makePairs(5)},
-		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: makePairs(5)},
-		{OldPath: "a/third.go", NewPath: "b/third.go", Pairs: makePairs(5)},
+		{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: makePairs(5)},
+		{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: makePairs(5)},
+		{OldPath: "a/third.go", NewPath: "b/third.go", FoldLevel: sidebyside.FoldExpanded, Pairs: makePairs(5)},
 	})
 	m.width = 80
 	m.height = 40           // tall enough to see all content
@@ -329,8 +329,8 @@ func makeMultiCommitTestModel() Model {
 			FoldLevel:   sidebyside.CommitNormal, // Expanded to show files
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "a/file1.go", NewPath: "b/file1.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldNormal},
-				{OldPath: "a/file2.go", NewPath: "b/file2.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldNormal},
+				{OldPath: "a/file1.go", NewPath: "b/file1.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldExpanded},
+				{OldPath: "a/file2.go", NewPath: "b/file2.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldExpanded},
 			},
 		},
 		{
@@ -342,7 +342,7 @@ func makeMultiCommitTestModel() Model {
 			FoldLevel:   sidebyside.CommitNormal, // Expanded to show files
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "a/file3.go", NewPath: "b/file3.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldNormal},
+				{OldPath: "a/file3.go", NewPath: "b/file3.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldExpanded},
 			},
 		},
 	}
@@ -668,30 +668,29 @@ func TestUpdate_MouseWheelDown_AtBottom(t *testing.T) {
 
 func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
 	m := makeTestModel(10)
-	// Initially at FoldNormal (zero value)
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+	// Initially at FoldExpanded (set by makeTestModel)
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
 
 	// Position cursor on file header (line 0 in diff view: no top border)
 	m.scroll = 0
 
-	// Press Tab to cycle to next level
+	// Press Tab to cycle to next level: Expanded -> Folded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	// Should advance to FoldExpanded
-	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
 
-	// Press Tab again to cycle to Folded
+	// Press Tab again to cycle to Normal (structural diff)
 	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model2 := newM2.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model2.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldNormal, model2.files[0].FoldLevel)
 
-	// Press Tab again to cycle back to Normal
+	// Press Tab again to cycle back to Expanded (hunks)
 	newM3, _ := model2.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model3 := newM3.(Model)
 
-	assert.Equal(t, sidebyside.FoldNormal, model3.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, model3.files[0].FoldLevel)
 }
 
 func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
@@ -733,16 +732,14 @@ func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
 }
 
 func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
-	// When expanding to FoldExpanded and content not loaded, should return a fetch command
+	// When expanding from FoldNormal to FoldExpanded, should return a fetch command
 	m := makeTestModel(10)
-	// Set up a mock fetcher (nil fetcher means no command returned)
-	// Since we don't have a fetcher, the command will be nil
-	// but the level should still change
+	m.files[0].FoldLevel = sidebyside.FoldNormal // start at structural diff
+	m.calculateTotalLines()
 
 	// Position cursor on file header (line 0 in diff view)
 	m.scroll = 0
 
-	// Initially at FoldNormal
 	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
 
 	// Press Tab to advance to FoldExpanded
@@ -976,29 +973,29 @@ func TestUpdate_AllContentLoadedMsg_PerSideTruncation(t *testing.T) {
 
 // Pager mode tests - fold toggle should skip FoldExpanded
 
-func TestUpdate_PagerMode_FoldToggle_SkipsExpanded(t *testing.T) {
+func TestUpdate_PagerMode_FoldToggle_SkipsNormal(t *testing.T) {
 	m := makeTestModel(10)
 	m.pagerMode = true // Enable pager mode
 
 	// Position cursor on file header (line 0 in diff view)
 	m.scroll = 0
 
-	// Initially at FoldNormal
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+	// Initially at FoldExpanded (hunks)
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
 
-	// Press Tab - should skip FoldExpanded and go to FoldFolded
+	// Press Tab - should go to FoldFolded (skipping FoldNormal in pager mode)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
 	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel,
-		"pager mode should skip FoldExpanded")
+		"pager mode should go to FoldFolded")
 
-	// Press Tab again - should go back to FoldNormal
+	// Press Tab again - should skip FoldNormal and go back to FoldExpanded
 	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model2 := newM2.(Model)
 
-	assert.Equal(t, sidebyside.FoldNormal, model2.files[0].FoldLevel,
-		"pager mode should cycle back to FoldNormal")
+	assert.Equal(t, sidebyside.FoldExpanded, model2.files[0].FoldLevel,
+		"pager mode should skip FoldNormal and cycle back to FoldExpanded")
 }
 
 func TestUpdate_PagerMode_FoldToggleAll_SkipsExpanded(t *testing.T) {
@@ -1039,35 +1036,42 @@ func TestUpdate_PagerMode_FoldToggleAll_SkipsExpanded(t *testing.T) {
 }
 
 func TestUpdate_PagerMode_NormalMode_DoesNotSkipExpanded(t *testing.T) {
-	// Verify normal (non-pager) mode still goes through FoldExpanded
+	// Verify normal (non-pager) mode cycles through all levels including FoldNormal
 	m := makeTestModel(10)
 	// pagerMode is false by default
 
 	// Position cursor on file header (line 0 in diff view)
 	m.scroll = 0
 
-	// Initially at FoldNormal
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+	// Initially at FoldExpanded (hunks)
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
 
-	// Press Tab - should go to FoldExpanded in normal mode
+	// Press Tab - should go to FoldFolded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel,
-		"normal mode should go to FoldExpanded")
+	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel,
+		"normal mode should go to FoldFolded")
+
+	// Press Tab again - should go to FoldNormal (structural diff)
+	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model2 := newM2.(Model)
+
+	assert.Equal(t, sidebyside.FoldNormal, model2.files[0].FoldLevel,
+		"normal mode should include FoldNormal in cycle")
 }
 
 func TestNextFoldLevel_PagerMode(t *testing.T) {
 	m := Model{pagerMode: true}
 
-	// Normal -> Folded (skip Expanded)
-	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevel(sidebyside.FoldNormal))
-
-	// Folded -> Normal
-	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevel(sidebyside.FoldFolded))
-
-	// Expanded -> Folded (same as normal, this level shouldn't be reached in pager mode)
+	// Expanded -> Folded
 	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevel(sidebyside.FoldExpanded))
+
+	// Folded -> Expanded (skip Normal, since no structural diff in pager mode)
+	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevel(sidebyside.FoldFolded))
+
+	// Normal -> Expanded (Normal shouldn't be reached in pager mode, but if it is, proceed normally)
+	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevel(sidebyside.FoldNormal))
 }
 
 func TestNextFoldLevel_NormalMode(t *testing.T) {
@@ -1086,20 +1090,20 @@ func TestNextFoldLevel_NormalMode(t *testing.T) {
 func TestNextFoldLevelForFile_BinaryFile(t *testing.T) {
 	m := Model{pagerMode: false}
 
-	// Binary file should skip FoldExpanded, same as pager mode
+	// Binary file should skip FoldNormal (no structural diff for binary files)
 	binaryFile := sidebyside.FilePair{
 		OldPath:   "a/image.png",
 		NewPath:   "b/image.png",
 		IsBinary:  true,
-		FoldLevel: sidebyside.FoldNormal,
+		FoldLevel: sidebyside.FoldExpanded,
 	}
 
-	// Normal -> Folded (skip Expanded)
+	// Expanded -> Folded
 	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevelForFile(binaryFile))
 
-	// Folded -> Normal
+	// Folded -> Expanded (skip Normal)
 	binaryFile.FoldLevel = sidebyside.FoldFolded
-	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevelForFile(binaryFile))
+	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevelForFile(binaryFile))
 }
 
 func TestNextFoldLevelForFile_NonBinaryFile(t *testing.T) {
@@ -1498,7 +1502,7 @@ func makeHunkedTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 	})
 	m.width = 100
 	m.height = 40

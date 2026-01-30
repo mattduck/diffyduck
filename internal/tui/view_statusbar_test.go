@@ -70,7 +70,7 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -98,8 +98,8 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 	assert.Contains(t, bottomBar, "line ")
 	assert.Contains(t, bottomBar, "/")
 
-	// Top bar should contain fold icon (◐ for normal)
-	assert.Contains(t, topBar, "◐")
+	// Top bar should contain fold icon (● for expanded/hunks)
+	assert.Contains(t, topBar, "●")
 
 	// Top bar should contain status icon (~ for modified)
 	assert.Contains(t, topBar, "~")
@@ -112,7 +112,7 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 	assert.Contains(t, topBar, "-1")
 
 	// Top bar should contain fold icon and file counter
-	assert.Contains(t, topBar, "◐") // fold icon for normal level
+	assert.Contains(t, topBar, "●") // fold icon for expanded (hunks) level
 	assert.Contains(t, topBar, "1") // file counter (no # prefix)
 }
 
@@ -185,7 +185,7 @@ func TestStatusBar_NewFormat_AddedFile(t *testing.T) {
 			{
 				OldPath:   "/dev/null",
 				NewPath:   "b/newfile.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
@@ -216,7 +216,7 @@ func TestStatusBar_NewFormat_DeletedFile(t *testing.T) {
 			{
 				OldPath:   "a/deleted.go",
 				NewPath:   "/dev/null",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "gone", Type: sidebyside.Removed},
@@ -247,7 +247,7 @@ func TestStatusBar_NewFormat_AtEnd(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -280,7 +280,7 @@ func TestStatusBar_NewFormat_NoStats(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
@@ -313,7 +313,7 @@ func TestTopBar_ContainsFileInfo(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -334,7 +334,7 @@ func TestTopBar_ContainsFileInfo(t *testing.T) {
 
 	// Top bar should contain file info
 	assert.Contains(t, topBar, "foo.go", "top bar should contain file name")
-	assert.Contains(t, topBar, "◐", "top bar should contain fold icon")
+	assert.Contains(t, topBar, "●", "top bar should contain fold icon")
 	assert.Contains(t, topBar, "~", "top bar should contain status icon for modified file")
 	assert.Contains(t, topBar, "+1", "top bar should contain added count")
 	assert.Contains(t, topBar, "-1", "top bar should contain removed count")
@@ -347,7 +347,7 @@ func TestTopBar_LeftAligned(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -369,7 +369,7 @@ func TestTopBar_LeftAligned(t *testing.T) {
 	// Top bar should be left-aligned (starts with content, not spaces)
 	assert.True(t, len(topBar) > 0, "top bar should not be empty")
 	// The fold icon should be near the start (after arrow and file counter [1/1])
-	idx := strings.Index(topBar, "◐")
+	idx := strings.Index(topBar, "●")
 	assert.True(t, idx >= 0 && idx < 12, "fold icon should be near the start (left-aligned)")
 }
 
@@ -380,7 +380,7 @@ func TestBottomBar_OnlyLessStyle(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -415,7 +415,7 @@ func TestTopBar_SearchMode_StillShowsFileInfo(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -444,8 +444,9 @@ func TestBottomBar_SearchMode_ShowsSearchPrompt(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/foo.go",
-				NewPath: "b/foo.go",
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -476,8 +477,9 @@ func TestStatusBar_PagerIndicator(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/foo.go",
-				NewPath: "b/foo.go",
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -506,8 +508,9 @@ func TestStatusBar_NoPagerIndicator_WhenNotPagerMode(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/foo.go",
-				NewPath: "b/foo.go",
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -541,7 +544,7 @@ func TestStatusInfo_BreadcrumbsOnChunkSeparator(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					// First hunk
 					{
@@ -608,7 +611,7 @@ func TestTopBar_WithCommitInfo(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -671,7 +674,7 @@ func TestTopBar_WithoutCommitInfo(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -709,7 +712,7 @@ func TestTopBar_DynamicHeight_OnCommitSection(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -765,7 +768,7 @@ func TestView_NoPaddingLineAboveBottomBar(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -896,7 +899,7 @@ func TestCommitHeaderRow(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -944,7 +947,7 @@ func TestCommitFolding(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -1035,7 +1038,7 @@ func TestCommitFoldCycle(t *testing.T) {
 	m.handleCommitFoldCycle()
 	assert.Equal(t, 3, m.commitVisibilityLevel(), "should be at level 3 after second cycle")
 	for _, f := range m.files {
-		assert.Equal(t, sidebyside.FoldNormal, f.FoldLevel, "all files should be FoldNormal at level 3")
+		assert.Equal(t, sidebyside.FoldExpanded, f.FoldLevel, "all files should be FoldExpanded at level 3")
 	}
 
 	// Cycle back to Level 1 (folded)
@@ -1047,8 +1050,7 @@ func TestCommitFoldCycle(t *testing.T) {
 func TestCommitFoldCycleWithMixedFiles(t *testing.T) {
 	// Test that if any file is expanded, we're at level 3
 	files := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldFolded},
-		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldNormal}, // One expanded
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldExpanded}, // One expanded
 	}
 	commit := sidebyside.CommitSet{
 		Info:        sidebyside.CommitInfo{SHA: "abc123"},
@@ -1074,7 +1076,7 @@ func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
 	// With CommitNormal, only the commit info header shows.
 	// With CommitExpanded, the full commit info body shows.
 	files := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldExpanded},
 	}
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
@@ -1143,7 +1145,7 @@ func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
 func TestCommitBodyRow_Rendering(t *testing.T) {
 	// Test the actual rendering of commit body rows
 	files := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldExpanded},
 	}
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
@@ -1200,7 +1202,7 @@ func TestCommitBodyRow_Rendering(t *testing.T) {
 func TestCommitBodyRows_NotShownWhenFolded(t *testing.T) {
 	// Test that commit body rows do NOT appear when commit is folded (level 1)
 	files := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldExpanded},
 	}
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
@@ -1230,7 +1232,7 @@ func TestCommitBodyRows_BlankLineBetweenSubjectAndBody(t *testing.T) {
 	// Test that there's a blank line between the subject and body (traditional git log format)
 	// Requires CommitExpanded to show the commit info body
 	files := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldNormal},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldExpanded},
 	}
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
@@ -1620,7 +1622,7 @@ func TestIsOnCommitHeader(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},

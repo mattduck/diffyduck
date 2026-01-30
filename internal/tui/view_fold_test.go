@@ -152,7 +152,7 @@ func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				FoldLevel: sidebyside.FoldNormal, // Second file is normal
+				FoldLevel: sidebyside.FoldExpanded, // Second file is normal
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "second file", Type: sidebyside.Context},
@@ -177,7 +177,7 @@ func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
 		if strings.Contains(line, "first.go") && strings.Contains(line, "○") {
 			firstHeaderIdx = i
 		}
-		if strings.Contains(line, "second.go") && strings.Contains(line, "◐") {
+		if strings.Contains(line, "second.go") && strings.Contains(line, "●") {
 			secondHeaderIdx = i
 		}
 	}
@@ -197,7 +197,7 @@ func TestView_MixedFoldLevels(t *testing.T) {
 			{
 				OldPath:   "a/normal.go",
 				NewPath:   "b/normal.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "normal file content", Type: sidebyside.Context},
@@ -219,7 +219,7 @@ func TestView_MixedFoldLevels(t *testing.T) {
 			{
 				OldPath:   "a/another.go",
 				NewPath:   "b/another.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "another file content", Type: sidebyside.Context},
@@ -257,7 +257,7 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 			{
 				OldPath:   "a/normal.go",
 				NewPath:   "b/normal.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs:     make([]sidebyside.LinePair, 10),
 			},
 			{
@@ -280,66 +280,125 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 	assert.Equal(t, 16, m.totalLines, "totalLines should account for fold states")
 }
 
-func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
-	// Expanded view should show ALL lines from the full file content
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "a/foo.go",
-				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
-				// Original diff pairs (just lines 5-7 with a change at line 6)
-				Pairs: []sidebyside.LinePair{
-					{
-						Old: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
-						New: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
-					},
-					{
-						Old: sidebyside.Line{Num: 6, Content: "old line six", Type: sidebyside.Removed},
-						New: sidebyside.Line{Num: 6, Content: "new line six", Type: sidebyside.Added},
-					},
-					{
-						Old: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
-						New: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
-					},
-				},
-				// Full file content (10 lines each)
-				OldContent: []string{
-					"line one", "line two", "line three", "line four",
-					"line five", "old line six", "line seven",
-					"line eight", "line nine", "line ten",
-				},
-				NewContent: []string{
-					"line one", "line two", "line three", "line four",
-					"line five", "new line six", "line seven",
-					"line eight", "line nine", "line ten",
-				},
-			},
-		},
-		width:  100,
-		height: 20,
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
-
-	output := m.View()
-
-	// Should show all lines from the file (lines outside the diff context)
-	assert.Contains(t, output, "line one", "should show line 1 from full content")
-	assert.Contains(t, output, "line two", "should show line 2 from full content")
-	assert.Contains(t, output, "line three", "should show line 3 from full content")
-	assert.Contains(t, output, "line four", "should show line 4 from full content")
-	assert.Contains(t, output, "line eight", "should show line 8 from full content")
-	assert.Contains(t, output, "line nine", "should show line 9 from full content")
-	assert.Contains(t, output, "line ten", "should show line 10 from full content")
-
-	// Should still show the diff lines
-	assert.Contains(t, output, "line five")
-	assert.Contains(t, output, "old line six")
-	assert.Contains(t, output, "new line six")
-	assert.Contains(t, output, "line seven")
-}
+// TODO: Re-enable when full-file view is added as a separate keybinding.
+// These tests cover the full-file expanded view which was removed from the fold cycle.
+//
+// func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
+// 	// Expanded view should show ALL lines from the full file content
+// 	m := Model{
+// 		focused: true,
+// 		files: []sidebyside.FilePair{
+// 			{
+// 				OldPath:   "a/foo.go",
+// 				NewPath:   "b/foo.go",
+// 				FoldLevel: sidebyside.FoldExpanded,
+// 				Pairs: []sidebyside.LinePair{
+// 					{
+// 						Old: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
+// 						New: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
+// 					},
+// 					{
+// 						Old: sidebyside.Line{Num: 6, Content: "old line six", Type: sidebyside.Removed},
+// 						New: sidebyside.Line{Num: 6, Content: "new line six", Type: sidebyside.Added},
+// 					},
+// 					{
+// 						Old: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
+// 						New: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
+// 					},
+// 				},
+// 				OldContent: []string{
+// 					"line one", "line two", "line three", "line four",
+// 					"line five", "old line six", "line seven",
+// 					"line eight", "line nine", "line ten",
+// 				},
+// 				NewContent: []string{
+// 					"line one", "line two", "line three", "line four",
+// 					"line five", "new line six", "line seven",
+// 					"line eight", "line nine", "line ten",
+// 				},
+// 			},
+// 		},
+// 		width:  100,
+// 		height: 20,
+// 		keys:   DefaultKeyMap(),
+// 	}
+// 	m.calculateTotalLines()
+//
+// 	output := m.View()
+//
+// 	assert.Contains(t, output, "line one", "should show line 1 from full content")
+// 	assert.Contains(t, output, "line two", "should show line 2 from full content")
+// 	assert.Contains(t, output, "line three", "should show line 3 from full content")
+// 	assert.Contains(t, output, "line four", "should show line 4 from full content")
+// 	assert.Contains(t, output, "line eight", "should show line 8 from full content")
+// 	assert.Contains(t, output, "line nine", "should show line 9 from full content")
+// 	assert.Contains(t, output, "line ten", "should show line 10 from full content")
+//
+// 	assert.Contains(t, output, "line five")
+// 	assert.Contains(t, output, "old line six")
+// 	assert.Contains(t, output, "new line six")
+// 	assert.Contains(t, output, "line seven")
+// }
+//
+// func TestView_ExpandedFile_DeletedFile(t *testing.T) {
+// 	m := Model{
+// 		focused: true,
+// 		files: []sidebyside.FilePair{
+// 			{
+// 				OldPath:   "a/deleted.go",
+// 				NewPath:   "/dev/null",
+// 				FoldLevel: sidebyside.FoldExpanded,
+// 				Pairs: []sidebyside.LinePair{
+// 					{
+// 						Old: sidebyside.Line{Num: 1, Content: "deleted line", Type: sidebyside.Removed},
+// 						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+// 					},
+// 				},
+// 				OldContent: []string{"deleted line", "another deleted"},
+// 				NewContent: nil,
+// 			},
+// 		},
+// 		width:  80,
+// 		height: 10,
+// 		keys:   DefaultKeyMap(),
+// 	}
+// 	m.calculateTotalLines()
+//
+// 	output := m.View()
+//
+// 	assert.Contains(t, output, "deleted line")
+// 	assert.Contains(t, output, "another deleted")
+// }
+//
+// func TestView_ExpandedFile_NewFile(t *testing.T) {
+// 	m := Model{
+// 		focused: true,
+// 		files: []sidebyside.FilePair{
+// 			{
+// 				OldPath:   "/dev/null",
+// 				NewPath:   "b/new.go",
+// 				FoldLevel: sidebyside.FoldExpanded,
+// 				Pairs: []sidebyside.LinePair{
+// 					{
+// 						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+// 						New: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
+// 					},
+// 				},
+// 				OldContent: nil,
+// 				NewContent: []string{"new line", "another new"},
+// 			},
+// 		},
+// 		width:  80,
+// 		height: 10,
+// 		keys:   DefaultKeyMap(),
+// 	}
+// 	m.calculateTotalLines()
+//
+// 	output := m.View()
+//
+// 	assert.Contains(t, output, "new line")
+// 	assert.Contains(t, output, "another new")
+// }
 
 func TestView_ExpandedFile_NoContent_FallsBackToNormal(t *testing.T) {
 	// If expanded but content not loaded yet, fall back to normal view
@@ -369,70 +428,6 @@ func TestView_ExpandedFile_NoContent_FallsBackToNormal(t *testing.T) {
 
 	// Should show the diff pairs since content isn't loaded
 	assert.Contains(t, output, "diff context")
-}
-
-func TestView_ExpandedFile_DeletedFile(t *testing.T) {
-	// For deleted files, only left side should show content
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "a/deleted.go",
-				NewPath:   "/dev/null",
-				FoldLevel: sidebyside.FoldExpanded,
-				Pairs: []sidebyside.LinePair{
-					{
-						Old: sidebyside.Line{Num: 1, Content: "deleted line", Type: sidebyside.Removed},
-						New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-					},
-				},
-				OldContent: []string{"deleted line", "another deleted"},
-				NewContent: nil, // No new content (file deleted)
-			},
-		},
-		width:  80,
-		height: 10,
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
-
-	output := m.View()
-
-	// Should show the old content
-	assert.Contains(t, output, "deleted line")
-	assert.Contains(t, output, "another deleted")
-}
-
-func TestView_ExpandedFile_NewFile(t *testing.T) {
-	// For new files, only right side should show content
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "/dev/null",
-				NewPath:   "b/new.go",
-				FoldLevel: sidebyside.FoldExpanded,
-				Pairs: []sidebyside.LinePair{
-					{
-						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-						New: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
-					},
-				},
-				OldContent: nil, // No old content (new file)
-				NewContent: []string{"new line", "another new"},
-			},
-		},
-		width:  80,
-		height: 10,
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
-
-	output := m.View()
-
-	// Should show the new content
-	assert.Contains(t, output, "new line")
-	assert.Contains(t, output, "another new")
 }
 
 func TestView_ExpandedFile_AlignmentWithAddedLines(t *testing.T) {

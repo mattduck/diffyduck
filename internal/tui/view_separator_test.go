@@ -19,8 +19,9 @@ func TestView_HunkSeparator(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/foo.go",
-				NewPath: "b/foo.go",
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					// First hunk: lines 1-3
 					{
@@ -65,8 +66,9 @@ func TestView_TreeConnectsFilesDirectly(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/first.go",
-				NewPath: "b/first.go",
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
@@ -75,8 +77,9 @@ func TestView_TreeConnectsFilesDirectly(t *testing.T) {
 				},
 			},
 			{
-				OldPath: "a/second.go",
-				NewPath: "b/second.go",
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
@@ -98,10 +101,10 @@ func TestView_TreeConnectsFilesDirectly(t *testing.T) {
 	firstHeaderIdx := -1
 	secondHeaderIdx := -1
 	for i, line := range lines {
-		if strings.Contains(line, "first.go") && strings.Contains(line, "◐") {
+		if strings.Contains(line, "first.go") && strings.Contains(line, "●") {
 			firstHeaderIdx = i
 		}
-		if strings.Contains(line, "second.go") && strings.Contains(line, "◐") {
+		if strings.Contains(line, "second.go") && strings.Contains(line, "●") {
 			secondHeaderIdx = i
 		}
 	}
@@ -133,8 +136,9 @@ func TestView_FirstFileHasTreeBranch(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/only.go",
-				NewPath: "b/only.go",
+				OldPath:   "a/only.go",
+				NewPath:   "b/only.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -153,11 +157,11 @@ func TestView_FirstFileHasTreeBranch(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the file header line with tree branch - it has fold icon (◐) AND tree branch (└ or ├)
+	// Find the file header line with tree branch - it has fold icon (●) AND tree branch (└ or ├)
 	// Skip the top bar which also has the filename but no tree branch
 	headerIdx := -1
 	for i, line := range lines {
-		if strings.Contains(line, "only.go") && strings.Contains(line, "◐") &&
+		if strings.Contains(line, "only.go") && strings.Contains(line, "●") &&
 			(strings.Contains(line, "└") || strings.Contains(line, "├")) {
 			headerIdx = i
 			break
@@ -176,8 +180,9 @@ func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/foo.go",
-				NewPath: "b/foo.go",
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
@@ -268,7 +273,7 @@ func TestView_HunkSeparatorBreadcrumbs(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldNormal, // Normal view (not expanded)
+				FoldLevel: sidebyside.FoldExpanded, // Normal view (not expanded)
 				Pairs: []sidebyside.LinePair{
 					// First hunk: lines 1-3 (outside any function)
 					{
@@ -339,7 +344,7 @@ func TestView_HunkSeparatorBreadcrumbs_NoBreadcrumbWithoutStructure(t *testing.T
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
@@ -404,7 +409,7 @@ func AnotherFunction() {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldNormal, // Normal view
+			FoldLevel: sidebyside.FoldExpanded, // Normal view
 			Pairs: []sidebyside.LinePair{
 				// First hunk: lines 1-2 (package declaration)
 				{
@@ -507,7 +512,7 @@ func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					// First hunk
 					{
@@ -606,7 +611,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},

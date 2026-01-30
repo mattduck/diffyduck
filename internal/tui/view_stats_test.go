@@ -175,7 +175,7 @@ func TestFileHeaderWithStats_FoldedOnly(t *testing.T) {
 			{
 				OldPath:   "a/main.go",
 				NewPath:   "b/main.go",
-				FoldLevel: sidebyside.FoldNormal, // Normal view - no stats
+				FoldLevel: sidebyside.FoldExpanded, // Normal view - no stats
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old1", Type: sidebyside.Removed},

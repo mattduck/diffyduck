@@ -25,7 +25,7 @@ func TestBuildRows_TruncationIndicator_OldSideOnly(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    true,
 				OldTruncated: true,
 				NewTruncated: false,
@@ -67,7 +67,7 @@ func TestBuildRows_TruncationIndicator_NewSideOnly(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    true,
 				OldTruncated: false,
 				NewTruncated: true,
@@ -109,7 +109,7 @@ func TestBuildRows_TruncationIndicator_BothSides(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    true,
 				OldTruncated: true,
 				NewTruncated: true,
@@ -151,7 +151,7 @@ func TestBuildRows_TruncationIndicator_NotTruncated(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    false,
 				OldTruncated: false,
 				NewTruncated: false,
@@ -177,83 +177,76 @@ func TestBuildRows_TruncationIndicator_NotTruncated(t *testing.T) {
 	}
 }
 
-func TestBuildRows_TruncationIndicator_ExpandedView_OldSideOnly(t *testing.T) {
-	// In expanded view, ContentTruncated fields should be used
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:             "a/test.go",
-				NewPath:             "b/test.go",
-				FoldLevel:           sidebyside.FoldExpanded,
-				OldContent:          []string{"line1", "line2"},
-				NewContent:          []string{"line1"},
-				ContentTruncated:    true, // legacy field, may be removed
-				OldContentTruncated: true,
-				NewContentTruncated: false,
-				Pairs:               []sidebyside.LinePair{}, // not used in expanded view
-			},
-		},
-		width:  80,
-		height: 20,
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
-
-	rows := m.buildRows()
-
-	// Find the truncation indicator row
-	var truncRow *displayRow
-	for i := range rows {
-		if rows[i].isTruncationIndicator {
-			truncRow = &rows[i]
-			break
-		}
-	}
-
-	require.NotNil(t, truncRow, "should have a truncation indicator row in expanded view")
-	assert.True(t, truncRow.truncateOld, "truncateOld should be true")
-	assert.False(t, truncRow.truncateNew, "truncateNew should be false")
-}
-
-func TestBuildRows_TruncationIndicator_ExpandedView_NewSideOnly(t *testing.T) {
-	// In expanded view with only new side truncated
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:             "a/test.go",
-				NewPath:             "b/test.go",
-				FoldLevel:           sidebyside.FoldExpanded,
-				OldContent:          []string{"line1"},
-				NewContent:          []string{"line1", "line2"},
-				ContentTruncated:    true,
-				OldContentTruncated: false,
-				NewContentTruncated: true,
-				Pairs:               []sidebyside.LinePair{},
-			},
-		},
-		width:  80,
-		height: 20,
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
-
-	rows := m.buildRows()
-
-	// Find the truncation indicator row
-	var truncRow *displayRow
-	for i := range rows {
-		if rows[i].isTruncationIndicator {
-			truncRow = &rows[i]
-			break
-		}
-	}
-
-	require.NotNil(t, truncRow, "should have a truncation indicator row in expanded view")
-	assert.False(t, truncRow.truncateOld, "truncateOld should be false")
-	assert.True(t, truncRow.truncateNew, "truncateNew should be true")
-}
+// TODO: Re-enable when full-file view is added as a separate keybinding.
+// These tests cover expanded view truncation with full-file content.
+//
+// func TestBuildRows_TruncationIndicator_ExpandedView_OldSideOnly(t *testing.T) {
+// 	m := Model{
+// 		focused: true,
+// 		files: []sidebyside.FilePair{
+// 			{
+// 				OldPath:             "a/test.go",
+// 				NewPath:             "b/test.go",
+// 				FoldLevel:           sidebyside.FoldExpanded,
+// 				OldContent:          []string{"line1", "line2"},
+// 				NewContent:          []string{"line1"},
+// 				ContentTruncated:    true,
+// 				OldContentTruncated: true,
+// 				NewContentTruncated: false,
+// 				Pairs:               []sidebyside.LinePair{},
+// 			},
+// 		},
+// 		width:  80,
+// 		height: 20,
+// 		keys:   DefaultKeyMap(),
+// 	}
+// 	m.calculateTotalLines()
+// 	rows := m.buildRows()
+// 	var truncRow *displayRow
+// 	for i := range rows {
+// 		if rows[i].isTruncationIndicator {
+// 			truncRow = &rows[i]
+// 			break
+// 		}
+// 	}
+// 	require.NotNil(t, truncRow)
+// 	assert.True(t, truncRow.truncateOld)
+// 	assert.False(t, truncRow.truncateNew)
+// }
+//
+// func TestBuildRows_TruncationIndicator_ExpandedView_NewSideOnly(t *testing.T) {
+// 	m := Model{
+// 		focused: true,
+// 		files: []sidebyside.FilePair{
+// 			{
+// 				OldPath:             "a/test.go",
+// 				NewPath:             "b/test.go",
+// 				FoldLevel:           sidebyside.FoldExpanded,
+// 				OldContent:          []string{"line1"},
+// 				NewContent:          []string{"line1", "line2"},
+// 				ContentTruncated:    true,
+// 				OldContentTruncated: false,
+// 				NewContentTruncated: true,
+// 				Pairs:               []sidebyside.LinePair{},
+// 			},
+// 		},
+// 		width:  80,
+// 		height: 20,
+// 		keys:   DefaultKeyMap(),
+// 	}
+// 	m.calculateTotalLines()
+// 	rows := m.buildRows()
+// 	var truncRow *displayRow
+// 	for i := range rows {
+// 		if rows[i].isTruncationIndicator {
+// 			truncRow = &rows[i]
+// 			break
+// 		}
+// 	}
+// 	require.NotNil(t, truncRow)
+// 	assert.False(t, truncRow.truncateOld)
+// 	assert.True(t, truncRow.truncateNew)
+// }
 
 func TestBuildRows_TruncationIndicator_NewFile(t *testing.T) {
 	// For a new file (OldPath=/dev/null), only new side can be truncated
@@ -263,7 +256,7 @@ func TestBuildRows_TruncationIndicator_NewFile(t *testing.T) {
 			{
 				OldPath:      "/dev/null",
 				NewPath:      "b/newfile.go",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    true,
 				OldTruncated: false, // Can't truncate non-existent old file
 				NewTruncated: true,
@@ -304,7 +297,7 @@ func TestBuildRows_TruncationIndicator_DeletedFile(t *testing.T) {
 			{
 				OldPath:      "a/deleted.go",
 				NewPath:      "/dev/null",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    true,
 				OldTruncated: true,
 				NewTruncated: false, // Can't truncate non-existent new file
@@ -343,8 +336,9 @@ func TestRenderTruncationIndicator_LeftSideOnly(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
@@ -385,8 +379,9 @@ func TestRenderTruncationIndicator_RightSideOnly(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
@@ -423,8 +418,9 @@ func TestRenderTruncationIndicator_BothSides(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
@@ -467,7 +463,7 @@ func TestBuildRows_TruncationIndicator_PagerMode_OldSideOnly(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    true,
 				OldTruncated: true,
 				NewTruncated: false,
@@ -509,7 +505,7 @@ func TestBuildRows_TruncationIndicator_PagerMode_NewSideOnly(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    true,
 				OldTruncated: false,
 				NewTruncated: true,
@@ -551,7 +547,7 @@ func TestBuildRows_TruncationIndicator_PagerMode_BothSides(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    true,
 				OldTruncated: true,
 				NewTruncated: true,
@@ -593,7 +589,7 @@ func TestBuildRows_TruncationIndicator_PagerMode_NotTruncated(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldNormal,
+				FoldLevel:    sidebyside.FoldExpanded,
 				Truncated:    false,
 				OldTruncated: false,
 				NewTruncated: false,

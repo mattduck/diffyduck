@@ -972,26 +972,15 @@ func (m *Model) lineNumWidth() int {
 // Measures new-side content (displayed on the left).
 func (m *Model) updateMaxNewContentWidth() {
 	for _, fp := range m.files {
-		if fp.FoldLevel == sidebyside.FoldFolded {
-			continue // no content visible when folded
+		if fp.FoldLevel != sidebyside.FoldExpanded {
+			continue // only measure content width for hunk view (FoldExpanded)
 		}
 
-		if fp.FoldLevel == sidebyside.FoldExpanded && fp.NewContent != nil {
-			// Expanded: measure full new content
-			for _, line := range fp.NewContent {
-				w := displayWidth(expandTabs(line))
+		for _, pair := range fp.Pairs {
+			if pair.New.Content != "" {
+				w := displayWidth(expandTabs(pair.New.Content))
 				if w > m.maxNewContentWidth {
 					m.maxNewContentWidth = w
-				}
-			}
-		} else {
-			// Normal: measure pairs
-			for _, pair := range fp.Pairs {
-				if pair.New.Content != "" {
-					w := displayWidth(expandTabs(pair.New.Content))
-					if w > m.maxNewContentWidth {
-						m.maxNewContentWidth = w
-					}
 				}
 			}
 		}

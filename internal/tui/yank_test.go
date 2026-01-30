@@ -21,7 +21,7 @@ func makeYankTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -316,7 +316,7 @@ func TestYank_BuildDiffSnippet_FirstLine(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -345,7 +345,7 @@ func TestYank_BuildDiffSnippet_ContextLine(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30

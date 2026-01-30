@@ -810,18 +810,16 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	// below it: either content rows or a ┴ terminator row.
 	headerIsLast := false
 
-	switch fp.FoldLevel {
-	case sidebyside.FoldFolded:
+	if isFolded {
+		// Folded path: header (no border) → body content → margin
 		headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, true, TreeRowHeader)
 		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, headerBoxWidth: headerBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
 
-		// Add structural diff rows (no borders in folded mode, file is folded).
-		// Use contentIsLast so │ continuation shows in log mode when preview content is visible.
-		structuralRows := m.buildStructuralDiffRows(fileIdx, headerBoxWidth, contentIsLast, true)
-		rows = append(rows, structuralRows...)
+		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth)
+		rows = append(rows, bodyRows...)
 
-		if len(structuralRows) > 0 {
-			// Bottom margin after preview content
+		if len(bodyRows) > 0 {
+			// Bottom margin after body content
 			marginTreePath := m.buildFileTreePath(fileIdx, contentIsLast, true, TreeRowContent)
 			rows = append(rows, displayRow{
 				kind:               RowKindBlank,
@@ -845,190 +843,22 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			})
 		}
 
-	case sidebyside.FoldExpanded:
-		if fp.HasContent() {
-			// Note: First file's top border is added after commit body rows, not here
-			// This prevents content shift when first file is unfolded
-			expandedHeaderTreePath := m.buildFileTreePath(fileIdx, headerIsLast, false, TreeRowHeader)
-			// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.
-			expandedContentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
-
-			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: expandedHeaderTreePath, headerMode: headerMode})
-
-			// No structural diff preview in expanded mode - the full diff content is shown instead
-
-			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: ownBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: headerMode, treePath: expandedContentTreePath})
-
-			expandedRows := m.buildExpandedRows(fp)
-			for i := range expandedRows {
-				expandedRows[i].fileIndex = fileIdx
-				expandedRows[i].isLastFileInCommit = isLastFile
-				expandedRows[i].treePath = expandedContentTreePath
-				if i == 0 {
-					expandedRows[i].isFirstLine = true
-				}
-				if i == len(expandedRows)-1 {
-					expandedRows[i].isLastLine = true
-				}
-			}
-			// Append expanded rows with comment rows interleaved
-			for _, expRow := range expandedRows {
-				rows = append(rows, expRow)
-				// Add comment rows if this is a content row with a comment
-				if expRow.kind == RowKindContent && expRow.pair.New.Num > 0 {
-					key := commentKey{fileIndex: fileIdx, newLineNum: expRow.pair.New.Num}
-					if comment, ok := m.comments[key]; ok {
-						commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, comment, m.commentContentWidth(), expandedContentTreePath)
-						rows = append(rows, commentRows...)
-					}
-				}
-			}
-
-			if fp.Truncated || fp.ContentTruncated || fp.OldContentTruncated || fp.NewContentTruncated {
-				oldTrunc := fp.OldContentTruncated || fp.OldTruncated
-				newTrunc := fp.NewContentTruncated || fp.NewTruncated
-				if fp.ContentTruncated && !fp.OldContentTruncated && !fp.NewContentTruncated {
-					oldTrunc = true
-					newTrunc = true
-				}
-				rows = append(rows, displayRow{
-					kind:                  RowKindTruncationIndicator,
-					fileIndex:             fileIdx,
-					isTruncationIndicator: true,
-					truncationMessage:     "[truncated due to file size limit]",
-					truncateOld:           oldTrunc,
-					truncateNew:           newTrunc,
-				})
-			}
-
-			// Bottom margin: one blank row after expanded content.
-			// The next file's HeaderTopBorder or next commit's top border provides a second line of spacing.
-			marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
-			rows = append(rows, displayRow{
-				kind:               RowKindBlank,
-				fileIndex:          fileIdx,
-				isBlank:            true,
-				isLastFileInCommit: isLastFile,
-				treeTerminator:     isLastFile,
-				treePath:           marginTreePath,
-			})
-
-			if !isLastFile {
-				// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
-				// Current file is unfolded (FoldExpanded), so next file's prev sibling is unfolded
-				// Always add this row to prevent content shift; render as border or blank based on next file's mode
-				nextFileFolded := m.files[fileIdx+1].FoldLevel == sidebyside.FoldFolded
-				nextFileHeaderMode := determineFileHeaderMode(nextFileFolded, false, true)
-				nextIsLastFile := fileIdx+1 == commitEndIdx-1
-				// Force IsLast=false so │ continuation shows on the top border row;
-				// the branch point (├/└) appears on the header row below, not here.
-				nextBorderTreePath := m.buildFileTreePath(fileIdx+1, false, nextFileFolded, TreeRowContent)
-				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: sidebyside.FoldExpanded, status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath, isLastFileInCommit: nextIsLastFile})
-			}
-			return rows
-		}
-		fallthrough
-
-	default: // FoldNormal
+	} else {
+		// Unfolded path: header (with border) → spacer → body content → margin → next top border
 		// Note: First file's top border is added after commit body rows, not here
 		// This prevents content shift when first file is unfolded
-		normalHeaderTreePath := m.buildFileTreePath(fileIdx, headerIsLast, false, TreeRowHeader)
+		headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, false, TreeRowHeader)
 		// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.
-		normalContentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
+		contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 
-		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: normalHeaderTreePath, headerMode: headerMode})
+		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
 
-		// No structural diff preview in normal/hunk mode - diff content is shown instead
+		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: ownBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: headerMode, treePath: contentTreePath})
 
-		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: ownBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: headerMode, treePath: normalContentTreePath})
+		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth)
+		rows = append(rows, bodyRows...)
 
-		if fp.IsBinary {
-			var msg string
-			var showOld, showNew bool
-			if fp.OldPath == "/dev/null" {
-				msg = "Binary file created"
-				showNew = true
-			} else if fp.NewPath == "/dev/null" {
-				msg = "Binary file deleted"
-				showOld = true
-			} else {
-				msg = "Binary file changed"
-				showOld = true
-				showNew = true
-			}
-			rows = append(rows, displayRow{
-				kind:              RowKindBinaryIndicator,
-				fileIndex:         fileIdx,
-				isBinaryIndicator: true,
-				binaryMessage:     msg,
-				binaryOld:         showOld,
-				binaryNew:         showNew,
-				isFirstLine:       true,
-				isLastLine:        true,
-			})
-		} else {
-			var prevLeft, prevRight int
-			contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
-			for i, pair := range fp.Pairs {
-				if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
-					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true, isLastFileInCommit: isLastFile, treePath: contentTreePath})
-					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
-					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
-				}
-
-				if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
-					chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-					rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true, isLastFileInCommit: isLastFile, treePath: contentTreePath})
-					rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
-					rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
-				}
-
-				row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair, isLastFileInCommit: isLastFile, treePath: m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)}
-				if i == 0 {
-					row.isFirstLine = true
-				}
-				if i == len(fp.Pairs)-1 {
-					row.isLastLine = true
-				}
-				rows = append(rows, row)
-
-				// Add comment rows if this line has a comment
-				if pair.New.Num > 0 {
-					key := commentKey{fileIndex: fileIdx, newLineNum: pair.New.Num}
-					if comment, ok := m.comments[key]; ok {
-						commentRows := buildCommentRows(fileIdx, pair.New.Num, comment, m.commentContentWidth(), contentTreePath)
-						rows = append(rows, commentRows...)
-					}
-				}
-
-				if pair.Old.Num > 0 {
-					prevLeft = pair.Old.Num
-				}
-				if pair.New.Num > 0 {
-					prevRight = pair.New.Num
-				}
-			}
-
-			if fp.Truncated || fp.OldTruncated || fp.NewTruncated {
-				oldTrunc := fp.OldTruncated
-				newTrunc := fp.NewTruncated
-				if fp.Truncated && !fp.OldTruncated && !fp.NewTruncated {
-					oldTrunc = true
-					newTrunc = true
-				}
-				rows = append(rows, displayRow{
-					kind:                  RowKindTruncationIndicator,
-					fileIndex:             fileIdx,
-					isTruncationIndicator: true,
-					truncationMessage:     "[truncated due to file size limit]",
-					truncateOld:           oldTrunc,
-					truncateNew:           newTrunc,
-				})
-			}
-		}
-
-		// Bottom margin: one blank row after normal content.
+		// Bottom margin: one blank row after content.
 		// The next file's HeaderTopBorder or next commit's top border provides a second line of spacing.
 		marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
 		rows = append(rows, displayRow{
@@ -1042,7 +872,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 
 		if !isLastFile {
 			// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
-			// Current file is unfolded (FoldNormal), so next file's prev sibling is unfolded
+			// Current file is unfolded, so next file's prev sibling is unfolded
 			// Always add this row to prevent content shift; render as border or blank based on next file's mode
 			nextFileFolded := m.files[fileIdx+1].FoldLevel == sidebyside.FoldFolded
 			nextFileHeaderMode := determineFileHeaderMode(nextFileFolded, false, true)
@@ -1052,6 +882,169 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			nextBorderTreePath := m.buildFileTreePath(fileIdx+1, false, nextFileFolded, TreeRowContent)
 			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath, isLastFileInCommit: nextIsLastFile})
 		}
+	}
+
+	return rows
+}
+
+// buildFileBodyRows dispatches to the appropriate content builder based on fold level.
+// Returns content rows (structural diff or hunks) without header/spacer/margin.
+func (m Model) buildFileBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool, isFolded bool, headerBoxWidth int) []displayRow {
+	switch fp.FoldLevel {
+	case sidebyside.FoldFolded:
+		// Folded: header only, no content
+		return nil
+	case sidebyside.FoldNormal:
+		// Part-expanded: structural diff preview
+		return m.buildStructuralDiffRows(fileIdx, headerBoxWidth, contentIsLast, isFolded)
+	default: // FoldExpanded
+		// Full-expanded: diff hunks
+		return m.buildHunkRows(fp, fileIdx, contentIsLast, isLastFile)
+	}
+}
+
+// buildHunkRows creates content rows from diff hunks (Pairs), including hunk separators,
+// comment rows, binary indicators, and truncation indicators.
+func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool) []displayRow {
+	var rows []displayRow
+
+	if fp.IsBinary {
+		var msg string
+		var showOld, showNew bool
+		if fp.OldPath == "/dev/null" {
+			msg = "Binary file created"
+			showNew = true
+		} else if fp.NewPath == "/dev/null" {
+			msg = "Binary file deleted"
+			showOld = true
+		} else {
+			msg = "Binary file changed"
+			showOld = true
+			showNew = true
+		}
+		rows = append(rows, displayRow{
+			kind:              RowKindBinaryIndicator,
+			fileIndex:         fileIdx,
+			isBinaryIndicator: true,
+			binaryMessage:     msg,
+			binaryOld:         showOld,
+			binaryNew:         showNew,
+			isFirstLine:       true,
+			isLastLine:        true,
+		})
+		return rows
+	}
+
+	var prevLeft, prevRight int
+	contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
+	for i, pair := range fp.Pairs {
+		if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
+			chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
+			rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+			rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+			rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+		}
+
+		if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
+			chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
+			rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+			rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+			rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+		}
+
+		row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair, isLastFileInCommit: isLastFile, treePath: contentTreePath}
+		if i == 0 {
+			row.isFirstLine = true
+		}
+		if i == len(fp.Pairs)-1 {
+			row.isLastLine = true
+		}
+		rows = append(rows, row)
+
+		// Add comment rows if this line has a comment
+		if pair.New.Num > 0 {
+			key := commentKey{fileIndex: fileIdx, newLineNum: pair.New.Num}
+			if comment, ok := m.comments[key]; ok {
+				commentRows := buildCommentRows(fileIdx, pair.New.Num, comment, m.commentContentWidth(), contentTreePath)
+				rows = append(rows, commentRows...)
+			}
+		}
+
+		if pair.Old.Num > 0 {
+			prevLeft = pair.Old.Num
+		}
+		if pair.New.Num > 0 {
+			prevRight = pair.New.Num
+		}
+	}
+
+	if fp.Truncated || fp.OldTruncated || fp.NewTruncated {
+		oldTrunc := fp.OldTruncated
+		newTrunc := fp.NewTruncated
+		if fp.Truncated && !fp.OldTruncated && !fp.NewTruncated {
+			oldTrunc = true
+			newTrunc = true
+		}
+		rows = append(rows, displayRow{
+			kind:                  RowKindTruncationIndicator,
+			fileIndex:             fileIdx,
+			isTruncationIndicator: true,
+			truncationMessage:     "[truncated due to file size limit]",
+			truncateOld:           oldTrunc,
+			truncateNew:           newTrunc,
+		})
+	}
+
+	return rows
+}
+
+// buildExpandedBodyRows creates content rows from full file content, with comment rows interleaved
+// and truncation indicators appended.
+func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool) []displayRow {
+	contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
+
+	expandedRows := m.buildExpandedRows(fp)
+	for i := range expandedRows {
+		expandedRows[i].fileIndex = fileIdx
+		expandedRows[i].isLastFileInCommit = isLastFile
+		expandedRows[i].treePath = contentTreePath
+		if i == 0 {
+			expandedRows[i].isFirstLine = true
+		}
+		if i == len(expandedRows)-1 {
+			expandedRows[i].isLastLine = true
+		}
+	}
+
+	// Append expanded rows with comment rows interleaved
+	var rows []displayRow
+	for _, expRow := range expandedRows {
+		rows = append(rows, expRow)
+		// Add comment rows if this is a content row with a comment
+		if expRow.kind == RowKindContent && expRow.pair.New.Num > 0 {
+			key := commentKey{fileIndex: fileIdx, newLineNum: expRow.pair.New.Num}
+			if comment, ok := m.comments[key]; ok {
+				commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, comment, m.commentContentWidth(), contentTreePath)
+				rows = append(rows, commentRows...)
+			}
+		}
+	}
+
+	if fp.Truncated || fp.ContentTruncated || fp.OldContentTruncated || fp.NewContentTruncated {
+		oldTrunc := fp.OldContentTruncated || fp.OldTruncated
+		newTrunc := fp.NewContentTruncated || fp.NewTruncated
+		if fp.ContentTruncated && !fp.OldContentTruncated && !fp.NewContentTruncated {
+			oldTrunc = true
+			newTrunc = true
+		}
+		rows = append(rows, displayRow{
+			kind:                  RowKindTruncationIndicator,
+			fileIndex:             fileIdx,
+			isTruncationIndicator: true,
+			truncationMessage:     "[truncated due to file size limit]",
+			truncateOld:           oldTrunc,
+			truncateNew:           newTrunc,
+		})
 	}
 
 	return rows

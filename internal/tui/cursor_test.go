@@ -111,7 +111,7 @@ func TestStartup_ScrollIsZero_NoBlankSpaceAtTop(t *testing.T) {
 	// This means the first line of content is at the top of the viewport
 	// The cursor is at 20% down, pointing to that content line
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: make([]sidebyside.LinePair, 100)},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: make([]sidebyside.LinePair, 100)},
 	})
 	m.width = 80
 	m.height = 50
@@ -168,8 +168,8 @@ func TestStatusInfo_UseCursorPosition_NotScrollPosition(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // top border + header + bottom border + 20 pairs = 23 lines (0-22)
-			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // starts after 4 blanks + trailing top border
+			{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},   // top border + header + bottom border + 20 pairs = 23 lines (0-22)
+			{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs}, // starts after 4 blanks + trailing top border
 		},
 		width:  80,
 		height: 50, // cursor offset = 9
@@ -205,8 +205,8 @@ func TestStatusInfo_CursorOnBlankLine_CountsAsFileAbove(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs},   // lines 0-5 (header + 5 pairs), then 4 blank lines (6-9)
-			{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs}, // line 10 is header
+			{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},   // lines 0-5 (header + 5 pairs), then 4 blank lines (6-9)
+			{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs}, // line 10 is header
 		},
 		width:  80,
 		height: 10, // cursor offset = 1 (20% of 9)
@@ -233,7 +233,7 @@ func TestStatusInfo_CursorOnLastBlankLine_CountsAsLastFile(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/only.go", NewPath: "b/only.go", Pairs: pairs},
+			{OldPath: "a/only.go", NewPath: "b/only.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 		},
 		width:  80,
 		height: 50, // cursor offset = 9
@@ -273,8 +273,9 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 	withANSIColors(t, func() {
 		m := New([]sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -312,8 +313,9 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 	withANSIColors(t, func() {
 		m := New([]sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -350,8 +352,9 @@ func TestView_CursorHighlight_OnFileHeader_UnfocusedNoBg(t *testing.T) {
 			focused: false, // unfocused
 			files: []sidebyside.FilePair{
 				{
-					OldPath: "a/test.go",
-					NewPath: "b/test.go",
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{
 							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -394,8 +397,9 @@ func TestView_FileHeader_SpansFullWidth(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "left content", Type: sidebyside.Context},
@@ -417,7 +421,7 @@ func TestView_FileHeader_SpansFullWidth(t *testing.T) {
 	// Find the header line (contains test.go and fold icon)
 	var headerLine string
 	for _, line := range lines {
-		if strings.Contains(line, "test.go") && strings.Contains(line, "◐") {
+		if strings.Contains(line, "test.go") && strings.Contains(line, "●") {
 			headerLine = line
 			break
 		}
@@ -445,8 +449,9 @@ func TestView_CursorHighlight_OnDiffLine(t *testing.T) {
 			focused: true,
 			files: []sidebyside.FilePair{
 				{
-					OldPath: "a/test.go",
-					NewPath: "b/test.go",
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{
 							Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -486,7 +491,7 @@ func TestView_NoBlankSeparatorBetweenFiles(t *testing.T) {
 				{
 					OldPath:   "a/first.go",
 					NewPath:   "b/first.go",
-					FoldLevel: sidebyside.FoldNormal,
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{
 							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -497,7 +502,7 @@ func TestView_NoBlankSeparatorBetweenFiles(t *testing.T) {
 				{
 					OldPath:   "a/second.go",
 					NewPath:   "b/second.go",
-					FoldLevel: sidebyside.FoldNormal,
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{
 							Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -533,8 +538,9 @@ func TestView_CursorHighlight_OnHunkSeparator(t *testing.T) {
 			focused: true,
 			files: []sidebyside.FilePair{
 				{
-					OldPath: "a/test.go",
-					NewPath: "b/test.go",
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{
 							Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
@@ -580,8 +586,9 @@ func TestView_CursorHighlight_BothGuttersOnAddedLine(t *testing.T) {
 			focused: true,
 			files: []sidebyside.FilePair{
 				{
-					OldPath: "a/test.go",
-					NewPath: "b/test.go",
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{
 							Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
@@ -632,7 +639,7 @@ func TestFoldToggle_CursorOnHeader_StaysOnHeader(t *testing.T) {
 					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 					{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
 				},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
 		width:  80,
@@ -680,7 +687,7 @@ func TestFoldToggle_CursorOnDiffLine_StaysOnDiffLine(t *testing.T) {
 					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 					{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
 				},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
 		width:  80,
@@ -750,13 +757,13 @@ func TestFoldToggle_CursorOnContent_StaysOnContent(t *testing.T) {
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
 		width:  80,
@@ -893,13 +900,13 @@ func TestFoldToggleAll_PreservesScrollPosition(t *testing.T) {
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
 		width:  80,
@@ -935,13 +942,13 @@ func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
 		width:  80,
@@ -1046,7 +1053,8 @@ func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
 // Expected: cursor stays on line 5
 // Actual bug: cursor jumps to different position
 func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
-	// Setup: file in Normal view with cursor on a specific diff line
+	// Setup: file in Normal view (structural diff) with cursor on header
+	// Press Tab to expand to hunk view, then simulate content loading
 	// The diff shows lines 10-15 of the file
 	m := Model{
 		focused: true,
@@ -1062,7 +1070,7 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 					{Old: sidebyside.Line{Num: 14, Content: "line14"}, New: sidebyside.Line{Num: 14, Content: "line14"}},
 					{Old: sidebyside.Line{Num: 15, Content: "line15"}, New: sidebyside.Line{Num: 15, Content: "line15"}},
 				},
-				FoldLevel: sidebyside.FoldNormal,
+				// FoldNormal (zero value) = structural diff view
 				// No OldContent/NewContent - content not loaded yet
 			},
 		},
@@ -1163,9 +1171,9 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/alpha.go", NewPath: "b/alpha.go", Pairs: pairs},
-			{OldPath: "a/beta.go", NewPath: "b/beta.go", Pairs: pairs},
-			{OldPath: "a/gamma.go", NewPath: "b/gamma.go", Pairs: pairs},
+			{OldPath: "a/alpha.go", NewPath: "b/alpha.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/beta.go", NewPath: "b/beta.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/gamma.go", NewPath: "b/gamma.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 		},
 		width:  80,
 		height: 15,
@@ -1224,7 +1232,7 @@ func TestResize_CursorOnHeader_StaysOnHeader(t *testing.T) {
 					{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 					{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
 				},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
 		width:  80,
@@ -1265,13 +1273,13 @@ func TestResize_CursorOnTrailingTopBorder_StaysOnTrailingBorder(t *testing.T) {
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
 		width:  80,
@@ -1324,7 +1332,7 @@ func TestResize_CursorOnTruncationIndicator_StaysOnTruncation(t *testing.T) {
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Truncated: true, // This adds a truncation indicator row
 			},
 		},
@@ -1388,7 +1396,7 @@ func TestResize_CursorOnSecondSeparator_StaysOnSecondSeparator(t *testing.T) {
 					{Old: sidebyside.Line{Num: 20, Content: "line20"}, New: sidebyside.Line{Num: 20, Content: "line20"}},
 					{Old: sidebyside.Line{Num: 21, Content: "line21"}, New: sidebyside.Line{Num: 21, Content: "line21"}},
 				},
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
 		width:  80,
@@ -3025,14 +3033,14 @@ func TestShiftTab_CyclesAllCommitsThroughLevels(t *testing.T) {
 	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "commit 0 should be at level 2")
 	assert.Equal(t, 2, m.commitVisibilityLevelFor(1), "commit 1 should be at level 2")
 
-	// Shift+Tab 2: Level 2 -> Level 3 (CommitExpanded, files FoldNormal)
+	// Shift+Tab 2: Level 2 -> Level 3 (CommitExpanded, files FoldExpanded)
 	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = newM.(Model)
 
 	assert.Equal(t, sidebyside.CommitExpanded, m.commits[0].FoldLevel, "commit 0 should be CommitExpanded")
 	assert.Equal(t, sidebyside.CommitExpanded, m.commits[1].FoldLevel, "commit 1 should be CommitExpanded")
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel, "file 0 should be FoldNormal")
-	assert.Equal(t, sidebyside.FoldNormal, m.files[1].FoldLevel, "file 1 should be FoldNormal")
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel, "file 0 should be FoldExpanded")
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[1].FoldLevel, "file 1 should be FoldExpanded")
 	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "commit 0 should be at level 3")
 	assert.Equal(t, 3, m.commitVisibilityLevelFor(1), "commit 1 should be at level 3")
 
@@ -3059,7 +3067,7 @@ func TestShiftTab_MixedLevels_ResetsToLevel1(t *testing.T) {
 		{
 			Info:      sidebyside.CommitInfo{SHA: "bbb2222"},
 			FoldLevel: sidebyside.CommitNormal, // Level 2 or 3 depending on files
-			Files:     []sidebyside.FilePair{{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldNormal}},
+			Files:     []sidebyside.FilePair{{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldExpanded}},
 		},
 	}
 
@@ -3462,7 +3470,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_StaysOnSameRow(t *testing.T) {
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldFolded, // Folded so structural diff preview shows
+				FoldLevel: sidebyside.FoldNormal, // Normal shows structural diff preview
 			},
 		},
 		width:  100,
@@ -3532,7 +3540,11 @@ func TestFoldToggleAll_CursorOnStructuralDiff_StaysOnSameRow(t *testing.T) {
 	rowAfter := rowsAfter[cursorAfter]
 	assert.Equal(t, 0, rowAfter.fileIndex, "cursor should stay on same file after unfolding")
 
-	// Toggle back to folded - structural diff rows reappear
+	// Toggle again: FoldExpanded -> FoldFolded (header only)
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	// Toggle once more: FoldFolded -> FoldNormal (structural diff reappears)
 	newM, _ = m.handleFoldToggleAll()
 	m = newM.(Model)
 
@@ -3553,13 +3565,13 @@ func TestFoldToggleAll_CursorOnStructuralDiff_MultiFile_StaysOnSameFile(t *testi
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldNormal,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldNormal,
 			},
 		},
 		width:  100,
@@ -3649,7 +3661,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_StaysOnSpecificRow(t *testing.T) {
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldNormal,
 			},
 		},
 		width:  100,
@@ -3741,13 +3753,13 @@ func TestFoldToggleAll_CursorOnStructuralDiff_WithCommit_StaysOnSameFile(t *test
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldNormal,
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}}},
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldNormal,
 			},
 		},
 		FoldLevel:   sidebyside.CommitNormal, // Body visible
@@ -3812,15 +3824,29 @@ func TestFoldToggleAll_CursorOnStructuralDiff_WithCommit_StaysOnSameFile(t *test
 	require.Equal(t, RowKindStructuralDiff, rowsBefore[cursorBefore].kind)
 	require.Equal(t, 1, rowsBefore[cursorBefore].fileIndex, "cursor should be on second file")
 
-	// Toggle fold - Level 2 -> Level 3 (files expand)
+	// Toggle fold: Level 3 -> Level 1 (all folded)
 	newM, _ := m.handleFoldToggleAll()
 	m = newM.(Model)
 
+	// Level 1 (all folded): cursor lands on commit header
 	cursorAfter := m.cursorLine()
 	rowsAfter := m.buildRows()
 	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range")
 
-	// Cursor should stay on second file (index 1), not shift to first file (index 0)
+	// Toggle to Level 2 (file headers visible)
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	// Toggle to Level 3 (files expanded with content)
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+
+	cursorAfter = m.cursorLine()
+	rowsAfter = m.buildRows()
+	require.Less(t, cursorAfter, len(rowsAfter), "cursor should be in valid range after full cycle")
+
+	// After a full cycle (3→1→2→3), the cursor lands on the commit header at level 1
+	// and stays there through subsequent toggles, since the commit header persists at all levels.
 	rowAfter := rowsAfter[cursorAfter]
-	assert.Equal(t, 1, rowAfter.fileIndex, "cursor should stay on second file, not shift to first file")
+	assert.True(t, rowAfter.isCommitHeader, "cursor should be on commit header after full fold cycle")
 }

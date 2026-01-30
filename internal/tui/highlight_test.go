@@ -283,7 +283,7 @@ func TestSyntaxHighlighting_NormalViewFromPairs(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldNormal, // Normal view
+			FoldLevel: sidebyside.FoldExpanded, // Normal view
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
@@ -323,7 +323,7 @@ func TestSyntaxHighlighting_FullContentRequestNoSpans(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
@@ -495,7 +495,7 @@ func TestRequestHighlightFromPairs(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
@@ -557,7 +557,7 @@ func TestPairsHighlighting_StorageAndRetrieval(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 10, Content: "package main", Type: sidebyside.Context},
@@ -676,8 +676,9 @@ func TestPairsHighlighting_MultipleFiles(t *testing.T) {
 	// Test that first file is highlighted sync, rest are available for async
 	files := []sidebyside.FilePair{
 		{
-			OldPath: "a/first.go",
-			NewPath: "b/first.go",
+			OldPath:   "a/first.go",
+			NewPath:   "b/first.go",
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "package first", Type: sidebyside.Context},
@@ -686,8 +687,9 @@ func TestPairsHighlighting_MultipleFiles(t *testing.T) {
 			},
 		},
 		{
-			OldPath: "a/second.go",
-			NewPath: "b/second.go",
+			OldPath:   "a/second.go",
+			NewPath:   "b/second.go",
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "package second", Type: sidebyside.Context},
@@ -696,8 +698,9 @@ func TestPairsHighlighting_MultipleFiles(t *testing.T) {
 			},
 		},
 		{
-			OldPath: "a/third.go",
-			NewPath: "b/third.go",
+			OldPath:   "a/third.go",
+			NewPath:   "b/third.go",
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "package third", Type: sidebyside.Context},
@@ -750,8 +753,9 @@ func TestPairsHighlighting_MultipleFiles(t *testing.T) {
 func TestPairsHighlighting_UnsupportedFileType(t *testing.T) {
 	files := []sidebyside.FilePair{
 		{
-			OldPath: "a/data.txt",
-			NewPath: "b/data.txt",
+			OldPath:   "a/data.txt",
+			NewPath:   "b/data.txt",
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "some text", Type: sidebyside.Context},
@@ -779,9 +783,10 @@ func TestPairsHighlighting_UnsupportedFileType(t *testing.T) {
 func TestPairsHighlighting_EmptyPairs(t *testing.T) {
 	files := []sidebyside.FilePair{
 		{
-			OldPath: "a/empty.go",
-			NewPath: "b/empty.go",
-			Pairs:   []sidebyside.LinePair{}, // No pairs
+			OldPath:   "a/empty.go",
+			NewPath:   "b/empty.go",
+			FoldLevel: sidebyside.FoldExpanded,
+			Pairs:     []sidebyside.LinePair{}, // No pairs
 		},
 	}
 
@@ -1445,7 +1450,7 @@ func FuncB() {
 		{
 			OldPath:    "a/test.go",
 			NewPath:    "b/test.go",
-			FoldLevel:  sidebyside.FoldFolded, // Structural diff rows only appear when folded
+			FoldLevel:  sidebyside.FoldNormal, // Structural diff rows appear in Normal (structural diff) view
 			OldContent: oldLines,
 			NewContent: newLines,
 			Pairs: []sidebyside.LinePair{
@@ -1547,7 +1552,7 @@ func FuncA() {
 		{
 			OldPath:    "a/test.go",
 			NewPath:    "b/test.go",
-			FoldLevel:  sidebyside.FoldFolded, // Structural diff rows only appear when file is folded
+			FoldLevel:  sidebyside.FoldNormal, // Structural diff rows appear in Normal (structural diff) view
 			OldContent: oldLines,
 			NewContent: newLines,
 			Pairs: []sidebyside.LinePair{
@@ -1611,7 +1616,7 @@ func FuncA() {
 		{
 			OldPath:    "a/test.go",
 			NewPath:    "b/test.go",
-			FoldLevel:  sidebyside.FoldNormal,
+			FoldLevel:  sidebyside.FoldExpanded,
 			OldContent: oldLines,
 			NewContent: newLines,
 			Pairs: []sidebyside.LinePair{
@@ -1665,7 +1670,7 @@ func FuncA() {
 		{
 			OldPath:    "a/test.go",
 			NewPath:    "b/test.go",
-			FoldLevel:  sidebyside.FoldNormal,
+			FoldLevel:  sidebyside.FoldExpanded,
 			OldContent: lines,
 			NewContent: lines,
 			// All context lines - no actual changes
@@ -1735,7 +1740,7 @@ func FuncA() {
 		{
 			OldPath:    "a/test.go",
 			NewPath:    "b/test.go",
-			FoldLevel:  sidebyside.FoldFolded, // Structural diff rows only appear when file is folded
+			FoldLevel:  sidebyside.FoldNormal, // Structural diff rows appear in Normal (structural diff) view
 			OldContent: oldLines,
 			NewContent: newLines,
 			Pairs: []sidebyside.LinePair{

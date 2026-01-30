@@ -30,7 +30,7 @@ func formatFileHeader(fp sidebyside.FilePair) string {
 }
 
 // foldLevelIcon returns the icon for a given fold level.
-// ○ = Folded (empty/minimal), ◐ = Normal (half), ● = Expanded (full)
+// ○ = Folded (header only), ◐ = Normal (structural diff), ● = Expanded (hunks)
 // In pager mode, FoldNormal shows ● (filled) to indicate max expansion.
 func (m Model) foldLevelIcon(level sidebyside.FoldLevel) string {
 	switch level {

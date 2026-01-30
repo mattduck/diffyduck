@@ -17,7 +17,7 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "measures pairs content",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldNormal,
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "short"}},
 						{New: sidebyside.Line{Content: "longer line"}},
@@ -40,36 +40,37 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			expected: 0, // folded files are skipped
 		},
 		{
-			name: "expanded uses NewContent",
+			name: "expanded measures pairs",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel:  sidebyside.FoldExpanded,
-					NewContent: []string{"short", "this is the longest new line", "med"},
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
-						{New: sidebyside.Line{Content: "pairs ignored when expanded"}},
+						{New: sidebyside.Line{Content: "this is the longest pair"}},
+						{New: sidebyside.Line{Content: "short"}},
 					},
 				},
 			},
-			expected: 28, // "this is the longest new line" = 28 chars
+			expected: 24, // "this is the longest pair" = 24 chars
 		},
-		{
-			name: "expanded without NewContent falls back to pairs",
-			files: []sidebyside.FilePair{
-				{
-					FoldLevel:  sidebyside.FoldExpanded,
-					NewContent: nil, // not loaded yet
-					Pairs: []sidebyside.LinePair{
-						{New: sidebyside.Line{Content: "fallback to pairs"}},
-					},
-				},
-			},
-			expected: 17, // "fallback to pairs" = 17 chars
-		},
+		// TODO: Re-enable when full-file view is added as a separate keybinding.
+		// {
+		// 	name: "expanded uses NewContent",
+		// 	files: []sidebyside.FilePair{
+		// 		{
+		// 			FoldLevel:  sidebyside.FoldExpanded,
+		// 			NewContent: []string{"short", "this is the longest new line", "med"},
+		// 			Pairs: []sidebyside.LinePair{
+		// 				{New: sidebyside.Line{Content: "pairs ignored when expanded"}},
+		// 			},
+		// 		},
+		// 	},
+		// 	expected: 28, // "this is the longest new line" = 28 chars
+		// },
 		{
 			name: "expands tabs before measuring",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldNormal,
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "\tfoo"}}, // expands to "    foo" = 7 chars
 					},
@@ -81,13 +82,13 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "multiple files takes max",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldNormal,
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "short"}},
 					},
 				},
 				{
-					FoldLevel: sidebyside.FoldNormal,
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "this is longer"}},
 					},
@@ -99,7 +100,7 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "empty new content ignored",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldNormal,
+					FoldLevel: sidebyside.FoldExpanded,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: ""}},     // empty - removed line
 						{New: sidebyside.Line{Content: "real"}}, // this is the max
@@ -127,7 +128,7 @@ func TestMaxNewContentWidth_OnlyGrows(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{New: sidebyside.Line{Content: "this is a fairly long line of content"}},
 				},
@@ -147,7 +148,7 @@ func TestMaxNewContentWidth_OnlyGrows(t *testing.T) {
 
 	// Add a file with shorter content - width should NOT shrink
 	m.files = append(m.files, sidebyside.FilePair{
-		FoldLevel: sidebyside.FoldNormal,
+		FoldLevel: sidebyside.FoldExpanded,
 		Pairs: []sidebyside.LinePair{
 			{New: sidebyside.Line{Content: "short"}},
 		},
@@ -157,7 +158,7 @@ func TestMaxNewContentWidth_OnlyGrows(t *testing.T) {
 
 	// Add a file with longer content - width SHOULD grow
 	m.files = append(m.files, sidebyside.FilePair{
-		FoldLevel: sidebyside.FoldNormal,
+		FoldLevel: sidebyside.FoldExpanded,
 		Pairs: []sidebyside.LinePair{
 			{New: sidebyside.Line{Content: "this is an even longer line that exceeds the previous maximum width"}},
 		},
@@ -174,7 +175,7 @@ func TestDynamicDivider_NarrowContentUses5050(t *testing.T) {
 		height: 24,
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "this is a much longer line on the old side that goes to the right", Type: sidebyside.Removed},
@@ -217,7 +218,7 @@ func TestDynamicDivider_WideContentExpandsLeft(t *testing.T) {
 		height: 24,
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Removed},
@@ -261,7 +262,7 @@ func TestDynamicDivider_WideTerminalUses5050(t *testing.T) {
 		height: 24,
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old content", Type: sidebyside.Removed},
@@ -299,7 +300,7 @@ func TestDynamicDivider_VeryNarrowTerminal(t *testing.T) {
 		height: 24,
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},

@@ -25,7 +25,7 @@ func makeCommentableTestModel(numLines int) Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -64,7 +64,7 @@ func makeMixedLineTypeTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -654,6 +654,7 @@ func TestComment_ScrollPastComment(t *testing.T) {
 // Test: Resize preserves cursor on comment row
 func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
 	m := makeCommentableTestModel(10)
+	m.initialFoldSet = true // prevent resize from overriding FoldLevel
 	m.calculateTotalLines()
 
 	// Add a comment on line 3
@@ -695,7 +696,7 @@ func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
 // Test: TAB on comment row does nothing (only works on file header)
 func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	m := makeCommentableTestModel(10)
-	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
 	m.calculateTotalLines()
 
 	// Add a comment on a content line
@@ -725,7 +726,7 @@ func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	model := newM.(Model)
 
 	// Fold level should remain unchanged
-	assert.Equal(t, sidebyside.FoldNormal, model.files[0].FoldLevel,
+	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel,
 		"fold level should not change when TAB pressed on comment row")
 
 	// Cursor should still be on comment row
@@ -754,8 +755,8 @@ func TestComment_MultipleFiles_Navigation(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1},
-		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2},
+		{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs1},
+		{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs2},
 	})
 	m.width = 80
 	m.height = 40
@@ -802,7 +803,7 @@ func TestComment_NearHunkBoundary(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -1135,10 +1136,10 @@ func TestComment_JK_NavigationIncludesComments(t *testing.T) {
 	assert.Greater(t, visitedRows, 0, "should visit multiple rows with j")
 }
 
-// Test: Comments in expanded view vs normal view
+// Test: Comments appear in expanded (hunk) view but not in folded view
 func TestComment_ExpandedVsNormalView(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
 	m.calculateTotalLines()
 
 	// Add a comment
@@ -1147,33 +1148,9 @@ func TestComment_ExpandedVsNormalView(t *testing.T) {
 	m.rowsCacheValid = false
 	m.rebuildRowsCache()
 
-	normalTotalLines := m.totalLines
-	normalRows := m.buildRows()
-
-	// Count comment rows in normal view
-	normalCommentRows := 0
-	for _, r := range normalRows {
-		if r.kind == RowKindComment {
-			normalCommentRows++
-		}
-	}
-
-	// Switch to expanded view
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
-	// Provide some content so expanded view works
-	content := make([]string, 10)
-	for i := range content {
-		content[i] = "content line"
-	}
-	m.files[0].OldContent = content
-	m.files[0].NewContent = content
-	m.rowsCacheValid = false
-	m.rebuildRowsCache()
-
-	expandedTotalLines := m.totalLines
 	expandedRows := m.buildRows()
 
-	// Count comment rows in expanded view
+	// Count comment rows in expanded (hunk) view
 	expandedCommentRows := 0
 	for _, r := range expandedRows {
 		if r.kind == RowKindComment {
@@ -1181,14 +1158,24 @@ func TestComment_ExpandedVsNormalView(t *testing.T) {
 		}
 	}
 
-	// Comment rows should exist in both views
-	assert.Greater(t, normalCommentRows, 0, "should have comment rows in normal view")
-	assert.Greater(t, expandedCommentRows, 0, "should have comment rows in expanded view")
+	// Switch to folded view
+	m.files[0].FoldLevel = sidebyside.FoldFolded
+	m.rowsCacheValid = false
+	m.rebuildRowsCache()
 
-	// Expanded view has more content, so total lines should be different
-	// (expanded shows full file, normal shows only diff hunks)
-	assert.NotEqual(t, normalTotalLines, expandedTotalLines,
-		"expanded view should have different total lines than normal")
+	foldedRows := m.buildRows()
+
+	// Count comment rows in folded view
+	foldedCommentRows := 0
+	for _, r := range foldedRows {
+		if r.kind == RowKindComment {
+			foldedCommentRows++
+		}
+	}
+
+	// Comment rows should exist in expanded view but not folded
+	assert.Greater(t, expandedCommentRows, 0, "should have comment rows in expanded view")
+	assert.Equal(t, 0, foldedCommentRows, "should have no comment rows in folded view")
 }
 
 // =============================================================================
@@ -2566,7 +2553,7 @@ func TestComment_LogMode_CommentRowsHaveTreePath(t *testing.T) {
 			FoldLevel:   sidebyside.CommitNormal,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldNormal, Pairs: pairs},
+				{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 			},
 		},
 	}

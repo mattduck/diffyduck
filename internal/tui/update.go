@@ -50,10 +50,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Set initial fold levels on first window size message
 		if !m.initialFoldSet && len(m.files) > 0 {
 			m.initialFoldSet = true
-			// If only 1 file, or all content fits on screen, start unfolded
+			// If only 1 file, or all content fits on screen, start fully expanded (hunks)
 			if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
 				for i := range m.files {
-					m.files[i].FoldLevel = sidebyside.FoldNormal
+					m.files[i].FoldLevel = sidebyside.FoldExpanded
 				}
 			} else {
 				// Otherwise start folded
@@ -73,16 +73,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FileContentLoadedMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
-			// Check if loading this file's content affects visible rows:
-			// - If the file's commit is folded, files aren't shown
-			// - If the file itself isn't in FoldExpanded mode, content isn't shown
-			// In these cases, skip expensive scroll preservation
-			commitIdx := m.commitForFile(msg.FileIndex)
-			commitFolded := commitIdx >= 0 && commitIdx < len(m.commits) &&
-				m.commits[commitIdx].Info.HasMetadata() &&
-				m.commits[commitIdx].FoldLevel == sidebyside.CommitFolded
-			fileExpanded := m.files[msg.FileIndex].FoldLevel == sidebyside.FoldExpanded
-			affectsVisibleRows := !commitFolded && fileExpanded
+			// Check if loading this file's content affects visible rows.
+			// Content loading no longer directly affects row layout (structural diff
+			// rows only appear after highlighting completes via storeHighlightSpans).
+			// Scroll preservation is still needed when structural diff populates, but
+			// that's handled by storeHighlightSpans, not here.
+			affectsVisibleRows := false
 
 			// Capture cursor identity before content changes the row layout
 			var identity cursorRowIdentity
@@ -641,26 +637,29 @@ func (m *Model) adjustScrollToRow(rowIndex int) {
 	m.clampScroll()
 }
 
-// nextFoldLevel returns the next fold level, respecting pager mode.
-// In pager mode, FoldExpanded is skipped since full file content is unavailable.
-// Normal mode cycle: Normal -> Expanded -> Folded -> Normal
-// Pager mode cycle:  Normal -> Folded -> Normal
+// nextFoldLevel returns the next fold level.
+// Cycle: Normal -> Expanded -> Folded -> Normal
+// (structural diff -> hunks -> header only -> structural diff)
+// In pager mode, FoldNormal is skipped since structural diff requires
+// full file content which is unavailable.
+// Pager mode cycle: Expanded -> Folded -> Expanded
 func (m Model) nextFoldLevel(current sidebyside.FoldLevel) sidebyside.FoldLevel {
 	next := current.NextLevel()
-	if m.pagerMode && next == sidebyside.FoldExpanded {
-		// Skip FoldExpanded in pager mode
-		return next.NextLevel() // Returns FoldFolded
+	if m.pagerMode && next == sidebyside.FoldNormal {
+		// Skip FoldNormal in pager mode (no structural diff available)
+		return next.NextLevel() // Returns FoldExpanded
 	}
 	return next
 }
 
 // nextFoldLevelForFile returns the next fold level for a specific file.
-// Like nextFoldLevel but also skips FoldExpanded for binary files.
+// Like nextFoldLevel but also skips FoldNormal for binary files
+// (binary files have no structural diff).
 func (m Model) nextFoldLevelForFile(fp sidebyside.FilePair) sidebyside.FoldLevel {
 	next := fp.FoldLevel.NextLevel()
-	if (m.pagerMode || fp.IsBinary) && next == sidebyside.FoldExpanded {
-		// Skip FoldExpanded in pager mode or for binary files
-		return next.NextLevel() // Returns FoldFolded
+	if (m.pagerMode || fp.IsBinary) && next == sidebyside.FoldNormal {
+		// Skip FoldNormal in pager mode or for binary files
+		return next.NextLevel() // Returns FoldExpanded
 	}
 	return next
 }
@@ -710,11 +709,6 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	// Preserve scroll position
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
-
-	// If expanding to full view and content not loaded, fetch it
-	if newLevel == sidebyside.FoldExpanded && !m.files[fileIdx].HasContent() {
-		return m, m.FetchFileContent(fileIdx)
-	}
 
 	return m, nil
 }
@@ -776,7 +770,7 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 // setAllCommitsToLevel sets all commits and their files to the specified visibility level.
 // Level 1: CommitFolded, all files FoldFolded
 // Level 2: CommitNormal, all files FoldFolded (file headers only, commit info header only)
-// Level 3: CommitExpanded, all files FoldNormal (file content visible, commit info expanded)
+// Level 3: CommitExpanded, all files FoldExpanded (diff hunks visible, commit info expanded)
 func (m *Model) setAllCommitsToLevel(level int) {
 	var commitFold sidebyside.CommitFoldLevel
 	var fileFold sidebyside.FoldLevel
@@ -790,7 +784,7 @@ func (m *Model) setAllCommitsToLevel(level int) {
 		fileFold = sidebyside.FoldFolded
 	case 3:
 		commitFold = sidebyside.CommitExpanded
-		fileFold = sidebyside.FoldNormal
+		fileFold = sidebyside.FoldExpanded
 	default:
 		commitFold = sidebyside.CommitFolded
 		fileFold = sidebyside.FoldFolded
@@ -842,21 +836,6 @@ func (m Model) handleFoldToggleAllFiles() (tea.Model, tea.Cmd) {
 	// Preserve scroll position
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
-
-	// If expanding to full view, fetch content for files that don't have it
-	if newLevel == sidebyside.FoldExpanded {
-		// Check if any files need content
-		needsFetch := false
-		for _, fp := range m.files {
-			if !fp.HasContent() {
-				needsFetch = true
-				break
-			}
-		}
-		if needsFetch {
-			return m, m.FetchAllFileContent()
-		}
-	}
 
 	return m, nil
 }
@@ -1144,7 +1123,7 @@ func (m Model) isOnCommitSection() bool {
 // handleCommitFoldCycle cycles through 3 levels of commit visibility (org-mode style).
 // Level 1 (Folded): Just the commit header row
 // Level 2: File headings only (all files at FoldFolded)
-// Level 3: File hunks visible (files at FoldNormal)
+// Level 3: File hunks visible (files at FoldExpanded)
 // Cycling: Level 1 -> Level 2 -> Level 3 -> Level 1
 func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	commitIdx := m.cursorCommitIndex()
@@ -1192,7 +1171,7 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 		// Level 2 -> Level 3: Show file hunks
 		commit.FoldLevel = sidebyside.CommitExpanded
 		for i := startIdx; i < endIdx; i++ {
-			m.files[i].FoldLevel = sidebyside.FoldNormal
+			m.files[i].FoldLevel = sidebyside.FoldExpanded
 		}
 	default:
 		// Level 3 -> Level 1: Collapse everything

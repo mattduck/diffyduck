@@ -108,7 +108,7 @@ func TestFindNextMatchRow_OldSideFiltering(t *testing.T) {
 	}
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 		},
 		width:  80,
 		height: 20,
@@ -133,8 +133,9 @@ func TestFindNextMatchRow_InHeader(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/searchable.go",
-				NewPath: "b/searchable.go",
+				OldPath:   "a/searchable.go",
+				NewPath:   "b/searchable.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content"},
@@ -629,7 +630,7 @@ func makeSearchTestModel(lines []string) Model {
 
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 		},
 		width:       80,
 		height:      20,
@@ -656,8 +657,8 @@ func TestSearch_FoldedContent(t *testing.T) {
 	_, found := m.findNextMatchRow(0, true)
 	assert.False(t, found, "should not find 'hello' when file is folded")
 
-	// Unfold back to normal
-	m.files[0].FoldLevel = sidebyside.FoldNormal
+	// Unfold to hunks view
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
 	m.calculateTotalLines()
 
 	// Should find the match again
@@ -666,45 +667,41 @@ func TestSearch_FoldedContent(t *testing.T) {
 	assert.Equal(t, 2, row)
 }
 
-func TestSearch_ExpandedViewWithMoreContent(t *testing.T) {
-	// When expanding, more content becomes searchable
-	m := Model{
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "a/test.go",
-				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldNormal,
-				Pairs: []sidebyside.LinePair{
-					// Only line 2 in the diff
-					{
-						Old: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
-						New: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
-					},
-				},
-				OldContent: []string{"world", "hello", "search"},
-				NewContent: []string{"world", "hello", "search"},
-			},
-		},
-		width:       80,
-		height:      20,
-		keys:        DefaultKeyMap(),
-		hscrollStep: DefaultHScrollStep,
-	}
-	m.calculateTotalLines()
-
-	// Search for "search" - shouldn't find in normal view (not in diff)
-	m.searchQuery = "search"
-	_, found := m.findNextMatchRow(0, true)
-	assert.False(t, found, "should not find 'search' in normal view")
-
-	// Expand to full view
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
-	m.calculateTotalLines()
-
-	// Should now find "search" in the expanded content
-	_, found = m.findNextMatchRow(0, true)
-	assert.True(t, found, "should find 'search' in expanded view")
-}
+// TODO: Re-enable when full-file view is added as a separate keybinding.
+// func TestSearch_ExpandedViewWithMoreContent(t *testing.T) {
+// 	m := Model{
+// 		files: []sidebyside.FilePair{
+// 			{
+// 				OldPath:   "a/test.go",
+// 				NewPath:   "b/test.go",
+// 				FoldLevel: sidebyside.FoldExpanded,
+// 				Pairs: []sidebyside.LinePair{
+// 					{
+// 						Old: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
+// 						New: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
+// 					},
+// 				},
+// 				OldContent: []string{"world", "hello", "search"},
+// 				NewContent: []string{"world", "hello", "search"},
+// 			},
+// 		},
+// 		width:       80,
+// 		height:      20,
+// 		keys:        DefaultKeyMap(),
+// 		hscrollStep: DefaultHScrollStep,
+// 	}
+// 	m.calculateTotalLines()
+//
+// 	m.searchQuery = "search"
+// 	_, found := m.findNextMatchRow(0, true)
+// 	assert.False(t, found, "should not find 'search' in normal view")
+//
+// 	m.files[0].FoldLevel = sidebyside.FoldExpanded
+// 	m.calculateTotalLines()
+//
+// 	_, found = m.findNextMatchRow(0, true)
+// 	assert.True(t, found, "should find 'search' in expanded view")
+// }
 
 // Test per-side match tracking
 func TestFindMatchColsOnRowSide(t *testing.T) {
@@ -712,8 +709,9 @@ func TestFindMatchColsOnRowSide(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old foo bar", Type: sidebyside.Removed},
@@ -776,8 +774,9 @@ func TestSearch_CyclesBetweenSides(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old foo", Type: sidebyside.Removed},
@@ -817,8 +816,9 @@ func TestSearch_NextMatch_DoesNotCycleForeverBetweenSides(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old foo", Type: sidebyside.Removed},
@@ -863,8 +863,9 @@ func TestSearch_PrevMatch_DoesNotCycleForeverBetweenSides(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old foo", Type: sidebyside.Removed},
@@ -1000,7 +1001,7 @@ func makeSearchWithCommentsTestModel(lines []string, comments map[commentKey]str
 
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 		},
 		width:       80,
 		height:      30,

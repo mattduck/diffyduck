@@ -28,9 +28,10 @@ func makeMultiFileModel(numFiles, numLinesPerFile int) Model {
 	files := make([]sidebyside.FilePair, numFiles)
 	for i := range files {
 		files[i] = sidebyside.FilePair{
-			OldPath: fmt.Sprintf("a/file%d.go", i),
-			NewPath: fmt.Sprintf("b/file%d.go", i),
-			Pairs:   makePairs(numLinesPerFile),
+			OldPath:   fmt.Sprintf("a/file%d.go", i),
+			NewPath:   fmt.Sprintf("b/file%d.go", i),
+			FoldLevel: sidebyside.FoldExpanded,
+			Pairs:     makePairs(numLinesPerFile),
 		}
 	}
 
@@ -116,8 +117,9 @@ func TestLoadingFiles_MultipleFilesLoading(t *testing.T) {
 
 func TestSpinner_InitializedInNew(t *testing.T) {
 	files := []sidebyside.FilePair{{
-		OldPath: "a/test.go",
-		NewPath: "b/test.go",
+		OldPath:   "a/test.go",
+		NewPath:   "b/test.go",
+		FoldLevel: sidebyside.FoldExpanded,
 	}}
 	m := New(files)
 

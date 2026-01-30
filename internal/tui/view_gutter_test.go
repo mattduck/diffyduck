@@ -19,8 +19,9 @@ func TestView_GutterIndicators(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/foo.go",
-				NewPath: "b/foo.go",
+				OldPath:   "a/foo.go",
+				NewPath:   "b/foo.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "context line", Type: sidebyside.Context},
@@ -80,8 +81,9 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 				focused: true,
 				files: []sidebyside.FilePair{
 					{
-						OldPath: "a/test.go",
-						NewPath: "b/test.go",
+						OldPath:   "a/test.go",
+						NewPath:   "b/test.go",
+						FoldLevel: sidebyside.FoldExpanded,
 						Pairs: []sidebyside.LinePair{
 							{
 								Old: sidebyside.Line{Num: 1, Content: "test content", Type: tt.lineType},
@@ -157,8 +159,9 @@ func TestView_LineNumberColorMatchesIndicator(t *testing.T) {
 				focused: true,
 				files: []sidebyside.FilePair{
 					{
-						OldPath: "a/test.go",
-						NewPath: "b/test.go",
+						OldPath:   "a/test.go",
+						NewPath:   "b/test.go",
+						FoldLevel: sidebyside.FoldExpanded,
 						Pairs: []sidebyside.LinePair{
 							// First line (cursor will be here)
 							{
@@ -195,8 +198,9 @@ func TestView_LargeLineNumbers(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/large.go",
-				NewPath: "b/large.go",
+				OldPath:   "a/large.go",
+				NewPath:   "b/large.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 9999, Content: "line 9999", Type: sidebyside.Context},
@@ -240,8 +244,9 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/large.go",
-				NewPath: "b/large.go",
+				OldPath:   "a/large.go",
+				NewPath:   "b/large.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 9999, Content: "line before", Type: sidebyside.Context},
@@ -310,8 +315,9 @@ func TestView_LineNumberTruncation(t *testing.T) {
 		focused: true,
 		files: []sidebyside.FilePair{
 			{
-				OldPath: "a/test.go",
-				NewPath: "b/test.go",
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
@@ -344,7 +350,7 @@ func TestView_GutterWidthNotShrinkOnFold(t *testing.T) {
 			{
 				OldPath:   "a/small.go",
 				NewPath:   "b/small.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "small file", Type: sidebyside.Context},
@@ -355,7 +361,7 @@ func TestView_GutterWidthNotShrinkOnFold(t *testing.T) {
 			{
 				OldPath:   "a/large.go",
 				NewPath:   "b/large.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 10000, Content: "large file", Type: sidebyside.Context},

@@ -256,7 +256,7 @@ func TestTree_LastFileHeader_WithHunkContent_UsesTBranch(t *testing.T) {
 		{
 			OldPath:   "a/last.go",
 			NewPath:   "b/last.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 		},
 	})
@@ -355,7 +355,7 @@ func TestTree_LastFileHeader_DiffMode_UsesTBranch(t *testing.T) {
 			{
 				OldPath:   "a/only.go",
 				NewPath:   "b/only.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 			},
 		},
@@ -379,7 +379,7 @@ func TestTree_LastFileContentRows_LogMode_ShowContinuation(t *testing.T) {
 		{
 			OldPath:   "a/only.go",
 			NewPath:   "b/only.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldExpanded,
 			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 		},
 	})
@@ -405,7 +405,7 @@ func TestTree_LastFileContentRows_DiffMode_ShowContinuation(t *testing.T) {
 			{
 				OldPath:   "a/only.go",
 				NewPath:   "b/only.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldExpanded,
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 			},
 		},

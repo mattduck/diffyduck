@@ -18,7 +18,6 @@ func TestFileHeader_NormalHasShortTrailingConnector(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/hello.go", NewPath: "b/hello.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldNormal},
 		{OldPath: "a/world.go", NewPath: "b/world.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldNormal},
 	})
 	m.width = 80
@@ -129,8 +128,8 @@ func TestFileBottomBorder_HasClosingCorner(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/one.go", NewPath: "b/one.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldNormal},
-		{OldPath: "a/two.go", NewPath: "b/two.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldNormal},
+		{OldPath: "a/one.go", NewPath: "b/one.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/two.go", NewPath: "b/two.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
 	})
 	m.width = 80
 	m.height = 40
@@ -168,8 +167,8 @@ func TestFileHeader_ConnectorAlignsBetweenHeaderAndBorder(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/one.go", NewPath: "b/one.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldNormal},
-		{OldPath: "a/two.go", NewPath: "b/two.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldNormal},
+		{OldPath: "a/one.go", NewPath: "b/one.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/two.go", NewPath: "b/two.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
 	})
 	m.width = 100
 	m.height = 40
@@ -420,12 +419,12 @@ func TestFileHeader_UnfoldedUsesPerFileWidth(t *testing.T) {
 	m := New([]sidebyside.FilePair{
 		{
 			OldPath: "a/short.go", NewPath: "b/short.go",
-			Pairs: makePairsN(2), FoldLevel: sidebyside.FoldNormal,
+			Pairs: makePairsN(2), FoldLevel: sidebyside.FoldExpanded,
 		},
 		{
 			OldPath: "a/very_long_filename_that_is_much_wider.go",
 			NewPath: "b/very_long_filename_that_is_much_wider.go",
-			Pairs:   makePairsN(2), FoldLevel: sidebyside.FoldNormal,
+			Pairs:   makePairsN(2), FoldLevel: sidebyside.FoldExpanded,
 		},
 	})
 	m.width = 120
