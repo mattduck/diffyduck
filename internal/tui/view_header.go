@@ -185,8 +185,8 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 }
 
 // styleFileHeaderText applies styling to the file header text.
+// Directories are fg=7, basename is fg=15 (no bold).
 // For added/deleted files, the basename gets inline diff styling (bold+underline+color).
-// For other statuses, normal headerStyle (fg=15) is used.
 func (m Model) styleFileHeaderText(header, headerPadding string, status FileStatus, hasSearch bool) string {
 	headerWithPadding := header + headerPadding
 
@@ -195,24 +195,24 @@ func (m Model) styleFileHeaderText(header, headerPadding string, status FileStat
 		return " " + headerWithPadding
 	}
 
-	// For added or deleted files, style the basename with inline diff style
-	if status == FileStatusAdded || status == FileStatusDeleted {
-		var diffStyle lipgloss.Style
-		if status == FileStatusAdded {
-			diffStyle = inlineAddedStyle
-		} else {
-			diffStyle = inlineRemovedStyle
-		}
+	// Split into directory (fg=7) and basename (fg=15)
+	basename := path.Base(header)
+	dir := header[:len(header)-len(basename)]
 
-		// Find the basename boundary: last '/' in the header text (before any padding)
-		basename := path.Base(header)
-		dir := header[:len(header)-len(basename)]
+	dirStyled := headerDirStyle.Render(" " + dir)
 
-		return " " + headerStyle.Render(dir) + diffStyle.Render(basename) + headerPadding
+	// Basename style depends on file status
+	var basenameStyled string
+	switch status {
+	case FileStatusAdded:
+		basenameStyled = inlineAddedStyle.Render(basename)
+	case FileStatusDeleted:
+		basenameStyled = inlineRemovedStyle.Render(basename)
+	default:
+		basenameStyled = headerBasenameStyle.Render(basename)
 	}
 
-	// Default: normal white styling
-	return headerStyle.Render(" " + headerWithPadding)
+	return dirStyled + basenameStyled + headerPadding
 }
 
 // renderCommentRow renders a single comment row (part of a comment box).

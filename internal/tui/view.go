@@ -12,17 +12,19 @@ import (
 
 var (
 	// Styles for different line types
-	headerStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	headerLineStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // for ━ characters in headers
-	hunkSeparatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	addedStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	removedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	changedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // blue for modified lines with word diff
-	contextStyle       = lipgloss.NewStyle()
-	contextDimStyle    = lipgloss.NewStyle().Faint(true) // for context on old side
-	lineNumStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
-	emptyStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	statusStyle        = lipgloss.NewStyle().Background(lipgloss.Color("8")).Foreground(lipgloss.Color("0"))
+	headerStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
+	headerDirStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))  // dimmer for directory part of file headers
+	headerBasenameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright, non-bold for file basename
+	headerLineStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))  // for ━ characters in headers
+	hunkSeparatorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	addedStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	removedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	changedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // blue for modified lines with word diff
+	contextStyle        = lipgloss.NewStyle()
+	contextDimStyle     = lipgloss.NewStyle().Faint(true) // for context on old side
+	lineNumStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
+	emptyStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	statusStyle         = lipgloss.NewStyle().Background(lipgloss.Color("8")).Foreground(lipgloss.Color("0"))
 
 	// Inline diff highlight: underlined, bold, and colored to match the diff side
 	inlineAddedStyle   = lipgloss.NewStyle().Underline(true).Bold(true).Foreground(lipgloss.Color("10"))
