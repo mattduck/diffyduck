@@ -2,11 +2,11 @@
 
 # Build the binary
 build:
-	go build -o diffyduck ./cmd/diffyduck/
+	go build -o dfd ./cmd/dfd/
 
 # Install to GOPATH/bin
 install:
-	go install ./cmd/diffyduck/
+	go install ./cmd/dfd/
 
 # Run all tests
 test:
@@ -41,12 +41,12 @@ lint:
 
 # Clean build artifacts
 clean:
-	rm -f diffyduck
+	rm -f dfd
 	go clean ./...
 
 # Run the app on HEAD
 run: build
-	./diffyduck
+	./dfd
 
 # Show test coverage
 cover:

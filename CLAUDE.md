@@ -9,7 +9,7 @@ DiffyDuck is a terminal-based side-by-side diff viewer written in Go, using Bubb
 ## Build & Development Commands
 
 ```bash
-make build           # Build to ./diffyduck
+make build           # Build to ./dfd
 make install         # Install to $GOPATH/bin
 make test            # Run all tests
 make test-v          # Verbose test output
@@ -34,7 +34,7 @@ Git Command → Parse unified diff → Transform to LinePairs → TUI Model → 
 
 ### Package Structure
 
-- **`cmd/diffyduck/`** - Entry point, CLI parsing, command orchestration
+- **`cmd/dfd/`** - Entry point, CLI parsing, command orchestration
 - **`internal/tui/`** - Bubble Tea TUI (model, update, view, search, keys)
 - **`pkg/diff/`** - Unified diff parsing (`Diff` → `File` → `Hunk` → `Line`)
 - **`pkg/sidebyside/`** - Transform diffs to side-by-side pairs (`FilePair`, `LinePair`)
