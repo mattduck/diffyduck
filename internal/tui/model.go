@@ -93,10 +93,7 @@ type Model struct {
 	maxLessWidth       int // max width of less indicator (never shrinks to prevent jittering)
 	maxNewContentWidth int // display width of new-side content (left side); defaults to 90, updated on 'r' refresh
 
-	// Cached column widths for file/commit headers - updated on 'r' refresh
-	cachedFileHeaderWidth int // max file header display width
-	cachedFileAddWidth    int // max "+N" width for file stats
-	cachedFileRemWidth    int // max "-N" width for file stats
+	// Cached column widths for commit headers - updated on 'r' refresh
 	cachedCommitFileCount int // max commit file count width (e.g., "99" = 2)
 	cachedCommitAddWidth  int // max commit "+N" width
 	cachedCommitRemWidth  int // max commit "-N" width
@@ -275,9 +272,6 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
 		maxLineNumSeen:      9999, // default gives 4-digit gutter; recalculated on 'r' refresh
 		// Column width defaults - recalculated on 'r' refresh
-		cachedFileHeaderWidth: 50, // typical file path length
-		cachedFileAddWidth:    4,  // "+999"
-		cachedFileRemWidth:    4,  // "-999"
 		cachedCommitFileCount: 2,  // "99" files
 		cachedCommitAddWidth:  5,  // "+9999"
 		cachedCommitRemWidth:  5,  // "-9999"
@@ -998,32 +992,11 @@ func (m *Model) updateMaxNewContentWidth() {
 // Called on 'r' refresh to align columns based on actual content.
 func (m *Model) updateColumnWidths() {
 	// Reset to allow shrinking on manual refresh
-	m.cachedFileHeaderWidth = 0
-	m.cachedFileAddWidth = 0
-	m.cachedFileRemWidth = 0
 	m.cachedCommitFileCount = 0
 	m.cachedCommitAddWidth = 0
 	m.cachedCommitRemWidth = 0
 	m.cachedCommitTimeWidth = 0
 	m.cachedCommitSubjWidth = 0
-
-	// Calculate file header widths
-	for _, fp := range m.files {
-		header := formatFileHeader(fp)
-		w := displayWidth(header)
-		if w > m.cachedFileHeaderWidth {
-			m.cachedFileHeaderWidth = w
-		}
-		added, removed := countFileStats(fp)
-		aw := statsAddWidth(added)
-		if aw > m.cachedFileAddWidth {
-			m.cachedFileAddWidth = aw
-		}
-		rw := statsRemWidth(removed)
-		if rw > m.cachedFileRemWidth {
-			m.cachedFileRemWidth = rw
-		}
-	}
 
 	// Calculate commit header widths
 	for commitIdx := range m.commits {

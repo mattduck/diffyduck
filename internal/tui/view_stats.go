@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -155,115 +154,56 @@ func formatLessIndicator(line, total, percentage int, atEnd bool) string {
 	return fmt.Sprintf("line %d/%d %d%%", line, total, percentage)
 }
 
-// statsAddWidth returns the display width of just the addition portion "+N".
-func statsAddWidth(added int) int {
-	if added > 0 {
-		return len(fmt.Sprintf("+%d", added))
-	}
-	return 0
-}
-
-// statsRemWidth returns the display width of just the removal portion "-N".
-func statsRemWidth(removed int) int {
-	if removed > 0 {
-		return len(fmt.Sprintf("-%d", removed))
-	}
-	return 0
-}
-
-// statsCountWidth returns the display width of the count portion "+N -M" (without bar).
-func statsCountWidth(added, removed, maxAddWidth int) int {
-	width := 0
-	if added > 0 || maxAddWidth > 0 {
-		// Use the max add width for alignment
-		if maxAddWidth > 0 {
-			width += maxAddWidth
-		} else {
-			width += len(fmt.Sprintf("+%d", added))
-		}
-	}
-	if removed > 0 {
-		if width > 0 {
-			width++ // space between +N and -M
-		}
-		width += len(fmt.Sprintf("-%d", removed))
-	}
-	return width
-}
-
 // formatColoredStatsBar returns the stats display with colored +/- counts.
 // Returns empty string if no changes. Format: " +N -M"
-// maxAddWidth/maxRemWidth are used to pad columns so they align across files.
-func formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth int) string {
-	// If no stats columns needed at all (no files have changes), return empty
-	if maxAddWidth == 0 && maxRemWidth == 0 {
+func formatColoredStatsBar(added, removed int) string {
+	if added == 0 && removed == 0 {
 		return ""
 	}
 
 	var parts []string
 
-	// Build addition string with padding for alignment
 	if added > 0 {
-		addStr := fmt.Sprintf("+%d", added)
-		currentAddWidth := len(addStr)
-		if maxAddWidth > currentAddWidth {
-			addStr += strings.Repeat(" ", maxAddWidth-currentAddWidth)
-		}
-		parts = append(parts, addedStyle.Render(addStr))
-	} else if maxAddWidth > 0 {
-		// Show just + right-aligned in dim grey (no additions)
-		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-		addStr := strings.Repeat(" ", maxAddWidth-1) + "+"
-		parts = append(parts, dimStyle.Render(addStr))
+		parts = append(parts, addedStyle.Render(fmt.Sprintf("+%d", added)))
 	}
 
-	// Build removal string with padding for alignment
 	if removed > 0 {
-		remStr := fmt.Sprintf("-%d", removed)
-		currentRemWidth := len(remStr)
-		if maxRemWidth > currentRemWidth {
-			remStr += strings.Repeat(" ", maxRemWidth-currentRemWidth)
-		}
-		parts = append(parts, removedStyle.Render(remStr))
-	} else if maxRemWidth > 0 {
-		// Show just - right-aligned in dim grey (no removals)
-		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-		remStr := strings.Repeat(" ", maxRemWidth-1) + "-"
-		parts = append(parts, dimStyle.Render(remStr))
+		parts = append(parts, removedStyle.Render(fmt.Sprintf("-%d", removed)))
 	}
 
 	return " " + strings.Join(parts, " ")
 }
 
 // fileHeaderBoxWidth computes the header box width for a single file based on its own content.
-// Used for unfolded headers so the border hugs the actual content instead of aligning to shared max.
+// Used for headers so the border hugs the actual content.
 func fileHeaderBoxWidth(headerText string, added, removed int) int {
-	iconPartWidth := 3 + 1 + 1 // "   ◐ "
-	aw := statsAddWidth(added)
-	rw := statsRemWidth(removed)
-	return iconPartWidth + displayWidth(headerText) + statsBarDisplayWidth(aw, rw) + 1 // +1 for gap before ┏
+	iconPartWidth := 3 + 1 + 1                                                                 // "   ◐ "
+	return iconPartWidth + displayWidth(headerText) + statsBarDisplayWidth(added, removed) + 1 // +1 for gap before ┏
 }
 
 // statsBarDisplayWidth returns the display width of the stats counts (without ANSI codes).
-// This matches formatColoredStatsBar's output width with fixed column widths.
-func statsBarDisplayWidth(maxAddWidth, maxRemWidth int) int {
-	// If no stats columns needed at all (no files have changes), return 0
-	if maxAddWidth == 0 && maxRemWidth == 0 {
+// This matches formatColoredStatsBar's output width.
+func statsBarDisplayWidth(added, removed int) int {
+	if added == 0 && removed == 0 {
 		return 0
 	}
 
-	// Format: " +N__ -M__" (with padding to fixed widths)
+	// Format: " +N -M"
 	// Leading space
 	width := 1
 
-	// Addition column (always padded to maxAddWidth)
-	width += maxAddWidth
+	if added > 0 {
+		width += len(fmt.Sprintf("+%d", added))
+	}
 
 	// Space between +N and -M (only when both exist)
-	if maxAddWidth > 0 && maxRemWidth > 0 {
+	if added > 0 && removed > 0 {
 		width++
 	}
-	width += maxRemWidth
+
+	if removed > 0 {
+		width += len(fmt.Sprintf("-%d", removed))
+	}
 
 	return width
 }

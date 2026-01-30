@@ -242,76 +242,8 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 	// Note: With tree-style layout, headers no longer have trailing shading
 }
 
-func TestFileHeaderWithStats_Alignment(t *testing.T) {
-	// Multiple folded files should have aligned stats columns
-	// The addition column (+N) should be padded so that the removal column (-M) starts at the same position
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "a/short.go",
-				NewPath:   "b/short.go",
-				FoldLevel: sidebyside.FoldFolded,
-				Pairs: []sidebyside.LinePair{
-					{
-						Old: sidebyside.Line{Type: sidebyside.Empty},
-						New: sidebyside.Line{Num: 1, Content: "added", Type: sidebyside.Added},
-					},
-					{
-						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						New: sidebyside.Line{Type: sidebyside.Empty},
-					},
-				},
-			},
-			{
-				OldPath:   "a/much_longer_filename.go",
-				NewPath:   "b/much_longer_filename.go",
-				FoldLevel: sidebyside.FoldFolded,
-				Pairs: []sidebyside.LinePair{
-					// 100 additions to make the count "+100" which is wider than "+1"
-					{
-						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
-						New: sidebyside.Line{Type: sidebyside.Empty},
-					},
-				},
-			},
-		},
-		width:  100,
-		height: 10,
-		keys:   DefaultKeyMap(),
-	}
-	// Add more pairs to the second file to get +100
-	for i := 0; i < 100; i++ {
-		m.files[1].Pairs = append(m.files[1].Pairs, sidebyside.LinePair{
-			Old: sidebyside.Line{Type: sidebyside.Empty},
-			New: sidebyside.Line{Num: i + 2, Content: "added", Type: sidebyside.Added},
-		})
-	}
-	m.calculateTotalLines()
-	m.scroll = m.minScroll() // Position cursor at top so headers are visible
-
-	output := m.View()
-	lines := strings.Split(output, "\n")
-
-	// Layout at minScroll: [topBar, divider, padding, header1, header2, ...]
-	// lines[3] = first header (at cursorOffset position)
-	// lines[4] = second header
-	header1 := lines[3]
-	header2 := lines[4]
-
-	// Find position of removal count (-N) in each header
-	// The first file has +1 -1, second has +100 -1
-	// The -1 should be aligned in both headers
-	pos1 := displayColumnOf(header1, "-1")
-	pos2 := displayColumnOf(header2, "-1")
-
-	assert.NotEqual(t, -1, pos1, "first header should contain -1")
-	assert.NotEqual(t, -1, pos2, "second header should contain -1")
-	assert.Equal(t, pos1, pos2, "-1 should be aligned across headers (addition column padded)")
-}
-
 func TestFileHeaderWithStats_StatsColumnAlignment(t *testing.T) {
-	// Stats columns (+N, -M) should be aligned across headers even when count widths differ
+	// Stats columns (+N, -M) should appear immediately after filename
 	// e.g., "+100" vs "+5" should have their + signs at the same position
 	pairs100 := make([]sidebyside.LinePair, 100)
 	for i := range pairs100 {

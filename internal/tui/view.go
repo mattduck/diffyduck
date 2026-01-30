@@ -251,10 +251,6 @@ type displayRow struct {
 	pair            sidebyside.LinePair
 	added           int // number of added lines (for headers)
 	removed         int // number of removed lines (for headers)
-	maxHeaderWidth  int // max header width across all files (for alignment in folded view)
-	maxAddWidth     int // max addition count width across all files (for column alignment)
-	maxRemWidth     int // max removal count width across all files (for column alignment)
-	maxCountWidth   int // max stats count width across all files (for bar alignment)
 	headerBoxWidth  int // width of the box around header content (for border alignment)
 	treePrefixWidth int // width of tree prefix for border alignment
 	// Truncation indicator fields
@@ -378,45 +374,33 @@ func (m Model) buildRows() []displayRow {
 		return m.buildRowsLegacy()
 	}
 
-	// Use cached column widths (updated on 'r' refresh)
-	// Fall back to calculating if not initialized (e.g., in tests)
-	maxHeaderWidth := m.cachedFileHeaderWidth
-	maxAddWidth := m.cachedFileAddWidth
-	maxRemWidth := m.cachedFileRemWidth
-	if maxHeaderWidth == 0 {
-		for commitIdx, commit := range m.commits {
-			if commit.Info.HasMetadata() && commit.FoldLevel == sidebyside.CommitFolded {
-				continue
-			}
-			startIdx := m.commitFileStarts[commitIdx]
-			endIdx := len(m.files)
-			if commitIdx+1 < len(m.commits) {
-				endIdx = m.commitFileStarts[commitIdx+1]
-			}
-			for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
-				fp := m.files[fileIdx]
-				header := formatFileHeader(fp)
-				w := displayWidth(header)
-				if w > maxHeaderWidth {
-					maxHeaderWidth = w
-				}
-				added, removed := countFileStats(fp)
-				aw := statsAddWidth(added)
-				if aw > maxAddWidth {
-					maxAddWidth = aw
-				}
-				rw := statsRemWidth(removed)
-				if rw > maxRemWidth {
-					maxRemWidth = rw
-				}
+	// Calculate consistent header box width for borders from max per-file width
+	maxBoxWidth := 0
+	for commitIdx, commit := range m.commits {
+		if commit.Info.HasMetadata() && commit.FoldLevel == sidebyside.CommitFolded {
+			continue
+		}
+		startIdx := m.commitFileStarts[commitIdx]
+		endIdx := len(m.files)
+		if commitIdx+1 < len(m.commits) {
+			endIdx = m.commitFileStarts[commitIdx+1]
+		}
+		for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
+			fp := m.files[fileIdx]
+			header := formatFileHeader(fp)
+			added, removed := countFileStats(fp)
+			bw := fileHeaderBoxWidth(header, added, removed)
+			if bw > maxBoxWidth {
+				maxBoxWidth = bw
 			}
 		}
 	}
 
-	// Calculate consistent header box width for borders
 	iconPartWidth := 3 + 1 + 1 // "   ◐ "
-	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
-	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
+	headerContentWidth := maxBoxWidth - iconPartWidth
+	if headerContentWidth < 0 {
+		headerContentWidth = 0
+	}
 
 	// Use cached structural diff width (updated on 'r' refresh)
 	if m.cachedStructDiffWidth > headerContentWidth {
@@ -669,7 +653,7 @@ func (m Model) buildRows() []displayRow {
 		// Add file rows for this commit
 		for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
 			fp := m.files[fileIdx]
-			rows = m.buildFileRows(rows, fileIdx, fp, startIdx, endIdx, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth)
+			rows = m.buildFileRows(rows, fileIdx, fp, startIdx, endIdx, headerBoxWidth)
 		}
 
 		// Add separator row between commits (blank line after last file, before next commit)
@@ -731,34 +715,22 @@ func (m Model) buildRows() []displayRow {
 func (m Model) buildRowsLegacy() []displayRow {
 	var rows []displayRow
 
-	// Use cached column widths (updated on 'r' refresh)
-	// Fall back to calculating if not initialized (e.g., in tests)
-	maxHeaderWidth := m.cachedFileHeaderWidth
-	maxAddWidth := m.cachedFileAddWidth
-	maxRemWidth := m.cachedFileRemWidth
-	if maxHeaderWidth == 0 {
-		for _, fp := range m.files {
-			header := formatFileHeader(fp)
-			w := displayWidth(header)
-			if w > maxHeaderWidth {
-				maxHeaderWidth = w
-			}
-			added, removed := countFileStats(fp)
-			aw := statsAddWidth(added)
-			if aw > maxAddWidth {
-				maxAddWidth = aw
-			}
-			rw := statsRemWidth(removed)
-			if rw > maxRemWidth {
-				maxRemWidth = rw
-			}
+	// Calculate consistent header box width for borders from max per-file width
+	maxBoxWidth := 0
+	for _, fp := range m.files {
+		header := formatFileHeader(fp)
+		added, removed := countFileStats(fp)
+		bw := fileHeaderBoxWidth(header, added, removed)
+		if bw > maxBoxWidth {
+			maxBoxWidth = bw
 		}
 	}
 
-	// Calculate consistent header box width for borders
 	iconPartWidth := 3 + 1 + 1 // "   ◐ "
-	maxStatsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
-	headerContentWidth := maxHeaderWidth + maxStatsBarWidth
+	headerContentWidth := maxBoxWidth - iconPartWidth
+	if headerContentWidth < 0 {
+		headerContentWidth = 0
+	}
 
 	// Use cached structural diff width, or calculate if not set (for tests)
 	maxStructuralDiffWidth := m.cachedStructDiffWidth
@@ -787,7 +759,7 @@ func (m Model) buildRowsLegacy() []displayRow {
 	// Note: The first file's top border is rendered specially in getVisibleRows,
 	// not as part of the content rows (so it doesn't affect cursor line numbering).
 	for fileIdx, fp := range m.files {
-		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth)
+		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), headerBoxWidth)
 	}
 
 	// Add truncation indicator if files were omitted
@@ -804,7 +776,7 @@ func (m Model) buildRowsLegacy() []displayRow {
 }
 
 // buildFileRows adds all rows for a single file to the rows slice.
-func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FilePair, commitStartIdx, commitEndIdx int, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth int) []displayRow {
+func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FilePair, commitStartIdx, commitEndIdx int, headerBoxWidth int) []displayRow {
 	added, removed := countFileStats(fp)
 	status := fileStatusFromPair(fp)
 
@@ -832,8 +804,6 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	// Per-file header box width for unfolded headers (tighter border around own content)
 	header := formatFileHeader(fp)
 	ownBoxWidth := fileHeaderBoxWidth(header, added, removed)
-	ownAddWidth := statsAddWidth(added)
-	ownRemWidth := statsRemWidth(removed)
 
 	// Determine whether the last file's header should use ├ (has content below) or └ (no content).
 	// In log mode, if the file has visible content below its header, use ├ so the tree
@@ -855,7 +825,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	switch fp.FoldLevel {
 	case sidebyside.FoldFolded:
 		headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, true, TreeRowHeader)
-		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: maxHeaderWidth, maxAddWidth: maxAddWidth, maxRemWidth: maxRemWidth, maxCountWidth: statsCountWidth(added, removed, maxAddWidth), headerBoxWidth: headerBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
+		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, headerBoxWidth: headerBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
 
 		// Add structural diff rows (no borders in folded mode, file is folded).
 		// Use contentIsLast so │ continuation shows in log mode when preview content is visible.
@@ -882,7 +852,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.
 			expandedContentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 
-			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, maxHeaderWidth: displayWidth(header), maxAddWidth: ownAddWidth, maxRemWidth: ownRemWidth, maxCountWidth: statsCountWidth(added, removed, ownAddWidth), headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: expandedHeaderTreePath, headerMode: headerMode})
+			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldExpanded, status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: expandedHeaderTreePath, headerMode: headerMode})
 
 			// No structural diff preview in expanded mode - the full diff content is shown instead
 
@@ -968,7 +938,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.
 		normalContentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 
-		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, maxHeaderWidth: displayWidth(header), maxAddWidth: ownAddWidth, maxRemWidth: ownRemWidth, maxCountWidth: statsCountWidth(added, removed, ownAddWidth), headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: normalHeaderTreePath, headerMode: headerMode})
+		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: normalHeaderTreePath, headerMode: headerMode})
 
 		// No structural diff preview in normal/hunk mode - diff content is shown instead
 
@@ -1413,7 +1383,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.isBlank {
 			rendered = renderEmptyTreeRow(row.treePath, isCursorRow, m.focused)
 		} else if row.isHeader {
-			rendered = m.renderHeader(row.header, row.foldLevel, row.headerMode, row.status, row.added, row.removed, row.maxHeaderWidth, row.maxAddWidth, row.maxRemWidth, row.headerBoxWidth, row.fileIndex, i, isCursorRow, row.treePath)
+			rendered = m.renderHeader(row.header, row.foldLevel, row.headerMode, row.status, row.added, row.removed, row.headerBoxWidth, row.fileIndex, i, isCursorRow, row.treePath)
 		} else if row.isSeparatorTop {
 			rendered = m.renderHunkSeparatorTop(row, leftHalfWidth, rightHalfWidth, isCursorRow)
 		} else if row.isSeparator {

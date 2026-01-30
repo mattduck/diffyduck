@@ -42,7 +42,6 @@ func TestFileHeader_UnfoldedHasTrailingConnector(t *testing.T) {
 	rendered := m.renderHeader(
 		headerRow.header, headerRow.foldLevel, headerRow.headerMode,
 		headerRow.status, headerRow.added, headerRow.removed,
-		headerRow.maxHeaderWidth, headerRow.maxAddWidth, headerRow.maxRemWidth,
 		headerRow.headerBoxWidth, headerRow.fileIndex, 0, false, headerRow.treePath,
 	)
 	stripped := stripANSI(rendered)
@@ -80,7 +79,6 @@ func TestFileHeader_FoldedHasNoTrailingConnector(t *testing.T) {
 	rendered := m.renderHeader(
 		headerRow.header, headerRow.foldLevel, headerRow.headerMode,
 		headerRow.status, headerRow.added, headerRow.removed,
-		headerRow.maxHeaderWidth, headerRow.maxAddWidth, headerRow.maxRemWidth,
 		headerRow.headerBoxWidth, headerRow.fileIndex, 0, false, headerRow.treePath,
 	)
 	stripped := stripANSI(rendered)
@@ -159,7 +157,6 @@ func TestFileHeader_ConnectorAlignsBetweenHeaderAndBorder(t *testing.T) {
 	header := stripANSI(m.renderHeader(
 		headerRow.header, headerRow.foldLevel, headerRow.headerMode,
 		headerRow.status, headerRow.added, headerRow.removed,
-		headerRow.maxHeaderWidth, headerRow.maxAddWidth, headerRow.maxRemWidth,
 		headerRow.headerBoxWidth, headerRow.fileIndex, 0, false, headerRow.treePath,
 	))
 	border := stripANSI(m.renderHeaderBottomBorder(

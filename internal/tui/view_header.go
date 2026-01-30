@@ -104,7 +104,7 @@ func fileStatusIndicator(status FileStatus) (symbol string, style lipgloss.Style
 	}
 }
 
-func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, headerMode HeaderMode, status FileStatus, added, removed, maxHeaderWidth, maxAddWidth, maxRemWidth, headerBoxWidth, fileIndex, rowIdx int, isCursorRow bool, treePath TreePath) string {
+func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, headerMode HeaderMode, status FileStatus, added, removed, headerBoxWidth, fileIndex, rowIdx int, isCursorRow bool, treePath TreePath) string {
 	// Calculate header width BEFORE applying search highlighting (ANSI codes affect width calculation)
 	headerTextWidth := displayWidth(header)
 
@@ -120,17 +120,13 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	_, fileStatusStyle := fileStatusIndicator(status)
 
 	// All headers use same format: indent + icon + header + stats + trailing
-	statsBar := formatColoredStatsBar(added, removed, maxAddWidth, maxRemWidth)
-	statsBarWidth := statsBarDisplayWidth(maxAddWidth, maxRemWidth)
-	headerPadding := ""
-	if maxHeaderWidth > headerTextWidth {
-		headerPadding = strings.Repeat(" ", maxHeaderWidth-headerTextWidth)
-	}
+	statsBar := formatColoredStatsBar(added, removed)
+	statsBarWidth := statsBarDisplayWidth(added, removed)
 
 	// Calculate content width and pad to match headerBoxWidth
 	// Layout: indent(3) + icon(1) + space(1) + header
 	iconPartWidth := 3 + 1 + 1 // "   ◐ "
-	contentWidth := iconPartWidth + headerTextWidth + len(headerPadding) + statsBarWidth
+	contentWidth := iconPartWidth + headerTextWidth + statsBarWidth
 	boxPadding := ""
 	if headerBoxWidth > contentWidth {
 		boxPadding = strings.Repeat(" ", headerBoxWidth-contentWidth)
@@ -140,7 +136,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	// - For added/deleted files, style the basename with inline diff style (bold+underline+color)
 	// - For other files, use normal headerStyle (fg=15)
 	// - Skip custom styling when search highlighting was applied (preserve search fg colors)
-	styledHeader := m.styleFileHeaderText(header, headerPadding, status, hasSearch)
+	styledHeader := m.styleFileHeaderText(header, status, hasSearch)
 
 	// Style the fold icon with fg=8 (same as commit header), fg=15 when cursor is on row
 	iconColor := "8"
@@ -187,12 +183,10 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 // styleFileHeaderText applies styling to the file header text.
 // Directories are fg=7, basename is fg=15 (no bold).
 // For added/deleted files, the basename gets inline diff styling (bold+underline+color).
-func (m Model) styleFileHeaderText(header, headerPadding string, status FileStatus, hasSearch bool) string {
-	headerWithPadding := header + headerPadding
-
+func (m Model) styleFileHeaderText(header string, status FileStatus, hasSearch bool) string {
 	// When search highlighting was applied, don't wrap with any style to preserve fg color
 	if hasSearch {
-		return " " + headerWithPadding
+		return " " + header
 	}
 
 	// Split into directory (fg=7) and basename (fg=15)
@@ -212,7 +206,7 @@ func (m Model) styleFileHeaderText(header, headerPadding string, status FileStat
 		basenameStyled = headerBasenameStyle.Render(basename)
 	}
 
-	return dirStyled + basenameStyled + headerPadding
+	return dirStyled + basenameStyled
 }
 
 // renderCommentRow renders a single comment row (part of a comment box).

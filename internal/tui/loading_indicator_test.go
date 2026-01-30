@@ -237,7 +237,6 @@ func TestHeader_NoSpinnerInMainView(t *testing.T) {
 		HeaderThreeLine,
 		FileStatusModified,
 		5, 3,
-		20, 3, 3,
 		50,
 		0,
 		0,
