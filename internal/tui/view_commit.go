@@ -178,9 +178,9 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		subjectWidth = displayWidth(subject)
 	}
 
-	// Pad subject to max width for alignment
+	// Pad subject to max width for alignment (only when folded; unfolded hugs content)
 	subjectPadding := ""
-	if subjectWidth < subjectDisplayWidth {
+	if row.headerMode == HeaderSingleLine && subjectWidth < subjectDisplayWidth {
 		subjectPadding = strings.Repeat(" ", subjectDisplayWidth-subjectWidth)
 	}
 
@@ -190,7 +190,18 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		dynamicPart = " " + subject + subjectPadding
 	}
 
-	return fixedPart + dynamicPart
+	result := fixedPart + dynamicPart
+
+	// Add trailing border fill for unfolded commits: ╔═══════ to screen edge
+	if row.headerMode != HeaderSingleLine && m.width > 0 {
+		headerLineWidth := row.headerBoxWidth
+		trailingFill := m.width - headerLineWidth - 1 // -1 for ╔
+		if trailingFill > 0 {
+			result += " " + commitTreeStyle.Render("╔"+strings.Repeat("═", trailingFill))
+		}
+	}
+
+	return result
 }
 
 // renderCommitInfoHeader renders the commit info header row (foldable child node).
@@ -237,7 +248,20 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 		}
 	}
 
-	return treeLine + " " + styledIcon + " " + styledHeader
+	result := treeLine + " " + styledIcon + " " + styledHeader
+
+	// Add trailing border fill for expanded commit info: ┏━━━━━ to screen edge
+	if row.headerMode != HeaderSingleLine && m.width > 0 {
+		treePrefixWidth := treeWidth(len(row.treePath.Ancestors), true)
+		headerLineWidth := treePrefixWidth + row.headerBoxWidth - 2
+		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
+		if trailingFill > 0 {
+			greyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+			result += greyStyle.Render("┏" + strings.Repeat("━", trailingFill))
+		}
+	}
+
+	return result
 }
 
 // renderCommitInfoTopBorder renders the top border row above the commit info header.
@@ -295,9 +319,9 @@ func (m Model) renderCommitInfoBottomBorder(row displayRow, isCursorRow bool) st
 		borderWidth = 1
 	}
 
-	// Use heavy box-drawing characters for underline: ┗ corner and ━ horizontal
+	// Use heavy box-drawing characters for underline: ┗ corner, ━ horizontal, ┛ closing corner
 	corner := "┗"
-	borderLine := strings.Repeat("━", borderWidth)
+	borderLine := strings.Repeat("━", borderWidth) + "┛"
 
 	if isCursorRow {
 		var arrow string

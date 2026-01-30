@@ -154,7 +154,7 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMod
 
 	// Use heavy box-drawing characters for underline: ┗ corner and ━ horizontal
 	corner := "┗"
-	borderLine := strings.Repeat("━", borderWidth)
+	borderLine := strings.Repeat("━", borderWidth) + "┛"
 
 	if isCursorRow {
 		var arrow string
@@ -200,8 +200,10 @@ func (m Model) renderCommitBorderLine(visible bool, isTop bool, contentWidth int
 	borderChar := "═"
 
 	// Border width: use contentWidth if provided, otherwise full width
-	borderWidth := contentWidth
-	if borderWidth <= 0 {
+	// Subtract 1 so ╝ aligns with ╔ on the header line
+	// (border = margin(1) + ╞(1) + ═*(borderWidth-1) + ╝(1), ╝ at column borderWidth+1)
+	borderWidth := contentWidth - 1
+	if contentWidth <= 0 {
 		borderWidth = m.width - 2
 	}
 	if borderWidth < 1 {
@@ -215,12 +217,12 @@ func (m Model) renderCommitBorderLine(visible bool, isTop bool, contentWidth int
 		} else {
 			arrow = unfocusedCursorArrowStyle.Render("▷")
 		}
-		// Arrow replaces margin, then connector + border
-		return arrow + borderStyle.Render(connector+strings.Repeat(borderChar, borderWidth-1))
+		// Arrow replaces margin, then connector + border + closing corner
+		return arrow + borderStyle.Render(connector+strings.Repeat(borderChar, borderWidth-1)+"╝")
 	}
 
-	// Margin space + connector + border
-	return " " + borderStyle.Render(connector+strings.Repeat(borderChar, borderWidth-1))
+	// Margin space + connector + border + closing corner
+	return " " + borderStyle.Render(connector+strings.Repeat(borderChar, borderWidth-1)+"╝")
 }
 
 // renderCommitHeaderTopBorder renders the top border of the commit header.

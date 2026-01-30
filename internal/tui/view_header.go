@@ -194,7 +194,19 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 		}
 	}
 
-	return treeLine + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding
+	result := treeLine + " " + styledIcon + " " + fileStatusStyle.Render(fileNum) + " " + styledStatus + styledHeader + statsBar + boxPadding
+
+	// Add trailing border fill for unfolded files: ┏━━━━━━━ to screen edge
+	if headerMode != HeaderSingleLine && m.width > 0 {
+		treePrefixWidth := treeWidth(len(treePath.Ancestors), true)
+		headerLineWidth := treePrefixWidth + headerBoxWidth - 2
+		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
+		if trailingFill > 0 {
+			result += fileStatusStyle.Render("┏" + strings.Repeat("━", trailingFill))
+		}
+	}
+
+	return result
 }
 
 // renderCommentRow renders a single comment row (part of a comment box).
