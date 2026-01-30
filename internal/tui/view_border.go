@@ -198,12 +198,12 @@ func (m Model) renderCommitBorderLine(visible bool, isTop bool, contentWidth int
 		} else {
 			arrow = unfocusedCursorArrowStyle.Render("▷")
 		}
-		// Arrow replaces margin, then connector (grey) + border + closing corner
-		return arrow + treeContinuationStyle.Render(connector) + borderStyle.Render(strings.Repeat(borderChar, borderWidth-1)+"╝")
+		// Arrow replaces margin, then connector (yellow) + border + closing corner
+		return arrow + commitTreeStyle.Render(connector) + borderStyle.Render(strings.Repeat(borderChar, borderWidth-1)+"╝")
 	}
 
-	// Margin space + connector (grey) + border + closing corner
-	return " " + treeContinuationStyle.Render(connector) + borderStyle.Render(strings.Repeat(borderChar, borderWidth-1)+"╝")
+	// Margin space + connector (yellow) + border + closing corner
+	return " " + commitTreeStyle.Render(connector) + borderStyle.Render(strings.Repeat(borderChar, borderWidth-1)+"╝")
 }
 
 // renderCommitHeaderTopBorder renders the top border of the commit header.
