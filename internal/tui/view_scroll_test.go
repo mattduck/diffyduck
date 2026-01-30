@@ -279,26 +279,32 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	rows := m.buildRows()
 	fileNames := []string{"first.go", "second.go"}
 
-	// Find the first row of the second file
-	var secondFileFirstRow int
+	// Find the header row of the second file (skip top border)
+	var secondFileHeaderRow int
 	for i, row := range rows {
-		if row.fileIndex == 1 {
-			secondFileFirstRow = i
+		if row.fileIndex == 1 && row.isHeader {
+			secondFileHeaderRow = i
 			break
 		}
 	}
-	require.NotZero(t, secondFileFirstRow, "should find second file")
+	require.NotZero(t, secondFileHeaderRow, "should find second file header")
 
-	// Test: row before second file should show first.go
-	m.scroll = secondFileFirstRow - 1
+	// Test: two rows before second file's header (blank line) should show first.go
+	m.scroll = secondFileHeaderRow - 2
 	info := m.StatusInfo()
-	assert.Equal(t, 1, info.CurrentFile, "row before second file should show file 1")
+	assert.Equal(t, 1, info.CurrentFile, "blank line before second file should show file 1")
 	assert.Equal(t, fileNames[0], info.FileName)
 
-	// Test: first row of second file should show second.go
-	m.scroll = secondFileFirstRow
+	// Test: top border row should show previous file (first.go)
+	m.scroll = secondFileHeaderRow - 1
 	info = m.StatusInfo()
-	assert.Equal(t, 2, info.CurrentFile, "first row of second file should show file 2")
+	assert.Equal(t, 1, info.CurrentFile, "top border should show file above")
+	assert.Equal(t, fileNames[0], info.FileName)
+
+	// Test: header row of second file should show second.go
+	m.scroll = secondFileHeaderRow
+	info = m.StatusInfo()
+	assert.Equal(t, 2, info.CurrentFile, "header of second file should show file 2")
 	assert.Equal(t, fileNames[1], info.FileName)
 }
 

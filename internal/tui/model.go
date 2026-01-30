@@ -862,6 +862,19 @@ func (m Model) fileAtLine(line int) (int, string) {
 	if row.fileIndex < 0 {
 		return 0, ""
 	}
+	// Top border rows have fileIndex set to the next file, but for status
+	// bar purposes we don't want to switch to showing that file until the
+	// cursor is actually on the header itself. Show the previous file instead.
+	if row.isHeaderTopBorder {
+		prevIdx := row.fileIndex - 1
+		if prevIdx >= 0 && prevIdx < len(m.files) {
+			return prevIdx + 1, formatFilePath(
+				m.files[prevIdx].OldPath,
+				m.files[prevIdx].NewPath,
+			)
+		}
+		return 0, ""
+	}
 	return row.fileIndex + 1, formatFilePath(
 		m.files[row.fileIndex].OldPath,
 		m.files[row.fileIndex].NewPath,
@@ -1102,38 +1115,60 @@ func (m *Model) getRows() []displayRow {
 }
 
 // currentCommitIndex returns the index of the commit the cursor is currently in.
-// Returns 0 if there are no commits or cursor position is invalid.
+// Returns -1 if the cursor is not on any commit (e.g. on a blank separator
+// between commits, or on a top border that hasn't reached the header yet).
 func (m *Model) currentCommitIndex() int {
 	if len(m.commits) == 0 {
-		return 0
+		return -1
 	}
 
 	// Get the row at the cursor position
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
-	if cursorPos >= 0 && cursorPos < len(rows) {
+
+	// Past all content — return last commit
+	if cursorPos >= len(rows) {
+		return len(m.commits) - 1
+	}
+
+	if cursorPos >= 0 {
 		row := rows[cursorPos]
-		// For file rows, use fileIndex to determine the commit
-		// This works because file rows have fileIndex set but may not have commitIndex set
+		// For file rows, use fileIndex to determine the commit.
+		// For top border rows, fileIndex points to the next file — but that's
+		// the correct commit (the top border sits between files, and the file
+		// line in the status bar shows the previous file while the commit line
+		// should show whichever commit the next file belongs to).
 		if row.fileIndex >= 0 {
 			return m.commitForFile(row.fileIndex)
 		}
 		// For commit header/body rows, use commitIndex directly
 		if row.commitIndex >= 0 && row.commitIndex < len(m.commits) {
+			// Commit top border points to the next commit; don't switch yet.
+			if row.isCommitHeaderTopBorder {
+				if row.commitIndex > 0 {
+					return row.commitIndex - 1
+				}
+				return -1
+			}
+			// Blank separator between commits is not "on" any commit.
+			if row.commitBodyIsBlank {
+				return -1
+			}
 			return row.commitIndex
 		}
 	}
 
-	return 0
+	return -1
 }
 
 // currentCommit returns the commit set the cursor is currently in.
 // Uses the cursor position to determine which commit is displayed.
 func (m *Model) currentCommit() *sidebyside.CommitSet {
-	if len(m.commits) == 0 {
+	idx := m.currentCommitIndex()
+	if idx < 0 || idx >= len(m.commits) {
 		return nil
 	}
-	return &m.commits[m.currentCommitIndex()]
+	return &m.commits[idx]
 }
 
 // commitForFile returns the commit index that contains the given file index.

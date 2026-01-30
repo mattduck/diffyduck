@@ -1212,9 +1212,9 @@ func TestUpdate_gj_FromTopBorder_GoesToFileHeaderBelow(t *testing.T) {
 	assert.Equal(t, 1, rows[cursorPos].fileIndex, "gj from file 1's top border should go to file 1's header")
 }
 
-func TestUpdate_TopBarShowsCorrectFile_WhenOnTopBorder(t *testing.T) {
-	// Test: when on top border line, the top-bar shows the info for that file
-	// (not the file above)
+func TestUpdate_TopBarShowsPreviousFile_WhenOnTopBorder(t *testing.T) {
+	// Test: when on top border line, the top-bar should show the previous file
+	// (not the next file whose border it is)
 	m := makeMultiFileTestModel()
 
 	// Build rows to find the top border of file 1 (second file)
@@ -1225,10 +1225,10 @@ func TestUpdate_TopBarShowsCorrectFile_WhenOnTopBorder(t *testing.T) {
 	// Position cursor on file 1's top border
 	m = moveCursorToRow(m, file1TopBorder)
 
-	// StatusInfo should show file 1 (CurrentFile=2 since it's 1-based)
+	// StatusInfo should show file 0 (the previous file)
 	info := m.StatusInfo()
-	assert.Equal(t, 2, info.CurrentFile, "top-bar should show file 2 when cursor is on file 1's (0-indexed) top border")
-	assert.Contains(t, info.FileName, "second.go", "filename should be second.go")
+	assert.Equal(t, 1, info.CurrentFile, "top-bar should show previous file when cursor is on top border")
+	assert.Contains(t, info.FileName, "first", "should show the first file's name")
 }
 
 func TestUpdate_gk_FromFirstHeader_StaysOnFirstFile(t *testing.T) {

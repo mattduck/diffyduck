@@ -727,13 +727,9 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 		"commit header should show half-fill icon ◐ when commit is CommitNormal")
 }
 
-func TestCommitBorder_CursorRendersArrowOnEmptyLine(t *testing.T) {
-	// When cursor is on a commit bottom border line, it should render:
-	// - Arrow (▶)
-	// - Space
-	// - Highlighted gutter space (cursor indicator)
-	//
-	// The border line itself is empty (no border characters).
+func TestCommitBorder_CursorRendersArrowOnBorderLine(t *testing.T) {
+	// When cursor is on a commit bottom border line, it should render
+	// the arrow followed by the border characters.
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
 			SHA:     "abc1234",
@@ -778,7 +774,7 @@ func TestCommitBorder_CursorRendersArrowOnEmptyLine(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the line with the cursor arrow (should be the empty border line)
+	// Find the line with the cursor arrow in the content area
 	var cursorLine string
 	for _, line := range lines {
 		if strings.HasPrefix(line, "▶") {
@@ -787,9 +783,8 @@ func TestCommitBorder_CursorRendersArrowOnEmptyLine(t *testing.T) {
 		}
 	}
 
-	require.NotEmpty(t, cursorLine, "should find line with cursor arrow")
-
-	// Should start with arrow followed by space (no border characters)
-	assert.True(t, strings.HasPrefix(cursorLine, "▶ "),
-		"commit bottom border with cursor should be: arrow + space, got: %s", cursorLine)
+	require.NotEmpty(t, cursorLine, "should find content line with cursor arrow")
+	// Arrow should be present at the start of the border line
+	assert.True(t, strings.HasPrefix(cursorLine, "▶"),
+		"commit bottom border with cursor should start with arrow, got: %s", cursorLine)
 }

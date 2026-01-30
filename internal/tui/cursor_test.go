@@ -1180,7 +1180,15 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 	rowToFile := make(map[int]string)
 	for i, row := range rows {
 		if row.fileIndex >= 0 && row.fileIndex < len(fileNames) {
-			rowToFile[i] = fileNames[row.fileIndex]
+			if row.isHeaderTopBorder {
+				// Top border shows the previous file in the status bar
+				prevIdx := row.fileIndex - 1
+				if prevIdx >= 0 {
+					rowToFile[i] = fileNames[prevIdx]
+				}
+			} else {
+				rowToFile[i] = fileNames[row.fileIndex]
+			}
 		}
 	}
 

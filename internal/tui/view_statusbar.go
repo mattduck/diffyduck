@@ -30,6 +30,15 @@ func (m Model) renderTopBar() string {
 		lines = append(lines, fileLine)
 	}
 
+	// In log mode, ensure minimum height of 2 content lines (before divider)
+	// to avoid flickering as the top bar grows/shrinks while scrolling between
+	// commit sections and file sections.
+	if m.hasCommitInfo() {
+		for len(lines) < 2 {
+			lines = append(lines, "")
+		}
+	}
+
 	// Divider line using upper 1/8 block (dim, faint when unfocused)
 	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	if !m.focused {
@@ -53,19 +62,7 @@ func (m *Model) renderCommitLine() string {
 	// Style for SHA (yellow/gold)
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
-	// Build commit line: ▶ ◐ a1b2c3d Subject line    N files +X -Y
-	// Arrow shows when cursor is on any commit section (header or body)
-	var prefix string
-	if m.isOnCommitSection() {
-		if m.focused {
-			prefix = cursorArrowStyle.Render("▶") + " "
-		} else {
-			prefix = unfocusedCursorArrowStyle.Render("▷") + " "
-		}
-	} else {
-		prefix = "  " // Same width as arrow + space
-	}
-
+	// Build commit line: ◐ a1b2c3d Subject line    N files +X -Y
 	// Fold level icon: ◯ = folded, ◐ = normal, ● = expanded
 	var foldIcon string
 	switch commit.FoldLevel {
@@ -134,8 +131,8 @@ func (m *Model) renderCommitLine() string {
 	rightWidth := len(rightText)
 
 	// Calculate available width for subject
-	// Layout: prefix(2) + foldIcon(2) + sha(7) + sep(1) + subject + padding(1+) + rightSection
-	fixedWidth := 2 + 2 + 7 + 1 + 1 + rightWidth
+	// Layout: foldIcon(2) + sha(7) + sep(1) + subject + padding(1+) + rightSection
+	fixedWidth := 2 + 7 + 1 + 1 + rightWidth
 	availableWidth := m.width - fixedWidth
 	if availableWidth < 0 {
 		availableWidth = 0
@@ -153,12 +150,12 @@ func (m *Model) renderCommitLine() string {
 	}
 
 	// Calculate padding between subject and right section
-	padding := m.width - 2 - 2 - 7 - 1 - len(subject) - rightWidth
+	padding := m.width - 2 - 7 - 1 - len(subject) - rightWidth
 	if padding < 1 {
 		padding = 1
 	}
 
-	return prefix + foldIconRendered + sha + " " + subject + strings.Repeat(" ", padding) + rightSection
+	return foldIconRendered + sha + " " + subject + strings.Repeat(" ", padding) + rightSection
 }
 
 // renderFileLine renders the file info line for the top bar.
@@ -223,25 +220,10 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		rightWidth = len(rightText)
 	}
 
-	// Leading arrow indicator - only show when NOT on commit section (or no commit info)
-	// When on commit header or body, the arrow shows on the commit line instead
-	var prefix string
-	showArrow := !m.hasCommitInfo() || !m.isOnCommitSection()
-	if showArrow {
-		if m.focused {
-			prefix = cursorArrowStyle.Render("▶") + " "
-		} else {
-			prefix = unfocusedCursorArrowStyle.Render("▷") + " "
-		}
-	} else {
-		prefix = "  " // Same width as arrow + space
-	}
-
 	// Calculate widths for padding
-	// Layout: prefix(2) + leftSection + content + padding + rightSection
-	prefixWidth := 2 // "▶ " or "  "
+	// Layout: leftSection + content + padding + rightSection
 	contentWidth := lipgloss.Width(content)
-	padding := m.width - prefixWidth - leftSectionWidth - contentWidth - rightWidth
+	padding := m.width - leftSectionWidth - contentWidth - rightWidth
 	if padding < 0 {
 		padding = 0
 	}
@@ -254,7 +236,7 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		leftSection = "  " + foldIconStyle.Render(foldIcon) + " " + fileNum
 	}
 
-	return prefix + leftSection + content + strings.Repeat(" ", padding) + rightSection
+	return leftSection + content + strings.Repeat(" ", padding) + rightSection
 }
 
 // formatRelativeDate converts an ISO 8601 date string to a relative format like "2d ago".

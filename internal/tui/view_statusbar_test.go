@@ -741,10 +741,10 @@ func TestTopBar_DynamicHeight_OnCommitSection(t *testing.T) {
 	topBarOnCommit := m.renderTopBar()
 	linesOnCommit := strings.Split(topBarOnCommit, "\n")
 
-	// Should have 2 lines: commit line + divider (no file line)
-	assert.Equal(t, 2, len(linesOnCommit), "top bar on commit section should have 2 lines (commit + divider)")
+	// Should have 3 lines: commit line + blank (minimum height) + divider
+	assert.Equal(t, 3, len(linesOnCommit), "top bar on commit section should have 3 lines (commit + blank + divider)")
 	assert.Contains(t, linesOnCommit[0], "abc123d", "first line should be commit line with SHA")
-	assert.Contains(t, linesOnCommit[1], "▔", "second line should be divider")
+	assert.Contains(t, linesOnCommit[2], "▔", "third line should be divider")
 
 	// Test 2: Cursor on file (scroll high enough to be past commit body)
 	m.scroll = 15

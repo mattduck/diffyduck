@@ -187,7 +187,7 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 }
 
 func TestView_CursorArrowOnFileHeader(t *testing.T) {
-	// Test that cursor arrow appears on file header when selected
+	// Test that cursor arrow appears on file header in the content area when selected
 	lipgloss.SetColorProfile(termenv.ANSI)
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
@@ -212,24 +212,21 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 	}
 	m.calculateTotalLines()
 	// Position cursor on file header (row 0)
-	// cursorLine = scroll + cursorOffset, so scroll = 0 - cursorOffset
 	m.scroll = 0
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the file header line (contains test.go and fold icon, not the top bar)
+	// Find the content area file header (contains ▶ arrow when cursor is on it)
 	var headerLine string
 	for _, line := range lines {
-		if strings.Contains(line, "test.go") && strings.Contains(line, "●") {
+		if strings.Contains(line, "▶") && strings.Contains(line, "test.go") {
 			headerLine = line
 			break
 		}
 	}
 
-	require.NotEmpty(t, headerLine, "should find file header line with test.go and fold icon")
-	// Header line should contain the arrow character when cursor is on it
-	assert.Contains(t, headerLine, "▶", "file header with cursor should have arrow indicator")
+	require.NotEmpty(t, headerLine, "should find content file header with arrow and test.go")
 }
 
 func TestView_FileHeaderNoVerticalDivider(t *testing.T) {
