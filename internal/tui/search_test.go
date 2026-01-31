@@ -667,41 +667,42 @@ func TestSearch_FoldedContent(t *testing.T) {
 	assert.Equal(t, 2, row)
 }
 
-// TODO: Re-enable when full-file view is added as a separate keybinding.
-// func TestSearch_ExpandedViewWithMoreContent(t *testing.T) {
-// 	m := Model{
-// 		files: []sidebyside.FilePair{
-// 			{
-// 				OldPath:   "a/test.go",
-// 				NewPath:   "b/test.go",
-// 				FoldLevel: sidebyside.FoldExpanded,
-// 				Pairs: []sidebyside.LinePair{
-// 					{
-// 						Old: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
-// 						New: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
-// 					},
-// 				},
-// 				OldContent: []string{"world", "hello", "search"},
-// 				NewContent: []string{"world", "hello", "search"},
-// 			},
-// 		},
-// 		width:       80,
-// 		height:      20,
-// 		keys:        DefaultKeyMap(),
-// 		hscrollStep: DefaultHScrollStep,
-// 	}
-// 	m.calculateTotalLines()
-//
-// 	m.searchQuery = "search"
-// 	_, found := m.findNextMatchRow(0, true)
-// 	assert.False(t, found, "should not find 'search' in normal view")
-//
-// 	m.files[0].FoldLevel = sidebyside.FoldExpanded
-// 	m.calculateTotalLines()
-//
-// 	_, found = m.findNextMatchRow(0, true)
-// 	assert.True(t, found, "should find 'search' in expanded view")
-// }
+func TestSearch_FullFileViewWithMoreContent(t *testing.T) {
+	m := Model{
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
+					},
+				},
+				OldContent: []string{"world", "hello", "search"},
+				NewContent: []string{"world", "hello", "search"},
+			},
+		},
+		width:       80,
+		height:      20,
+		keys:        DefaultKeyMap(),
+		hscrollStep: DefaultHScrollStep,
+	}
+	m.calculateTotalLines()
+
+	// Without ShowFullFile, "search" is not in the visible rows (only in full content)
+	m.searchQuery = "search"
+	_, found := m.findNextMatchRow(0, true)
+	assert.False(t, found, "should not find 'search' in hunk view")
+
+	// Enable full-file view
+	m.files[0].ShowFullFile = true
+	m.calculateTotalLines()
+
+	_, found = m.findNextMatchRow(0, true)
+	assert.True(t, found, "should find 'search' in full-file view")
+}
 
 // Test per-side match tracking
 func TestFindMatchColsOnRowSide(t *testing.T) {

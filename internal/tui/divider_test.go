@@ -52,20 +52,20 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			},
 			expected: 24, // "this is the longest pair" = 24 chars
 		},
-		// TODO: Re-enable when full-file view is added as a separate keybinding.
-		// {
-		// 	name: "expanded uses NewContent",
-		// 	files: []sidebyside.FilePair{
-		// 		{
-		// 			FoldLevel:  sidebyside.FoldExpanded,
-		// 			NewContent: []string{"short", "this is the longest new line", "med"},
-		// 			Pairs: []sidebyside.LinePair{
-		// 				{New: sidebyside.Line{Content: "pairs ignored when expanded"}},
-		// 			},
-		// 		},
-		// 	},
-		// 	expected: 28, // "this is the longest new line" = 28 chars
-		// },
+		{
+			name: "full-file view uses NewContent",
+			files: []sidebyside.FilePair{
+				{
+					FoldLevel:    sidebyside.FoldExpanded,
+					ShowFullFile: true,
+					NewContent:   []string{"short", "this is the longest new line", "med"},
+					Pairs: []sidebyside.LinePair{
+						{New: sidebyside.Line{Content: "pairs ignored when expanded"}},
+					},
+				},
+			},
+			expected: 28, // "this is the longest new line" = 28 chars
+		},
 		{
 			name: "expands tabs before measuring",
 			files: []sidebyside.FilePair{

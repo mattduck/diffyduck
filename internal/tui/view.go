@@ -898,7 +898,11 @@ func (m Model) buildFileBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsL
 		// Part-expanded: structural diff preview
 		return m.buildStructuralDiffRows(fileIdx, headerBoxWidth, contentIsLast, isFolded)
 	default: // FoldExpanded
-		// Full-expanded: diff hunks
+		// Full-file content view (Shift+F) when content is available
+		if fp.ShowFullFile && fp.HasContent() {
+			return m.buildExpandedBodyRows(fp, fileIdx, contentIsLast, isLastFile)
+		}
+		// Default: diff hunks
 		return m.buildHunkRows(fp, fileIdx, contentIsLast, isLastFile)
 	}
 }

@@ -67,7 +67,8 @@ type FilePair struct {
 	Pairs   []LinePair
 
 	// Fold state
-	FoldLevel FoldLevel // current fold level (zero value = FoldNormal)
+	FoldLevel    FoldLevel // current fold level (zero value = FoldNormal)
+	ShowFullFile bool      // when true at FoldExpanded, show full-file content instead of hunks
 
 	// Cached full file content (populated lazily when expanded)
 	OldContent []string // full old file lines (nil until fetched)

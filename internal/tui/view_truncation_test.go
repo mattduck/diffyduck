@@ -177,76 +177,75 @@ func TestBuildRows_TruncationIndicator_NotTruncated(t *testing.T) {
 	}
 }
 
-// TODO: Re-enable when full-file view is added as a separate keybinding.
-// These tests cover expanded view truncation with full-file content.
-//
-// func TestBuildRows_TruncationIndicator_ExpandedView_OldSideOnly(t *testing.T) {
-// 	m := Model{
-// 		focused: true,
-// 		files: []sidebyside.FilePair{
-// 			{
-// 				OldPath:             "a/test.go",
-// 				NewPath:             "b/test.go",
-// 				FoldLevel:           sidebyside.FoldExpanded,
-// 				OldContent:          []string{"line1", "line2"},
-// 				NewContent:          []string{"line1"},
-// 				ContentTruncated:    true,
-// 				OldContentTruncated: true,
-// 				NewContentTruncated: false,
-// 				Pairs:               []sidebyside.LinePair{},
-// 			},
-// 		},
-// 		width:  80,
-// 		height: 20,
-// 		keys:   DefaultKeyMap(),
-// 	}
-// 	m.calculateTotalLines()
-// 	rows := m.buildRows()
-// 	var truncRow *displayRow
-// 	for i := range rows {
-// 		if rows[i].isTruncationIndicator {
-// 			truncRow = &rows[i]
-// 			break
-// 		}
-// 	}
-// 	require.NotNil(t, truncRow)
-// 	assert.True(t, truncRow.truncateOld)
-// 	assert.False(t, truncRow.truncateNew)
-// }
-//
-// func TestBuildRows_TruncationIndicator_ExpandedView_NewSideOnly(t *testing.T) {
-// 	m := Model{
-// 		focused: true,
-// 		files: []sidebyside.FilePair{
-// 			{
-// 				OldPath:             "a/test.go",
-// 				NewPath:             "b/test.go",
-// 				FoldLevel:           sidebyside.FoldExpanded,
-// 				OldContent:          []string{"line1"},
-// 				NewContent:          []string{"line1", "line2"},
-// 				ContentTruncated:    true,
-// 				OldContentTruncated: false,
-// 				NewContentTruncated: true,
-// 				Pairs:               []sidebyside.LinePair{},
-// 			},
-// 		},
-// 		width:  80,
-// 		height: 20,
-// 		keys:   DefaultKeyMap(),
-// 	}
-// 	m.calculateTotalLines()
-// 	rows := m.buildRows()
-// 	var truncRow *displayRow
-// 	for i := range rows {
-// 		if rows[i].isTruncationIndicator {
-// 			truncRow = &rows[i]
-// 			break
-// 		}
-// 	}
-// 	require.NotNil(t, truncRow)
-// 	assert.False(t, truncRow.truncateOld)
-// 	assert.True(t, truncRow.truncateNew)
-// }
+func TestBuildRows_TruncationIndicator_FullFileView_OldSideOnly(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:             "a/test.go",
+				NewPath:             "b/test.go",
+				FoldLevel:           sidebyside.FoldExpanded,
+				ShowFullFile:        true,
+				OldContent:          []string{"line1", "line2"},
+				NewContent:          []string{"line1"},
+				ContentTruncated:    true,
+				OldContentTruncated: true,
+				NewContentTruncated: false,
+				Pairs:               []sidebyside.LinePair{},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+	rows := m.buildRows()
+	var truncRow *displayRow
+	for i := range rows {
+		if rows[i].isTruncationIndicator {
+			truncRow = &rows[i]
+			break
+		}
+	}
+	require.NotNil(t, truncRow)
+	assert.True(t, truncRow.truncateOld)
+	assert.False(t, truncRow.truncateNew)
+}
+
+func TestBuildRows_TruncationIndicator_FullFileView_NewSideOnly(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:             "a/test.go",
+				NewPath:             "b/test.go",
+				FoldLevel:           sidebyside.FoldExpanded,
+				ShowFullFile:        true,
+				OldContent:          []string{"line1"},
+				NewContent:          []string{"line1", "line2"},
+				ContentTruncated:    true,
+				OldContentTruncated: false,
+				NewContentTruncated: true,
+				Pairs:               []sidebyside.LinePair{},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+	rows := m.buildRows()
+	var truncRow *displayRow
+	for i := range rows {
+		if rows[i].isTruncationIndicator {
+			truncRow = &rows[i]
+			break
+		}
+	}
+	require.NotNil(t, truncRow)
+	assert.False(t, truncRow.truncateOld)
+	assert.True(t, truncRow.truncateNew)
+}
 
 func TestBuildRows_TruncationIndicator_NewFile(t *testing.T) {
 	// For a new file (OldPath=/dev/null), only new side can be truncated

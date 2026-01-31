@@ -74,11 +74,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case FileContentLoadedMsg:
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
 			// Check if loading this file's content affects visible rows.
-			// Content loading no longer directly affects row layout (structural diff
-			// rows only appear after highlighting completes via storeHighlightSpans).
-			// Scroll preservation is still needed when structural diff populates, but
-			// that's handled by storeHighlightSpans, not here.
-			affectsVisibleRows := false
+			// In full-file view, content arrival changes the row layout directly.
+			// Otherwise, content loading only affects layout after highlighting
+			// completes via storeHighlightSpans.
+			affectsVisibleRows := m.files[msg.FileIndex].ShowFullFile
 
 			// Capture cursor identity before content changes the row layout
 			var identity cursorRowIdentity
@@ -334,6 +333,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case matchesKey(msg, keys.FoldToggleAll):
 		return m.handleFoldToggleAll()
+
+	case matchesKey(msg, keys.FullFileToggle):
+		return m.handleFullFileToggle()
 
 	case matchesKey(msg, keys.Enter):
 		// Enter starts comment mode on commentable lines
@@ -692,6 +694,10 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 
 	newLevel := m.nextFoldLevelForFile(m.files[fileIdx])
 	m.files[fileIdx].FoldLevel = newLevel
+	// Clear full-file view when cycling away from FoldExpanded
+	if newLevel != sidebyside.FoldExpanded {
+		m.files[fileIdx].ShowFullFile = false
+	}
 
 	// If file is expanded beyond FoldFolded, ensure parent commit is at least CommitNormal
 	// (so the file is visible), but don't force CommitExpanded (keep commit info fold state independent)
@@ -711,6 +717,194 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	m.adjustScrollToRow(newRowIdx)
 
 	return m, nil
+}
+
+// handleFullFileToggle toggles the full-file content view for the current file.
+// When enabled, FoldExpanded shows full file content (with diff alignment) instead of hunks.
+// This is independent of the fold cycle — Tab still cycles normally.
+func (m Model) handleFullFileToggle() (tea.Model, tea.Cmd) {
+	// Not available in pager mode (no fetcher)
+	if m.pagerMode {
+		return m, nil
+	}
+
+	fileIdx := m.currentFileIndex()
+	if fileIdx < 0 || fileIdx >= len(m.files) {
+		return m, nil
+	}
+
+	// Capture cursor identity before layout change
+	identity := m.getCursorRowIdentity()
+
+	// When cursor is on a hunk separator, determine a target line number to
+	// navigate to after the layout changes (separators disappear in full-file view).
+	targetNewLineNum := m.fullFileToggleSeparatorTarget(fileIdx)
+
+	// If file is not at FoldExpanded, expand it first
+	if m.files[fileIdx].FoldLevel != sidebyside.FoldExpanded {
+		m.files[fileIdx].FoldLevel = sidebyside.FoldExpanded
+		// Ensure parent commit is visible
+		if len(m.commits) > 0 {
+			commitIdx := m.commitForFile(fileIdx)
+			if commitIdx >= 0 && commitIdx < len(m.commits) {
+				if m.commits[commitIdx].FoldLevel == sidebyside.CommitFolded {
+					m.commits[commitIdx].FoldLevel = sidebyside.CommitNormal
+				}
+			}
+		}
+	}
+
+	// Toggle full-file view
+	m.files[fileIdx].ShowFullFile = !m.files[fileIdx].ShowFullFile
+
+	m.calculateTotalLines()
+
+	// Position cursor after layout change
+	if targetNewLineNum > 0 && m.files[fileIdx].ShowFullFile {
+		// Cursor was on a separator — find the target line in the new layout
+		newRowIdx := m.findRowByNewLineNum(fileIdx, targetNewLineNum)
+		m.adjustScrollToRow(newRowIdx)
+	} else {
+		// Normal identity-based scroll preservation
+		newRowIdx := m.findRowOrNearestAbove(identity)
+		m.adjustScrollToRow(newRowIdx)
+	}
+
+	// If enabling full-file and content not yet loaded, fetch it
+	if m.files[fileIdx].ShowFullFile && !m.files[fileIdx].HasContent() {
+		return m, m.FetchFileContent(fileIdx)
+	}
+
+	return m, nil
+}
+
+// fullFileToggleSeparatorTarget determines the target new-side line number when
+// toggling full-file view while the cursor is on a hunk separator.
+// Returns 0 if cursor is not on a separator.
+//
+// Rules:
+//   - SeparatorTop: go to last content line above the separator. If there is
+//     no content above (first hunk in file), fall through to Separator logic.
+//   - SeparatorBottom: go to first content line below the separator.
+//   - Separator (middle): if a breadcrumb exists, go to the innermost entry's
+//     start line; otherwise go to the first content line below.
+func (m Model) fullFileToggleSeparatorTarget(fileIdx int) int {
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return 0
+	}
+	row := rows[cursorPos]
+
+	switch row.kind {
+	case RowKindSeparatorTop:
+		// Go to last content line above the separator
+		if lineNum := m.separatorContentAbove(rows, cursorPos, fileIdx); lineNum > 0 {
+			return lineNum
+		}
+		// First separator in file — no content above. Fall through to
+		// middle-separator logic: try breadcrumb, then line below.
+		return m.separatorMiddleTarget(rows, cursorPos, fileIdx)
+
+	case RowKindSeparatorBottom:
+		return m.separatorContentBelow(rows, cursorPos, fileIdx)
+
+	case RowKindSeparator:
+		return m.separatorMiddleTarget(rows, cursorPos, fileIdx)
+	}
+
+	return 0
+}
+
+// separatorContentAbove returns the new-side line number of the last content row
+// above cursorPos in the same file, or 0 if none found.
+func (m Model) separatorContentAbove(rows []displayRow, cursorPos int, fileIdx int) int {
+	for i := cursorPos - 1; i >= 0; i-- {
+		if rows[i].kind == RowKindContent && rows[i].fileIndex == fileIdx {
+			if rows[i].pair.New.Num > 0 {
+				return rows[i].pair.New.Num
+			}
+			if rows[i].pair.Old.Num > 0 {
+				return rows[i].pair.Old.Num
+			}
+		}
+	}
+	return 0
+}
+
+// separatorContentBelow returns the new-side line number of the first content row
+// below cursorPos in the same file, or 0 if none found.
+func (m Model) separatorContentBelow(rows []displayRow, cursorPos int, fileIdx int) int {
+	for i := cursorPos + 1; i < len(rows); i++ {
+		if rows[i].kind == RowKindContent && rows[i].fileIndex == fileIdx {
+			if rows[i].pair.New.Num > 0 {
+				return rows[i].pair.New.Num
+			}
+			if rows[i].pair.Old.Num > 0 {
+				return rows[i].pair.Old.Num
+			}
+		}
+		if rows[i].fileIndex != fileIdx {
+			break
+		}
+	}
+	return 0
+}
+
+// separatorMiddleTarget returns the target line for a middle separator row:
+// use the breadcrumb's innermost entry start line if available, otherwise
+// fall back to the first content line below.
+func (m Model) separatorMiddleTarget(rows []displayRow, cursorPos int, fileIdx int) int {
+	// Find the Separator row (middle) in this separator block for its chunkStartLine
+	sepRow := rows[cursorPos]
+	if sepRow.kind != RowKindSeparator {
+		// We're on Top or Bottom — scan for the middle row in this block
+		for i := cursorPos - 1; i <= cursorPos+2 && i < len(rows); i++ {
+			if i >= 0 && rows[i].kind == RowKindSeparator && rows[i].fileIndex == fileIdx {
+				sepRow = rows[i]
+				break
+			}
+		}
+	}
+
+	if sepRow.chunkStartLine > 0 {
+		entries := m.getStructureAtLine(fileIdx, sepRow.chunkStartLine)
+		if len(entries) > 0 {
+			return entries[len(entries)-1].StartLine
+		}
+	}
+	// No breadcrumb — go to first content line below
+	return m.separatorContentBelow(rows, cursorPos, fileIdx)
+}
+
+// findRowByNewLineNum finds the row in the current layout that matches the given
+// new-side line number for a specific file. Falls back to the nearest row above.
+func (m Model) findRowByNewLineNum(fileIdx int, targetLineNum int) int {
+	rows := m.cachedRows
+	if !m.rowsCacheValid {
+		rows = m.buildRows()
+	}
+
+	bestIdx := 0
+	for i, row := range rows {
+		if row.fileIndex != fileIdx {
+			continue
+		}
+		if row.kind != RowKindContent {
+			continue
+		}
+		if row.pair.New.Num == targetLineNum {
+			return i
+		}
+		// Track the closest content row at or before the target
+		if row.pair.New.Num > 0 && row.pair.New.Num < targetLineNum {
+			bestIdx = i
+		}
+	}
+	return bestIdx
 }
 
 // handleFoldToggleAll cycles the fold level for all commits.

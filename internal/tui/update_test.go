@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
 
 func makeTestModel(numLines int) Model {
@@ -1559,4 +1560,416 @@ func TestFocusProximity_NearbyHunksIncluded(t *testing.T) {
 	assert.True(t, hunk1InFocus, "hunk 1 (cursor hunk) should be in focus")
 	assert.True(t, hunk2InFocus, "hunk 2 (10 lines away, within threshold) should be in focus")
 	assert.False(t, hunk3InFocus, "hunk 3 (70 lines away, outside threshold) should NOT be in focus")
+}
+
+func TestFullFileToggle_Basic(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+					},
+				},
+				OldContent: []string{"line1", "line2"},
+				NewContent: []string{"line1", "line2"},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   80,
+		height:  20,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	assert.False(t, m.files[0].ShowFullFile)
+
+	// Simulate Shift+F
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	assert.True(t, m.files[0].ShowFullFile, "ShowFullFile should be true after toggle")
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel, "FoldLevel should remain FoldExpanded")
+
+	// Toggle off
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+	assert.False(t, m.files[0].ShowFullFile, "ShowFullFile should be false after second toggle")
+}
+
+func TestFullFileToggle_ExpandsFromFolded(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldFolded,
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+					},
+				},
+				OldContent: []string{"line1"},
+				NewContent: []string{"line1"},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   80,
+		height:  20,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel, "should auto-expand to FoldExpanded")
+	assert.True(t, m.files[0].ShowFullFile, "ShowFullFile should be true")
+}
+
+func TestFullFileToggle_TabClearsShowFullFile(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:      "a/test.go",
+				NewPath:      "b/test.go",
+				FoldLevel:    sidebyside.FoldExpanded,
+				ShowFullFile: true,
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
+					},
+				},
+			},
+		},
+		width:  80,
+		height: 20,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Tab cycles away from FoldExpanded to FoldFolded
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	assert.False(t, m.files[0].ShowFullFile, "Tab should clear ShowFullFile when cycling away from FoldExpanded")
+}
+
+func TestFullFileToggle_SeparatorTop_GoesToLineAbove(t *testing.T) {
+	// File with two hunks: lines 1-3 and lines 10-12 (gap creates separator)
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 3, Content: "c", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "c", Type: sidebyside.Context}},
+					// Gap: lines 4-9 are missing → hunk separator here
+					{Old: sidebyside.Line{Num: 10, Content: "j", Type: sidebyside.Context}, New: sidebyside.Line{Num: 10, Content: "j", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 11, Content: "k", Type: sidebyside.Context}, New: sidebyside.Line{Num: 11, Content: "k", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
+				NewContent: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   80,
+		height:  40,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find the SeparatorTop row
+	rows := m.buildRows()
+	sepTopIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+			sepTopIdx = i
+			break
+		}
+	}
+	require.True(t, sepTopIdx >= 0, "should have a SeparatorTop row")
+
+	// Position cursor on separator top
+	m.scroll = sepTopIdx
+
+	// Toggle full-file view
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	// Cursor should be on new-side line 3 (last content line above separator)
+	newRows := m.buildRows()
+	cursorRow := newRows[m.scroll]
+	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
+	assert.Equal(t, 3, cursorRow.pair.New.Num, "cursor should be on line 3 (last line above separator)")
+}
+
+func TestFullFileToggle_SeparatorBottom_GoesToLineBelow(t *testing.T) {
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}},
+					// Gap: lines 3-9 missing → separator
+					{Old: sidebyside.Line{Num: 10, Content: "j", Type: sidebyside.Context}, New: sidebyside.Line{Num: 10, Content: "j", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+				NewContent: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   80,
+		height:  40,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find the SeparatorBottom row
+	rows := m.buildRows()
+	sepBottomIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorBottom && row.fileIndex == 0 {
+			sepBottomIdx = i
+			break
+		}
+	}
+	require.True(t, sepBottomIdx >= 0, "should have a SeparatorBottom row")
+
+	m.scroll = sepBottomIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	newRows := m.buildRows()
+	cursorRow := newRows[m.scroll]
+	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
+	assert.Equal(t, 10, cursorRow.pair.New.Num, "cursor should be on line 10 (first line below separator)")
+}
+
+func TestFullFileToggle_FirstSeparatorTop_GoesToLineBelow(t *testing.T) {
+	// First hunk starts at line 5 — the separator at the top has no content above it.
+	// SeparatorTop should fall through to line below (like middle separator without breadcrumb).
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 5, Content: "e", Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Content: "e", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 6, Content: "f", Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Content: "f", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"a", "b", "c", "d", "e", "f"},
+				NewContent: []string{"a", "b", "c", "d", "e", "f"},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   80,
+		height:  40,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// First hunk starts at line 5, so there's a separator at the top with no content above
+	rows := m.buildRows()
+	sepTopIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+			sepTopIdx = i
+			break
+		}
+	}
+	require.True(t, sepTopIdx >= 0, "should have a SeparatorTop row")
+
+	m.scroll = sepTopIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	newRows := m.buildRows()
+	cursorRow := newRows[m.scroll]
+	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
+	assert.Equal(t, 5, cursorRow.pair.New.Num, "cursor should land on line 5 (first content line below, since no content above)")
+}
+
+func TestFullFileToggle_SeparatorMiddle_WithBreadcrumb(t *testing.T) {
+	// Middle separator with a breadcrumb should navigate to the innermost
+	// structure entry's StartLine.
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}},
+					// Gap → separator. Next chunk starts at line 20, which is inside a func starting at line 15.
+					{Old: sidebyside.Line{Num: 20, Content: "t", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "t", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 21, Content: "u", Type: sidebyside.Context}, New: sidebyside.Line{Num: 21, Content: "u", Type: sidebyside.Context}},
+				},
+				OldContent: make([]string, 25),
+				NewContent: make([]string, 25),
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   80,
+		height:  40,
+		keys:    DefaultKeyMap(),
+		// Provide structure so the breadcrumb resolves
+		structureMaps: map[int]*FileStructure{
+			0: {
+				NewStructure: &structure.Map{
+					Entries: []structure.Entry{
+						{StartLine: 15, EndLine: 25, Name: "myFunc", Kind: "func"},
+					},
+				},
+			},
+		},
+	}
+	// Fill content so HasContent() is true
+	for i := range m.files[0].OldContent {
+		m.files[0].OldContent[i] = string(rune('a' + i%26))
+	}
+	for i := range m.files[0].NewContent {
+		m.files[0].NewContent[i] = string(rune('a' + i%26))
+	}
+	m.calculateTotalLines()
+
+	// Find the middle Separator row
+	rows := m.buildRows()
+	sepIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparator && row.fileIndex == 0 {
+			sepIdx = i
+			break
+		}
+	}
+	require.True(t, sepIdx >= 0, "should have a Separator row")
+
+	m.scroll = sepIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	newRows := m.buildRows()
+	cursorRow := newRows[m.scroll]
+	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
+	assert.Equal(t, 15, cursorRow.pair.New.Num, "cursor should land on line 15 (function start from breadcrumb)")
+}
+
+func TestFullFileToggle_SeparatorMiddle_NoBreadcrumb(t *testing.T) {
+	// Middle separator without structure data should go to the first content
+	// line below the separator.
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}},
+					// Gap → separator
+					{Old: sidebyside.Line{Num: 10, Content: "j", Type: sidebyside.Context}, New: sidebyside.Line{Num: 10, Content: "j", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+				NewContent: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   80,
+		height:  40,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find the middle Separator row
+	rows := m.buildRows()
+	sepIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparator && row.fileIndex == 0 {
+			sepIdx = i
+			break
+		}
+	}
+	require.True(t, sepIdx >= 0, "should have a Separator row")
+
+	m.scroll = sepIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	newRows := m.buildRows()
+	cursorRow := newRows[m.scroll]
+	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
+	assert.Equal(t, 10, cursorRow.pair.New.Num, "cursor should land on line 10 (first content below, no breadcrumb)")
+}
+
+func TestFullFileToggle_OffFromFullFile_PreservesPosition(t *testing.T) {
+	// Toggling full-file view OFF should use identity-based scroll and land
+	// back on the same content line in hunk view.
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:      "a/test.go",
+				NewPath:      "b/test.go",
+				FoldLevel:    sidebyside.FoldExpanded,
+				ShowFullFile: true,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 2, Content: "B", Type: sidebyside.Added}},
+					{Old: sidebyside.Line{Num: 3, Content: "c", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "c", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"a", "b", "c", "d", "e"},
+				NewContent: []string{"a", "B", "c", "d", "e"},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   80,
+		height:  40,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Position cursor on line 3 (a content row present in both views)
+	rows := m.buildRows()
+	for i, row := range rows {
+		if row.kind == RowKindContent && row.fileIndex == 0 && row.pair.New.Num == 3 {
+			m.scroll = i
+			break
+		}
+	}
+
+	// Toggle OFF full-file view
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	assert.False(t, m.files[0].ShowFullFile)
+	newRows := m.buildRows()
+	cursorRow := newRows[m.scroll]
+	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should still be on a content row")
+	assert.Equal(t, 3, cursorRow.pair.New.Num, "cursor should stay on line 3 after toggling off")
 }

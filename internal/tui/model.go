@@ -976,6 +976,19 @@ func (m *Model) updateMaxNewContentWidth() {
 			continue // only measure content width for hunk view (FoldExpanded)
 		}
 
+		// In full-file view, measure full content lines instead of pairs
+		if fp.ShowFullFile && fp.HasContent() {
+			for _, line := range fp.NewContent {
+				if line != "" {
+					w := displayWidth(expandTabs(line))
+					if w > m.maxNewContentWidth {
+						m.maxNewContentWidth = w
+					}
+				}
+			}
+			continue
+		}
+
 		for _, pair := range fp.Pairs {
 			if pair.New.Content != "" {
 				w := displayWidth(expandTabs(pair.New.Content))
