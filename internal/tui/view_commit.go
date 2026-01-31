@@ -379,12 +379,14 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	case sidebyside.CommitFolded:
 		// No trailing indicator
 	default:
-		// CommitNormal and CommitExpanded: full-width border to screen edge
+		// CommitNormal and CommitExpanded: pad to screen edge with ║ at last column
 		if m.width > 0 {
 			headerLineWidth := row.headerBoxWidth
-			trailingFill := m.width - headerLineWidth - 1 // -1 for ╔
-			if trailingFill > 0 {
-				result += " " + commitTreeStyle.Render("╔"+strings.Repeat("═", trailingFill))
+			padding := m.width - headerLineWidth - 1 // -1 for ║
+			if padding > 0 {
+				result += strings.Repeat(" ", padding) + commitTreeStyle.Render("●")
+			} else if padding == 0 {
+				result += commitTreeStyle.Render("●")
 			}
 		}
 	}
@@ -452,12 +454,14 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 	if row.headerMode == HeaderSingleLine {
 		// Folded commit info: no trailing indicator
 	} else if m.width > 0 {
-		// Expanded: full-width border to screen edge
+		// Expanded: full-width border to screen edge, last char is ●
 		treePrefixWidth := treeWidth(len(row.treePath.Ancestors), true)
 		headerLineWidth := treePrefixWidth + row.headerBoxWidth - 2
 		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
-		if trailingFill > 0 {
-			result += " " + greyStyle.Render("┏"+strings.Repeat("━", trailingFill))
+		if trailingFill > 1 {
+			result += " " + greyStyle.Render("┏"+strings.Repeat("━", trailingFill-1)+"●")
+		} else if trailingFill > 0 {
+			result += " " + greyStyle.Render("┏●")
 		}
 	}
 

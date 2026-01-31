@@ -544,7 +544,7 @@ func (m Model) buildRows() []displayRow {
 					renderSubjWidth = maxCommitSubjectWidth
 				}
 				// Recompute with shared fixed columns + per-commit subject/author
-				useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitTimeWidth + 1 + authorWidth + 1 + renderSubjWidth + 1 // +1 for gap before ╔
+				useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitTimeWidth + 1 + authorWidth + 1 + renderSubjWidth
 			}
 
 			rows = append(rows, displayRow{
@@ -1324,7 +1324,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 		if firstCommitUnfolded {
 			// Render first commit's top border in the margin (not cursor-selectable)
-			visible = append(visible, m.renderCommitBorderLine(true, true, 0, false, TreePath{}))
+			visible = append(visible, m.renderCommitBorderLine(true, true, false, TreePath{}))
 		} else if isDiffView && firstFileUnfolded && rows[0].isHeader {
 			// Render first file's top border (matches the header box style)
 			// In diff view, files are roots so no tree ancestors

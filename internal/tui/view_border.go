@@ -139,7 +139,7 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMod
 		borderWidth = 1
 	}
 
-	// Use heavy box-drawing characters for underline: ┗ corner and ━ horizontal
+	// Use heavy box-drawing characters for underline: ┗ corner, ━ horizontal, ┛ closing corner
 	corner := "┗"
 	borderLine := strings.Repeat("━", borderWidth) + "┛"
 
@@ -161,10 +161,10 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMod
 
 // renderCommitBorderLine renders a commit-level horizontal border line.
 // Used for commit header top/bottom borders, including the first commit's margin border.
-// The border spans contentWidth if provided (>0), otherwise full width minus margin.
+// The bottom border extends full-width to the screen edge.
 // Uses yellow (commitTreeStyle) when visible.
 // isTop determines the tree connector: currently top border renders empty, bottom uses ╞.
-func (m Model) renderCommitBorderLine(visible bool, isTop bool, contentWidth int, isCursorRow bool, treePath TreePath) string {
+func (m Model) renderCommitBorderLine(visible bool, isTop bool, isCursorRow bool, treePath TreePath) string {
 	// Top border: render as empty line with tree continuation
 	if isTop {
 		return renderEmptyTreeRow(treePath, isCursorRow, m.focused, false)
@@ -180,15 +180,16 @@ func (m Model) renderCommitBorderLine(visible bool, isTop bool, contentWidth int
 	connector := "╞"
 	borderChar := "═"
 
-	// Border width: use contentWidth if provided, otherwise full width
-	// Subtract 1 so ╝ aligns with ╔ on the header line
-	// (border = margin(1) + ╞(1) + ═*(borderWidth-1) + ╝(1), ╝ at column borderWidth+1)
-	borderWidth := contentWidth - 1
-	if contentWidth <= 0 {
-		borderWidth = m.width - 2
-	}
+	// Border extends full width to the screen edge, ending with ╝
+	// Layout: margin(1) + ╞(1) + ═*(borderWidth-1) + ╝(1)
+	borderWidth := m.width - 2
 	if borderWidth < 1 {
 		borderWidth = 1
+	}
+
+	border := strings.Repeat(borderChar, borderWidth-1) + "╛"
+	if borderWidth == 1 {
+		border = "╛"
 	}
 
 	if isCursorRow {
@@ -198,21 +199,21 @@ func (m Model) renderCommitBorderLine(visible bool, isTop bool, contentWidth int
 		} else {
 			arrow = unfocusedCursorArrowStyle.Render("▷")
 		}
-		// Arrow replaces margin, then connector (yellow) + border + closing corner
-		return arrow + commitTreeStyle.Render(connector) + borderStyle.Render(strings.Repeat(borderChar, borderWidth-1)+"╝")
+		// Arrow replaces margin, then connector (yellow) + border + ╝
+		return arrow + commitTreeStyle.Render(connector) + borderStyle.Render(border)
 	}
 
-	// Margin space + connector (yellow) + border + closing corner
-	return " " + commitTreeStyle.Render(connector) + borderStyle.Render(strings.Repeat(borderChar, borderWidth-1)+"╝")
+	// Margin space + connector (yellow) + border + ╝
+	return " " + commitTreeStyle.Render(connector) + borderStyle.Render(border)
 }
 
 // renderCommitHeaderTopBorder renders the top border of the commit header.
 func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) string {
-	return m.renderCommitBorderLine(row.headerMode == HeaderThreeLine, true, 0, isCursorRow, row.treePath)
+	return m.renderCommitBorderLine(row.headerMode == HeaderThreeLine, true, isCursorRow, row.treePath)
 }
 
 // renderCommitHeaderBottomBorder renders the bottom border of the commit header.
-// The border width matches the commit header content width.
+// The border extends full-width to the screen edge.
 func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) string {
-	return m.renderCommitBorderLine(row.headerMode == HeaderThreeLine, false, row.headerBoxWidth, isCursorRow, row.treePath)
+	return m.renderCommitBorderLine(row.headerMode == HeaderThreeLine, false, isCursorRow, row.treePath)
 }

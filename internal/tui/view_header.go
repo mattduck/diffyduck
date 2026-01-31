@@ -180,13 +180,15 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	case foldLevel == sidebyside.FoldNormal && m.width > 0:
 		result += boxPadding + fileStatusStyle.Render("┏━━…")
 	case headerMode != HeaderSingleLine && m.width > 0:
-		// FoldExpanded: full-width border
+		// FoldExpanded: full-width border to screen edge, last char is ●
 		result += boxPadding
 		treePrefixWidth := treeWidth(len(treePath.Ancestors), true)
 		headerLineWidth := treePrefixWidth + headerBoxWidth - 2
 		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
-		if trailingFill > 0 {
-			result += fileStatusStyle.Render("┏" + strings.Repeat("━", trailingFill))
+		if trailingFill > 1 {
+			result += fileStatusStyle.Render("┏" + strings.Repeat("━", trailingFill-1) + "●")
+		} else if trailingFill > 0 {
+			result += fileStatusStyle.Render("┏●")
 		}
 	default:
 		result += boxPadding
