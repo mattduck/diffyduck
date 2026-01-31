@@ -178,7 +178,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	case foldLevel == sidebyside.FoldFolded:
 		// No trailing indicator
 	case foldLevel == sidebyside.FoldNormal && m.width > 0:
-		result += boxPadding + fileStatusStyle.Render("┏━━…")
+		result += boxPadding + fileStatusStyle.Render("┏━━◐")
 	case headerMode != HeaderSingleLine && m.width > 0:
 		// FoldExpanded: full-width border to screen edge, last char is ●
 		result += boxPadding
