@@ -502,8 +502,8 @@ func (m Model) buildRows() []displayRow {
 			// Subsequent commits get their top border from the previous commit's separator row
 
 			// Calculate actual content width for this commit's header
-			// Layout: prefix(1) + icon(1) + space(1) + sha(7) + space(1) + files + space(1)
-			//         + added + space(1) + removed + space(1) + time + space(1) + author + space(1) + subject
+			// Layout: prefix(1) + icon(1) + space(1) + sha(7) + space(1) + added + space(1)
+			//         + removed + space(1) + files + space(1) + time + space(1) + author + space(1) + subject
 			startIdx := m.commitFileStarts[commitIdx]
 			endIdx := len(m.files)
 			if commitIdx+1 < len(m.commits) {
@@ -529,8 +529,8 @@ func (m Model) buildRows() []displayRow {
 			if subjectWidth > 120 {
 				subjectWidth = 120
 			}
-			// Total: prefix(1) + icon(1) + space(1) + sha(7) + space(1) + files + space(1)
-			//        + added + space(1) + removed + space(1) + time + space(1) + author + space(1) + subject
+			// Total: prefix(1) + icon(1) + space(1) + sha(7) + space(1) + added + space(1)
+			//        + removed + space(1) + files + space(1) + time + space(1) + author + space(1) + subject
 			commitHeaderWidth := 1 + 1 + 1 + 7 + 1 + filesWidth + 1 + addedWidth + 1 + removedWidth + 1 + timeWidth + 1 + authorWidth + 1 + subjectWidth
 
 			// When unfolded, keep shared column widths for alignment but use

@@ -275,7 +275,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		cachedCommitFileCount: 2,  // "99" files
 		cachedCommitAddWidth:  5,  // "+9999"
 		cachedCommitRemWidth:  5,  // "-9999"
-		cachedCommitTimeWidth: 9,  // "12 months"
+		cachedCommitTimeWidth: 3,  // "16h"
 		cachedCommitSubjWidth: 60, // reasonable subject length
 		cachedStructDiffWidth: 0,  // structural diff width; 0 until 'r' refresh
 	}

@@ -195,8 +195,8 @@ func styleParams(params string, punctStyle, typeStyle, paramStyle lipgloss.Style
 // renderCommitHeaderRow renders a commit header row in the content area.
 // This is shown when viewing a commit and can be folded/unfolded.
 //
-// Layout: [cursor] [fold] [sha] [files] [+added] [-removed] [time] [author] [subject]
-// Fixed columns (left): sha, files, +added, -removed, time, author (max 15 chars)
+// Layout: [cursor] [fold] [sha] [+added] [-removed] [files] [time] [author] [subject]
+// Fixed columns (left): sha, +added, -removed, files, time, author (max 15 chars)
 // Dynamic column (right): subject (max 120 chars)
 func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	// Use commitIndex from the row to get the correct commit
@@ -272,7 +272,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	}
 
 	// Build fixed columns
-	// Format: [prefix][fold] [sha] [files] [+added] [-removed] [time] [author] [subject]
+	// Format: [prefix][fold] [sha] [+added] [-removed] [files] [time] [author] [subject]
 
 	shaText := commitInfo.ShortSHA()
 	filesText := "-"
@@ -333,9 +333,9 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	fixedPart := prefix +
 		foldIconStyle.Render(foldIcon) + " " +
 		shaStyle.Render(shaText) + " " +
-		dimStyle.Render(filesText) + " " +
 		styledAdded + " " +
 		styledRemoved + " " +
+		dimStyle.Render(filesText) + " " +
 		dimStyle.Render(timeText) + " " +
 		authorStyle.Render(author)
 
