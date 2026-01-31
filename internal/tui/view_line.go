@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -449,11 +450,13 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 // side is which side is being rendered, currentSide is which side has the current match.
 func (m Model) applyInlineSpans(original, expanded, visible string, spans []inlinediff.Span, syntaxSpans []highlight.Span, lineType sidebyside.LineType, isCursorRow, shouldSearch bool, currentIdx, side, currentSide int) string {
 	// Highlight style matches the line type (green for added, red for removed)
-	var highlightStyle lipgloss.Style
+	var highlightStyle, highlightWhitespaceStyle lipgloss.Style
 	if lineType == sidebyside.Added {
 		highlightStyle = inlineAddedStyle
+		highlightWhitespaceStyle = inlineAddedWhitespaceStyle
 	} else {
 		highlightStyle = inlineRemovedStyle
+		highlightWhitespaceStyle = inlineRemovedWhitespaceStyle
 	}
 
 	// Map byte positions to display columns in the expanded string
@@ -576,7 +579,11 @@ func (m Model) applyInlineSpans(original, expanded, visible string, spans []inli
 			}
 
 			if inHighlight {
-				result.WriteString(highlightStyle.Render(string(vr)))
+				if unicode.IsSpace(vr) {
+					result.WriteString(highlightWhitespaceStyle.Render(string(vr)))
+				} else {
+					result.WriteString(highlightStyle.Render(string(vr)))
+				}
 			} else {
 				// Use syntax highlighting as base layer
 				foundStyle := false

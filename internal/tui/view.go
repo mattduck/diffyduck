@@ -31,6 +31,10 @@ var (
 	inlineAddedStyle   = lipgloss.NewStyle().Underline(true).Bold(true).Foreground(lipgloss.Color("10"))
 	inlineRemovedStyle = lipgloss.NewStyle().Underline(true).Bold(true).Foreground(lipgloss.Color("9"))
 
+	// Inline diff highlight for whitespace characters: add background so spaces are visible
+	inlineAddedWhitespaceStyle   = lipgloss.NewStyle().Background(lipgloss.Color("10"))
+	inlineRemovedWhitespaceStyle = lipgloss.NewStyle().Background(lipgloss.Color("9"))
+
 	// Search highlight styles (black text on yellow background)
 	searchMatchStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
 	searchCurrentMatchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("9"))
