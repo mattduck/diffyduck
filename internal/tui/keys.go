@@ -24,6 +24,7 @@ type KeyMap struct {
 	FullFileToggle []string
 	Enter          []string // used for commit fold toggle and context expansion
 	Yank           []string
+	YankAll        []string
 	RefreshLayout  []string // recalculate dynamic column widths
 }
 
@@ -50,6 +51,7 @@ func DefaultKeyMap() KeyMap {
 		FullFileToggle: []string{"F"},
 		Enter:          []string{"enter"},
 		Yank:           []string{"y"},
+		YankAll:        []string{"Y"},
 		RefreshLayout:  []string{"r"},
 	}
 }

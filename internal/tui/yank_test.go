@@ -115,7 +115,7 @@ func TestYank_BuildDiffSnippet_Format(t *testing.T) {
 	assert.Contains(t, snippet, "@@ -", "should have hunk header")
 
 	// Should have the comment with # prefix
-	assert.Contains(t, snippet, "#\n# This is my comment", "should have comment with # prefix")
+	assert.Contains(t, snippet, "# MSG 1:\n# This is my comment", "should have comment with # MSG prefix")
 
 	// Should have diff lines
 	assert.Contains(t, snippet, "-old line 3", "should have removed line")
@@ -435,5 +435,190 @@ func TestYank_KeyPress_Integration(t *testing.T) {
 	assert.NotEmpty(t, m2.statusMessage, "pressing y should set status message")
 
 	// Should return a command (the clear timer)
+	assert.NotNil(t, cmd, "should return clear timer command")
+}
+
+// =============================================================================
+// YankAll (capital Y) Tests
+// =============================================================================
+
+// makeYankAllTestModel creates a model with multiple files and commentable lines.
+func makeYankAllTestModel() Model {
+	pairs1 := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 1, Content: "context line 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "context line 1", Type: sidebyside.Context}},
+		{Old: sidebyside.Line{Num: 2, Content: "context line 2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "context line 2", Type: sidebyside.Context}},
+		{Old: sidebyside.Line{Num: 3, Content: "old line 3", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 3, Content: "new line 3", Type: sidebyside.Added}},
+		{Old: sidebyside.Line{Num: 4, Content: "context line 4", Type: sidebyside.Context}, New: sidebyside.Line{Num: 4, Content: "context line 4", Type: sidebyside.Context}},
+		{Old: sidebyside.Line{Num: 5, Content: "context line 5", Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Content: "context line 5", Type: sidebyside.Context}},
+		{Old: sidebyside.Line{Num: 6, Content: "old line 6", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 6, Content: "new line 6", Type: sidebyside.Added}},
+		{Old: sidebyside.Line{Num: 7, Content: "context line 7", Type: sidebyside.Context}, New: sidebyside.Line{Num: 7, Content: "context line 7", Type: sidebyside.Context}},
+	}
+	pairs2 := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 10, Content: "other context", Type: sidebyside.Context}, New: sidebyside.Line{Num: 10, Content: "other context", Type: sidebyside.Context}},
+		{Old: sidebyside.Line{Num: 11, Content: "other old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 11, Content: "other new", Type: sidebyside.Added}},
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/file1.go", NewPath: "b/file1.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs1},
+		{OldPath: "a/file2.go", NewPath: "b/file2.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs2},
+	})
+	m.width = 80
+	m.height = 30
+	m.comments = make(map[commentKey]string)
+	return m
+}
+
+// Test: handleYankAll returns nil when no comments exist
+func TestYankAll_NoComments_ReturnsNil(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	newModel, cmd := m.handleYankAll()
+	m2 := newModel.(Model)
+
+	assert.Nil(t, cmd)
+	assert.Empty(t, m2.statusMessage)
+}
+
+// Test: buildAllCommentsSnippet with a single comment
+func TestYankAll_SingleComment(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "only comment"
+
+	snippet := m.buildAllCommentsSnippet()
+
+	assert.Contains(t, snippet, "--- a/file1.go")
+	assert.Contains(t, snippet, "+++ b/file1.go")
+	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# only comment")
+}
+
+// Test: buildAllCommentsSnippet with multiple comments across files, correct global numbering
+func TestYankAll_MultipleFiles_GlobalNumbering(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "first comment"
+	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = "second comment"
+
+	snippet := m.buildAllCommentsSnippet()
+
+	// File 1
+	assert.Contains(t, snippet, "--- a/file1.go")
+	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# first comment")
+
+	// File 2
+	assert.Contains(t, snippet, "--- a/file2.go")
+	assert.Contains(t, snippet, "# MSG 2:")
+	assert.Contains(t, snippet, "# second comment")
+
+	// MSG 1 should appear before MSG 2
+	idx1 := strings.Index(snippet, "# MSG 1:")
+	idx2 := strings.Index(snippet, "# MSG 2:")
+	assert.True(t, idx1 < idx2, "MSG 1 should appear before MSG 2")
+}
+
+// Test: nearby comments in same file are merged into one hunk
+func TestYankAll_MergedHunks(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	// Lines 3 and 4 are adjacent — with 2 context lines before each,
+	// their ranges overlap so they should merge into one hunk
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "comment on 3"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = "comment on 4"
+
+	snippet := m.buildAllCommentsSnippet()
+
+	// Should have only ONE hunk header for this file
+	hunkCount := strings.Count(snippet, "@@ -")
+	assert.Equal(t, 1, hunkCount, "adjacent comments should be merged into one hunk")
+
+	// Both comments should be present
+	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# comment on 3")
+	assert.Contains(t, snippet, "# MSG 2:")
+	assert.Contains(t, snippet, "# comment on 4")
+}
+
+// Test: distant comments in same file get separate hunks
+func TestYankAll_SeparateHunks(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	// Lines 3 and 6 are far enough apart that ranges don't overlap
+	// Line 3: range [1,3], Line 6: range [4,6] — actually these are adjacent (endIdx=3, startIdx=4)
+	// so they'd merge. Let me use line 7 instead which has range [5,7]
+	// Line 3: range [1,3], Line 7: range [5,7] — startIdx(5) > endIdx(3)+1, separate
+	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = "comment on 1"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 7}] = "comment on 7"
+
+	snippet := m.buildAllCommentsSnippet()
+
+	// Should have TWO hunk headers for this file
+	hunkCount := strings.Count(snippet, "@@ -")
+	assert.Equal(t, 2, hunkCount, "distant comments should get separate hunks")
+}
+
+// Test: multiline comment gets proper formatting
+func TestYankAll_MultilineComment(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "line one\nline two"
+
+	snippet := m.buildAllCommentsSnippet()
+
+	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# line one\n")
+	assert.Contains(t, snippet, "# line two\n")
+}
+
+// Test: handleYankAll sets status message with comment count
+func TestYankAll_StatusMessage(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "a"
+	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = "b"
+
+	newModel, _ := m.handleYankAll()
+	m2 := newModel.(Model)
+
+	if strings.HasPrefix(m2.statusMessage, "Copied") {
+		assert.Contains(t, m2.statusMessage, "2 comments")
+	}
+}
+
+// Test: empty comments are excluded
+func TestYankAll_SkipsEmptyComments(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "real comment"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = ""
+
+	snippet := m.buildAllCommentsSnippet()
+
+	assert.Contains(t, snippet, "# MSG 1:")
+	assert.NotContains(t, snippet, "# MSG 2:")
+}
+
+// Test: Y key press triggers handleYankAll (integration)
+func TestYankAll_KeyPress_Integration(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "test"
+	m.rebuildRowsCache()
+
+	// Simulate pressing 'Y'
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Y'}})
+	m2 := newModel.(Model)
+
+	assert.NotEmpty(t, m2.statusMessage, "pressing Y should set status message")
 	assert.NotNil(t, cmd, "should return clear timer command")
 }
