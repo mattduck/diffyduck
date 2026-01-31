@@ -212,9 +212,20 @@ func (m Model) writeFileCommentHunks(sb *strings.Builder, fp sidebyside.FilePair
 				for _, line := range strings.Split(comment, "\n") {
 					sb.WriteString("# " + line + "\n")
 				}
+				sb.WriteString("#\n#\n")
 			}
 		}
 	}
+}
+
+// AllCommentsSnippet returns the unified diff patch for all comments, or empty
+// string if there are no comments. This is the exported version of
+// buildAllCommentsSnippet, intended for printing after the TUI exits.
+func (m Model) AllCommentsSnippet() string {
+	if len(m.comments) == 0 {
+		return ""
+	}
+	return m.buildAllCommentsSnippet()
 }
 
 // clearStatusAfter returns a command that clears the status message after a delay.
@@ -317,6 +328,7 @@ func (m Model) buildDiffSnippet(ck commentKey, comment string) string {
 			for _, line := range strings.Split(comment, "\n") {
 				sb.WriteString("# " + line + "\n")
 			}
+			sb.WriteString("#\n#\n")
 		}
 	}
 

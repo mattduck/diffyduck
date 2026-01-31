@@ -115,7 +115,7 @@ func TestYank_BuildDiffSnippet_Format(t *testing.T) {
 	assert.Contains(t, snippet, "@@ -", "should have hunk header")
 
 	// Should have the comment with # prefix
-	assert.Contains(t, snippet, "# MSG 1:\n# This is my comment", "should have comment with # MSG prefix")
+	assert.Contains(t, snippet, "# MSG 1:\n# This is my comment\n#\n#\n", "should have comment with # MSG prefix and trailing blank # lines")
 
 	// Should have diff lines
 	assert.Contains(t, snippet, "-old line 3", "should have removed line")
