@@ -2723,3 +2723,155 @@ func TestFoldToggle_ResetsPairsAfterExpansion(t *testing.T) {
 	// Pairs should be back to original length
 	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "Pairs should reset to original after fold cycle")
 }
+
+func TestTab_ExpandWithMixedDiffTypes(t *testing.T) {
+	// Hunk 0 ends with an addition (Old.Num=0), hunk 1 starts with a deletion (New.Num=0).
+	// This tests that expansion works correctly when boundary lines have zero line numbers.
+
+	t.Run("SeparatorTop_HunkEndsWithAddition", func(t *testing.T) {
+		// Hunk 0: context line 1, then addition at new line 2 (no old-side).
+		// Hunk 1: context lines 20-21.
+		// Gap is new-side 3-19.
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}, New: sidebyside.Line{Num: 2, Content: "added", Type: sidebyside.Added}},
+						// gap: new 3-19
+						{Old: sidebyside.Line{Num: 19, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "ctx", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 20, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 21, Content: "ctx", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(25),
+					NewContent: makeTestContent(25),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		sepTopIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+				sepTopIdx = i
+				break
+			}
+		}
+		require.True(t, sepTopIdx >= 0)
+		m.scroll = sepTopIdx
+
+		originalLen := len(m.files[0].Pairs)
+		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = result.(Model)
+
+		assert.Greater(t, len(m.files[0].Pairs), originalLen, "should expand")
+		// Cursor should land on new line 3 (first inserted, after added line at new 2)
+		cursorRow := m.getRows()[m.cursorLine()]
+		assert.Equal(t, 3, cursorRow.pair.New.Num, "cursor should be on first inserted line")
+	})
+
+	t.Run("SeparatorBottom_HunkStartsWithDeletion", func(t *testing.T) {
+		// Hunk 0: context lines 1-2.
+		// Hunk 1: deletion at old line 19 (no new-side), then context at new line 20.
+		// Gap is new-side 3-19.
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 2, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "ctx", Type: sidebyside.Context}},
+						// gap: new 3-19
+						{Old: sidebyside.Line{Num: 19, Content: "deleted", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}},
+						{Old: sidebyside.Line{Num: 20, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "ctx", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(25),
+					NewContent: makeTestContent(25),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		sepBotIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorBottom && row.fileIndex == 0 {
+				sepBotIdx = i
+				break
+			}
+		}
+		require.True(t, sepBotIdx >= 0)
+		m.scroll = sepBotIdx
+
+		originalLen := len(m.files[0].Pairs)
+		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = result.(Model)
+
+		assert.Greater(t, len(m.files[0].Pairs), originalLen, "should expand")
+		// Cursor should land on new line 19 (last inserted, just above hunk below's first new line 20)
+		cursorRow := m.getRows()[m.cursorLine()]
+		assert.Equal(t, 19, cursorRow.pair.New.Num, "cursor should be on last inserted line")
+	})
+
+	t.Run("SeparatorTop_HunkEndsWithDeletion", func(t *testing.T) {
+		// Hunk 0: context at new line 1, then deletion at old line 2 (no new-side).
+		// Hunk 1: context lines 20-21.
+		// Last new-side line in hunk 0 is 1, so expansion starts at new line 2.
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 2, Content: "deleted", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}},
+						// gap: new 2-19
+						{Old: sidebyside.Line{Num: 20, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "ctx", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 21, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 21, Content: "ctx", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(25),
+					NewContent: makeTestContent(25),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		sepTopIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+				sepTopIdx = i
+				break
+			}
+		}
+		require.True(t, sepTopIdx >= 0)
+		m.scroll = sepTopIdx
+
+		originalLen := len(m.files[0].Pairs)
+		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = result.(Model)
+
+		assert.Greater(t, len(m.files[0].Pairs), originalLen, "should expand")
+		// Last new line in hunk 0 is 1, so first inserted is new line 2
+		cursorRow := m.getRows()[m.cursorLine()]
+		assert.Equal(t, 2, cursorRow.pair.New.Num, "cursor should be on first inserted line")
+	})
+}
