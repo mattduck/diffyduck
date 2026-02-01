@@ -342,7 +342,6 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.startComment() {
 			return m, nil
 		}
-		return m.handleEnter()
 
 	case matchesKey(msg, keys.Yank):
 		return m.handleYank()
@@ -679,9 +678,9 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 		return m.handleCommitFoldCycle()
 	}
 
-	// Only toggle file fold when on file header
+	// If not on a header, try context expansion on separators
 	if !m.isOnFileHeader() {
-		return m, nil
+		return m.handleContextExpand()
 	}
 
 	fileIdx := m.currentFileIndex()
@@ -698,6 +697,8 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	if newLevel != sidebyside.FoldExpanded {
 		m.files[fileIdx].ShowFullFile = false
 	}
+	// Reset pairs to original state (undo any user context expansion)
+	m.files[fileIdx].ResetPairs()
 
 	// If file is expanded beyond FoldFolded, ensure parent commit is at least CommitNormal
 	// (so the file is visible), but don't force CommitExpanded (keep commit info fold state independent)
@@ -1239,12 +1240,138 @@ func (m *Model) goToPrevHeading() {
 	}
 }
 
-// handleEnter handles the Enter key.
-// On hunk separator: (future) expand context
-func (m Model) handleEnter() (tea.Model, tea.Cmd) {
-	// TODO: Handle context expansion on hunk separators
+// handleContextExpand handles Tab on hunk separators by expanding context.
+// SeparatorTop: expand 15 lines downward from the hunk above.
+// SeparatorBottom: expand 15 lines upward from the hunk below.
+// Separator (middle): expand upward to the breadcrumb's signature start - 2 lines.
+func (m Model) handleContextExpand() (tea.Model, tea.Cmd) {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return m, nil
+	}
+
+	row := rows[cursorPos]
+	if row.kind != RowKindSeparatorTop && row.kind != RowKindSeparator && row.kind != RowKindSeparatorBottom {
+		return m, nil
+	}
+
+	fileIdx := row.fileIndex
+	if fileIdx < 0 || fileIdx >= len(m.files) {
+		return m, nil
+	}
+	fp := &m.files[fileIdx]
+
+	// Require full file content to be loaded
+	if !fp.HasContent() {
+		return m, nil
+	}
+
+	boundaries := findHunkBoundaries(fp.Pairs)
+	if len(boundaries) == 0 {
+		return m, nil
+	}
+
+	// Find which hunk boundary this separator represents.
+	// The separator's chunkStartLine is the first new-side line of the hunk below.
+	// Find the Separator (middle) row in this separator block for chunkStartLine.
+	sepRow := row
+	if sepRow.kind != RowKindSeparator {
+		for i := cursorPos - 2; i <= cursorPos+2 && i < len(rows); i++ {
+			if i >= 0 && rows[i].kind == RowKindSeparator && rows[i].fileIndex == fileIdx {
+				sepRow = rows[i]
+				break
+			}
+		}
+	}
+
+	// Match chunkStartLine to a hunk boundary
+	hunkBelow := -1
+	for i, b := range boundaries {
+		hunkPairs := fp.Pairs[b.startIdx:b.endIdx]
+		firstNew := getFirstNewLineNum(hunkPairs)
+		if firstNew == sepRow.chunkStartLine {
+			hunkBelow = i
+			break
+		}
+	}
+
+	// For the first separator (before first hunk), chunkStartLine matches boundary 0
+	// and there is no hunk above.
+	hunkAbove := hunkBelow - 1
+
+	var targetNewLine int
+
+	switch row.kind {
+	case RowKindSeparatorTop:
+		if hunkAbove >= 0 {
+			// Expand down from the hunk above
+			hunkPairs := fp.Pairs[boundaries[hunkAbove].startIdx:boundaries[hunkAbove].endIdx]
+			lastNew := getLastNewLineNum(hunkPairs)
+			inserted := expandContextDown(fp, boundaries, hunkAbove)
+			if inserted > 0 {
+				// Land on the first newly-inserted line (just below where we clicked)
+				targetNewLine = lastNew + 1
+			}
+		} else {
+			// No hunk above (first separator) — no-op
+			return m, nil
+		}
+
+	case RowKindSeparatorBottom:
+		if hunkBelow >= 0 {
+			hunkPairs := fp.Pairs[boundaries[hunkBelow].startIdx:boundaries[hunkBelow].endIdx]
+			firstNew := getFirstNewLineNum(hunkPairs)
+			inserted := expandContextUp(fp, boundaries, hunkBelow)
+			if inserted > 0 {
+				// Land on the last newly-inserted line (just above the hunk below)
+				targetNewLine = firstNew - 1
+			}
+		}
+
+	case RowKindSeparator:
+		targetNewLine = m.enterExpandMiddle(fp, boundaries, hunkBelow, sepRow)
+	}
+
+	m.calculateTotalLines()
+
+	// Position cursor on the target line (or nearest content row)
+	if targetNewLine > 0 {
+		newRowIdx := m.findRowByNewLineNum(fileIdx, targetNewLine)
+		m.adjustScrollToRow(newRowIdx)
+	}
 
 	return m, nil
+}
+
+// enterExpandMiddle handles the middle-separator Enter expansion.
+// If a breadcrumb signature exists, expands to include it (+ 2 lines above).
+// Returns the target new-side line number for cursor positioning, or 0 for no-op.
+func (m Model) enterExpandMiddle(fp *sidebyside.FilePair, boundaries []hunkBoundary, hunkBelow int, sepRow displayRow) int {
+	if hunkBelow < 0 || sepRow.chunkStartLine <= 0 {
+		return 0
+	}
+
+	entries := m.getStructureAtLine(sepRow.fileIndex, sepRow.chunkStartLine)
+	if len(entries) == 0 {
+		return 0
+	}
+
+	innermost := findInnermostFunction(entries)
+	if innermost == nil {
+		return 0
+	}
+
+	// Only expand if the signature is above the current hunk start
+	hunkPairs := fp.Pairs[boundaries[hunkBelow].startIdx:boundaries[hunkBelow].endIdx]
+	firstNew := getFirstNewLineNum(hunkPairs)
+	if innermost.StartLine >= firstNew {
+		return 0 // signature is already visible
+	}
+
+	expandContextToSignature(fp, boundaries, hunkBelow, innermost.StartLine)
+	// Land on the last inserted line (just above the hunk below), like SeparatorBottom
+	return firstNew - 1
 }
 
 // isOnCommitHeader returns true if the cursor is on a commit header row.

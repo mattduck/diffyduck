@@ -6,7 +6,108 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/structure"
 )
+
+// visibleLineRanges finds the contiguous new-side line ranges of the hunks
+// immediately above and below a separator at chunkStartLine.
+func visibleLineRanges(pairs []sidebyside.LinePair, chunkStartLine int) (aboveStart, aboveEnd, belowStart, belowEnd int) {
+	// Find the pair index where the hunk below starts
+	belowIdx := -1
+	for i, p := range pairs {
+		if p.New.Num == chunkStartLine {
+			belowIdx = i
+			break
+		}
+	}
+
+	if belowIdx < 0 {
+		return
+	}
+
+	// Hunk above: scan backward from belowIdx to find contiguous lines
+	for i := belowIdx - 1; i >= 0; i-- {
+		if pairs[i].New.Num > 0 {
+			if aboveEnd == 0 {
+				aboveEnd = pairs[i].New.Num
+			}
+			// Keep scanning for start, stop at gap
+			if i > 0 {
+				prevNew := 0
+				for j := i - 1; j >= 0; j-- {
+					if pairs[j].New.Num > 0 {
+						prevNew = pairs[j].New.Num
+						break
+					}
+				}
+				if prevNew > 0 && pairs[i].New.Num > prevNew+1 {
+					aboveStart = pairs[i].New.Num
+					break
+				}
+			}
+			aboveStart = pairs[i].New.Num
+		}
+	}
+	// Hunk below: scan forward to find the end of this contiguous block
+	belowStart = chunkStartLine
+	belowEnd = chunkStartLine
+	for i := belowIdx; i < len(pairs); i++ {
+		if pairs[i].New.Num > 0 {
+			if pairs[i].New.Num > belowEnd+1 && i > belowIdx {
+				break // hit next gap
+			}
+			belowEnd = pairs[i].New.Num
+		}
+	}
+	return
+}
+
+// isEntryVisible checks if an entry's StartLine falls within the given visible ranges.
+func isEntryVisible(start, aboveStart, aboveEnd, belowStart, belowEnd int) bool {
+	if belowStart > 0 && start >= belowStart && start <= belowEnd {
+		return true
+	}
+	if aboveStart > 0 && start >= aboveStart && start <= aboveEnd {
+		return true
+	}
+	return false
+}
+
+// filterVisibleEntries removes structure entries whose StartLine is already
+// visible in the pairs around the separator. This prevents showing a breadcrumb
+// for a function whose signature is already on screen (e.g. first line of the hunk).
+// Entries are filtered from innermost (last) outward; we stop at the first
+// entry that is NOT visible, keeping it and all outer entries.
+// Also returns the innermost filtered entry (if any) for use as a continuation marker.
+func filterVisibleEntries(entries []structure.Entry, pairs []sidebyside.LinePair, chunkStartLine int) (kept []structure.Entry, continuation *structure.Entry) {
+	if len(entries) == 0 || len(pairs) == 0 {
+		return entries, nil
+	}
+
+	aboveStart, aboveEnd, belowStart, belowEnd := visibleLineRanges(pairs, chunkStartLine)
+
+	// Filter from innermost outward: drop entries whose StartLine is visible
+	cutoff := len(entries)
+	for i := len(entries) - 1; i >= 0; i-- {
+		if !isEntryVisible(entries[i].StartLine, aboveStart, aboveEnd, belowStart, belowEnd) {
+			break
+		}
+		cutoff = i
+	}
+
+	if cutoff < len(entries) {
+		// Continuation is the innermost filtered entry (last in the list),
+		// but only if its definition is in the hunk above (scrolled past).
+		// If the definition is in the hunk below, we're looking at it — no continuation needed.
+		cont := entries[len(entries)-1]
+		inBelow := belowStart > 0 && cont.StartLine >= belowStart && cont.StartLine <= belowEnd
+		if !inBelow {
+			continuation = &cont
+		}
+	}
+
+	return entries[:cutoff], continuation
+}
 
 // isHunkBoundary returns true if there's a gap between consecutive line pairs.
 func isHunkBoundary(prevLeft, prevRight, currLeft, currRight int) bool {
@@ -69,7 +170,17 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	var breadcrumb string
 	if row.chunkStartLine > 0 {
 		entries := m.getStructureAtLine(row.fileIndex, row.chunkStartLine)
+		var continuation *structure.Entry
+		if row.fileIndex >= 0 && row.fileIndex < len(m.files) {
+			entries, continuation = filterVisibleEntries(entries, m.files[row.fileIndex].Pairs, row.chunkStartLine)
+		}
 		breadcrumb = formatBreadcrumbs(entries, leftContentWidth)
+		// If the innermost entry was filtered (already visible), show a continuation
+		if breadcrumb == "" && continuation != nil {
+			breadcrumb = " ... "
+		} else if continuation != nil {
+			breadcrumb += " > ... "
+		}
 	}
 	rightContentWidth := rightHalfWidth - gutterWidth
 	if rightContentWidth < 0 {

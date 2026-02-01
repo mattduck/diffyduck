@@ -62,9 +62,10 @@ type LinePair struct {
 
 // FilePair represents all the line pairs for a single file's diff.
 type FilePair struct {
-	OldPath string
-	NewPath string
-	Pairs   []LinePair
+	OldPath       string
+	NewPath       string
+	Pairs         []LinePair
+	OriginalPairs []LinePair // snapshot of Pairs after semantic expansion, before user context expansion
 
 	// Fold state
 	FoldLevel    FoldLevel // current fold level (zero value = FoldNormal)
@@ -100,6 +101,23 @@ type FilePair struct {
 // HasContent returns true if full file content has been loaded.
 func (fp FilePair) HasContent() bool {
 	return fp.OldContent != nil || fp.NewContent != nil
+}
+
+// SaveOriginalPairs snapshots the current Pairs so they can be restored later.
+func (fp *FilePair) SaveOriginalPairs() {
+	fp.OriginalPairs = make([]LinePair, len(fp.Pairs))
+	copy(fp.OriginalPairs, fp.Pairs)
+}
+
+// ResetPairs restores Pairs to the snapshot taken by SaveOriginalPairs.
+// Returns true if a reset actually occurred.
+func (fp *FilePair) ResetPairs() bool {
+	if fp.OriginalPairs == nil {
+		return false
+	}
+	fp.Pairs = make([]LinePair, len(fp.OriginalPairs))
+	copy(fp.Pairs, fp.OriginalPairs)
+	return true
 }
 
 // CommitFoldLevel represents the fold state of a commit in the view.

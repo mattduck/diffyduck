@@ -300,6 +300,8 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 	// Expand context to include nearby scope boundaries (function/class starts)
 	if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
 		expandSemanticContext(&m.files[msg.FileIndex], newStruct, SemanticContextThreshold)
+		// Snapshot pairs after semantic expansion so fold toggle can restore them
+		m.files[msg.FileIndex].SaveOriginalPairs()
 	}
 
 	// Recalculate rows if structural diff would be visible.
