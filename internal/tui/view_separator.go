@@ -53,7 +53,8 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 	lineNumWidth := m.lineNumWidth()
 
 	// Tree prefix using tight spacing for compact content
-	treeContinuation := renderTreePrefixTight(row.treePath)
+	// Cursor arrow replaces the left margin space in the tree prefix
+	treeContinuation := renderTreePrefixTightWithCursor(row.treePath, isCursorRow, m.focused)
 	currentTreeWidth := treeWidthTight(len(row.treePath.Ancestors))
 
 	// Gutter width: indicator(1) + space(1) + lineNumWidth (one less than content lines for tighter breadcrumb)
@@ -95,15 +96,15 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 		return treeContinuation + leftGutter + leftContent + shadeStyle.Render("░░░") + rightGutter + rightContent
 	}
 
-	// Cursor row: tree + arrow in gutter, lineNumWidth chars with cursor bg, then breadcrumb in content area
-	// When unfocused, use outline arrow and no background highlighting
+	// Cursor row: arrow is in tree prefix, gutter shows shading with cursor bg on line num area
+	// When unfocused, no background highlighting
 	var leftGutter, rightGutter string
 	if m.focused {
-		leftGutter = cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
-		rightGutter = cursorArrowStyle.Render("▶") + shadeStyle.Render("░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+		leftGutter = shadeStyle.Render("░░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
+		rightGutter = shadeStyle.Render("░░") + cursorStyle.Render(strings.Repeat("░", lineNumWidth))
 	} else {
-		leftGutter = unfocusedCursorArrowStyle.Render("▷") + shadeStyle.Render("░") + shadeStyle.Render(strings.Repeat("░", lineNumWidth))
-		rightGutter = unfocusedCursorArrowStyle.Render("▷") + shadeStyle.Render("░") + shadeStyle.Render(strings.Repeat("░", lineNumWidth))
+		leftGutter = shadeStyle.Render("░░") + shadeStyle.Render(strings.Repeat("░", lineNumWidth))
+		rightGutter = shadeStyle.Render("░░") + shadeStyle.Render(strings.Repeat("░", lineNumWidth))
 	}
 
 	// Left side: breadcrumb in content area
@@ -131,7 +132,8 @@ func (m Model) renderHunkSeparatorTop(row displayRow, leftHalfWidth, rightHalfWi
 	_ = lineNumWidth // used below in cursor handling
 
 	// Tree prefix using tight spacing for compact content
-	treeContinuation := renderTreePrefixTight(row.treePath)
+	// Cursor arrow replaces the left margin space in the tree prefix
+	treeContinuation := renderTreePrefixTightWithCursor(row.treePath, isCursorRow, m.focused)
 	currentTreeWidth := treeWidthTight(len(row.treePath.Ancestors))
 
 	// Arrow column width: indicator(1) + space(1) = 2
@@ -155,16 +157,11 @@ func (m Model) renderHunkSeparatorTop(row displayRow, leftHalfWidth, rightHalfWi
 		return treeContinuation + leftArrow + leftContent + faintShadeStyle.Render("░░░") + rightArrow + rightContent
 	}
 
-	// Cursor row: tree + arrow + faint shade, then lineNumWidth chars with cursor bg, rest is faint shading
-	// When unfocused, use outline arrow and no background highlighting
+	// Cursor row: arrow is in tree prefix, gutter shows faint shading with cursor bg on line num area
+	// When unfocused, no background highlighting
 	var leftArrow, rightArrow string
-	if m.focused {
-		leftArrow = cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
-		rightArrow = cursorArrowStyle.Render("▶") + faintShadeStyle.Render("░")
-	} else {
-		leftArrow = unfocusedCursorArrowStyle.Render("▷") + faintShadeStyle.Render("░")
-		rightArrow = unfocusedCursorArrowStyle.Render("▷") + faintShadeStyle.Render("░")
-	}
+	leftArrow = faintShadeStyle.Render("░░")
+	rightArrow = faintShadeStyle.Render("░░")
 
 	// Left side: lineNumWidth chars with cursor bg (only when focused), rest faint
 	var cursorPart string

@@ -189,10 +189,11 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 
 func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, lineNumWidth int, isCursorRow bool) string {
 	// Tree prefix using tight spacing (same as content rows)
-	treeContinuation := renderTreePrefixTight(row.treePath)
+	// Cursor arrow replaces the left margin space in the tree prefix
+	treeContinuation := renderTreePrefixTightWithCursor(row.treePath, isCursorRow, m.focused)
 	currentTreeWidth := treeWidthTight(len(row.treePath.Ancestors))
 
-	// Gutter: arrow(1) + space(1) + lineNum area
+	// Gutter: indicator(1) + space(1) + lineNum area
 	gutterWidth := 2 + lineNumWidth
 
 	// Box spans from after gutter and tree prefix to the left half width
@@ -207,22 +208,18 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 		contentWidth = 1
 	}
 
-	// Build left gutter with cursor indicator if applicable
+	// Build left gutter (no arrow - arrow is in tree prefix)
 	var leftGutter string
 	if isCursorRow && m.focused {
-		leftGutter = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-	} else if isCursorRow && !m.focused {
-		leftGutter = unfocusedCursorArrowStyle.Render("▷") + " " + strings.Repeat(" ", lineNumWidth)
+		leftGutter = "  " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
 	} else {
 		leftGutter = strings.Repeat(" ", gutterWidth)
 	}
 
-	// Build right gutter with cursor indicator if applicable
+	// Build right gutter (no arrow - arrow is in tree prefix)
 	var rightGutter string
 	if isCursorRow && m.focused {
-		rightGutter = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-	} else if isCursorRow && !m.focused {
-		rightGutter = unfocusedCursorArrowStyle.Render("▷") + " " + strings.Repeat(" ", lineNumWidth)
+		rightGutter = "  " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
 	} else {
 		rightGutter = strings.Repeat(" ", gutterWidth)
 	}
@@ -291,7 +288,8 @@ func wrapComment(line string, maxWidth int) []string {
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool, treePath TreePath) string {
 	// Tree prefix using tight spacing for compact content indentation
-	treeContinuation := renderTreePrefixTight(treePath)
+	// Cursor arrow replaces the left margin space in the tree prefix
+	treeContinuation := renderTreePrefixTightWithCursor(treePath, isCursorRow, m.focused)
 	currentTreeWidth := treeWidthTight(len(treePath.Ancestors))
 
 	leftContentWidth := leftHalfWidth - lineNumWidth - 3 - currentTreeWidth // -3 for indicator, space after indicator, space after line num
@@ -326,14 +324,10 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 
 func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool) string {
 	// Diff indicator (+/-/~/space) before line number
-	// On cursor row, show arrowhead instead (outline arrow when unfocused)
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
+	// Cursor arrow is shown in the tree gutter (first column), not here
 	var indicator string
-	if isCursorRow && m.focused {
-		indicator = cursorArrowStyle.Render("▶")
-	} else if isCursorRow && !m.focused {
-		indicator = unfocusedCursorArrowStyle.Render("▷")
-	} else if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
+	if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		indicator = changedStyle.Render("~")
 	} else {
 		switch line.Type {

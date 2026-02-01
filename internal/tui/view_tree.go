@@ -103,6 +103,23 @@ func renderTreePrefixTight(path TreePath) string {
 	return margin + renderTreeContinuationTight(path.Ancestors)
 }
 
+// renderTreePrefixTightWithCursor renders tree prefix for content rows, with cursor arrow
+// replacing the left margin space when isCursorRow is true.
+func renderTreePrefixTightWithCursor(path TreePath, isCursorRow bool, focused bool) string {
+	continuation := renderTreeContinuationTight(path.Ancestors)
+	if isCursorRow {
+		var arrow string
+		if focused {
+			arrow = cursorArrowStyle.Render("▶")
+		} else {
+			arrow = unfocusedCursorArrowStyle.Render("▷")
+		}
+		return arrow + continuation
+	}
+	margin := strings.Repeat(" ", TreeLeftMargin)
+	return margin + continuation
+}
+
 // renderEmptyTreeRow renders an empty/spacer row with tree continuation and optional cursor.
 // Used for blank rows, top borders, and other visually-empty rows that still need to
 // maintain the tree branch. The cursor arrow replaces the left margin space.

@@ -381,10 +381,10 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	output2 := m.View()
 	lines2 := strings.Split(output2, "\n")
 
-	// Find the line with cursor arrows and content (not borders)
+	// Find the line with cursor arrow and content (not borders)
 	var contentLine string
 	for _, line := range lines2 {
-		if strings.Count(line, "▶") == 2 && strings.Contains(line, "content") {
+		if strings.Count(line, "▶") == 1 && strings.Contains(line, "content") {
 			contentLine = line
 			break
 		}
@@ -392,9 +392,9 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 
 	require.NotEmpty(t, contentLine, "should find content line with cursor")
 
-	// Content line should have two arrows (one per side)
+	// Content line should have one arrow (in the tree gutter, not in line number columns)
 	contentArrowCount := strings.Count(contentLine, "▶")
-	assert.Equal(t, 2, contentArrowCount, "content line with cursor should have two arrows")
+	assert.Equal(t, 1, contentArrowCount, "content line with cursor should have one arrow in tree gutter")
 
 	// Content line should have a separator (┃ box drawings heavy vertical)
 	hasSeparator := strings.Contains(contentLine, "┃")
