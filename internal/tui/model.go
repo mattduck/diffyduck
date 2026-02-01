@@ -283,12 +283,12 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
 		maxLineNumSeen:      9999, // default gives 4-digit gutter; recalculated on 'r' refresh
 		// Column width defaults - recalculated on 'r' refresh
-		cachedCommitFileCount: 2,  // "99" files
-		cachedCommitAddWidth:  5,  // "+9999"
-		cachedCommitRemWidth:  5,  // "-9999"
-		cachedCommitTimeWidth: 3,  // "16h"
-		cachedCommitSubjWidth: 60, // reasonable subject length
-		cachedStructDiffWidth: 0,  // structural diff width; 0 until 'r' refresh
+		cachedCommitFileCount: 2,   // "99" files
+		cachedCommitAddWidth:  5,   // "+9999"
+		cachedCommitRemWidth:  5,   // "-9999"
+		cachedCommitTimeWidth: 3,   // "16h"
+		cachedCommitSubjWidth: 100, // reasonable subject length
+		cachedStructDiffWidth: 0,   // structural diff width; 0 until 'r' refresh
 	}
 
 	// Flatten files from all commits and track boundaries
