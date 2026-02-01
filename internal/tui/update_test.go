@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/charmbracelet/bubbletea"
@@ -1972,4 +1973,753 @@ func TestFullFileToggle_OffFromFullFile_PreservesPosition(t *testing.T) {
 	cursorRow := newRows[m.scroll]
 	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should still be on a content row")
 	assert.Equal(t, 3, cursorRow.pair.New.Num, "cursor should stay on line 3 after toggling off")
+}
+
+// --- Enter on hunk separator: context expansion tests ---
+
+func makeEnterTestModel() Model {
+	// Two hunks with a large gap: lines 1-3 and lines 25-27, in a 30-line file.
+	return Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+					// gap: lines 4-24
+					{Old: sidebyside.Line{Num: 25, Content: "25", Type: sidebyside.Context}, New: sidebyside.Line{Num: 25, Content: "25", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 26, Content: "26", Type: sidebyside.Context}, New: sidebyside.Line{Num: 26, Content: "26", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 27, Content: "27", Type: sidebyside.Context}, New: sidebyside.Line{Num: 27, Content: "27", Type: sidebyside.Context}},
+				},
+				OldContent: makeTestContent(30),
+				NewContent: makeTestContent(30),
+			},
+		},
+		width:  80,
+		height: 40,
+		keys:   DefaultKeyMap(),
+	}
+}
+
+func makeTestContent(n int) []string {
+	lines := make([]string, n)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("%d", i+1)
+	}
+	return lines
+}
+
+func TestTab_SeparatorTop_ExpandsDown(t *testing.T) {
+	m := makeEnterTestModel()
+	m.calculateTotalLines()
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	// Find SeparatorTop
+	rows := m.buildRows()
+	sepTopIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+			sepTopIdx = i
+			break
+		}
+	}
+	require.True(t, sepTopIdx >= 0)
+	m.scroll = sepTopIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	assert.Greater(t, len(m.files[0].Pairs), originalPairsLen, "Pairs should grow after expansion")
+	// Should have added 15 context lines after hunk 0 (lines 4-18)
+	assert.Equal(t, originalPairsLen+15, len(m.files[0].Pairs))
+	// Verify inserted line numbers
+	assert.Equal(t, 4, m.files[0].Pairs[3].New.Num, "first inserted should be line 4")
+	assert.Equal(t, 18, m.files[0].Pairs[17].New.Num, "last inserted should be line 18")
+	// Cursor should land on first inserted line (line 4, just below where we clicked)
+	cursorRow := m.getRows()[m.cursorLine()]
+	assert.Equal(t, 4, cursorRow.pair.New.Num, "cursor should be on first inserted line")
+}
+
+func TestTab_SeparatorBottom_ExpandsUp(t *testing.T) {
+	m := makeEnterTestModel()
+	m.calculateTotalLines()
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	// Find SeparatorBottom
+	rows := m.buildRows()
+	sepBotIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorBottom && row.fileIndex == 0 {
+			sepBotIdx = i
+			break
+		}
+	}
+	require.True(t, sepBotIdx >= 0)
+	m.scroll = sepBotIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	assert.Equal(t, originalPairsLen+15, len(m.files[0].Pairs))
+	// Should have prepended 15 lines before hunk 1 (lines 10-24)
+	// Hunk 1 originally started at Pairs index 3. Now context starts at index 3.
+	assert.Equal(t, 10, m.files[0].Pairs[3].New.Num, "first inserted should be line 10")
+	assert.Equal(t, 24, m.files[0].Pairs[17].New.Num, "last inserted should be line 24")
+	// Cursor should land on last inserted line (line 24, just above hunk at 25)
+	cursorRow := m.getRows()[m.cursorLine()]
+	assert.Equal(t, 24, cursorRow.pair.New.Num, "cursor should be on last inserted line")
+}
+
+func TestTab_SeparatorMiddle_WithBreadcrumb(t *testing.T) {
+	m := makeEnterTestModel()
+	// Add structure: a function starting at line 20 that contains the hunk at line 25
+	m.structureMaps = map[int]*FileStructure{
+		0: {
+			NewStructure: &structure.Map{
+				Entries: []structure.Entry{
+					{StartLine: 20, EndLine: 30, Name: "myFunc", Kind: "func"},
+				},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	// Find Separator (middle)
+	rows := m.buildRows()
+	sepIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparator && row.fileIndex == 0 {
+			sepIdx = i
+			break
+		}
+	}
+	require.True(t, sepIdx >= 0)
+	m.scroll = sepIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	// Should expand to signature start (20) minus 2 = line 18, through line 24
+	expectedInserted := 24 - 18 + 1 // lines 18-24 = 7 lines
+	assert.Equal(t, originalPairsLen+expectedInserted, len(m.files[0].Pairs))
+	assert.Equal(t, 18, m.files[0].Pairs[3].New.Num, "first inserted should be line 18 (sig-2)")
+	// Cursor should land on last inserted line (line 24, just above hunk at 25)
+	cursorRow := m.getRows()[m.cursorLine()]
+	assert.Equal(t, 24, cursorRow.pair.New.Num, "cursor should be on last inserted line")
+}
+
+func TestTab_SeparatorMiddle_NoBreadcrumb_Noop(t *testing.T) {
+	m := makeEnterTestModel()
+	// No structureMaps → no breadcrumb
+	m.calculateTotalLines()
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	rows := m.buildRows()
+	sepIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparator && row.fileIndex == 0 {
+			sepIdx = i
+			break
+		}
+	}
+	require.True(t, sepIdx >= 0)
+	m.scroll = sepIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "should not change Pairs without breadcrumb")
+}
+
+func TestTab_RepeatedExpansion_MergesHunks(t *testing.T) {
+	// Small gap: lines 1-3 and 10-12 (gap of 6 lines). Two Enter presses on
+	// SeparatorTop should fill the gap and merge the hunks.
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+					// gap: 4-9
+					{Old: sidebyside.Line{Num: 10, Content: "10", Type: sidebyside.Context}, New: sidebyside.Line{Num: 10, Content: "10", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 11, Content: "11", Type: sidebyside.Context}, New: sidebyside.Line{Num: 11, Content: "11", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 12, Content: "12", Type: sidebyside.Context}, New: sidebyside.Line{Num: 12, Content: "12", Type: sidebyside.Context}},
+				},
+				OldContent: makeTestContent(15),
+				NewContent: makeTestContent(15),
+			},
+		},
+		width:  80,
+		height: 40,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Verify there's a separator
+	rows := m.buildRows()
+	hasSep := false
+	sepTopIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+			hasSep = true
+			sepTopIdx = i
+			break
+		}
+	}
+	require.True(t, hasSep, "should have separator before expansion")
+
+	// First Enter: expand down 6 lines (gap is only 6, clamped)
+	m.scroll = sepTopIdx
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	// Gap was 6 lines (4-9), all should be filled, hunks merged
+	assert.Equal(t, 12, len(m.files[0].Pairs), "should have 12 pairs (gap filled)")
+
+	// Verify no separator remains
+	m.calculateTotalLines()
+	rows = m.buildRows()
+	for _, row := range rows {
+		assert.NotEqual(t, RowKindSeparator, row.kind, "separator should be gone after merge")
+	}
+}
+
+func TestTab_NonSeparatorRow_Noop(t *testing.T) {
+	m := makeEnterTestModel()
+	m.calculateTotalLines()
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	// Position on a content row
+	m.scroll = 0
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "should not change on content row")
+}
+
+func TestTab_NoContent_Noop(t *testing.T) {
+	m := makeEnterTestModel()
+	m.files[0].OldContent = nil
+	m.files[0].NewContent = nil
+	m.calculateTotalLines()
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	rows := m.buildRows()
+	sepIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+			sepIdx = i
+			break
+		}
+	}
+	require.True(t, sepIdx >= 0)
+	m.scroll = sepIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "should not change without content")
+}
+
+func TestTab_FirstSeparatorTop_Noop(t *testing.T) {
+	// First hunk starts at line 5 — the separator before it has no hunk above,
+	// so SeparatorTop should be a no-op.
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}},
+				},
+				OldContent: makeTestContent(10),
+				NewContent: makeTestContent(10),
+			},
+		},
+		width:  80,
+		height: 40,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	// Find SeparatorTop of the first separator
+	rows := m.buildRows()
+	sepTopIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+			sepTopIdx = i
+			break
+		}
+	}
+	require.True(t, sepTopIdx >= 0)
+	m.scroll = sepTopIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "first separator top should be no-op")
+}
+
+func TestTab_CursorAfterMerge(t *testing.T) {
+	// Small gap: lines 1-3 and 10-12 (gap of 6 lines).
+	// Expanding from SeparatorTop fills the gap and merges hunks.
+	// Cursor should land on line 4 (first inserted line).
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+					// gap: 4-9
+					{Old: sidebyside.Line{Num: 10, Content: "10", Type: sidebyside.Context}, New: sidebyside.Line{Num: 10, Content: "10", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 11, Content: "11", Type: sidebyside.Context}, New: sidebyside.Line{Num: 11, Content: "11", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 12, Content: "12", Type: sidebyside.Context}, New: sidebyside.Line{Num: 12, Content: "12", Type: sidebyside.Context}},
+				},
+				OldContent: makeTestContent(15),
+				NewContent: makeTestContent(15),
+			},
+		},
+		width:  80,
+		height: 40,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find SeparatorTop and expand (fills entire 6-line gap)
+	rows := m.buildRows()
+	sepTopIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+			sepTopIdx = i
+			break
+		}
+	}
+	require.True(t, sepTopIdx >= 0)
+	m.scroll = sepTopIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	assert.Equal(t, 12, len(m.files[0].Pairs), "gap should be fully filled")
+	cursorRow := m.getRows()[m.cursorLine()]
+	assert.Equal(t, 4, cursorRow.pair.New.Num, "cursor should be on first inserted line after merge")
+}
+
+func TestTab_SmallGap_CursorPositioning(t *testing.T) {
+	// Gap of only 3 lines (4-6) between hunks at 1-3 and 7-9.
+	// SeparatorTop: inserts 3 lines (clamped), cursor on line 4.
+	// SeparatorBottom: inserts 3 lines (clamped), cursor on line 6.
+	t.Run("SeparatorTop", func(t *testing.T) {
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+						// gap: 4-6
+						{Old: sidebyside.Line{Num: 7, Content: "7", Type: sidebyside.Context}, New: sidebyside.Line{Num: 7, Content: "7", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 8, Content: "8", Type: sidebyside.Context}, New: sidebyside.Line{Num: 8, Content: "8", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 9, Content: "9", Type: sidebyside.Context}, New: sidebyside.Line{Num: 9, Content: "9", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(10),
+					NewContent: makeTestContent(10),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		sepTopIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+				sepTopIdx = i
+				break
+			}
+		}
+		require.True(t, sepTopIdx >= 0)
+		m.scroll = sepTopIdx
+
+		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = result.(Model)
+
+		assert.Equal(t, 9, len(m.files[0].Pairs), "3-line gap should be filled")
+		cursorRow := m.getRows()[m.cursorLine()]
+		assert.Equal(t, 4, cursorRow.pair.New.Num, "cursor should be on first inserted line")
+	})
+
+	t.Run("SeparatorBottom", func(t *testing.T) {
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+						// gap: 4-6
+						{Old: sidebyside.Line{Num: 7, Content: "7", Type: sidebyside.Context}, New: sidebyside.Line{Num: 7, Content: "7", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 8, Content: "8", Type: sidebyside.Context}, New: sidebyside.Line{Num: 8, Content: "8", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 9, Content: "9", Type: sidebyside.Context}, New: sidebyside.Line{Num: 9, Content: "9", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(10),
+					NewContent: makeTestContent(10),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		sepBotIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorBottom && row.fileIndex == 0 {
+				sepBotIdx = i
+				break
+			}
+		}
+		require.True(t, sepBotIdx >= 0)
+		m.scroll = sepBotIdx
+
+		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = result.(Model)
+
+		assert.Equal(t, 9, len(m.files[0].Pairs), "3-line gap should be filled")
+		cursorRow := m.getRows()[m.cursorLine()]
+		assert.Equal(t, 6, cursorRow.pair.New.Num, "cursor should be on last inserted line")
+	})
+}
+
+func TestTab_ExpandNearFileBoundary(t *testing.T) {
+	t.Run("SeparatorTop_ClampedByFileEnd", func(t *testing.T) {
+		// Hunk at lines 1-3, gap to lines 15-17 in a 17-line file.
+		// Expanding down from hunk 0: 15 lines requested but only 11 available (4-14).
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+						// gap: 4-14
+						{Old: sidebyside.Line{Num: 15, Content: "15", Type: sidebyside.Context}, New: sidebyside.Line{Num: 15, Content: "15", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 16, Content: "16", Type: sidebyside.Context}, New: sidebyside.Line{Num: 16, Content: "16", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 17, Content: "17", Type: sidebyside.Context}, New: sidebyside.Line{Num: 17, Content: "17", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(17),
+					NewContent: makeTestContent(17),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		sepTopIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+				sepTopIdx = i
+				break
+			}
+		}
+		require.True(t, sepTopIdx >= 0)
+		m.scroll = sepTopIdx
+
+		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = result.(Model)
+
+		// Clamped to next hunk: inserts lines 4-14 (11 lines, not 15)
+		assert.Equal(t, 17, len(m.files[0].Pairs), "gap should be fully filled (clamped to next hunk)")
+		cursorRow := m.getRows()[m.cursorLine()]
+		assert.Equal(t, 4, cursorRow.pair.New.Num, "cursor should be on first inserted line")
+	})
+
+	t.Run("SeparatorBottom_ClampedByFileStart", func(t *testing.T) {
+		// Hunks at lines 3-5 and 18-20 in a 20-line file.
+		// Expanding up on the separator between them: gap is 6-17 (12 lines),
+		// only 15 requested so all 12 fit → clamped to prev hunk.
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 4, Content: "4", Type: sidebyside.Context}, New: sidebyside.Line{Num: 4, Content: "4", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}},
+						// gap: 6-17
+						{Old: sidebyside.Line{Num: 18, Content: "18", Type: sidebyside.Context}, New: sidebyside.Line{Num: 18, Content: "18", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 19, Content: "19", Type: sidebyside.Context}, New: sidebyside.Line{Num: 19, Content: "19", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(20),
+					NewContent: makeTestContent(20),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		// Find last SeparatorBottom (the one between the two hunks, not before hunk 0)
+		sepBotIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorBottom && row.fileIndex == 0 {
+				sepBotIdx = i
+			}
+		}
+		require.True(t, sepBotIdx >= 0)
+		m.scroll = sepBotIdx
+
+		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = result.(Model)
+
+		// Expands 15 lines up from hunk at 18: clamped to prev hunk ending at 5,
+		// so inserts lines 6-17 (12 lines).
+		assert.Equal(t, 18, len(m.files[0].Pairs), "should insert 12 lines (6-17)")
+		cursorRow := m.getRows()[m.cursorLine()]
+		assert.Equal(t, 17, cursorRow.pair.New.Num, "cursor should be on last inserted line")
+	})
+}
+
+func TestTab_MultipleSeparators_LastBottom(t *testing.T) {
+	// Three hunks: 1-2, 20-21, 40-42 in a 50-line file.
+	// Expand SeparatorBottom of the last separator (between hunks 2 and 3).
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+					// gap: 3-19
+					{Old: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 21, Content: "21", Type: sidebyside.Context}, New: sidebyside.Line{Num: 21, Content: "21", Type: sidebyside.Context}},
+					// gap: 22-39
+					{Old: sidebyside.Line{Num: 40, Content: "40", Type: sidebyside.Context}, New: sidebyside.Line{Num: 40, Content: "40", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 41, Content: "41", Type: sidebyside.Context}, New: sidebyside.Line{Num: 41, Content: "41", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 42, Content: "42", Type: sidebyside.Context}, New: sidebyside.Line{Num: 42, Content: "42", Type: sidebyside.Context}},
+				},
+				OldContent: makeTestContent(50),
+				NewContent: makeTestContent(50),
+			},
+		},
+		width:  80,
+		height: 40,
+		keys:   DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Find the LAST SeparatorBottom (the one before hunk at line 40)
+	rows := m.buildRows()
+	sepBotIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorBottom && row.fileIndex == 0 {
+			sepBotIdx = i // keep overwriting to get the last one
+		}
+	}
+	require.True(t, sepBotIdx >= 0)
+	m.scroll = sepBotIdx
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+
+	assert.Greater(t, len(m.files[0].Pairs), originalPairsLen, "should have expanded")
+	// Expands 15 lines up from hunk at 40: lines 25-39, clamped to prev hunk ending at 21
+	assert.Equal(t, originalPairsLen+15, len(m.files[0].Pairs))
+	cursorRow := m.getRows()[m.cursorLine()]
+	assert.Equal(t, 39, cursorRow.pair.New.Num, "cursor should be on last inserted line (39)")
+}
+
+func TestFoldToggle_ResetsMultipleExpansions(t *testing.T) {
+	// Three hunks: 1-2, 20-21, 40-42 in a 50-line file.
+	// Expand two different separators, then fold cycle — both should reset.
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+					// gap: 3-19
+					{Old: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 21, Content: "21", Type: sidebyside.Context}, New: sidebyside.Line{Num: 21, Content: "21", Type: sidebyside.Context}},
+					// gap: 22-39
+					{Old: sidebyside.Line{Num: 40, Content: "40", Type: sidebyside.Context}, New: sidebyside.Line{Num: 40, Content: "40", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 41, Content: "41", Type: sidebyside.Context}, New: sidebyside.Line{Num: 41, Content: "41", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 42, Content: "42", Type: sidebyside.Context}, New: sidebyside.Line{Num: 42, Content: "42", Type: sidebyside.Context}},
+				},
+				OldContent: makeTestContent(50),
+				NewContent: makeTestContent(50),
+			},
+		},
+		width:  80,
+		height: 40,
+		keys:   DefaultKeyMap(),
+	}
+	m.files[0].SaveOriginalPairs()
+	m.calculateTotalLines()
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	// Expand first separator (SeparatorTop between hunks 0 and 1)
+	rows := m.buildRows()
+	sepTopIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+			sepTopIdx = i
+			break
+		}
+	}
+	require.True(t, sepTopIdx >= 0)
+	m.scroll = sepTopIdx
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+	assert.Greater(t, len(m.files[0].Pairs), originalPairsLen)
+
+	// Expand second separator (SeparatorBottom of last separator)
+	m.calculateTotalLines()
+	rows = m.buildRows()
+	sepBotIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorBottom && row.fileIndex == 0 {
+			sepBotIdx = i
+		}
+	}
+	require.True(t, sepBotIdx >= 0)
+	m.scroll = sepBotIdx
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+	assert.Greater(t, len(m.files[0].Pairs), originalPairsLen+15, "both expansions should be present")
+
+	// Fold cycle: move to header, fold, unfold back
+	rows = m.buildRows()
+	headerIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindHeader && row.fileIndex == 0 {
+			headerIdx = i
+			break
+		}
+	}
+	require.True(t, headerIdx >= 0)
+	m.scroll = headerIdx
+
+	// FoldExpanded → FoldFolded → FoldNormal → FoldExpanded
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
+	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "both expansions should be reset after fold cycle")
+}
+
+func TestFoldToggle_ResetsPairsAfterExpansion(t *testing.T) {
+	m := makeEnterTestModel()
+	// Save original pairs (simulating what highlight.go does after semantic expansion)
+	m.files[0].SaveOriginalPairs()
+	m.calculateTotalLines()
+
+	originalPairsLen := len(m.files[0].Pairs)
+
+	// Expand context via Enter on SeparatorTop
+	rows := m.buildRows()
+	sepTopIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+			sepTopIdx = i
+			break
+		}
+	}
+	require.True(t, sepTopIdx >= 0)
+	m.scroll = sepTopIdx
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+	assert.Greater(t, len(m.files[0].Pairs), originalPairsLen, "Pairs should grow after expansion")
+
+	// Now fold the file (cycle: FoldExpanded → FoldFolded)
+	// Position cursor on file header first
+	rows = m.buildRows()
+	fileHeaderIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindHeader && row.fileIndex == 0 {
+			fileHeaderIdx = i
+			break
+		}
+	}
+	require.True(t, fileHeaderIdx >= 0)
+	m.scroll = fileHeaderIdx
+
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel)
+
+	// Unfold back (FoldFolded → FoldNormal → FoldExpanded requires two presses)
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = result.(Model)
+	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
+
+	// Pairs should be back to original length
+	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "Pairs should reset to original after fold cycle")
 }

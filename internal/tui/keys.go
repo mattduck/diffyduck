@@ -22,7 +22,7 @@ type KeyMap struct {
 	FoldToggle     []string
 	FoldToggleAll  []string
 	FullFileToggle []string
-	Enter          []string // used for commit fold toggle and context expansion
+	Enter          []string // used for comment mode
 	Yank           []string
 	YankAll        []string
 	RefreshLayout  []string // recalculate dynamic column widths

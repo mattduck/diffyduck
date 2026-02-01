@@ -751,3 +751,158 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 	require.NotEmpty(t, hunkSepLine, "should find hunk separator line")
 	assert.Contains(t, hunkSepLine, "▶", "hunk separator with cursor should have arrow indicator")
 }
+
+func TestFilterVisibleEntries(t *testing.T) {
+	t.Run("InnerEntryStartVisibleInHunkBelow", func(t *testing.T) {
+		// Function starts at line 10, hunk below starts at line 10 — function is visible
+		entries := []structure.Entry{
+			{StartLine: 10, EndLine: 50, Name: "MyFunc", Kind: "func"},
+		}
+		pairs := []sidebyside.LinePair{
+			{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}},
+			{Old: sidebyside.Line{Num: 2}, New: sidebyside.Line{Num: 2}},
+			// gap
+			{Old: sidebyside.Line{Num: 10}, New: sidebyside.Line{Num: 10}},
+			{Old: sidebyside.Line{Num: 11}, New: sidebyside.Line{Num: 11}},
+		}
+		kept, cont := filterVisibleEntries(entries, pairs, 10)
+		assert.Empty(t, kept, "should filter out entry whose StartLine is first line of hunk below")
+		assert.Nil(t, cont, "no continuation when definition is in hunk below")
+	})
+
+	t.Run("InnerEntryStartVisibleInHunkAbove", func(t *testing.T) {
+		// Function starts at line 2, which is visible in the hunk above (lines 1-3)
+		entries := []structure.Entry{
+			{StartLine: 2, EndLine: 50, Name: "MyFunc", Kind: "func"},
+		}
+		pairs := []sidebyside.LinePair{
+			{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}},
+			{Old: sidebyside.Line{Num: 2}, New: sidebyside.Line{Num: 2}},
+			{Old: sidebyside.Line{Num: 3}, New: sidebyside.Line{Num: 3}},
+			// gap
+			{Old: sidebyside.Line{Num: 20}, New: sidebyside.Line{Num: 20}},
+			{Old: sidebyside.Line{Num: 21}, New: sidebyside.Line{Num: 21}},
+		}
+		kept, cont := filterVisibleEntries(entries, pairs, 20)
+		assert.Empty(t, kept, "should filter out entry whose StartLine is in hunk above")
+		require.NotNil(t, cont, "should return continuation")
+		assert.Equal(t, "MyFunc", cont.Name)
+	})
+
+	t.Run("InnerEntryNotVisible_OuterVisible", func(t *testing.T) {
+		// Outer type starts at line 1 (visible above), inner func starts at line 15 (not visible)
+		entries := []structure.Entry{
+			{StartLine: 1, EndLine: 100, Name: "MyType", Kind: "type"}, // outer, visible
+			{StartLine: 15, EndLine: 50, Name: "MyFunc", Kind: "func"}, // inner, NOT visible
+		}
+		pairs := []sidebyside.LinePair{
+			{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}},
+			{Old: sidebyside.Line{Num: 2}, New: sidebyside.Line{Num: 2}},
+			// gap
+			{Old: sidebyside.Line{Num: 20}, New: sidebyside.Line{Num: 20}},
+		}
+		kept, cont := filterVisibleEntries(entries, pairs, 20)
+		// Inner func at 15 is not visible, so we keep it and its parent
+		assert.Len(t, kept, 2, "should keep both entries when inner is not visible")
+		assert.Nil(t, cont, "no continuation when nothing was filtered")
+	})
+
+	t.Run("NestedBothVisible", func(t *testing.T) {
+		// Both outer type (line 1) and inner func (line 20) are visible
+		entries := []structure.Entry{
+			{StartLine: 1, EndLine: 100, Name: "MyType", Kind: "type"},
+			{StartLine: 20, EndLine: 50, Name: "MyFunc", Kind: "func"},
+		}
+		pairs := []sidebyside.LinePair{
+			{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}},
+			{Old: sidebyside.Line{Num: 2}, New: sidebyside.Line{Num: 2}},
+			// gap
+			{Old: sidebyside.Line{Num: 20}, New: sidebyside.Line{Num: 20}},
+			{Old: sidebyside.Line{Num: 21}, New: sidebyside.Line{Num: 21}},
+		}
+		kept, cont := filterVisibleEntries(entries, pairs, 20)
+		assert.Empty(t, kept, "should filter all entries when both are visible")
+		assert.Nil(t, cont, "no continuation when innermost definition is in hunk below")
+	})
+
+	t.Run("NothingVisible", func(t *testing.T) {
+		// Function starts at line 15 — not in hunk above (1-3) or below (20-21)
+		entries := []structure.Entry{
+			{StartLine: 15, EndLine: 50, Name: "MyFunc", Kind: "func"},
+		}
+		pairs := []sidebyside.LinePair{
+			{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}},
+			{Old: sidebyside.Line{Num: 2}, New: sidebyside.Line{Num: 2}},
+			{Old: sidebyside.Line{Num: 3}, New: sidebyside.Line{Num: 3}},
+			// gap
+			{Old: sidebyside.Line{Num: 20}, New: sidebyside.Line{Num: 20}},
+			{Old: sidebyside.Line{Num: 21}, New: sidebyside.Line{Num: 21}},
+		}
+		kept, cont := filterVisibleEntries(entries, pairs, 20)
+		assert.Len(t, kept, 1, "should keep entry when StartLine is not visible")
+		assert.Nil(t, cont, "no continuation when nothing was filtered")
+	})
+
+	t.Run("FallsBackToParent", func(t *testing.T) {
+		// Inner func visible (line 20), outer type not visible (line 10)
+		// Should drop inner, keep outer
+		entries := []structure.Entry{
+			{StartLine: 10, EndLine: 100, Name: "MyType", Kind: "type"},
+			{StartLine: 20, EndLine: 50, Name: "MyFunc", Kind: "func"},
+		}
+		pairs := []sidebyside.LinePair{
+			{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}},
+			{Old: sidebyside.Line{Num: 2}, New: sidebyside.Line{Num: 2}},
+			// gap
+			{Old: sidebyside.Line{Num: 20}, New: sidebyside.Line{Num: 20}},
+			{Old: sidebyside.Line{Num: 21}, New: sidebyside.Line{Num: 21}},
+		}
+		kept, cont := filterVisibleEntries(entries, pairs, 20)
+		assert.Len(t, kept, 1, "should keep only outer entry")
+		assert.Equal(t, "MyType", kept[0].Name, "should fall back to parent type")
+		assert.Nil(t, cont, "no continuation when innermost definition is in hunk below")
+	})
+
+	t.Run("ContinuationFromAbove", func(t *testing.T) {
+		// Function definition at line 2 is visible in hunk above — show continuation
+		// because we've scrolled past the definition
+		entries := []structure.Entry{
+			{StartLine: 2, EndLine: 100, Name: "MyFunc", Kind: "func"},
+		}
+		pairs := []sidebyside.LinePair{
+			{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}},
+			{Old: sidebyside.Line{Num: 2}, New: sidebyside.Line{Num: 2}},
+			{Old: sidebyside.Line{Num: 3}, New: sidebyside.Line{Num: 3}},
+			// gap (still inside MyFunc)
+			{Old: sidebyside.Line{Num: 50}, New: sidebyside.Line{Num: 50}},
+			{Old: sidebyside.Line{Num: 51}, New: sidebyside.Line{Num: 51}},
+		}
+		kept, cont := filterVisibleEntries(entries, pairs, 50)
+		assert.Empty(t, kept, "should filter entry visible in hunk above")
+		require.NotNil(t, cont, "should return continuation when definition is in hunk above")
+		assert.Equal(t, "MyFunc", cont.Name)
+	})
+
+	t.Run("ContinuationWithParent", func(t *testing.T) {
+		// Outer type at line 5 not visible, inner func at line 2 visible above
+		// Should keep outer, show continuation for inner
+		entries := []structure.Entry{
+			{StartLine: 5, EndLine: 200, Name: "MyType", Kind: "type"},
+			{StartLine: 10, EndLine: 100, Name: "MyFunc", Kind: "func"},
+		}
+		pairs := []sidebyside.LinePair{
+			{Old: sidebyside.Line{Num: 8}, New: sidebyside.Line{Num: 8}},
+			{Old: sidebyside.Line{Num: 9}, New: sidebyside.Line{Num: 9}},
+			{Old: sidebyside.Line{Num: 10}, New: sidebyside.Line{Num: 10}},
+			{Old: sidebyside.Line{Num: 11}, New: sidebyside.Line{Num: 11}},
+			// gap (still inside MyFunc)
+			{Old: sidebyside.Line{Num: 50}, New: sidebyside.Line{Num: 50}},
+			{Old: sidebyside.Line{Num: 51}, New: sidebyside.Line{Num: 51}},
+		}
+		kept, cont := filterVisibleEntries(entries, pairs, 50)
+		assert.Len(t, kept, 1, "should keep outer type")
+		assert.Equal(t, "MyType", kept[0].Name)
+		require.NotNil(t, cont, "should return continuation for inner func visible above")
+		assert.Equal(t, "MyFunc", cont.Name)
+	})
+}
