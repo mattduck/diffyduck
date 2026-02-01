@@ -674,7 +674,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	}
 	require.NotEmpty(t, contentLineWithCursor, "should find content line with cursor")
 	contentArrowPositions := findArrowDisplayPositions(contentLineWithCursor)
-	require.Len(t, contentArrowPositions, 2, "content line should have 2 arrows (left and right)")
+	require.Len(t, contentArrowPositions, 1, "content line should have 1 arrow (in tree gutter)")
 
 	// Now render with cursor on hunk separator (the line with breadcrumbs, not the top shader line)
 	m.scroll = 4
@@ -694,13 +694,11 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	}
 	require.NotEmpty(t, hunkSepLine, "should find hunk separator line with cursor")
 	hunkArrowPositions := findArrowDisplayPositions(hunkSepLine)
-	require.Len(t, hunkArrowPositions, 2, "hunk separator should have 2 arrows (left and right)")
+	require.Len(t, hunkArrowPositions, 1, "hunk separator should have 1 arrow (in tree gutter)")
 
-	// The arrow positions should match between content line and hunk separator
+	// The arrow position should match between content line and hunk separator (both in tree gutter)
 	assert.Equal(t, contentArrowPositions[0], hunkArrowPositions[0],
-		"left arrow position should match: content=%d, hunk=%d", contentArrowPositions[0], hunkArrowPositions[0])
-	assert.Equal(t, contentArrowPositions[1], hunkArrowPositions[1],
-		"right arrow position should match: content=%d, hunk=%d", contentArrowPositions[1], hunkArrowPositions[1])
+		"arrow position should match: content=%d, hunk=%d", contentArrowPositions[0], hunkArrowPositions[0])
 }
 
 func TestView_CursorArrowOnHunkSeparator(t *testing.T) {

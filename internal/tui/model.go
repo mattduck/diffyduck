@@ -124,6 +124,9 @@ type Model struct {
 	// Focus colour mode - dims content outside current hunk to reduce visual clutter
 	focusColour bool
 
+	// Clipboard
+	clipboard Clipboard // clipboard interface for copy/paste
+
 	// Comment state
 	commentMode   bool                  // true when editing a comment
 	commentInput  string                // text being edited
@@ -223,6 +226,13 @@ func WithPagination(loaded, batchSize int) Option {
 	}
 }
 
+// WithClipboard sets the clipboard implementation.
+func WithClipboard(c Clipboard) Option {
+	return func(m *Model) {
+		m.clipboard = c
+	}
+}
+
 // WithTruncatedFileCount sets the number of files that were truncated.
 func WithTruncatedFileCount(count int) Option {
 	return func(m *Model) {
@@ -268,6 +278,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		loadingFiles:        make(map[int]time.Time),
 		focused:             true,
 		focusColour:         false,
+		clipboard:           &SystemClipboard{},
 		comments:            make(map[commentKey]string),
 		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
 		maxLineNumSeen:      9999, // default gives 4-digit gutter; recalculated on 'r' refresh
@@ -275,7 +286,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		cachedCommitFileCount: 2,  // "99" files
 		cachedCommitAddWidth:  5,  // "+9999"
 		cachedCommitRemWidth:  5,  // "-9999"
-		cachedCommitTimeWidth: 9,  // "12 months"
+		cachedCommitTimeWidth: 3,  // "16h"
 		cachedCommitSubjWidth: 60, // reasonable subject length
 		cachedStructDiffWidth: 0,  // structural diff width; 0 until 'r' refresh
 	}

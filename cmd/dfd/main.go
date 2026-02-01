@@ -264,9 +264,11 @@ func run() error {
 	model := tui.NewWithCommits([]sidebyside.CommitSet{commit}, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
 
-	if _, err := p.Run(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		return fmt.Errorf("TUI error: %w", err)
 	}
+	printExitComments(finalModel)
 
 	return nil
 }
@@ -365,9 +367,11 @@ func runLogMode(debugMode bool) error {
 	model := tui.NewWithCommits(commitSets, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
 
-	if _, err := p.Run(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		return fmt.Errorf("TUI error: %w", err)
 	}
+	printExitComments(finalModel)
 
 	return nil
 }
@@ -437,9 +441,21 @@ func runPagerMode(debugMode bool) error {
 	model := tui.New(files, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
 
-	if _, err := p.Run(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		return fmt.Errorf("TUI error: %w", err)
 	}
+	printExitComments(finalModel)
 
 	return nil
+}
+
+// printExitComments prints all comments as a unified diff patch to stdout
+// when the TUI exits, if any comments were added during the session.
+func printExitComments(finalModel tea.Model) {
+	if m, ok := finalModel.(tui.Model); ok {
+		if snippet := m.AllCommentsSnippet(); snippet != "" {
+			fmt.Print(snippet)
+		}
+	}
 }

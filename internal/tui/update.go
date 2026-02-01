@@ -343,6 +343,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+	case matchesKey(msg, keys.YankAll):
+		return m.handleYankAll()
+
 	case matchesKey(msg, keys.Yank):
 		return m.handleYank()
 

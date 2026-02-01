@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -188,10 +189,11 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 
 func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, lineNumWidth int, isCursorRow bool) string {
 	// Tree prefix using tight spacing (same as content rows)
-	treeContinuation := renderTreePrefixTight(row.treePath)
+	// Cursor arrow replaces the left margin space in the tree prefix
+	treeContinuation := renderTreePrefixTightWithCursor(row.treePath, isCursorRow, m.focused)
 	currentTreeWidth := treeWidthTight(len(row.treePath.Ancestors))
 
-	// Gutter: arrow(1) + space(1) + lineNum area
+	// Gutter: indicator(1) + space(1) + lineNum area
 	gutterWidth := 2 + lineNumWidth
 
 	// Box spans from after gutter and tree prefix to the left half width
@@ -206,22 +208,18 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 		contentWidth = 1
 	}
 
-	// Build left gutter with cursor indicator if applicable
+	// Build left gutter (no arrow - arrow is in tree prefix)
 	var leftGutter string
 	if isCursorRow && m.focused {
-		leftGutter = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-	} else if isCursorRow && !m.focused {
-		leftGutter = unfocusedCursorArrowStyle.Render("▷") + " " + strings.Repeat(" ", lineNumWidth)
+		leftGutter = "  " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
 	} else {
 		leftGutter = strings.Repeat(" ", gutterWidth)
 	}
 
-	// Build right gutter with cursor indicator if applicable
+	// Build right gutter (no arrow - arrow is in tree prefix)
 	var rightGutter string
 	if isCursorRow && m.focused {
-		rightGutter = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
-	} else if isCursorRow && !m.focused {
-		rightGutter = unfocusedCursorArrowStyle.Render("▷") + " " + strings.Repeat(" ", lineNumWidth)
+		rightGutter = "  " + cursorStyle.Render(strings.Repeat(" ", lineNumWidth))
 	} else {
 		rightGutter = strings.Repeat(" ", gutterWidth)
 	}
@@ -290,7 +288,8 @@ func wrapComment(line string, maxWidth int) []string {
 
 func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool, treePath TreePath) string {
 	// Tree prefix using tight spacing for compact content indentation
-	treeContinuation := renderTreePrefixTight(treePath)
+	// Cursor arrow replaces the left margin space in the tree prefix
+	treeContinuation := renderTreePrefixTightWithCursor(treePath, isCursorRow, m.focused)
 	currentTreeWidth := treeWidthTight(len(treePath.Ancestors))
 
 	leftContentWidth := leftHalfWidth - lineNumWidth - 3 - currentTreeWidth // -3 for indicator, space after indicator, space after line num
@@ -325,14 +324,10 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 
 func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool) string {
 	// Diff indicator (+/-/~/space) before line number
-	// On cursor row, show arrowhead instead (outline arrow when unfocused)
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
+	// Cursor arrow is shown in the tree gutter (first column), not here
 	var indicator string
-	if isCursorRow && m.focused {
-		indicator = cursorArrowStyle.Render("▶")
-	} else if isCursorRow && !m.focused {
-		indicator = unfocusedCursorArrowStyle.Render("▷")
-	} else if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
+	if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		indicator = changedStyle.Render("~")
 	} else {
 		switch line.Type {
@@ -449,11 +444,13 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 // side is which side is being rendered, currentSide is which side has the current match.
 func (m Model) applyInlineSpans(original, expanded, visible string, spans []inlinediff.Span, syntaxSpans []highlight.Span, lineType sidebyside.LineType, isCursorRow, shouldSearch bool, currentIdx, side, currentSide int) string {
 	// Highlight style matches the line type (green for added, red for removed)
-	var highlightStyle lipgloss.Style
+	var highlightStyle, highlightWhitespaceStyle lipgloss.Style
 	if lineType == sidebyside.Added {
 		highlightStyle = inlineAddedStyle
+		highlightWhitespaceStyle = inlineAddedWhitespaceStyle
 	} else {
 		highlightStyle = inlineRemovedStyle
+		highlightWhitespaceStyle = inlineRemovedWhitespaceStyle
 	}
 
 	// Map byte positions to display columns in the expanded string
@@ -539,7 +536,35 @@ func (m Model) applyInlineSpans(original, expanded, visible string, spans []inli
 	visibleCol := 0
 	visibleBytePos := 0
 
-	for _, vr := range visibleRunes {
+	// Precompute which visible runes are highlighted whitespace in a run of 2+.
+	// Single whitespace chars use the normal word highlight style (underline/bold);
+	// only multi-char whitespace runs get the background-color style.
+	useWSStyle := make([]bool, len(visibleRunes))
+	{
+		highlightedWS := make([]bool, len(visibleRunes))
+		vc := 0
+		for i, vr := range visibleRunes {
+			if unicode.IsSpace(vr) {
+				ac := m.hscroll + vc
+				for _, span := range spans {
+					sc := byteToCol[span.Start]
+					ec := byteToCol[span.End]
+					if ac >= sc && ac < ec && (span.Type == inlinediff.Added || span.Type == inlinediff.Removed) {
+						highlightedWS[i] = true
+						break
+					}
+				}
+			}
+			vc += runewidth.RuneWidth(vr)
+		}
+		for i := range visibleRunes {
+			if highlightedWS[i] && ((i > 0 && highlightedWS[i-1]) || (i < len(visibleRunes)-1 && highlightedWS[i+1])) {
+				useWSStyle[i] = true
+			}
+		}
+	}
+
+	for vi, vr := range visibleRunes {
 		vrWidth := runewidth.RuneWidth(vr)
 		actualCol := m.hscroll + visibleCol
 
@@ -576,7 +601,11 @@ func (m Model) applyInlineSpans(original, expanded, visible string, spans []inli
 			}
 
 			if inHighlight {
-				result.WriteString(highlightStyle.Render(string(vr)))
+				if useWSStyle[vi] {
+					result.WriteString(highlightWhitespaceStyle.Render(string(vr)))
+				} else {
+					result.WriteString(highlightStyle.Render(string(vr)))
+				}
 			} else {
 				// Use syntax highlighting as base layer
 				foundStyle := false

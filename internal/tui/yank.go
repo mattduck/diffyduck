@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -39,7 +40,7 @@ func (m Model) handleYank() (tea.Model, tea.Cmd) {
 
 	// Copy to clipboard
 	now := time.Now()
-	if err := copyToClipboard(snippet); err != nil {
+	if err := m.clipboard.Copy(snippet); err != nil {
 		m.statusMessage = fmt.Sprintf("Error: %v", err)
 		m.statusMessageTime = now
 		return m, m.clearStatusAfter(now)
@@ -48,6 +49,183 @@ func (m Model) handleYank() (tea.Model, tea.Cmd) {
 	m.statusMessage = fmt.Sprintf("Copied comment for %s", fileName)
 	m.statusMessageTime = now
 	return m, m.clearStatusAfter(now)
+}
+
+// handleYankAll copies all comments to the clipboard as a single unified diff patch.
+// Comments are numbered globally (# MSG 1:, # MSG 2:, etc.) and nearby comments
+// within the same file are merged into single hunks.
+func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
+	if len(m.comments) == 0 {
+		return m, nil
+	}
+
+	snippet := m.buildAllCommentsSnippet()
+
+	now := time.Now()
+	if err := m.clipboard.Copy(snippet); err != nil {
+		m.statusMessage = fmt.Sprintf("Error: %v", err)
+		m.statusMessageTime = now
+		return m, m.clearStatusAfter(now)
+	}
+
+	m.statusMessage = fmt.Sprintf("Copied all %d comments", len(m.comments))
+	m.statusMessageTime = now
+	return m, m.clearStatusAfter(now)
+}
+
+// commentWithKey pairs a comment key with its global message number for sorting.
+type commentWithKey struct {
+	key    commentKey
+	msgNum int
+}
+
+// buildAllCommentsSnippet generates a unified diff patch containing all comments.
+// Comments are sorted by file then line number, numbered globally, and nearby
+// comments within the same file are merged into single hunks.
+func (m Model) buildAllCommentsSnippet() string {
+	// Collect and sort all comments by (fileIndex, newLineNum)
+	var sorted []commentWithKey
+	for ck, comment := range m.comments {
+		if comment == "" {
+			continue
+		}
+		sorted = append(sorted, commentWithKey{key: ck})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].key.fileIndex != sorted[j].key.fileIndex {
+			return sorted[i].key.fileIndex < sorted[j].key.fileIndex
+		}
+		return sorted[i].key.newLineNum < sorted[j].key.newLineNum
+	})
+
+	// Assign global message numbers
+	for i := range sorted {
+		sorted[i].msgNum = i + 1
+	}
+
+	// Group by file
+	type fileGroup struct {
+		fileIndex int
+		comments  []commentWithKey
+	}
+	var groups []fileGroup
+	for _, cwk := range sorted {
+		if len(groups) == 0 || groups[len(groups)-1].fileIndex != cwk.key.fileIndex {
+			groups = append(groups, fileGroup{fileIndex: cwk.key.fileIndex})
+		}
+		groups[len(groups)-1].comments = append(groups[len(groups)-1].comments, cwk)
+	}
+
+	var sb strings.Builder
+
+	for _, group := range groups {
+		if group.fileIndex < 0 || group.fileIndex >= len(m.files) {
+			continue
+		}
+		fp := m.files[group.fileIndex]
+
+		// File headers
+		sb.WriteString(fmt.Sprintf("--- %s\n", fp.OldPath))
+		sb.WriteString(fmt.Sprintf("+++ %s\n", fp.NewPath))
+
+		// Build merged hunks for this file
+		m.writeFileCommentHunks(&sb, fp, group.comments)
+	}
+
+	return sb.String()
+}
+
+// hunkRange represents a range of pair indices that form a hunk.
+type hunkRange struct {
+	startIdx int
+	endIdx   int
+	comments []commentWithKey // comments within this range
+}
+
+// writeFileCommentHunks writes merged hunks for all comments in a single file.
+func (m Model) writeFileCommentHunks(sb *strings.Builder, fp sidebyside.FilePair, comments []commentWithKey) {
+	const contextLines = 3
+
+	// Build initial ranges for each comment
+	var ranges []hunkRange
+	for _, cwk := range comments {
+		targetIdx := -1
+		for i, pair := range fp.Pairs {
+			if pair.New.Num == cwk.key.newLineNum {
+				targetIdx = i
+				break
+			}
+		}
+		if targetIdx < 0 {
+			continue
+		}
+
+		startIdx := targetIdx - contextLines
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		ranges = append(ranges, hunkRange{
+			startIdx: startIdx,
+			endIdx:   targetIdx,
+			comments: []commentWithKey{cwk},
+		})
+	}
+
+	if len(ranges) == 0 {
+		return
+	}
+
+	// Merge overlapping or adjacent ranges
+	merged := []hunkRange{ranges[0]}
+	for i := 1; i < len(ranges); i++ {
+		prev := &merged[len(merged)-1]
+		cur := ranges[i]
+		// Merge if current starts within or adjacent to previous end (+1 for adjacency)
+		if cur.startIdx <= prev.endIdx+1 {
+			if cur.endIdx > prev.endIdx {
+				prev.endIdx = cur.endIdx
+			}
+			prev.comments = append(prev.comments, cur.comments...)
+		} else {
+			merged = append(merged, cur)
+		}
+	}
+
+	// Write each merged hunk
+	for _, hr := range merged {
+		oldStart, oldCount, newStart, newCount := m.calculateHunkHeader(fp.Pairs, hr.startIdx, hr.endIdx)
+		sb.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n", oldStart, oldCount, newStart, newCount))
+
+		// Build a set of commented line numbers for quick lookup
+		commentsByLine := make(map[int]commentWithKey)
+		for _, cwk := range hr.comments {
+			commentsByLine[cwk.key.newLineNum] = cwk
+		}
+
+		for i := hr.startIdx; i <= hr.endIdx; i++ {
+			pair := fp.Pairs[i]
+			m.writeDiffLines(sb, pair)
+
+			if cwk, ok := commentsByLine[pair.New.Num]; ok {
+				comment := m.comments[cwk.key]
+				sb.WriteString(fmt.Sprintf("# MSG %d:\n", cwk.msgNum))
+				for _, line := range strings.Split(comment, "\n") {
+					sb.WriteString("# " + line + "\n")
+				}
+				sb.WriteString("#\n#\n")
+			}
+		}
+	}
+}
+
+// AllCommentsSnippet returns the unified diff patch for all comments, or empty
+// string if there are no comments. This is the exported version of
+// buildAllCommentsSnippet, intended for printing after the TUI exits.
+func (m Model) AllCommentsSnippet() string {
+	if len(m.comments) == 0 {
+		return ""
+	}
+	return m.buildAllCommentsSnippet()
 }
 
 // clearStatusAfter returns a command that clears the status message after a delay.
@@ -95,8 +273,9 @@ func (m Model) findCommentForCursor() (commentKey, bool) {
 //	@@ -X,Y +A,B @@
 //	 context line
 //	 context line
+//	 context line
 //	+added line
-//	#
+//	# MSG 1:
 //	# comment text here
 func (m Model) buildDiffSnippet(ck commentKey, comment string) string {
 	fp := m.files[ck.fileIndex]
@@ -118,8 +297,8 @@ func (m Model) buildDiffSnippet(ck commentKey, comment string) string {
 			strings.ReplaceAll(comment, "\n", "\n# "))
 	}
 
-	// Get context range (2 lines before, include the target line)
-	contextLines := 2
+	// Get context range (3 lines before, include the target line)
+	contextLines := 3
 	startIdx := targetPairIdx - contextLines
 	if startIdx < 0 {
 		startIdx = 0
@@ -145,10 +324,11 @@ func (m Model) buildDiffSnippet(ck commentKey, comment string) string {
 
 		// If this is the commented line, add comment after
 		if pair.New.Num == ck.newLineNum {
-			sb.WriteString("#\n")
+			sb.WriteString("# MSG 1:\n")
 			for _, line := range strings.Split(comment, "\n") {
 				sb.WriteString("# " + line + "\n")
 			}
+			sb.WriteString("#\n#\n")
 		}
 	}
 
@@ -219,21 +399,41 @@ func (m Model) writeDiffLines(sb *strings.Builder, pair sidebyside.LinePair) {
 	}
 }
 
-// copyToClipboard copies text to the system clipboard.
+// Clipboard is the interface for copy/paste operations.
+type Clipboard interface {
+	Copy(text string) error
+	Paste() (string, error)
+}
+
+// SystemClipboard uses the OS clipboard via pbcopy/pbpaste.
 // TODO: Add support for Linux (xclip/xsel) and Windows (clip.exe)
-func copyToClipboard(text string) error {
+type SystemClipboard struct{}
+
+func (c *SystemClipboard) Copy(text string) error {
 	cmd := exec.Command("pbcopy")
 	cmd.Stdin = strings.NewReader(text)
 	return cmd.Run()
 }
 
-// readFromClipboard reads text from the system clipboard.
-// TODO: Add support for Linux (xclip/xsel) and Windows (clip.exe)
-func readFromClipboard() (string, error) {
+func (c *SystemClipboard) Paste() (string, error) {
 	cmd := exec.Command("pbpaste")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
 	return string(out), nil
+}
+
+// MemoryClipboard is an in-memory clipboard for testing.
+type MemoryClipboard struct {
+	Content string
+}
+
+func (c *MemoryClipboard) Copy(text string) error {
+	c.Content = text
+	return nil
+}
+
+func (c *MemoryClipboard) Paste() (string, error) {
+	return c.Content, nil
 }

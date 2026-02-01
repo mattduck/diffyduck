@@ -14,7 +14,7 @@ import (
 // --- File header border connector tests ---
 
 func TestFileHeader_NormalHasShortTrailingConnector(t *testing.T) {
-	// FoldNormal file headers should have short ┏━━… trailing indicator
+	// FoldNormal file headers should have short ┏━━◐ trailing indicator
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
@@ -44,7 +44,7 @@ func TestFileHeader_NormalHasShortTrailingConnector(t *testing.T) {
 	)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "┏━━…", "FoldNormal header should have short ┏━━… trailing indicator")
+	assert.Contains(t, stripped, "┏━━◐", "FoldNormal header should have short ┏━━◐ trailing indicator")
 }
 
 func TestFileHeader_ExpandedHasFullTrailingConnector(t *testing.T) {
