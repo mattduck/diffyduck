@@ -7,7 +7,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -26,6 +25,7 @@ func makeYankTestModel() Model {
 	m.width = 80
 	m.height = 30
 	m.comments = make(map[commentKey]string)
+	m.clipboard = &MemoryClipboard{}
 	return m
 }
 
@@ -175,17 +175,15 @@ func TestYank_HandleYank_SetsStatusMessage(t *testing.T) {
 		}
 	}
 
-	// Call handleYank - may fail if pbcopy not available, but status should be set either way
 	newModel, _ := m.handleYank()
 	m2 := newModel.(Model)
 
-	// Status message should be set (either success or error)
-	require.NotEmpty(t, m2.statusMessage, "status message should be set after yank")
+	assert.Contains(t, m2.statusMessage, "Copied", "status message should indicate success")
+	assert.Contains(t, m2.statusMessage, "test.go", "success message should contain filename")
 
-	// If pbcopy succeeded, check for success message
-	if strings.HasPrefix(m2.statusMessage, "Copied") {
-		assert.Contains(t, m2.statusMessage, "test.go", "success message should contain filename")
-	}
+	// Verify clipboard received the snippet
+	mc := m2.clipboard.(*MemoryClipboard)
+	assert.Contains(t, mc.Content, "# MSG 1:", "clipboard should contain the comment snippet")
 }
 
 // Test: calculateHunkHeader computes correct values
@@ -465,6 +463,7 @@ func makeYankAllTestModel() Model {
 	m.width = 80
 	m.height = 30
 	m.comments = make(map[commentKey]string)
+	m.clipboard = &MemoryClipboard{}
 	return m
 }
 
@@ -588,9 +587,7 @@ func TestYankAll_StatusMessage(t *testing.T) {
 	newModel, _ := m.handleYankAll()
 	m2 := newModel.(Model)
 
-	if strings.HasPrefix(m2.statusMessage, "Copied") {
-		assert.Contains(t, m2.statusMessage, "2 comments")
-	}
+	assert.Contains(t, m2.statusMessage, "Copied all 2 comments")
 }
 
 // Test: empty comments are excluded

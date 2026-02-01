@@ -40,7 +40,7 @@ func (m Model) handleYank() (tea.Model, tea.Cmd) {
 
 	// Copy to clipboard
 	now := time.Now()
-	if err := copyToClipboard(snippet); err != nil {
+	if err := m.clipboard.Copy(snippet); err != nil {
 		m.statusMessage = fmt.Sprintf("Error: %v", err)
 		m.statusMessageTime = now
 		return m, m.clearStatusAfter(now)
@@ -62,7 +62,7 @@ func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
 	snippet := m.buildAllCommentsSnippet()
 
 	now := time.Now()
-	if err := copyToClipboard(snippet); err != nil {
+	if err := m.clipboard.Copy(snippet); err != nil {
 		m.statusMessage = fmt.Sprintf("Error: %v", err)
 		m.statusMessageTime = now
 		return m, m.clearStatusAfter(now)
@@ -399,21 +399,41 @@ func (m Model) writeDiffLines(sb *strings.Builder, pair sidebyside.LinePair) {
 	}
 }
 
-// copyToClipboard copies text to the system clipboard.
+// Clipboard is the interface for copy/paste operations.
+type Clipboard interface {
+	Copy(text string) error
+	Paste() (string, error)
+}
+
+// SystemClipboard uses the OS clipboard via pbcopy/pbpaste.
 // TODO: Add support for Linux (xclip/xsel) and Windows (clip.exe)
-func copyToClipboard(text string) error {
+type SystemClipboard struct{}
+
+func (c *SystemClipboard) Copy(text string) error {
 	cmd := exec.Command("pbcopy")
 	cmd.Stdin = strings.NewReader(text)
 	return cmd.Run()
 }
 
-// readFromClipboard reads text from the system clipboard.
-// TODO: Add support for Linux (xclip/xsel) and Windows (clip.exe)
-func readFromClipboard() (string, error) {
+func (c *SystemClipboard) Paste() (string, error) {
 	cmd := exec.Command("pbpaste")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
 	return string(out), nil
+}
+
+// MemoryClipboard is an in-memory clipboard for testing.
+type MemoryClipboard struct {
+	Content string
+}
+
+func (c *MemoryClipboard) Copy(text string) error {
+	c.Content = text
+	return nil
+}
+
+func (c *MemoryClipboard) Paste() (string, error) {
+	return c.Content, nil
 }

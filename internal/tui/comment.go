@@ -100,7 +100,7 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyCtrlV:
 		// Paste from clipboard (explicit Ctrl+V) - read and sanitize
-		text, err := readFromClipboard()
+		text, err := m.clipboard.Paste()
 		if err != nil || text == "" {
 			return m, nil
 		}
