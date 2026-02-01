@@ -536,7 +536,35 @@ func (m Model) applyInlineSpans(original, expanded, visible string, spans []inli
 	visibleCol := 0
 	visibleBytePos := 0
 
-	for _, vr := range visibleRunes {
+	// Precompute which visible runes are highlighted whitespace in a run of 2+.
+	// Single whitespace chars use the normal word highlight style (underline/bold);
+	// only multi-char whitespace runs get the background-color style.
+	useWSStyle := make([]bool, len(visibleRunes))
+	{
+		highlightedWS := make([]bool, len(visibleRunes))
+		vc := 0
+		for i, vr := range visibleRunes {
+			if unicode.IsSpace(vr) {
+				ac := m.hscroll + vc
+				for _, span := range spans {
+					sc := byteToCol[span.Start]
+					ec := byteToCol[span.End]
+					if ac >= sc && ac < ec && (span.Type == inlinediff.Added || span.Type == inlinediff.Removed) {
+						highlightedWS[i] = true
+						break
+					}
+				}
+			}
+			vc += runewidth.RuneWidth(vr)
+		}
+		for i := range visibleRunes {
+			if highlightedWS[i] && ((i > 0 && highlightedWS[i-1]) || (i < len(visibleRunes)-1 && highlightedWS[i+1])) {
+				useWSStyle[i] = true
+			}
+		}
+	}
+
+	for vi, vr := range visibleRunes {
 		vrWidth := runewidth.RuneWidth(vr)
 		actualCol := m.hscroll + visibleCol
 
@@ -573,7 +601,7 @@ func (m Model) applyInlineSpans(original, expanded, visible string, spans []inli
 			}
 
 			if inHighlight {
-				if unicode.IsSpace(vr) {
+				if useWSStyle[vi] {
 					result.WriteString(highlightWhitespaceStyle.Render(string(vr)))
 				} else {
 					result.WriteString(highlightStyle.Render(string(vr)))
