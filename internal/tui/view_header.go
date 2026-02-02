@@ -108,12 +108,7 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	// Calculate header width BEFORE applying search highlighting (ANSI codes affect width calculation)
 	headerTextWidth := displayWidth(header)
 
-	// Apply search highlighting if there's a query
-	// Headers are always considered "side 0" for search purposes
 	hasSearch := m.searchQuery != ""
-	if hasSearch {
-		header = m.highlightSearchInVisible(header, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide())
-	}
 
 	// Get fold level icon and file status style (for trailing fill color)
 	icon := m.foldLevelIcon(foldLevel)
@@ -135,8 +130,8 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	// Style the header text:
 	// - For added/deleted files, style the basename with inline diff style (bold+underline+color)
 	// - For other files, use normal headerStyle (fg=15)
-	// - Skip custom styling when search highlighting was applied (preserve search fg colors)
-	styledHeader := m.styleFileHeaderText(header, status, hasSearch)
+	// - Search highlighting is layered on top via highlightSearchInVisibleStyled
+	styledHeader := m.styleFileHeaderText(header, status, hasSearch, isCursorRow)
 
 	// Style the fold icon to match the border colour for this file status, fg=15 when cursor is on row
 	iconStyle := fileStatusStyle
@@ -200,30 +195,42 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 // styleFileHeaderText applies styling to the file header text.
 // Directories are fg=7, basename is fg=15 (no bold).
 // For added/deleted files, the basename gets inline diff styling (bold+underline+color).
-func (m Model) styleFileHeaderText(header string, status FileStatus, hasSearch bool) string {
-	// When search highlighting was applied, don't wrap with any style to preserve fg color
-	if hasSearch {
-		return " " + header
-	}
-
-	// Split into directory (fg=7) and basename (fg=15)
-	basename := path.Base(header)
-	dir := header[:len(header)-len(basename)]
-
-	dirStyled := headerDirStyle.Render(" " + dir)
-
-	// Basename style depends on file status
-	var basenameStyled string
+// When search is active, search highlighting is layered on top, with the base
+// dir/basename styling applied to non-matched segments.
+func (m Model) styleFileHeaderText(header string, status FileStatus, hasSearch, isCursorRow bool) string {
+	// Determine the basename style based on file status
+	basenameStyle := headerBasenameStyle
 	switch status {
 	case FileStatusAdded:
-		basenameStyled = inlineAddedStyle.Render(basename)
+		basenameStyle = inlineAddedStyle
 	case FileStatusDeleted:
-		basenameStyled = inlineRemovedStyle.Render(basename)
-	default:
-		basenameStyled = headerBasenameStyle.Render(basename)
+		basenameStyle = inlineRemovedStyle
 	}
 
-	return dirStyled + basenameStyled
+	// Build a base styler that applies dir/basename coloring by position.
+	// The header string has leading space prepended, so offset the boundary
+	// by 1 to account for it.
+	basename := path.Base(header)
+	basenameBoundary := len(header) - len(basename)
+
+	baseStyler := func(text string, byteOffset int) string {
+		// If this segment is entirely within the dir or basename, style it directly
+		if byteOffset >= basenameBoundary {
+			return basenameStyle.Render(text)
+		}
+		if byteOffset+len(text) <= basenameBoundary {
+			return headerDirStyle.Render(text)
+		}
+		// Segment spans the boundary: split and style each part
+		splitAt := basenameBoundary - byteOffset
+		return headerDirStyle.Render(text[:splitAt]) + basenameStyle.Render(text[splitAt:])
+	}
+
+	if hasSearch {
+		return " " + m.highlightSearchInVisibleStyled(header, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), baseStyler)
+	}
+
+	return headerDirStyle.Render(" "+header[:basenameBoundary]) + basenameStyle.Render(basename)
 }
 
 // renderCommentRow renders a single comment row (part of a comment box).

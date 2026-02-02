@@ -7,13 +7,28 @@ import (
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
+// SearchBaseStyler styles non-matched text segments during search highlighting.
+// It receives the segment text and its byte offset within the original string,
+// allowing position-aware styling (e.g., different colors for directory vs basename).
+type SearchBaseStyler func(text string, byteOffset int) string
+
 // highlightSearchInVisible highlights search matches in visible text.
 // Searches on-demand in the visible text and highlights matches.
 // isCursorRow indicates if this row is at the cursor position.
 // currentIdx is the index of the current match (0 = first match).
 // side is which side is being rendered (0=new/left, 1=old/right), currentSide is which side has the current match.
 func (m Model) highlightSearchInVisible(visible string, isCursorRow bool, currentIdx, side, currentSide int) string {
+	return m.highlightSearchInVisibleStyled(visible, isCursorRow, currentIdx, side, currentSide, nil)
+}
+
+// highlightSearchInVisibleStyled highlights search matches in visible text,
+// applying baseStyler to non-matched segments. If baseStyler is nil,
+// non-matched text is left unstyled.
+func (m Model) highlightSearchInVisibleStyled(visible string, isCursorRow bool, currentIdx, side, currentSide int, baseStyler SearchBaseStyler) string {
 	if m.searchQuery == "" {
+		if baseStyler != nil {
+			return baseStyler(visible, 0)
+		}
 		return visible
 	}
 
@@ -39,7 +54,12 @@ func (m Model) highlightSearchInVisible(visible string, isCursorRow bool, curren
 		pos := lastEnd + idx
 
 		// Add text before match
-		result.WriteString(visible[lastEnd:pos])
+		seg := visible[lastEnd:pos]
+		if baseStyler != nil {
+			result.WriteString(baseStyler(seg, lastEnd))
+		} else {
+			result.WriteString(seg)
+		}
 
 		// Add highlighted match
 		end := pos + len(m.searchQuery)
@@ -62,7 +82,12 @@ func (m Model) highlightSearchInVisible(visible string, isCursorRow bool, curren
 
 	// Add remaining text
 	if lastEnd < len(visible) {
-		result.WriteString(visible[lastEnd:])
+		seg := visible[lastEnd:]
+		if baseStyler != nil {
+			result.WriteString(baseStyler(seg, lastEnd))
+		} else {
+			result.WriteString(seg)
+		}
 	}
 
 	return result.String()
