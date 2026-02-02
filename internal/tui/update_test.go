@@ -2784,3 +2784,201 @@ func TestTab_ExpandWithMixedDiffTypes(t *testing.T) {
 		assert.Equal(t, 2, cursorRow.pair.New.Num, "cursor should be on first inserted line")
 	})
 }
+
+func TestTab_TrailingSeparator(t *testing.T) {
+	t.Run("appears when more content below last hunk", func(t *testing.T) {
+		// Hunk at lines 1-3 in a 20-line file. Trailing separator should appear.
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(20),
+					NewContent: makeTestContent(20),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		// Find trailing SeparatorTop (after content, not between hunks)
+		lastSepTopIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+				lastSepTopIdx = i
+			}
+		}
+		require.True(t, lastSepTopIdx >= 0, "trailing separator should exist")
+
+		// It should be after the last content row
+		lastContentIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindContent && row.fileIndex == 0 {
+				lastContentIdx = i
+			}
+		}
+		assert.Greater(t, lastSepTopIdx, lastContentIdx, "trailing separator should be after last content row")
+	})
+
+	t.Run("absent when last hunk reaches end of file", func(t *testing.T) {
+		// Hunk at lines 1-3 in a 3-line file. No trailing separator.
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(3),
+					NewContent: makeTestContent(3),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		for _, row := range rows {
+			assert.NotEqual(t, RowKindSeparatorTop, row.kind, "no trailing separator when file ends at last hunk")
+		}
+	})
+
+	t.Run("absent when content not loaded", func(t *testing.T) {
+		// Hunk at lines 5-7 with no NewContent loaded. No trailing separator.
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 7, Content: "7", Type: sidebyside.Context}, New: sidebyside.Line{Num: 7, Content: "7", Type: sidebyside.Context}},
+					},
+					// No OldContent/NewContent
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		for _, row := range rows {
+			assert.NotEqual(t, RowKindSeparatorTop, row.kind, "no trailing separator without content")
+		}
+	})
+
+	t.Run("Tab expands down from last hunk", func(t *testing.T) {
+		// Hunk at lines 1-3 in a 20-line file. Tab on trailing separator expands down.
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(20),
+					NewContent: makeTestContent(20),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		rows := m.buildRows()
+		lastSepTopIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+				lastSepTopIdx = i
+			}
+		}
+		require.True(t, lastSepTopIdx >= 0)
+		m.scroll = lastSepTopIdx
+
+		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = result.(Model)
+
+		// Should insert 15 lines (4-18), total pairs = 3 + 15 = 18
+		assert.Equal(t, 18, len(m.files[0].Pairs), "should expand 15 lines down")
+		cursorRow := m.getRows()[m.cursorLine()]
+		assert.Equal(t, 4, cursorRow.pair.New.Num, "cursor should be on first inserted line")
+	})
+
+	t.Run("repeated Tab expands to end of file", func(t *testing.T) {
+		// Hunk at lines 1-3 in a 10-line file. First Tab adds 7 lines (all remaining).
+		// Second Tab is a no-op and trailing separator disappears.
+		m := Model{
+			focused: true,
+			files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/test.go",
+					NewPath:   "b/test.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
+						{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
+					},
+					OldContent: makeTestContent(10),
+					NewContent: makeTestContent(10),
+				},
+			},
+			width:  80,
+			height: 40,
+			keys:   DefaultKeyMap(),
+		}
+		m.calculateTotalLines()
+
+		// First Tab: expand all 7 remaining lines
+		rows := m.buildRows()
+		lastSepTopIdx := -1
+		for i, row := range rows {
+			if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+				lastSepTopIdx = i
+			}
+		}
+		require.True(t, lastSepTopIdx >= 0)
+		m.scroll = lastSepTopIdx
+
+		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = result.(Model)
+
+		assert.Equal(t, 10, len(m.files[0].Pairs), "should expand to full file (10 lines)")
+
+		// After expanding to end, trailing separator should be gone
+		rows = m.buildRows()
+		for _, row := range rows {
+			if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
+				t.Error("trailing separator should disappear after expanding to end of file")
+			}
+		}
+	})
+}

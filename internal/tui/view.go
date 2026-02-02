@@ -987,6 +987,11 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 		}
 	}
 
+	// Add a trailing separator if there's more file content below the last hunk
+	if len(fp.NewContent) > 0 && prevRight > 0 && prevRight < len(fp.NewContent) {
+		rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+	}
+
 	if fp.Truncated || fp.OldTruncated || fp.NewTruncated {
 		oldTrunc := fp.OldTruncated
 		newTrunc := fp.NewTruncated

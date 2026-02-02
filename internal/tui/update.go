@@ -808,9 +808,7 @@ func (m Model) fullFileToggleSeparatorTarget(fileIdx int) int {
 		if lineNum := m.separatorContentAbove(rows, cursorPos, fileIdx); lineNum > 0 {
 			return lineNum
 		}
-		// First separator in file — no content above. Fall through to
-		// middle-separator logic: try breadcrumb, then line below.
-		return m.separatorMiddleTarget(rows, cursorPos, fileIdx)
+		return 0
 
 	case RowKindSeparatorBottom:
 		return m.separatorContentBelow(rows, cursorPos, fileIdx)
@@ -1306,11 +1304,18 @@ func (m Model) handleContextExpand() (tea.Model, tea.Cmd) {
 
 	switch row.kind {
 	case RowKindSeparatorTop:
-		if hunkAbove >= 0 {
-			// Expand down from the hunk above
-			hunkPairs := fp.Pairs[boundaries[hunkAbove].startIdx:boundaries[hunkAbove].endIdx]
+		// Determine which hunk to expand down from.
+		// For inter-hunk separators, expand from the hunk above.
+		// For the trailing separator (after last hunk), hunkBelow is -1,
+		// so expand from the last boundary.
+		expandIdx := hunkAbove
+		if hunkBelow < 0 && len(boundaries) > 0 {
+			expandIdx = len(boundaries) - 1
+		}
+		if expandIdx >= 0 {
+			hunkPairs := fp.Pairs[boundaries[expandIdx].startIdx:boundaries[expandIdx].endIdx]
 			lastNew := getLastNewLineNum(hunkPairs)
-			inserted := expandContextDown(fp, boundaries, hunkAbove)
+			inserted := expandContextDown(fp, boundaries, expandIdx)
 			if inserted > 0 {
 				// Land on the first newly-inserted line (just below where we clicked)
 				targetNewLine = lastNew + 1
