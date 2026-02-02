@@ -1086,11 +1086,11 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scroll = m.minScroll()
 		m.resetSearchMatchForRow()
 	case "j":
-		// gj: next node (commit header or file header)
+		// gj: next node (commit header, file header, or hunk separator)
 		m.goToNextHeading()
 		m.resetSearchMatchForRow()
 	case "k":
-		// gk: previous node (commit header or file header)
+		// gk: previous node (commit header, file header, or hunk separator)
 		m.goToPrevHeading()
 		m.resetSearchMatchForRow()
 	}
@@ -1099,10 +1099,31 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// goToNextHeading moves the cursor to the next node (commit header or file header).
-// A node is either a commit or a file. From any position within a node, gj jumps
-// to the header of the next node in sequence.
-// Special case: when on a top border, gj goes to that file's header (one line down).
+// isNavigationTarget returns true if the row at the given index is a valid
+// stop for gj/gk navigation. Targets are: commit headers, commit info headers,
+// file headers, hunk separator middle lines (breadcrumb), and trailing
+// separator-top lines (the single-line separator at the end of a file).
+func isNavigationTarget(rows []displayRow, i int) bool {
+	row := rows[i]
+	if row.isCommitHeader || row.isCommitInfoHeader || row.isHeader {
+		return true
+	}
+	if row.isSeparator {
+		return true
+	}
+	// A SeparatorTop is a target only when it's a trailing separator (not
+	// followed by a Separator middle line, i.e. it's the lone line at EOF).
+	if row.isSeparatorTop {
+		if i+1 >= len(rows) || !rows[i+1].isSeparator {
+			return true
+		}
+	}
+	return false
+}
+
+// goToNextHeading moves the cursor to the next navigation target.
+// Targets include commit headers, commit info headers, file headers,
+// and hunk separators (breadcrumb lines and trailing EOF separators).
 func (m *Model) goToNextHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
@@ -1111,61 +1132,17 @@ func (m *Model) goToNextHeading() {
 		return
 	}
 
-	currentRow := rows[cursorPos]
-
-	// Special case: when on a top border, go to the file's header (visually one line down)
-	if currentRow.isHeaderTopBorder {
-		for i := cursorPos + 1; i < len(rows); i++ {
-			if rows[i].isHeader && rows[i].fileIndex == currentRow.fileIndex {
-				m.adjustScrollToRow(i)
-				return
-			}
-		}
-		return
-	}
-
-	currentFileIdx := currentRow.fileIndex
-	currentCommitIdx := currentRow.commitIndex
-	inCommitSection := currentRow.isCommitHeader || currentRow.isCommitBody
-	inCommitInfoSection := currentRow.isCommitInfoHeader || currentRow.isCommitInfoBody
-
-	// Find the next header that belongs to a different node
 	for i := cursorPos + 1; i < len(rows); i++ {
-		row := rows[i]
-
-		if row.isCommitHeader {
-			// A commit header is always a different node (unless we're in that commit's header/body)
-			if !inCommitSection || row.commitIndex != currentCommitIdx {
-				m.adjustScrollToRow(i)
-				return
-			}
-		}
-
-		if row.isCommitInfoHeader {
-			// Commit info header is a different node if:
-			// - We're in the commit header section (not info section)
-			// - Or different commit
-			if !inCommitInfoSection || row.commitIndex != currentCommitIdx {
-				m.adjustScrollToRow(i)
-				return
-			}
-		}
-
-		if row.isHeader {
-			// A file header is a different node if:
-			// - We're in a commit section or commit info section
-			// - Or the file has a different index
-			if inCommitSection || inCommitInfoSection || row.fileIndex != currentFileIdx {
-				m.adjustScrollToRow(i)
-				return
-			}
+		if isNavigationTarget(rows, i) {
+			m.adjustScrollToRow(i)
+			return
 		}
 	}
 }
 
-// goToPrevHeading moves the cursor to the previous node (commit header or file header).
-// If not on a node header, jumps to the current node's header.
-// If already on a header (or top border), jumps to the previous node's header.
+// goToPrevHeading moves the cursor to the previous navigation target.
+// Targets include commit headers, commit info headers, file headers,
+// and hunk separators (breadcrumb lines and trailing EOF separators).
 func (m *Model) goToPrevHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
@@ -1174,68 +1151,10 @@ func (m *Model) goToPrevHeading() {
 		return
 	}
 
-	currentRow := rows[cursorPos]
-	// Treat top border as part of the header section for navigation purposes
-	onHeader := currentRow.isCommitHeader || currentRow.isCommitInfoHeader || currentRow.isHeader || currentRow.isHeaderTopBorder
-
-	if !onHeader {
-		// Not on a header - find the current node's header (could be commit, commit info, or file)
-		currentFileIdx := currentRow.fileIndex
-		currentCommitIdx := currentRow.commitIndex
-		inCommitSection := currentRow.isCommitBody
-		inCommitInfoSection := currentRow.isCommitInfoBody
-
-		for i := cursorPos - 1; i >= 0; i-- {
-			row := rows[i]
-			if inCommitSection && row.isCommitHeader {
-				m.adjustScrollToRow(i)
-				return
-			}
-			if inCommitInfoSection && row.isCommitInfoHeader && row.commitIndex == currentCommitIdx {
-				m.adjustScrollToRow(i)
-				return
-			}
-			if !inCommitSection && !inCommitInfoSection && row.isHeader && row.fileIndex == currentFileIdx {
-				m.adjustScrollToRow(i)
-				return
-			}
-		}
-		return
-	}
-
-	// Already on a header (or top border) - find the previous different node's header
-	currentFileIdx := currentRow.fileIndex
-	currentCommitIdx := currentRow.commitIndex
-	isCommitHeader := currentRow.isCommitHeader
-	isCommitInfoHeader := currentRow.isCommitInfoHeader
-
 	for i := cursorPos - 1; i >= 0; i-- {
-		row := rows[i]
-
-		if row.isCommitHeader {
-			// Found a commit header - it's a different node if different commit
-			if !isCommitHeader || row.commitIndex != currentCommitIdx {
-				m.adjustScrollToRow(i)
-				return
-			}
-		}
-
-		if row.isCommitInfoHeader {
-			// Stop at commit info header unless we're already on a commit info header of the same commit
-			if !(isCommitInfoHeader && row.commitIndex == currentCommitIdx) {
-				m.adjustScrollToRow(i)
-				return
-			}
-		}
-
-		if row.isHeader {
-			// Found a file header - it's a different node if:
-			// - Current is a commit header or commit info header
-			// - Or different file index
-			if isCommitHeader || isCommitInfoHeader || row.fileIndex != currentFileIdx {
-				m.adjustScrollToRow(i)
-				return
-			}
+		if isNavigationTarget(rows, i) {
+			m.adjustScrollToRow(i)
+			return
 		}
 	}
 }
