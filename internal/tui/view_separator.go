@@ -182,6 +182,23 @@ func (m Model) renderHunkSeparator(row displayRow, leftHalfWidth, rightHalfWidth
 		} else if continuation != nil {
 			breadcrumb += " > ... "
 		}
+
+		// If no continuation was triggered but the previous separator in this file
+		// had the same innermost entry, show "..." to avoid repeating the breadcrumb.
+		if continuation == nil && row.prevChunkStartLine > 0 && len(entries) > 0 {
+			prevEntries := m.getStructureAtLine(row.fileIndex, row.prevChunkStartLine)
+			if len(prevEntries) > 0 {
+				innermost := entries[len(entries)-1]
+				prevInnermost := prevEntries[len(prevEntries)-1]
+				if innermost.Name == prevInnermost.Name && innermost.StartLine == prevInnermost.StartLine {
+					if len(entries) > 1 {
+						breadcrumb = formatBreadcrumbs(entries[:len(entries)-1], leftContentWidth) + " > ... "
+					} else {
+						breadcrumb = " ... "
+					}
+				}
+			}
+		}
 	}
 	rightContentWidth := rightHalfWidth - gutterWidth
 	if rightContentWidth < 0 {

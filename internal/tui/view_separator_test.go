@@ -906,3 +906,188 @@ func TestFilterVisibleEntries(t *testing.T) {
 		assert.Equal(t, "MyFunc", cont.Name)
 	})
 }
+
+func TestView_HunkSeparatorBreadcrumbs_RepeatedInnermost(t *testing.T) {
+	// Two hunks inside the same function: the second separator should show "..."
+	// instead of repeating the full function signature.
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					// First hunk: lines 20-22 (inside MyFunction)
+					{Old: sidebyside.Line{Num: 20, Content: "    a := 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "    a := 1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 21, Content: "    b := 2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 21, Content: "    b := 2", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 22, Content: "    c := 3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 22, Content: "    c := 3", Type: sidebyside.Context}},
+					// Gap: 23-39 (still inside MyFunction)
+					// Second hunk: lines 40-42 (still inside MyFunction)
+					{Old: sidebyside.Line{Num: 40, Content: "    x := 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 40, Content: "    x := 1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 41, Content: "    y := 2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 41, Content: "    y := 2", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 42, Content: "    z := 3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 42, Content: "    z := 3", Type: sidebyside.Context}},
+				},
+				OldContent: make([]string, 50),
+				NewContent: make([]string, 50),
+			},
+		},
+		width:  120,
+		height: 30,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 10, EndLine: 50, Name: "MyFunction", Kind: "func"},
+				}),
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Find separator lines: first should have full breadcrumb, second should have "..."
+	var separatorLines []string
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		if strings.Contains(stripped, "MyFunction") || (strings.Contains(stripped, "...") && strings.Contains(stripped, "░")) {
+			// Separator lines contain breadcrumbs or continuation markers within shading
+			if !strings.Contains(stripped, "test.go") { // not a file header
+				separatorLines = append(separatorLines, stripped)
+			}
+		}
+	}
+
+	require.GreaterOrEqual(t, len(separatorLines), 2, "should have at least two separator breadcrumb lines")
+	assert.Contains(t, separatorLines[0], "func MyFunction", "first separator should show full breadcrumb")
+	assert.NotContains(t, separatorLines[1], "func MyFunction", "second separator should not repeat full breadcrumb")
+	assert.Contains(t, separatorLines[1], "...", "second separator should show continuation dots")
+}
+
+func TestView_HunkSeparatorBreadcrumbs_RepeatedInnermost_KeepsOuter(t *testing.T) {
+	// Two hunks inside the same method of a type: the second separator should
+	// show "type MyType > ..." — keeping the outer entry but replacing the
+	// repeated innermost with "...".
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					// First hunk: lines 25-27 (inside MyType.MyMethod)
+					{Old: sidebyside.Line{Num: 25, Content: "    a := 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 25, Content: "    a := 1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 26, Content: "    b := 2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 26, Content: "    b := 2", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 27, Content: "    c := 3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 27, Content: "    c := 3", Type: sidebyside.Context}},
+					// Gap: 28-44 (still inside MyType.MyMethod)
+					// Second hunk: lines 45-47
+					{Old: sidebyside.Line{Num: 45, Content: "    x := 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 45, Content: "    x := 1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 46, Content: "    y := 2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 46, Content: "    y := 2", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 47, Content: "    z := 3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 47, Content: "    z := 3", Type: sidebyside.Context}},
+				},
+				OldContent: make([]string, 60),
+				NewContent: make([]string, 60),
+			},
+		},
+		width:  120,
+		height: 30,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 5, EndLine: 55, Name: "MyType", Kind: "type"},
+					{StartLine: 20, EndLine: 50, Name: "MyMethod", Kind: "method"},
+				}),
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Find separator lines with breadcrumbs
+	var separatorLines []string
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		if (strings.Contains(stripped, "MyMethod") || strings.Contains(stripped, "MyType")) &&
+			!strings.Contains(stripped, "test.go") &&
+			strings.Contains(stripped, "░") {
+			separatorLines = append(separatorLines, stripped)
+		}
+	}
+
+	require.GreaterOrEqual(t, len(separatorLines), 2, "should have at least two separator breadcrumb lines")
+	assert.Contains(t, separatorLines[0], "type MyType", "first separator should show outer type")
+	assert.Contains(t, separatorLines[0], "method MyMethod", "first separator should show inner method")
+	assert.Contains(t, separatorLines[1], "type MyType", "second separator should keep outer type")
+	assert.Contains(t, separatorLines[1], "...", "second separator should show ... for repeated inner method")
+	assert.NotContains(t, separatorLines[1], "method MyMethod", "second separator should not repeat inner method name")
+}
+
+func TestView_HunkSeparatorBreadcrumbs_DifferentFunctions(t *testing.T) {
+	// Two hunks in different functions: both separators should show full breadcrumbs.
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/test.go",
+				NewPath:   "b/test.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					// First hunk: lines 15-17 (inside FuncA)
+					{Old: sidebyside.Line{Num: 15, Content: "    a := 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 15, Content: "    a := 1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 16, Content: "    b := 2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 16, Content: "    b := 2", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 17, Content: "    c := 3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 17, Content: "    c := 3", Type: sidebyside.Context}},
+					// Gap: 18-54 (crosses function boundary)
+					// Second hunk: lines 55-57 (inside FuncB)
+					{Old: sidebyside.Line{Num: 55, Content: "    x := 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 55, Content: "    x := 1", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 56, Content: "    y := 2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 56, Content: "    y := 2", Type: sidebyside.Context}},
+					{Old: sidebyside.Line{Num: 57, Content: "    z := 3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 57, Content: "    z := 3", Type: sidebyside.Context}},
+				},
+				OldContent: make([]string, 60),
+				NewContent: make([]string, 60),
+			},
+		},
+		width:  120,
+		height: 30,
+		keys:   DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				NewStructure: structure.NewMap([]structure.Entry{
+					{StartLine: 10, EndLine: 30, Name: "FuncA", Kind: "func"},
+					{StartLine: 40, EndLine: 60, Name: "FuncB", Kind: "func"},
+				}),
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+
+	// Both separators should show full function names
+	funcAFound := false
+	funcBFound := false
+	for _, line := range lines {
+		stripped := stripANSI(line)
+		if strings.Contains(stripped, "func FuncA") && !strings.Contains(stripped, "test.go") {
+			funcAFound = true
+		}
+		if strings.Contains(stripped, "func FuncB") && !strings.Contains(stripped, "test.go") {
+			funcBFound = true
+		}
+	}
+
+	assert.True(t, funcAFound, "first separator should show FuncA breadcrumb")
+	assert.True(t, funcBFound, "second separator should show FuncB breadcrumb")
+}

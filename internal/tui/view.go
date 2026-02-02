@@ -268,7 +268,8 @@ type displayRow struct {
 	binaryOld         bool   // show binary message on left (old) side
 	binaryNew         bool   // show binary message on right (new) side
 	// Hunk separator fields
-	chunkStartLine int // first line of the following chunk (new/right side), for breadcrumbs
+	chunkStartLine     int // first line of the following chunk (new/right side), for breadcrumbs
+	prevChunkStartLine int // chunkStartLine of the previous separator in this file (for repeat detection)
 	// Commit header fields
 	isCommitHeader             bool                       // true if this is a commit header row
 	isCommitHeaderTopBorder    bool                       // true if this is a commit header top border row
@@ -946,19 +947,22 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 	}
 
 	var prevLeft, prevRight int
+	var lastChunkStartLine int // tracks previous separator's chunkStartLine for repeat detection
 	contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 	for i, pair := range fp.Pairs {
 		if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
 			chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-			rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+			rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, prevChunkStartLine: lastChunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
 			rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+			lastChunkStartLine = chunkStartLine
 		}
 
 		if i > 0 && isHunkBoundary(prevLeft, prevRight, pair.Old.Num, pair.New.Num) {
 			chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
 			rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true, isLastFileInCommit: isLastFile, treePath: contentTreePath})
-			rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+			rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, prevChunkStartLine: lastChunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
 			rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
+			lastChunkStartLine = chunkStartLine
 		}
 
 		row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair, isLastFileInCommit: isLastFile, treePath: contentTreePath}
