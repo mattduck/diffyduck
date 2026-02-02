@@ -1360,7 +1360,7 @@ func (m Model) enterExpandMiddle(fp *sidebyside.FilePair, boundaries []hunkBound
 		return 0
 	}
 
-	innermost := findInnermostFunction(entries)
+	innermost := findInnermostEntry(entries)
 	if innermost == nil {
 		return 0
 	}

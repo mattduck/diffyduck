@@ -173,7 +173,7 @@ func TestExpandSemanticContext(t *testing.T) {
 	})
 }
 
-func TestFindInnermostFunction(t *testing.T) {
+func TestFindInnermostEntry(t *testing.T) {
 	tests := []struct {
 		name     string
 		entries  []structure.Entry
@@ -200,11 +200,18 @@ func TestFindInnermostFunction(t *testing.T) {
 			wantName: "myMethod",
 		},
 		{
-			name: "only type, no function",
+			name: "only type",
 			entries: []structure.Entry{
 				{Name: "MyStruct", Kind: "type"},
 			},
-			wantName: "",
+			wantName: "MyStruct",
+		},
+		{
+			name: "only class",
+			entries: []structure.Entry{
+				{Name: "MyClass", Kind: "class"},
+			},
+			wantName: "MyClass",
 		},
 		{
 			name: "Python def",
@@ -217,7 +224,7 @@ func TestFindInnermostFunction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := findInnermostFunction(tt.entries)
+			got := findInnermostEntry(tt.entries)
 			if tt.wantName == "" {
 				assert.Nil(t, got)
 			} else {

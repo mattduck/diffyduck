@@ -298,7 +298,7 @@ func expandSemanticContext(fp *sidebyside.FilePair, newStruct *structure.Map, th
 			entries := newStruct.AtLine(firstNewLine)
 			if len(entries) > 0 {
 				// Find the innermost function/method scope
-				innermost := findInnermostFunction(entries)
+				innermost := findInnermostEntry(entries)
 				if innermost != nil && innermost.StartLine < firstNewLine {
 					gap := firstNewLine - innermost.StartLine
 					if gap <= threshold {
@@ -321,17 +321,13 @@ func expandSemanticContext(fp *sidebyside.FilePair, newStruct *structure.Map, th
 	}
 }
 
-// findInnermostFunction returns the innermost function/method entry from a list
-// of structure entries (ordered outermost to innermost). Returns nil if none found.
-func findInnermostFunction(entries []structure.Entry) *structure.Entry {
-	// Entries are ordered outermost to innermost, so scan from end
-	for i := len(entries) - 1; i >= 0; i-- {
-		e := &entries[i]
-		if e.Kind == "func" || e.Kind == "def" || e.Kind == "method" {
-			return e
-		}
+// findInnermostEntry returns the innermost structure entry from a list
+// of entries (ordered outermost to innermost). Returns nil if empty.
+func findInnermostEntry(entries []structure.Entry) *structure.Entry {
+	if len(entries) == 0 {
+		return nil
 	}
-	return nil
+	return &entries[len(entries)-1]
 }
 
 // buildContextPairs creates context LinePairs from full file content.
