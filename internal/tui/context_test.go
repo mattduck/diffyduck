@@ -116,6 +116,137 @@ func TestExpandSemanticContext(t *testing.T) {
 		assert.Contains(t, fp.Pairs[0].New.Content, "func MyFunction")
 	})
 
+	t.Run("clamps to previous hunk boundary to avoid duplicate lines", func(t *testing.T) {
+		// Two hunks: hunk 0 covers lines 5-12, hunk 1 covers lines 20-22.
+		// Function containing hunk 1 starts at line 8, which is inside hunk 0.
+		// Semantic expansion for hunk 1 should clamp to NOT overlap with hunk 0.
+		content := makeLines(30)
+		fp := &sidebyside.FilePair{
+			NewContent: content,
+			OldContent: content,
+			Pairs: []sidebyside.LinePair{
+				// Hunk 0: contiguous lines 5-12
+				{Old: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 7, Content: "7", Type: sidebyside.Context}, New: sidebyside.Line{Num: 7, Content: "7", Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 8, Content: "8", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 8, Content: "8-new", Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 9, Content: "9", Type: sidebyside.Context}, New: sidebyside.Line{Num: 9, Content: "9", Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 10, Content: "10", Type: sidebyside.Context}, New: sidebyside.Line{Num: 10, Content: "10", Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 11, Content: "11", Type: sidebyside.Context}, New: sidebyside.Line{Num: 11, Content: "11", Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 12, Content: "12", Type: sidebyside.Context}, New: sidebyside.Line{Num: 12, Content: "12", Type: sidebyside.Context}},
+				// Gap (lines 13-19 not shown)
+				// Hunk 1: lines 20-22
+				{Old: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context}},
+				{Old: sidebyside.Line{Num: 21, Content: "21", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 21, Content: "21-new", Type: sidebyside.Added}},
+				{Old: sidebyside.Line{Num: 22, Content: "22", Type: sidebyside.Context}, New: sidebyside.Line{Num: 22, Content: "22", Type: sidebyside.Context}},
+			},
+		}
+
+		// Function spans lines 8-25, starting inside hunk 0
+		structMap := structure.NewMap([]structure.Entry{
+			{StartLine: 8, EndLine: 25, Name: "MyFunction", Kind: "func"},
+		})
+
+		boundaries := findHunkBoundaries(fp.Pairs)
+		require.Equal(t, 2, len(boundaries), "should have exactly 2 hunks")
+
+		originalLen := len(fp.Pairs)
+		expandSemanticContext(fp, structMap, 15)
+
+		// Expansion for hunk 1: function starts at line 8 (gap = 20-8 = 12 ≤ 15).
+		// But line 8 is inside hunk 0 (which ends at line 12).
+		// Should clamp to line 13 (lastPrevNew 12 + 1) through line 19.
+		expectedInserted := 7 // lines 13-19
+
+		// Verify no duplicate new-side line numbers
+		seenNew := map[int]int{}
+		for _, p := range fp.Pairs {
+			if p.New.Num > 0 {
+				seenNew[p.New.Num]++
+			}
+		}
+		for lineNum, count := range seenNew {
+			assert.Equal(t, 1, count, "new line %d appears %d times (should be 1)", lineNum, count)
+		}
+
+		assert.Equal(t, originalLen+expectedInserted, len(fp.Pairs),
+			"should add %d context lines (13-19), not overlap with hunk 0", expectedInserted)
+
+		// The first inserted context line should be 13, not 8
+		firstInserted := fp.Pairs[8] // after 8 pairs of hunk 0
+		assert.Equal(t, 13, firstInserted.New.Num,
+			"first inserted context should be line 13 (after hunk 0), not line 8 (function start)")
+	})
+
+	t.Run("multi-hunk expansion does not corrupt earlier boundaries", func(t *testing.T) {
+		// Three hunks. Expansion for hunk 2 should not corrupt boundaries
+		// for hunk 1, causing wrong expansion.
+		content := makeLines(60)
+		fp := &sidebyside.FilePair{
+			NewContent: content,
+			OldContent: content,
+			Pairs: []sidebyside.LinePair{
+				// Hunk 0: lines 1-5
+				{
+					Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context},
+				},
+				{
+					Old: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 5, Content: "5-new", Type: sidebyside.Added},
+				},
+				// Gap
+				// Hunk 1: lines 20-25
+				{
+					Old: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 20, Content: "20", Type: sidebyside.Context},
+				},
+				{
+					Old: sidebyside.Line{Num: 25, Content: "25", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 25, Content: "25-new", Type: sidebyside.Added},
+				},
+				// Gap
+				// Hunk 2: lines 40-45
+				{
+					Old: sidebyside.Line{Num: 40, Content: "40", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 40, Content: "40", Type: sidebyside.Context},
+				},
+				{
+					Old: sidebyside.Line{Num: 45, Content: "45", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 45, Content: "45-new", Type: sidebyside.Added},
+				},
+			},
+		}
+
+		structMap := structure.NewMap([]structure.Entry{
+			{StartLine: 15, EndLine: 30, Name: "FuncA", Kind: "func"},
+			{StartLine: 35, EndLine: 50, Name: "FuncB", Kind: "func"},
+		})
+
+		expandSemanticContext(fp, structMap, 15)
+
+		// Verify no duplicate new-side line numbers
+		seenNew := map[int]int{}
+		for _, p := range fp.Pairs {
+			if p.New.Num > 0 {
+				seenNew[p.New.Num]++
+			}
+		}
+		for lineNum, count := range seenNew {
+			assert.Equal(t, 1, count, "new line %d appears %d times (should be 1)", lineNum, count)
+		}
+
+		// Verify line numbers are monotonically increasing (no backwards jumps)
+		var lastNew int
+		for _, p := range fp.Pairs {
+			if p.New.Num > 0 {
+				assert.Greater(t, p.New.Num, lastNew,
+					"new line numbers should be monotonically increasing, got %d after %d", p.New.Num, lastNew)
+				lastNew = p.New.Num
+			}
+		}
+	})
+
 	t.Run("does not expand when function start is too far", func(t *testing.T) {
 		// Function starts at line 3, hunk starts at line 25
 		// Gap of 22 lines exceeds threshold of 15

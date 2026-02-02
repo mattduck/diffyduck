@@ -286,7 +286,9 @@ func expandSemanticContext(fp *sidebyside.FilePair, newStruct *structure.Map, th
 		return
 	}
 
-	// Process hunks in reverse order so index modifications don't affect later hunks
+	// Process hunks in reverse order so insertions don't affect later hunks.
+	// Since we insert BEFORE hunk i, only pairs at index >= hunk.startIdx shift.
+	// Boundaries for hunks j < i are at earlier indices and are unaffected.
 	for i := len(boundaries) - 1; i >= 0; i-- {
 		hunk := boundaries[i]
 		hunkPairs := fp.Pairs[hunk.startIdx:hunk.endIdx]
@@ -307,13 +309,28 @@ func expandSemanticContext(fp *sidebyside.FilePair, newStruct *structure.Map, th
 						if firstOldLine > 0 {
 							oldStart = firstOldLine - gap
 						}
-						newPairs := buildContextPairs(fp, innermost.StartLine, firstNewLine-1, oldStart)
-						fp.Pairs = insertPairs(fp.Pairs, hunk.startIdx, newPairs)
-						// Adjust boundary indices for later iterations
-						for j := 0; j < i; j++ {
-							boundaries[j].startIdx += len(newPairs)
-							boundaries[j].endIdx += len(newPairs)
+
+						// Clamp to previous hunk boundary (don't overlap)
+						startLine := innermost.StartLine
+						if i > 0 {
+							prevHunk := boundaries[i-1]
+							prevHunkPairs := fp.Pairs[prevHunk.startIdx:prevHunk.endIdx]
+							lastPrevNew := getLastNewLineNum(prevHunkPairs)
+							if lastPrevNew > 0 && startLine <= lastPrevNew {
+								startLine = lastPrevNew + 1
+								// Recalculate old start for the clamped range
+								if firstOldLine > 0 {
+									clampedGap := firstNewLine - startLine
+									oldStart = firstOldLine - clampedGap
+								}
+							}
 						}
+						if startLine >= firstNewLine {
+							continue
+						}
+
+						newPairs := buildContextPairs(fp, startLine, firstNewLine-1, oldStart)
+						fp.Pairs = insertPairs(fp.Pairs, hunk.startIdx, newPairs)
 					}
 				}
 			}
