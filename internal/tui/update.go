@@ -787,8 +787,7 @@ func (m Model) handleFullFileToggle() (tea.Model, tea.Cmd) {
 // Returns 0 if cursor is not on a separator.
 //
 // Rules:
-//   - SeparatorTop: go to last content line above the separator. If there is
-//     no content above (first hunk in file), fall through to Separator logic.
+//   - SeparatorTop: go to last content line above the separator.
 //   - SeparatorBottom: go to first content line below the separator.
 //   - Separator (middle): if a breadcrumb exists, go to the innermost entry's
 //     start line; otherwise go to the first content line below.
@@ -1316,9 +1315,6 @@ func (m Model) handleContextExpand() (tea.Model, tea.Cmd) {
 				// Land on the first newly-inserted line (just below where we clicked)
 				targetNewLine = lastNew + 1
 			}
-		} else {
-			// No hunk above (first separator) — no-op
-			return m, nil
 		}
 
 	case RowKindSeparatorBottom:

@@ -1083,13 +1083,12 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	// Layout in Normal view (in diff view, first file has no top border in buildRows):
 	// Line 0: header
 	// Line 1: bottom border (header spacer)
-	// Line 2: separator top (since diff starts at line 10, not line 1)
-	// Line 3: separator (breadcrumb)
-	// Line 4: separator bottom
-	// Line 5: diff line (file line 10)
-	// Line 6: diff line (file line 11)
-	// Line 7: diff line (file line 12) <- cursor here
-	// Line 8: diff line (file line 13)
+	// Line 2: separator (breadcrumb) — no SeparatorTop for first hunk
+	// Line 3: separator bottom
+	// Line 4: diff line (file line 10)
+	// Line 5: diff line (file line 11)
+	// Line 6: diff line (file line 12) <- cursor here
+	// Line 7: diff line (file line 13)
 	// ...
 
 	// Position cursor on file header (line 0) to press TAB
@@ -1104,13 +1103,13 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel, "file should be Expanded")
 
 	// Since content isn't loaded yet, buildRows falls back to Normal view
-	// Now move cursor to line 7 (file line 12) to test content load behavior
-	model.scroll = 7
-	assert.Equal(t, 7, model.cursorLine(), "cursor should be on line 7")
+	// Now move cursor to line 6 (file line 12) to test content load behavior
+	model.scroll = 6
+	assert.Equal(t, 6, model.cursorLine(), "cursor should be on line 6")
 
 	// Verify we're on the line with content "line12"
 	rows := model.buildRows()
-	assert.Equal(t, 12, rows[7].pair.Old.Num, "cursor should be on file line 12")
+	assert.Equal(t, 12, rows[6].pair.Old.Num, "cursor should be on file line 12")
 
 	// Now simulate the content loading
 	// The full file has 20 lines (1-20), our diff showed lines 10-15
@@ -1137,7 +1136,7 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	// ...
 	// Line 13: file line 12 <- cursor should be here
 	// ...
-	// Note: We were on line 7 before content load, which mapped to file line 12.
+	// Note: We were on line 6 before content load, which mapped to file line 12.
 	// After content load, file line 12 is at row 13 (header + spacer + 11 lines).
 
 	cursorPos := model.cursorLine()

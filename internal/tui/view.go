@@ -950,7 +950,6 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 	for i, pair := range fp.Pairs {
 		if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
 			chunkStartLine := findFirstNewLineNum(fp.Pairs, i)
-			rows = append(rows, displayRow{kind: RowKindSeparatorTop, fileIndex: fileIdx, isSeparatorTop: true, isLastFileInCommit: isLastFile, treePath: contentTreePath})
 			rows = append(rows, displayRow{kind: RowKindSeparator, fileIndex: fileIdx, isSeparator: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
 			rows = append(rows, displayRow{kind: RowKindSeparatorBottom, fileIndex: fileIdx, isSeparatorBottom: true, chunkStartLine: chunkStartLine, isLastFileInCommit: isLastFile, treePath: contentTreePath})
 		}

@@ -1765,53 +1765,6 @@ func TestFullFileToggle_SeparatorBottom_GoesToLineBelow(t *testing.T) {
 	assert.Equal(t, 10, cursorRow.pair.New.Num, "cursor should be on line 10 (first line below separator)")
 }
 
-func TestFullFileToggle_FirstSeparatorTop_GoesToLineBelow(t *testing.T) {
-	// First hunk starts at line 5 — the separator at the top has no content above it.
-	// SeparatorTop should fall through to line below (like middle separator without breadcrumb).
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "a/test.go",
-				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
-				Pairs: []sidebyside.LinePair{
-					{Old: sidebyside.Line{Num: 5, Content: "e", Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Content: "e", Type: sidebyside.Context}},
-					{Old: sidebyside.Line{Num: 6, Content: "f", Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Content: "f", Type: sidebyside.Context}},
-				},
-				OldContent: []string{"a", "b", "c", "d", "e", "f"},
-				NewContent: []string{"a", "b", "c", "d", "e", "f"},
-			},
-		},
-		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
-		width:   80,
-		height:  40,
-		keys:    DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
-
-	// First hunk starts at line 5, so there's a separator at the top with no content above
-	rows := m.buildRows()
-	sepTopIdx := -1
-	for i, row := range rows {
-		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
-			sepTopIdx = i
-			break
-		}
-	}
-	require.True(t, sepTopIdx >= 0, "should have a SeparatorTop row")
-
-	m.scroll = sepTopIdx
-
-	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
-	m = result.(Model)
-
-	newRows := m.buildRows()
-	cursorRow := newRows[m.scroll]
-	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
-	assert.Equal(t, 5, cursorRow.pair.New.Num, "cursor should land on line 5 (first content line below, since no content above)")
-}
-
 func TestFullFileToggle_SeparatorMiddle_WithBreadcrumb(t *testing.T) {
 	// Middle separator with a breadcrumb should navigate to the innermost
 	// structure entry's StartLine.
@@ -2236,50 +2189,6 @@ func TestTab_NoContent_Noop(t *testing.T) {
 	m = result.(Model)
 
 	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "should not change without content")
-}
-
-func TestTab_FirstSeparatorTop_Noop(t *testing.T) {
-	// First hunk starts at line 5 — the separator before it has no hunk above,
-	// so SeparatorTop should be a no-op.
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "a/test.go",
-				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
-				Pairs: []sidebyside.LinePair{
-					{Old: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}},
-					{Old: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}},
-				},
-				OldContent: makeTestContent(10),
-				NewContent: makeTestContent(10),
-			},
-		},
-		width:  80,
-		height: 40,
-		keys:   DefaultKeyMap(),
-	}
-	m.calculateTotalLines()
-
-	originalPairsLen := len(m.files[0].Pairs)
-
-	// Find SeparatorTop of the first separator
-	rows := m.buildRows()
-	sepTopIdx := -1
-	for i, row := range rows {
-		if row.kind == RowKindSeparatorTop && row.fileIndex == 0 {
-			sepTopIdx = i
-			break
-		}
-	}
-	require.True(t, sepTopIdx >= 0)
-	m.scroll = sepTopIdx
-
-	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m = result.(Model)
-
-	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "first separator top should be no-op")
 }
 
 func TestTab_CursorAfterMerge(t *testing.T) {
