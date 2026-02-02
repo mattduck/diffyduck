@@ -280,6 +280,7 @@ type displayRow struct {
 	maxCommitRemWidth          int                        // max width for removals column across all commits
 	maxCommitTimeWidth         int                        // max width for relative time column across all commits
 	maxCommitSubjectWidth      int                        // max width for subject column across all commits
+	commitHeaderSearchText     string                     // searchable text for commit header rows (SHA + author + subject)
 	// Commit body fields (shown when commit is expanded) - legacy, kept for separators
 	isCommitBody      bool   // true if this is a commit body row
 	commitBodyLine    string // the text content for this body line
@@ -552,18 +553,19 @@ func (m Model) buildRows() []displayRow {
 			}
 
 			rows = append(rows, displayRow{
-				kind:                  RowKindCommitHeader,
-				fileIndex:             -1,
-				isCommitHeader:        true,
-				commitFoldLevel:       commit.FoldLevel,
-				commitIndex:           commitIdx,
-				maxCommitFilesWidth:   maxCommitFilesWidth,
-				maxCommitAddWidth:     maxCommitAddWidth,
-				maxCommitRemWidth:     maxCommitRemWidth,
-				maxCommitTimeWidth:    maxCommitTimeWidth,
-				maxCommitSubjectWidth: maxCommitSubjectWidth,
-				headerMode:            commitHeaderMode,
-				headerBoxWidth:        useHeaderBoxWidth,
+				kind:                   RowKindCommitHeader,
+				fileIndex:              -1,
+				isCommitHeader:         true,
+				commitFoldLevel:        commit.FoldLevel,
+				commitIndex:            commitIdx,
+				maxCommitFilesWidth:    maxCommitFilesWidth,
+				maxCommitAddWidth:      maxCommitAddWidth,
+				maxCommitRemWidth:      maxCommitRemWidth,
+				maxCommitTimeWidth:     maxCommitTimeWidth,
+				maxCommitSubjectWidth:  maxCommitSubjectWidth,
+				commitHeaderSearchText: commit.Info.ShortSHA() + " " + commit.Info.Author + " " + commit.Info.Subject,
+				headerMode:             commitHeaderMode,
+				headerBoxWidth:         useHeaderBoxWidth,
 			})
 
 			// If commit is folded, skip its files

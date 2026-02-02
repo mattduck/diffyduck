@@ -987,6 +987,219 @@ func TestSearch_GoToTop_ResetsMatchIndex(t *testing.T) {
 }
 
 // =============================================================================
+// Search in Commits Tests
+// =============================================================================
+
+// Helper to create a test model with commit metadata for search tests.
+func makeSearchCommitModel(commitInfo sidebyside.CommitInfo, foldLevel sidebyside.CommitFoldLevel) Model {
+	files := []sidebyside.FilePair{
+		{
+			OldPath:   "a/foo.go",
+			NewPath:   "b/foo.go",
+			FoldLevel: sidebyside.FoldNormal,
+			Pairs: []sidebyside.LinePair{
+				{
+					Old: sidebyside.Line{Num: 1, Content: "old line", Type: sidebyside.Removed},
+					New: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
+				},
+			},
+		},
+	}
+	commit := sidebyside.CommitSet{
+		Info:        commitInfo,
+		FoldLevel:   foldLevel,
+		FilesLoaded: true,
+		Files:       files,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.width = 120
+	m.height = 40
+	m.focused = true
+	m.RefreshLayout()
+	return m
+}
+
+func TestSearch_FindsSubjectInCommitHeader(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice",
+		Subject: "Fix parser bug",
+	}, sidebyside.CommitNormal)
+
+	m.searchQuery = "parser"
+	row, found := m.findNextMatchRow(0, true)
+	assert.True(t, found, "should find 'parser' in commit header subject")
+
+	rows := m.buildRows()
+	assert.Equal(t, RowKindCommitHeader, rows[row].kind)
+}
+
+func TestSearch_FindsAuthorInCommitHeader(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice",
+		Subject: "Fix parser bug",
+	}, sidebyside.CommitNormal)
+
+	m.searchQuery = "alice"
+	row, found := m.findNextMatchRow(0, true)
+	assert.True(t, found, "should find 'alice' (case-insensitive) in commit header author")
+
+	rows := m.buildRows()
+	assert.Equal(t, RowKindCommitHeader, rows[row].kind)
+}
+
+func TestSearch_FindsSHAInCommitHeader(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice",
+		Subject: "Fix parser bug",
+	}, sidebyside.CommitNormal)
+
+	m.searchQuery = "abc123d"
+	row, found := m.findNextMatchRow(0, true)
+	assert.True(t, found, "should find short SHA in commit header")
+
+	rows := m.buildRows()
+	assert.Equal(t, RowKindCommitHeader, rows[row].kind)
+}
+
+func TestSearch_CommitHeaderSearchText_ContainsSHAAuthorSubject(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice",
+		Subject: "Fix parser bug",
+	}, sidebyside.CommitNormal)
+
+	rows := m.buildRows()
+	var headerRow displayRow
+	for _, r := range rows {
+		if r.kind == RowKindCommitHeader {
+			headerRow = r
+			break
+		}
+	}
+
+	assert.Contains(t, headerRow.commitHeaderSearchText, "abc123d", "should contain short SHA")
+	assert.Contains(t, headerRow.commitHeaderSearchText, "Alice", "should contain author")
+	assert.Contains(t, headerRow.commitHeaderSearchText, "Fix parser bug", "should contain subject")
+}
+
+func TestSearch_DoesNotSearchCommitInfoHeader(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice",
+		Date:    "2024-01-15T10:30:00+00:00",
+		Subject: "Fix parser bug",
+	}, sidebyside.CommitNormal)
+
+	// The commit info header shows the formatted date. Search for a date fragment
+	// and verify it does NOT match the commit info header row.
+	m.searchQuery = "Jan"
+	row, found := m.findNextMatchRow(0, true)
+	if found {
+		rows := m.buildRows()
+		assert.NotEqual(t, RowKindCommitInfoHeader, rows[row].kind,
+			"search should not match commit info header rows")
+	}
+}
+
+func TestSearch_FindsTextInCommitInfoBody(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice Wonderland",
+		Email:   "alice@example.com",
+		Date:    "2024-01-15T10:30:00+00:00",
+		Subject: "Fix parser bug",
+		Body:    "Detailed description of the fix",
+	}, sidebyside.CommitExpanded)
+
+	// Search for text in the commit body message
+	m.searchQuery = "Detailed"
+	row, found := m.findNextMatchRow(0, true)
+	assert.True(t, found, "should find 'Detailed' in commit info body")
+
+	rows := m.buildRows()
+	assert.Equal(t, RowKindCommitInfoBody, rows[row].kind)
+}
+
+func TestSearch_FindsAuthorInCommitInfoBody(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice Wonderland",
+		Email:   "alice@example.com",
+		Date:    "2024-01-15T10:30:00+00:00",
+		Subject: "Fix parser bug",
+	}, sidebyside.CommitExpanded)
+
+	// Search for the email which only appears in the commit info body Author line
+	m.searchQuery = "alice@example"
+	row, found := m.findNextMatchRow(0, true)
+	assert.True(t, found, "should find email in commit info body Author line")
+
+	rows := m.buildRows()
+	assert.Equal(t, RowKindCommitInfoBody, rows[row].kind)
+	assert.Contains(t, rows[row].commitInfoLine, "Author:")
+}
+
+func TestSearch_FindsSHAInCommitInfoBody(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice",
+		Date:    "2024-01-15T10:30:00+00:00",
+		Subject: "Fix parser bug",
+	}, sidebyside.CommitExpanded)
+
+	// The full SHA appears in the commit info body "commit abc123def4567890" line
+	m.searchQuery = "abc123def"
+	row, found := m.findNextMatchRow(0, true)
+	assert.True(t, found, "should find full SHA in commit info body")
+
+	rows := m.buildRows()
+	// First match should be the commit header (short SHA), skip to next for info body
+	if rows[row].kind == RowKindCommitHeader {
+		row, found = m.findNextMatchRow(row+1, true)
+		assert.True(t, found, "should find second match in commit info body")
+	}
+	assert.Equal(t, RowKindCommitInfoBody, rows[row].kind)
+	assert.Contains(t, rows[row].commitInfoLine, "commit ")
+}
+
+func TestSearch_CommitBodyNotSearchedOnSide1(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice",
+		Subject: "Fix parser bug",
+	}, sidebyside.CommitExpanded)
+
+	rows := m.buildRows()
+	for i, r := range rows {
+		if r.kind == RowKindCommitInfoBody {
+			cols := m.findMatchColsOnRowSide(i, 1)
+			assert.Empty(t, cols, "commit info body should not be searchable on side 1")
+		}
+	}
+}
+
+func TestSearch_CommitInfoBodyBlankLinesNotSearchable(t *testing.T) {
+	m := makeSearchCommitModel(sidebyside.CommitInfo{
+		SHA:     "abc123def4567890",
+		Author:  "Alice",
+		Date:    "2024-01-15T10:30:00+00:00",
+		Subject: "Fix parser bug",
+	}, sidebyside.CommitExpanded)
+
+	// Blank commit info body lines should return empty searchable text
+	rows := m.buildRows()
+	for _, r := range rows {
+		if r.kind == RowKindCommitInfoBody && r.commitInfoLine == "" {
+			text := searchableText(r, 0)
+			assert.Empty(t, text, "blank commit info body lines should return empty search text")
+		}
+	}
+}
+
+// =============================================================================
 // Search in Comments Tests
 // =============================================================================
 

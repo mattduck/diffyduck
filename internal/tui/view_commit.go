@@ -330,14 +330,22 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	} else {
 		styledRemoved = removedStyle.Render(removedText)
 	}
+	// Apply search highlighting to SHA and author (preserving base styles)
+	styledSHA := m.highlightSearchInVisibleStyled(shaText, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), func(text string, _ int) string {
+		return shaStyle.Render(text)
+	})
+	styledAuthor := m.highlightSearchInVisibleStyled(author, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), func(text string, _ int) string {
+		return authorStyle.Render(text)
+	})
+
 	fixedPart := prefix +
 		foldIconStyle.Render(foldIcon) + " " +
-		shaStyle.Render(shaText) + " " +
+		styledSHA + " " +
 		styledAdded + " " +
 		styledRemoved + " " +
 		dimStyle.Render(filesText) + " " +
 		dimStyle.Render(timeText) + " " +
-		authorStyle.Render(author)
+		styledAuthor
 
 	// Subject: truncate to subjectDisplayWidth with Unicode-aware width
 	subject := commitInfo.Subject
@@ -362,6 +370,9 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	// No subject padding — ellipsis/border hugs content at all fold levels
 	subjectPadding := ""
+
+	// Apply search highlighting to the subject
+	subject = m.highlightSearchInVisible(subject, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide())
 
 	// Build the dynamic part with padding
 	var dynamicPart string
@@ -541,16 +552,22 @@ func (m Model) renderCommitInfoBody(row displayRow, isCursorRow bool) string {
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
 	line := row.commitInfoLine
-	styledLine := line
 
-	// Apply syntax highlighting for commit/Author/Date lines
+	// Build base styler for commit info body lines.
+	// Preserves prefix colouring (dim label, yellow SHA) under search highlighting.
+	var baseStyler SearchBaseStyler
 	if strings.HasPrefix(line, "commit ") {
-		styledLine = gutterStyle.Render("commit ") + shaStyle.Render(line[7:])
+		prefixLen := 7 // len("commit ")
+		baseStyler = commitInfoBodyStyler(prefixLen, gutterStyle, &shaStyle)
 	} else if strings.HasPrefix(line, "Author: ") {
-		styledLine = gutterStyle.Render("Author: ") + line[8:]
+		prefixLen := 8 // len("Author: ")
+		baseStyler = commitInfoBodyStyler(prefixLen, gutterStyle, nil)
 	} else if strings.HasPrefix(line, "Date:   ") {
-		styledLine = gutterStyle.Render("Date:   ") + line[8:]
+		prefixLen := 8 // len("Date:   ")
+		baseStyler = commitInfoBodyStyler(prefixLen, gutterStyle, nil)
 	}
+
+	styledLine := m.highlightSearchInVisibleStyled(line, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), baseStyler)
 
 	// Tree prefix with tight spacing (just 1 space after │)
 	margin := strings.Repeat(" ", TreeLeftMargin)
@@ -1328,18 +1345,46 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 	return rows
 }
 
+// commitInfoBodyStyler returns a SearchBaseStyler that applies prefixStyle to
+// the first prefixLen bytes and valueStyle to the rest. If valueStyle is nil,
+// the value portion is left unstyled. Used for "commit ", "Author: ", "Date:   " lines.
+func commitInfoBodyStyler(prefixLen int, prefixStyle lipgloss.Style, valueStyle *lipgloss.Style) SearchBaseStyler {
+	return func(text string, byteOffset int) string {
+		// Entirely within value region
+		if byteOffset >= prefixLen {
+			if valueStyle != nil {
+				return valueStyle.Render(text)
+			}
+			return text
+		}
+		// Entirely within prefix region
+		if byteOffset+len(text) <= prefixLen {
+			return prefixStyle.Render(text)
+		}
+		// Spans the boundary
+		splitAt := prefixLen - byteOffset
+		result := prefixStyle.Render(text[:splitAt])
+		if valueStyle != nil {
+			result += valueStyle.Render(text[splitAt:])
+		} else {
+			result += text[splitAt:]
+		}
+		return result
+	}
+}
+
 // renderCommitBodyRow renders a single line of the commit body.
 func (m Model) renderCommitBodyRow(row displayRow, isCursorRow bool) string {
-	// Style the content
-	var content string
-	if strings.HasPrefix(row.commitBodyLine, "commit ") {
-		// SHA line - "commit" in normal text, SHA in yellow
+	line := row.commitBodyLine
+
+	// Build base styler to preserve colours under search highlighting
+	var baseStyler SearchBaseStyler
+	if strings.HasPrefix(line, "commit ") {
 		shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-		sha := strings.TrimPrefix(row.commitBodyLine, "commit ")
-		content = "commit " + shaStyle.Render(sha)
-	} else {
-		content = row.commitBodyLine
+		baseStyler = commitInfoBodyStyler(7, lipgloss.NewStyle(), &shaStyle) // "commit " prefix unstyled, SHA in yellow
 	}
+
+	content := m.highlightSearchInVisibleStyled(line, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), baseStyler)
 
 	// Cursor handling with 1-char bg highlight (like file headers)
 	if isCursorRow && m.focused {

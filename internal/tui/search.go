@@ -44,6 +44,30 @@ func searchableText(row displayRow, side int) string {
 		return "" // Don't search headers on side 1
 	}
 
+	// Commit header rows - search the subject (side 0 only)
+	if row.kind == RowKindCommitHeader {
+		if side == 0 && row.commitIndex >= 0 {
+			return row.commitHeaderSearchText
+		}
+		return ""
+	}
+
+	// Commit body rows - search the line text (side 0 only)
+	if row.kind == RowKindCommitBody {
+		if side == 0 {
+			return row.commitBodyLine
+		}
+		return ""
+	}
+
+	// Commit info body rows - search the line text (side 0 only)
+	if row.kind == RowKindCommitInfoBody {
+		if side == 0 {
+			return row.commitInfoLine
+		}
+		return ""
+	}
+
 	if side == 0 {
 		// New side (left) - always searchable
 		return row.pair.New.Content
