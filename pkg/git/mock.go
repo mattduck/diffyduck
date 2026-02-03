@@ -133,3 +133,13 @@ func (m *MockGit) ListUntrackedFiles() ([]string, error) {
 func (m *MockGit) DiffNewFile(path string) (string, error) {
 	return "", nil
 }
+
+// CreateSnapshot returns a fake SHA for testing (mock doesn't actually create commits).
+func (m *MockGit) CreateSnapshot(allMode bool) (string, error) {
+	return "mock-snapshot-sha", nil
+}
+
+// DiffSnapshots returns the preconfigured diff output (mock treats all diffs the same).
+func (m *MockGit) DiffSnapshots(sha1, sha2 string) (string, error) {
+	return m.DiffOutput, m.DiffError
+}

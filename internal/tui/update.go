@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/diff"
@@ -157,6 +160,69 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, nil
+
+	case SnapshotCreatedMsg:
+		if msg.Err != nil {
+			// Snapshot creation failed - disable snapshots
+			m.snapshotsEnabled = false
+			return m, nil
+		}
+		// Store the initial snapshot SHA
+		m.snapshots = append(m.snapshots, msg.SHA)
+
+		// Update the first commit's SHA if it's a snapshot (the initial diff)
+		// This shows the SHA in the header once the background snapshot completes
+		if len(m.commits) > 0 && m.commits[0].IsSnapshot && m.commits[0].Info.SHA == "" {
+			m.commits[0].Info.SHA = msg.SHA[:8] // abbreviated SHA for display
+			m.rowsCacheValid = false
+		}
+		return m, nil
+
+	case SnapshotDiffReadyMsg:
+		if msg.Err != nil {
+			now := time.Now()
+			m.statusMessage = "Snapshot diff failed"
+			m.statusMessageTime = now
+			return m, m.clearStatusAfter(now)
+		}
+
+		// Store the new snapshot SHA (even if no changes, so next diff starts from this point)
+		if msg.SnapshotSHA != "" {
+			m.snapshots = append(m.snapshots, msg.SnapshotSHA)
+		}
+
+		// Check for "no changes" case
+		if len(msg.CommitSet.Files) == 0 {
+			now := time.Now()
+			m.statusMessage = "No changes since last snapshot"
+			m.statusMessageTime = now
+			return m, m.clearStatusAfter(now)
+		}
+
+		// Increment the snapshot count (only for actual diffs, not empty ones)
+		m.snapshotCount++
+
+		// Insert the new diff at the beginning of commits
+		m.insertSnapshotCommit(msg.CommitSet)
+
+		// Fetch content and request highlighting for the new files (indices 0 to newFileCount-1)
+		newFileCount := len(msg.CommitSet.Files)
+		var cmds []tea.Cmd
+
+		// Fetch full file content for context expansion
+		if msg.CommitSet.SnapshotOldRef != "" && msg.CommitSet.SnapshotNewRef != "" {
+			cmds = append(cmds, m.FetchSnapshotFilesContent(
+				msg.CommitSet.SnapshotOldRef,
+				msg.CommitSet.SnapshotNewRef,
+				0, newFileCount,
+			))
+		}
+
+		// Request syntax highlighting
+		for i := 0; i < newFileCount; i++ {
+			cmds = append(cmds, m.RequestHighlightFromPairs(i))
+		}
+		return m, tea.Batch(cmds...)
 
 	case spinner.TickMsg:
 		cmd := m.handleSpinnerTick(msg)
@@ -358,6 +424,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case matchesKey(msg, keys.RefreshLayout):
 		m.RefreshLayout()
+
+	case matchesKey(msg, keys.Snapshot):
+		if cmd := m.handleSnapshot(); cmd != nil {
+			return m, cmd
+		}
 	}
 
 	// Check if we should load more commits after scroll changes
@@ -1618,4 +1689,98 @@ func (m Model) commitVisibilityLevelFor(commitIdx int) int {
 
 	// All files are FoldFolded
 	return 2
+}
+
+// handleSnapshot handles the R key to create a snapshot and show the incremental diff.
+func (m *Model) handleSnapshot() tea.Cmd {
+	// Check if snapshots are enabled
+	if !m.snapshotsEnabled {
+		now := time.Now()
+		m.statusMessage = "Snapshots not available (no working tree changes)"
+		m.statusMessageTime = now
+		return m.clearStatusAfter(now)
+	}
+
+	// Check if we have a previous snapshot
+	if len(m.snapshots) == 0 {
+		now := time.Now()
+		m.statusMessage = "Initial snapshot not ready yet"
+		m.statusMessageTime = now
+		return m.clearStatusAfter(now)
+	}
+
+	// Check if git is available
+	if m.git == nil {
+		return nil
+	}
+
+	// Capture values for closure
+	gitClient := m.git
+	allMode := m.allMode
+	prevSnapshot := m.snapshots[len(m.snapshots)-1]
+	snapshotNum := m.snapshotCount + 1
+
+	return func() tea.Msg {
+		// Create new snapshot
+		newSnapshot, err := gitClient.CreateSnapshot(allMode)
+		if err != nil {
+			return SnapshotDiffReadyMsg{Err: err}
+		}
+
+		// Diff between previous and new snapshot
+		diffOutput, err := gitClient.DiffSnapshots(prevSnapshot, newSnapshot)
+		if err != nil {
+			return SnapshotDiffReadyMsg{Err: err}
+		}
+
+		// Check if there are any changes
+		if diffOutput == "" {
+			return SnapshotDiffReadyMsg{
+				Err:         nil,
+				SnapshotSHA: newSnapshot,
+				CommitSet: sidebyside.CommitSet{
+					Info: sidebyside.CommitInfo{
+						Subject: "No changes since last snapshot",
+					},
+				},
+			}
+		}
+
+		// Parse the diff
+		d, err := diff.Parse(diffOutput)
+		if err != nil {
+			return SnapshotDiffReadyMsg{Err: err}
+		}
+
+		// Transform to side-by-side format
+		files, _ := sidebyside.TransformDiff(d)
+
+		// Create the commit set with "Diff N" subject
+		commitSet := sidebyside.CommitSet{
+			Info: sidebyside.CommitInfo{
+				Subject: fmt.Sprintf("Diff %d", snapshotNum),
+				Date:    time.Now().Format(time.RFC3339),
+			},
+			Files:          files,
+			FoldLevel:      sidebyside.CommitNormal,
+			FilesLoaded:    true,
+			StatsLoaded:    true,
+			IsSnapshot:     true,
+			SnapshotOldRef: prevSnapshot,
+			SnapshotNewRef: newSnapshot,
+		}
+
+		// Calculate stats
+		for _, f := range files {
+			added, removed := countFileStats(f)
+			commitSet.TotalAdded += added
+			commitSet.TotalRemoved += removed
+		}
+
+		return SnapshotDiffReadyMsg{
+			CommitSet:   commitSet,
+			SnapshotSHA: newSnapshot,
+			Err:         nil,
+		}
+	}
 }

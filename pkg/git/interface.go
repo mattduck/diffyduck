@@ -58,4 +58,12 @@ type Git interface {
 	// DiffNewFile generates a diff showing a file as entirely new.
 	// This is used for untracked files that have no previous version.
 	DiffNewFile(path string) (string, error)
+
+	// CreateSnapshot creates a dangling commit representing the current working tree state.
+	// If allMode is true, includes untracked files; otherwise only tracked files.
+	// Returns the commit SHA. The commit is not attached to any ref.
+	CreateSnapshot(allMode bool) (string, error)
+
+	// DiffSnapshots returns the diff between two snapshot commits.
+	DiffSnapshots(sha1, sha2 string) (string, error)
 }

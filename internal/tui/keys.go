@@ -27,6 +27,7 @@ type KeyMap struct {
 	Yank           []string
 	YankAll        []string
 	RefreshLayout  []string // recalculate dynamic column widths
+	Snapshot       []string // create snapshot and show incremental diff
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -55,6 +56,7 @@ func DefaultKeyMap() KeyMap {
 		Yank:           []string{"y"},
 		YankAll:        []string{"Y"},
 		RefreshLayout:  []string{"r"},
+		Snapshot:       []string{"R"},
 	}
 }
 

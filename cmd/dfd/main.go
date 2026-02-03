@@ -6,6 +6,7 @@ import (
 	"runtime/pprof"
 	"slices"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/internal/tui"
@@ -122,6 +123,26 @@ func isPath(arg string) bool {
 		}
 	}
 	return false
+}
+
+// workingTreeInvolved returns true if the diff involves the current working tree.
+// This is used to determine if snapshots should be available.
+// Returns true for: unstaged diff, cached diff, or single-ref diff (ref vs working tree).
+// Returns false for: two-ref diff (comparing two fixed commits).
+func workingTreeInvolved(args parsedArgs) bool {
+	switch args.mode {
+	case content.ModeDiffUnstaged:
+		// git diff - compares index to working tree
+		return true
+	case content.ModeDiffCached:
+		// git diff --cached - compares HEAD to index (index can still change)
+		return true
+	case content.ModeDiffRefs:
+		// Check if ref2 is empty (meaning working tree is the target)
+		return args.ref2 == ""
+	default:
+		return false
+	}
 }
 
 // extractDebugFlag removes --debug from args and returns (remaining args, debugMode).
@@ -247,6 +268,10 @@ func run() error {
 	// Create content fetcher for lazy file loading
 	fetcher := content.NewFetcher(g, args.mode, args.ref1, args.ref2)
 
+	// Enable snapshots when the working tree is involved in the diff
+	// (not for show command or when comparing two fixed refs)
+	snapshotsEnabled := args.cmd == "diff" && workingTreeInvolved(args)
+
 	// Build commit set with files and optional metadata
 	commit := sidebyside.CommitSet{
 		Info:               commitInfo,
@@ -254,13 +279,27 @@ func run() error {
 		FoldLevel:          sidebyside.CommitNormal,
 		FilesLoaded:        true,
 		TruncatedFileCount: truncatedFileCount,
+		IsSnapshot:         snapshotsEnabled,
+	}
+
+	// For snapshot mode, set the current time and a subject so the header shows
+	if snapshotsEnabled {
+		commit.Info.Date = time.Now().Format(time.RFC3339)
+		commit.Info.Subject = "Working tree"
 	}
 
 	// Create and run the TUI
-	opts := []tui.Option{tui.WithFetcher(fetcher)}
+	opts := []tui.Option{tui.WithFetcher(fetcher), tui.WithGit(g)}
 	if debugMode {
 		opts = append(opts, tui.WithDebugMode())
 	}
+	if allMode {
+		opts = append(opts, tui.WithAllMode(true))
+	}
+	if snapshotsEnabled {
+		opts = append(opts, tui.WithSnapshotsEnabled(true))
+	}
+
 	model := tui.NewWithCommits([]sidebyside.CommitSet{commit}, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
 

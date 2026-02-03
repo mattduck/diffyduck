@@ -3,7 +3,9 @@ package git
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -673,6 +675,88 @@ func prependContextFlag(args []string) []string {
 		}
 	}
 	return append([]string{fmt.Sprintf("-U%d", DefaultContext)}, args...)
+}
+
+// CreateSnapshot creates a dangling commit representing the current working tree state.
+// Uses a temporary index file to avoid affecting the real index.
+// If allMode is true, includes untracked files (-A); otherwise only tracked files (-u).
+func (g *RealGit) CreateSnapshot(allMode bool) (string, error) {
+	// Create a temporary index file
+	tmpDir := os.TempDir()
+	tmpIndex := filepath.Join(tmpDir, fmt.Sprintf("dfd-snapshot-%d", os.Getpid()))
+	defer os.Remove(tmpIndex)
+
+	// Copy the current index to the temp file so we start from the current staged state
+	// First, get the git dir to find the real index
+	cmd := exec.Command("git", "rev-parse", "--git-dir")
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+	gitDirOut, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get git dir: %w", err)
+	}
+	gitDir := strings.TrimSpace(string(gitDirOut))
+	if !filepath.IsAbs(gitDir) && g.Dir != "" {
+		gitDir = filepath.Join(g.Dir, gitDir)
+	}
+
+	// Read the real index and copy it (if it exists)
+	realIndex := filepath.Join(gitDir, "index")
+	if indexData, err := os.ReadFile(realIndex); err == nil {
+		if err := os.WriteFile(tmpIndex, indexData, 0600); err != nil {
+			return "", fmt.Errorf("copy index: %w", err)
+		}
+	}
+
+	// Add files to the temporary index
+	addFlag := "-u" // only tracked files
+	if allMode {
+		addFlag = "-A" // include untracked
+	}
+	cmd = exec.Command("git", "add", addFlag)
+	cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+tmpIndex)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git add %s: %s", addFlag, strings.TrimSpace(string(out)))
+	}
+
+	// Write the tree
+	cmd = exec.Command("git", "write-tree")
+	cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+tmpIndex)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+	treeOut, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", fmt.Errorf("git write-tree: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return "", fmt.Errorf("git write-tree: %w", err)
+	}
+	treeSHA := strings.TrimSpace(string(treeOut))
+
+	// Create the commit (dangling, no parent needed for our purposes)
+	cmd = exec.Command("git", "commit-tree", treeSHA, "-m", "dfd snapshot")
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+	commitOut, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", fmt.Errorf("git commit-tree: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return "", fmt.Errorf("git commit-tree: %w", err)
+	}
+
+	return strings.TrimSpace(string(commitOut)), nil
+}
+
+// DiffSnapshots returns the diff between two snapshot commits.
+func (g *RealGit) DiffSnapshots(sha1, sha2 string) (string, error) {
+	return g.Diff(sha1, sha2)
 }
 
 // GitError represents an error from a git command.

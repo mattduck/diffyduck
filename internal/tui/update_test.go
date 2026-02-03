@@ -3,11 +3,13 @@ package tui
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/content"
+	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"github.com/user/diffyduck/pkg/structure"
 )
@@ -3219,4 +3221,442 @@ func TestTab_TrailingSeparator(t *testing.T) {
 			}
 		}
 	})
+}
+
+// =============================================================================
+// shiftFileIndexMaps tests
+// =============================================================================
+
+func TestShiftFileIndexMaps_ShiftsHighlightSpans(t *testing.T) {
+	m := Model{
+		highlightSpans: map[int]*FileHighlight{
+			0: {OldSpans: []highlight.Span{{Start: 0, End: 5}}},
+			1: {OldSpans: []highlight.Span{{Start: 10, End: 15}}},
+		},
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	m.shiftFileIndexMaps(3)
+
+	// Old indices 0, 1 should now be at 3, 4
+	assert.Nil(t, m.highlightSpans[0], "index 0 should be empty after shift")
+	assert.Nil(t, m.highlightSpans[1], "index 1 should be empty after shift")
+	assert.NotNil(t, m.highlightSpans[3], "index 3 should have old index 0's data")
+	assert.NotNil(t, m.highlightSpans[4], "index 4 should have old index 1's data")
+	assert.Equal(t, 0, m.highlightSpans[3].OldSpans[0].Start)
+	assert.Equal(t, 10, m.highlightSpans[4].OldSpans[0].Start)
+}
+
+func TestShiftFileIndexMaps_ShiftsPairsHighlightSpans(t *testing.T) {
+	m := Model{
+		highlightSpans: make(map[int]*FileHighlight),
+		pairsHighlightSpans: map[int]*PairsFileHighlight{
+			0: {OldSpans: []highlight.Span{{Start: 0, End: 5}}},
+			2: {OldSpans: []highlight.Span{{Start: 20, End: 25}}},
+		},
+		structureMaps:      make(map[int]*FileStructure),
+		pairsStructureMaps: make(map[int]*FileStructure),
+		loadingFiles:       make(map[int]time.Time),
+		inlineDiffCache:    make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	m.shiftFileIndexMaps(2)
+
+	assert.Nil(t, m.pairsHighlightSpans[0])
+	assert.NotNil(t, m.pairsHighlightSpans[2], "index 2 should have old index 0's data")
+	assert.NotNil(t, m.pairsHighlightSpans[4], "index 4 should have old index 2's data")
+}
+
+func TestShiftFileIndexMaps_ShiftsStructureMaps(t *testing.T) {
+	m := Model{
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps: map[int]*FileStructure{
+			0: {NewStructure: &structure.Map{}},
+		},
+		pairsStructureMaps: map[int]*FileStructure{
+			1: {NewStructure: &structure.Map{}},
+		},
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	m.shiftFileIndexMaps(5)
+
+	assert.Nil(t, m.structureMaps[0])
+	assert.NotNil(t, m.structureMaps[5])
+	assert.Nil(t, m.pairsStructureMaps[1])
+	assert.NotNil(t, m.pairsStructureMaps[6])
+}
+
+func TestShiftFileIndexMaps_ShiftsLoadingFiles(t *testing.T) {
+	now := time.Now()
+	m := Model{
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles: map[int]time.Time{
+			0: now,
+			3: now.Add(time.Second),
+		},
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	m.shiftFileIndexMaps(2)
+
+	assert.True(t, m.loadingFiles[0].IsZero(), "index 0 should be empty")
+	assert.False(t, m.loadingFiles[2].IsZero(), "index 2 should have old index 0's time")
+	assert.False(t, m.loadingFiles[5].IsZero(), "index 5 should have old index 3's time")
+}
+
+func TestShiftFileIndexMaps_ClearsInlineDiffCache(t *testing.T) {
+	m := Model{
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache: map[inlineDiffKey]inlineDiffResult{
+			{fileIndex: 0, oldNum: 1, newNum: 1}: {},
+			{fileIndex: 1, oldNum: 2, newNum: 2}: {},
+		},
+	}
+
+	m.shiftFileIndexMaps(1)
+
+	assert.Empty(t, m.inlineDiffCache, "inlineDiffCache should be cleared")
+}
+
+func TestShiftFileIndexMaps_EmptyMaps(t *testing.T) {
+	m := Model{
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	// Should not panic with empty maps
+	m.shiftFileIndexMaps(5)
+
+	assert.Empty(t, m.highlightSpans)
+	assert.Empty(t, m.pairsHighlightSpans)
+}
+
+// =============================================================================
+// insertSnapshotCommit tests
+// =============================================================================
+
+func TestInsertSnapshotCommit_PrependsCommit(t *testing.T) {
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{Info: sidebyside.CommitInfo{Subject: "Original"}},
+		},
+		files: []sidebyside.FilePair{
+			{NewPath: "original.go"},
+		},
+		commitFileStarts:    []int{0},
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	newCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "Snapshot"},
+		Files: []sidebyside.FilePair{{NewPath: "snapshot.go"}},
+	}
+
+	m.insertSnapshotCommit(newCommit)
+
+	require.Len(t, m.commits, 2)
+	assert.Equal(t, "Snapshot", m.commits[0].Info.Subject)
+	assert.Equal(t, "Original", m.commits[1].Info.Subject)
+}
+
+func TestInsertSnapshotCommit_PrependsFiles(t *testing.T) {
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{Info: sidebyside.CommitInfo{Subject: "Original"}},
+		},
+		files: []sidebyside.FilePair{
+			{NewPath: "original1.go"},
+			{NewPath: "original2.go"},
+		},
+		commitFileStarts:    []int{0},
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	newCommit := sidebyside.CommitSet{
+		Files: []sidebyside.FilePair{
+			{NewPath: "snapshot1.go"},
+			{NewPath: "snapshot2.go"},
+			{NewPath: "snapshot3.go"},
+		},
+	}
+
+	m.insertSnapshotCommit(newCommit)
+
+	require.Len(t, m.files, 5)
+	assert.Equal(t, "snapshot1.go", m.files[0].NewPath)
+	assert.Equal(t, "snapshot2.go", m.files[1].NewPath)
+	assert.Equal(t, "snapshot3.go", m.files[2].NewPath)
+	assert.Equal(t, "original1.go", m.files[3].NewPath)
+	assert.Equal(t, "original2.go", m.files[4].NewPath)
+}
+
+func TestInsertSnapshotCommit_UpdatesCommitFileStarts(t *testing.T) {
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{Info: sidebyside.CommitInfo{Subject: "Commit1"}},
+			{Info: sidebyside.CommitInfo{Subject: "Commit2"}},
+		},
+		files: []sidebyside.FilePair{
+			{NewPath: "c1f1.go"},
+			{NewPath: "c1f2.go"},
+			{NewPath: "c2f1.go"},
+		},
+		commitFileStarts:    []int{0, 2}, // Commit1 starts at 0, Commit2 starts at 2
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	newCommit := sidebyside.CommitSet{
+		Files: []sidebyside.FilePair{
+			{NewPath: "snap1.go"},
+			{NewPath: "snap2.go"},
+		},
+	}
+
+	m.insertSnapshotCommit(newCommit)
+
+	require.Len(t, m.commitFileStarts, 3)
+	assert.Equal(t, 0, m.commitFileStarts[0], "new commit starts at 0")
+	assert.Equal(t, 2, m.commitFileStarts[1], "old commit1 now starts at 2")
+	assert.Equal(t, 4, m.commitFileStarts[2], "old commit2 now starts at 4")
+}
+
+func TestInsertSnapshotCommit_ShiftsHighlightMaps(t *testing.T) {
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{Info: sidebyside.CommitInfo{Subject: "Original"}},
+		},
+		files: []sidebyside.FilePair{
+			{NewPath: "original.go"},
+		},
+		commitFileStarts: []int{0},
+		highlightSpans: map[int]*FileHighlight{
+			0: {OldSpans: []highlight.Span{{Start: 100, End: 200}}},
+		},
+		pairsHighlightSpans: map[int]*PairsFileHighlight{
+			0: {OldSpans: []highlight.Span{{Start: 50, End: 75}}},
+		},
+		structureMaps:      make(map[int]*FileStructure),
+		pairsStructureMaps: make(map[int]*FileStructure),
+		loadingFiles:       make(map[int]time.Time),
+		inlineDiffCache:    make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	newCommit := sidebyside.CommitSet{
+		Files: []sidebyside.FilePair{
+			{NewPath: "snap1.go"},
+			{NewPath: "snap2.go"},
+		},
+	}
+
+	m.insertSnapshotCommit(newCommit)
+
+	// Original file was at index 0, now at index 2 (after 2 new files)
+	assert.Nil(t, m.highlightSpans[0], "old index 0 should be empty")
+	assert.NotNil(t, m.highlightSpans[2], "shifted index 2 should have the data")
+	assert.Equal(t, 100, m.highlightSpans[2].OldSpans[0].Start)
+
+	assert.Nil(t, m.pairsHighlightSpans[0])
+	assert.NotNil(t, m.pairsHighlightSpans[2])
+	assert.Equal(t, 50, m.pairsHighlightSpans[2].OldSpans[0].Start)
+}
+
+func TestInsertSnapshotCommit_ScrollsToTop(t *testing.T) {
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{Info: sidebyside.CommitInfo{Subject: "Original"}},
+		},
+		files:               []sidebyside.FilePair{{NewPath: "original.go"}},
+		commitFileStarts:    []int{0},
+		scroll:              50,
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+	}
+
+	m.insertSnapshotCommit(sidebyside.CommitSet{
+		Files: []sidebyside.FilePair{{NewPath: "snap.go"}},
+	})
+
+	assert.Equal(t, 0, m.scroll, "scroll should reset to 0")
+}
+
+// =============================================================================
+// SnapshotDiffReadyMsg handling tests
+// =============================================================================
+
+func TestSnapshotDiffReadyMsg_RequestsHighlighting(t *testing.T) {
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{Info: sidebyside.CommitInfo{Subject: "Original"}},
+		},
+		files:               []sidebyside.FilePair{{NewPath: "original.go"}},
+		commitFileStarts:    []int{0},
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		keys:                DefaultKeyMap(),
+	}
+
+	msg := SnapshotDiffReadyMsg{
+		CommitSet: sidebyside.CommitSet{
+			Info: sidebyside.CommitInfo{Subject: "Diff 1"},
+			Files: []sidebyside.FilePair{
+				{NewPath: "file1.go", Pairs: []sidebyside.LinePair{{}}},
+				{NewPath: "file2.go", Pairs: []sidebyside.LinePair{{}}},
+			},
+		},
+		SnapshotSHA: "abc123",
+	}
+
+	newModel, cmd := m.Update(msg)
+	resultModel := newModel.(Model)
+
+	// Should have prepended the new commit
+	require.Len(t, resultModel.commits, 2)
+	assert.Equal(t, "Diff 1", resultModel.commits[0].Info.Subject)
+
+	// Should have prepended the files
+	require.Len(t, resultModel.files, 3)
+	assert.Equal(t, "file1.go", resultModel.files[0].NewPath)
+	assert.Equal(t, "file2.go", resultModel.files[1].NewPath)
+
+	// Should return a command for highlighting (non-nil)
+	assert.NotNil(t, cmd, "should return highlight command for new files")
+}
+
+func TestSnapshotDiffReadyMsg_NoFilesNoHighlightCommand(t *testing.T) {
+	m := Model{
+		commits: []sidebyside.CommitSet{
+			{Info: sidebyside.CommitInfo{Subject: "Original"}},
+		},
+		files:               []sidebyside.FilePair{{NewPath: "original.go"}},
+		commitFileStarts:    []int{0},
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		keys:                DefaultKeyMap(),
+	}
+
+	// Empty files = no changes
+	msg := SnapshotDiffReadyMsg{
+		CommitSet: sidebyside.CommitSet{
+			Info:  sidebyside.CommitInfo{Subject: "No changes"},
+			Files: []sidebyside.FilePair{}, // empty
+		},
+		SnapshotSHA: "abc123",
+	}
+
+	newModel, cmd := m.Update(msg)
+	resultModel := newModel.(Model)
+
+	// Should not add the empty commit
+	assert.Len(t, resultModel.commits, 1)
+	assert.Equal(t, "Original", resultModel.commits[0].Info.Subject)
+
+	// Command should be for clearing status message, not highlighting
+	// (since no files were added)
+	assert.NotNil(t, cmd, "should return status clear command")
+}
+
+func TestSnapshotDiffReadyMsg_Error(t *testing.T) {
+	m := Model{
+		commits:             []sidebyside.CommitSet{},
+		files:               []sidebyside.FilePair{},
+		commitFileStarts:    []int{},
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		keys:                DefaultKeyMap(),
+	}
+
+	msg := SnapshotDiffReadyMsg{
+		Err: fmt.Errorf("snapshot failed"),
+	}
+
+	newModel, cmd := m.Update(msg)
+	resultModel := newModel.(Model)
+
+	// Should set error status message
+	assert.Equal(t, "Snapshot diff failed", resultModel.statusMessage)
+	// Should return command (for clearing status)
+	assert.NotNil(t, cmd)
+}
+
+func TestSnapshotDiffReadyMsg_StoresSnapshotRefs(t *testing.T) {
+	m := Model{
+		commits:             []sidebyside.CommitSet{},
+		files:               []sidebyside.FilePair{},
+		commitFileStarts:    []int{},
+		highlightSpans:      make(map[int]*FileHighlight),
+		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		structureMaps:       make(map[int]*FileStructure),
+		pairsStructureMaps:  make(map[int]*FileStructure),
+		loadingFiles:        make(map[int]time.Time),
+		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		keys:                DefaultKeyMap(),
+	}
+
+	msg := SnapshotDiffReadyMsg{
+		CommitSet: sidebyside.CommitSet{
+			Info:           sidebyside.CommitInfo{Subject: "Diff 1"},
+			Files:          []sidebyside.FilePair{{NewPath: "file.go", Pairs: []sidebyside.LinePair{{}}}},
+			IsSnapshot:     true,
+			SnapshotOldRef: "abc123",
+			SnapshotNewRef: "def456",
+		},
+		SnapshotSHA: "def456",
+	}
+
+	newModel, _ := m.Update(msg)
+	resultModel := newModel.(Model)
+
+	require.Len(t, resultModel.commits, 1)
+	assert.True(t, resultModel.commits[0].IsSnapshot)
+	assert.Equal(t, "abc123", resultModel.commits[0].SnapshotOldRef)
+	assert.Equal(t, "def456", resultModel.commits[0].SnapshotNewRef)
 }

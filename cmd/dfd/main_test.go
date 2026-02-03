@@ -16,10 +16,10 @@ func TestParseArgs_Empty(t *testing.T) {
 
 func TestParseArgs_DiffDefault(t *testing.T) {
 	// No subcommand defaults to diff
-	result := parseArgs([]string{"--cached"})
-	assert.Equal(t, "diff", result.cmd)
-	assert.Equal(t, []string{"--cached"}, result.gitArgs)
-	assert.Equal(t, content.ModeDiffCached, result.mode)
+	res := parseArgs([]string{"--cached"})
+	assert.Equal(t, "diff", res.cmd)
+	assert.Equal(t, []string{"--cached"}, res.gitArgs)
+	assert.Equal(t, content.ModeDiffCached, res.mode)
 }
 
 func TestParseArgs_DiffExplicit(t *testing.T) {
@@ -63,11 +63,11 @@ func TestParseArgs_ShowWithRef(t *testing.T) {
 }
 
 func TestParseArgs_ShowWithMultipleArgs(t *testing.T) {
-	result := parseArgs([]string{"show", "HEAD~2", "--", "file.go"})
-	assert.Equal(t, "show", result.cmd)
-	assert.Equal(t, []string{"HEAD~2", "--", "file.go"}, result.gitArgs)
-	assert.Equal(t, content.ModeShow, result.mode)
-	assert.Equal(t, "HEAD~2", result.ref1)
+	res := parseArgs([]string{"show", "HEAD~2", "--", "file.go"})
+	assert.Equal(t, "show", res.cmd)
+	assert.Equal(t, []string{"HEAD~2", "--", "file.go"}, res.gitArgs)
+	assert.Equal(t, content.ModeShow, res.mode)
+	assert.Equal(t, "HEAD~2", res.ref1)
 }
 
 func TestParseArgs_UnknownArgPassedToDiff(t *testing.T) {
