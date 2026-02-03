@@ -22,6 +22,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case tea.MouseMsg:
+		// Any mouse activity implies we're focused (fixes tmux pane click not sending FocusMsg)
+		m.focused = true
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			m.scroll -= 3

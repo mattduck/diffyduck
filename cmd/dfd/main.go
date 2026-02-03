@@ -365,7 +365,7 @@ func runLogMode(debugMode bool) error {
 	}
 
 	model := tui.NewWithCommits(commitSets, opts...)
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
 
 	finalModel, err := p.Run()
 	if err != nil {

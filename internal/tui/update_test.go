@@ -668,6 +668,18 @@ func TestUpdate_MouseWheelDown_AtBottom(t *testing.T) {
 	assert.Equal(t, m.maxScroll(), model.scroll) // clamped to max
 }
 
+func TestUpdate_MouseEvent_SetsFocused(t *testing.T) {
+	// When clicking into a tmux pane, tmux may not send a FocusMsg but will
+	// pass through the mouse event. Any mouse activity implies focus.
+	m := makeTestModel(100)
+	m.focused = false
+
+	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft})
+	model := newM.(Model)
+
+	assert.True(t, model.focused, "mouse event should set focused=true")
+}
+
 func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
 	m := makeTestModel(10)
 	// Initially at FoldExpanded (set by makeTestModel)
