@@ -384,6 +384,11 @@ func (m Model) renderStatusBar() string {
 	// Build less-style line indicator (with reverse styling)
 	lessIndicator := formatLessIndicator(info.CurrentLine, info.TotalLines, info.Percentage, info.AtEnd)
 
+	// Add narrow mode indicator
+	if m.narrow.Active {
+		lessIndicator += " <N>"
+	}
+
 	// Pad to max width to prevent shrinking (maxLessWidth is computed in calculateTotalLines)
 	lessWidth := displayWidth(lessIndicator)
 	if lessWidth < m.maxLessWidth {

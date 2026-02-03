@@ -274,6 +274,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case matchesKey(msg, keys.PrevMatch):
+		// When no active search, N toggles narrow mode instead
+		if m.searchQuery == "" {
+			m.toggleNarrow()
+			return m, nil
+		}
 		m.prevMatch()
 		return m, nil
 
@@ -909,6 +914,7 @@ func (m Model) findRowByNewLineNum(fileIdx int, targetLineNum int) int {
 }
 
 // handleFoldToggleAll cycles the fold level for all commits.
+// When in narrow mode, only affects the narrowed scope.
 // Commit visibility levels:
 //   - Level 1: CommitFolded (just commit header)
 //   - Level 2: CommitNormal with all files at FoldFolded (commit + file headers)
@@ -922,13 +928,26 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 		return m.handleFoldToggleAllFiles()
 	}
 
+	// When narrowed to a file, delegate to file-based toggle (single file)
+	if m.narrow.Active && m.narrow.FileIdx >= 0 {
+		return m.handleFoldToggleAllFiles()
+	}
+
 	// Capture cursor identity before fold change
 	identity := m.getCursorRowIdentity()
 
-	// Check the visibility level of all commits
-	firstLevel := m.commitVisibilityLevelFor(0)
+	// Determine which commits to operate on
+	startCommit, endCommit := 0, len(m.commits)
+	if m.narrow.Active && m.narrow.CommitIdx >= 0 {
+		// Narrowed to a commit: only toggle that commit
+		startCommit = m.narrow.CommitIdx
+		endCommit = m.narrow.CommitIdx + 1
+	}
+
+	// Check the visibility level of commits in scope
+	firstLevel := m.commitVisibilityLevelFor(startCommit)
 	allSame := true
-	for i := 1; i < len(m.commits); i++ {
+	for i := startCommit + 1; i < endCommit; i++ {
 		if m.commitVisibilityLevelFor(i) != firstLevel {
 			allSame = false
 			break
@@ -944,8 +963,8 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 		newLevel = 1
 	}
 
-	// Apply the new level to all commits
-	m.setAllCommitsToLevel(newLevel)
+	// Apply the new level to commits in scope
+	m.setCommitsToLevel(startCommit, endCommit, newLevel)
 
 	m.calculateTotalLines()
 
@@ -953,10 +972,14 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
 
-	// If expanding to level 2+, queue files for all commits
+	// If expanding to level 2+, queue files for affected commits
 	var cmd tea.Cmd
 	if newLevel >= 2 {
-		cmd = m.queueFilesForAllCommits()
+		if m.narrow.Active && m.narrow.CommitIdx >= 0 {
+			cmd = m.queueFilesForCommit(m.narrow.CommitIdx)
+		} else {
+			cmd = m.queueFilesForAllCommits()
+		}
 	}
 
 	return m, cmd
@@ -967,6 +990,11 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 // Level 2: CommitNormal, all files FoldFolded (file headers only, commit info header only)
 // Level 3: CommitExpanded, all files FoldExpanded (diff hunks visible, commit info expanded)
 func (m *Model) setAllCommitsToLevel(level int) {
+	m.setCommitsToLevel(0, len(m.commits), level)
+}
+
+// setCommitsToLevel sets commits in range [start, end) and their files to the specified level.
+func (m *Model) setCommitsToLevel(start, end, level int) {
 	var commitFold sidebyside.CommitFoldLevel
 	var fileFold sidebyside.FoldLevel
 
@@ -985,16 +1013,24 @@ func (m *Model) setAllCommitsToLevel(level int) {
 		fileFold = sidebyside.FoldFolded
 	}
 
-	for i := range m.commits {
+	for i := start; i < end && i < len(m.commits); i++ {
 		m.commits[i].FoldLevel = commitFold
-	}
-	for i := range m.files {
-		m.files[i].FoldLevel = fileFold
+
+		// Set fold level for files belonging to this commit
+		fileStart := m.commitFileStarts[i]
+		fileEnd := len(m.files)
+		if i+1 < len(m.commitFileStarts) {
+			fileEnd = m.commitFileStarts[i+1]
+		}
+		for j := fileStart; j < fileEnd; j++ {
+			m.files[j].FoldLevel = fileFold
+		}
 	}
 }
 
 // handleFoldToggleAllFiles is the legacy behavior for toggling all files
 // when there are no commits (e.g., pager mode or tests that bypass commits).
+// When in narrow mode with a file scope, only toggles that file.
 func (m Model) handleFoldToggleAllFiles() (tea.Model, tea.Cmd) {
 	if len(m.files) == 0 {
 		return m, nil
@@ -1003,11 +1039,19 @@ func (m Model) handleFoldToggleAllFiles() (tea.Model, tea.Cmd) {
 	// Capture cursor identity before fold change
 	identity := m.getCursorRowIdentity()
 
-	// Check if all files are at the same level
-	firstLevel := m.files[0].FoldLevel
+	// Determine file range to operate on
+	startFile, endFile := 0, len(m.files)
+	if m.narrow.Active && m.narrow.FileIdx >= 0 {
+		// Narrowed to a single file: only toggle that file
+		startFile = m.narrow.FileIdx
+		endFile = m.narrow.FileIdx + 1
+	}
+
+	// Check if all files in scope are at the same level
+	firstLevel := m.files[startFile].FoldLevel
 	allSame := true
-	for _, fp := range m.files[1:] {
-		if fp.FoldLevel != firstLevel {
+	for i := startFile + 1; i < endFile; i++ {
+		if m.files[i].FoldLevel != firstLevel {
 			allSame = false
 			break
 		}
@@ -1022,7 +1066,7 @@ func (m Model) handleFoldToggleAllFiles() (tea.Model, tea.Cmd) {
 		newLevel = sidebyside.FoldFolded
 	}
 
-	for i := range m.files {
+	for i := startFile; i < endFile; i++ {
 		m.files[i].FoldLevel = newLevel
 	}
 

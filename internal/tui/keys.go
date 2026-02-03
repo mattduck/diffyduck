@@ -19,6 +19,7 @@ type KeyMap struct {
 	SearchBack     []string
 	NextMatch      []string
 	PrevMatch      []string
+	NarrowToggle   []string // toggle narrow mode (shares key with PrevMatch when no search active)
 	FoldToggle     []string
 	FoldToggleAll  []string
 	FullFileToggle []string
@@ -46,6 +47,7 @@ func DefaultKeyMap() KeyMap {
 		SearchBack:     []string{"?"},
 		NextMatch:      []string{"n"},
 		PrevMatch:      []string{"N"},
+		NarrowToggle:   []string{"N"}, // same key as PrevMatch; active when no search query
 		FoldToggle:     []string{"tab"},
 		FoldToggleAll:  []string{"shift+tab"},
 		FullFileToggle: []string{"F"},

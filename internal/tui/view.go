@@ -496,8 +496,13 @@ func (m Model) buildRows() []displayRow {
 	// Note: The first item's top border is rendered specially in getVisibleRows,
 	// not as part of the content rows (so it doesn't affect cursor line numbering).
 	for commitIdx, commit := range m.commits {
+		// Skip commits outside narrow scope
+		if !m.narrow.IncludesCommit(commitIdx) {
+			continue
+		}
 		// Add commit header row if commit has metadata
-		if commit.Info.HasMetadata() {
+		// Skip commit-level rows when narrowed to file level or commit-info-only
+		if commit.Info.HasMetadata() && !m.narrow.IsFileLevelOrBelow() && !m.narrow.IsCommitInfoOnly() {
 			commitFolded := commit.FoldLevel == sidebyside.CommitFolded
 			isFirstCommit := commitIdx == 0
 			prevCommitUnfolded := !isFirstCommit && m.commits[commitIdx-1].FoldLevel != sidebyside.CommitFolded
@@ -624,6 +629,12 @@ func (m Model) buildRows() []displayRow {
 			rows = append(rows, m.buildCommitInfoRows(&commit, commitIdx)...)
 		}
 
+		// When narrowed to commit-info-only, add just the commit info rows
+		// (no parent commit header, no files)
+		if commit.Info.HasMetadata() && m.narrow.IsCommitInfoOnly() {
+			rows = append(rows, m.buildCommitInfoRows(&commit, commitIdx)...)
+		}
+
 		// Get file range for this commit
 		startIdx := m.commitFileStarts[commitIdx]
 		endIdx := len(m.files)
@@ -635,7 +646,8 @@ func (m Model) buildRows() []displayRow {
 		// The slot draws into the trailing blank line of the expanded commit info body.
 		// Always add this row when commit-info is expanded to prevent content shift;
 		// render as border or blank based on first file's mode.
-		if startIdx < endIdx && commit.Info.HasMetadata() {
+		// Skip when narrowed to file level or commit info only (no files shown).
+		if startIdx < endIdx && commit.Info.HasMetadata() && !m.narrow.IsFileLevelOrBelow() && !m.narrow.IsCommitInfoOnly() {
 			commitInfoExpanded := commit.FoldLevel == sidebyside.CommitExpanded
 			if commitInfoExpanded {
 				firstFileFolded := m.files[startIdx].FoldLevel == sidebyside.FoldFolded
@@ -662,13 +674,19 @@ func (m Model) buildRows() []displayRow {
 
 		// Add file rows for this commit
 		for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
+			// Skip files outside narrow scope
+			if !m.narrow.IncludesFile(fileIdx) {
+				continue
+			}
 			fp := m.files[fileIdx]
 			rows = m.buildFileRows(rows, fileIdx, fp, startIdx, endIdx, headerBoxWidth)
 		}
 
 		// Add separator row between commits (blank line after last file, before next commit)
 		// This row becomes the top border slot for the next commit when this commit is unfolded
-		if commit.Info.HasMetadata() && commitIdx+1 < len(m.commits) && m.commits[commitIdx+1].Info.HasMetadata() {
+		// Skip when narrowed to file level (no inter-commit separators needed)
+		// Also skip if next commit is outside the narrow scope
+		if commit.Info.HasMetadata() && commitIdx+1 < len(m.commits) && m.commits[commitIdx+1].Info.HasMetadata() && !m.narrow.IsFileLevelOrBelow() && m.narrow.IncludesCommit(commitIdx+1) {
 			nextCommit := m.commits[commitIdx+1]
 			thisCommitUnfolded := commit.FoldLevel != sidebyside.CommitFolded
 
@@ -769,6 +787,10 @@ func (m Model) buildRowsLegacy() []displayRow {
 	// Note: The first file's top border is rendered specially in getVisibleRows,
 	// not as part of the content rows (so it doesn't affect cursor line numbering).
 	for fileIdx, fp := range m.files {
+		// Skip files outside narrow scope
+		if !m.narrow.IncludesFile(fileIdx) {
+			continue
+		}
 		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), headerBoxWidth)
 	}
 
@@ -877,7 +899,8 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			treePath:           marginTreePath,
 		})
 
-		if !isLastFile {
+		// Skip next file's top border if next file is outside narrow scope
+		if !isLastFile && m.narrow.IncludesFile(fileIdx+1) {
 			// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
 			// Current file is unfolded, so next file's prev sibling is unfolded
 			// Always add this row to prevent content shift; render as border or blank based on next file's mode

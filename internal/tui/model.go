@@ -28,6 +28,58 @@ type commentKey struct {
 	newLineNum int // line number on new/left side
 }
 
+// NarrowScope identifies the node to which the view is narrowed.
+// When Active, buildRows only emits rows for this node, and all navigation,
+// search, and fold operations are scoped accordingly.
+type NarrowScope struct {
+	Active         bool
+	CommitIdx      int  // which commit (-1 if not applicable, e.g. single-diff mode)
+	FileIdx        int  // which file (-1 if scoping to a whole commit)
+	HunkIdx        int  // which hunk (-1 if scoping to a whole file or commit)
+	CommitInfoOnly bool // if true, narrow to commit info section only (not files)
+}
+
+// IncludesCommit returns true if the given commit index is within the narrow scope.
+// When inactive or scoped to a commit, this determines visibility.
+func (ns NarrowScope) IncludesCommit(commitIdx int) bool {
+	if !ns.Active {
+		return true
+	}
+	// If we're scoped to a specific commit (or file within a commit), only that commit is visible
+	if ns.CommitIdx >= 0 {
+		return commitIdx == ns.CommitIdx
+	}
+	return true
+}
+
+// IncludesFile returns true if the given file index is within the narrow scope.
+func (ns NarrowScope) IncludesFile(fileIdx int) bool {
+	if !ns.Active {
+		return true
+	}
+	// When narrowed to commit info only, no files are shown
+	if ns.CommitInfoOnly {
+		return false
+	}
+	// If we're scoped to a specific file, only that file is visible
+	if ns.FileIdx >= 0 {
+		return fileIdx == ns.FileIdx
+	}
+	return true
+}
+
+// IsFileLevelOrBelow returns true if narrowed to a specific file (or hunk within a file).
+// Used to skip commit-level rows when scoped to file level.
+func (ns NarrowScope) IsFileLevelOrBelow() bool {
+	return ns.Active && ns.FileIdx >= 0
+}
+
+// IsCommitInfoOnly returns true if narrowed to just the commit info section.
+// When true, files are not shown, only commit info rows.
+func (ns NarrowScope) IsCommitInfoOnly() bool {
+	return ns.Active && ns.CommitInfoOnly
+}
+
 // inlineDiffResult stores cached inline diff spans for a line pair.
 type inlineDiffResult struct {
 	oldSpans []inlinediff.Span
@@ -123,6 +175,9 @@ type Model struct {
 
 	// Focus colour mode - dims content outside current hunk to reduce visual clutter
 	focusColour bool
+
+	// Narrow mode - scopes the pager to a single node (commit, file, or hunk)
+	narrow NarrowScope
 
 	// Clipboard
 	clipboard Clipboard // clipboard interface for copy/paste
@@ -1179,6 +1234,134 @@ func (m *Model) currentCommit() *sidebyside.CommitSet {
 		return nil
 	}
 	return &m.commits[idx]
+}
+
+// toggleNarrow toggles narrow mode on/off.
+// When entering narrow mode, determines the scope from the current cursor position.
+// When exiting, tries to keep the cursor at its current content position in the widened view.
+func (m *Model) toggleNarrow() {
+	if m.narrow.Active {
+		// Capture current position BEFORE clearing narrow mode
+		currentIdentity := m.getCursorRowIdentity()
+		narrowedFileIdx := m.narrow.FileIdx
+		narrowedCommitIdx := m.narrow.CommitIdx
+
+		// Clear narrow scope and rebuild rows
+		m.narrow = NarrowScope{}
+		m.rebuildRowsCache()
+
+		// Strategy: try to find the current row in the widened view.
+		// This keeps the user at the same content they were viewing.
+		newRow := m.findRowOrNearestAbove(currentIdentity)
+		if newRow >= 0 {
+			m.scroll = newRow
+			m.clampScroll()
+			return
+		}
+
+		// Fallback: position at the header of the narrowed node.
+		// This ensures the user sees what they were narrowed to.
+		if narrowedFileIdx >= 0 {
+			headerRow := m.findFileHeaderRow(narrowedFileIdx)
+			if headerRow >= 0 {
+				m.scroll = headerRow
+				m.clampScroll()
+				return
+			}
+		} else if narrowedCommitIdx >= 0 {
+			headerRow := m.findCommitHeaderRow(narrowedCommitIdx)
+			if headerRow >= 0 {
+				m.scroll = headerRow
+				m.clampScroll()
+				return
+			}
+		}
+
+		// Last resort: go to top
+		m.scroll = m.minScroll()
+		m.clampScroll()
+		return
+	}
+
+	// Enter narrow mode: determine scope from cursor position
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return // nothing to narrow to
+	}
+
+	row := rows[cursorPos]
+
+	// Capture current position for preserving cursor after layout change
+	currentIdentity := m.getCursorRowIdentity()
+
+	// Determine scope based on what the cursor is on
+	switch {
+	case row.fileIndex >= 0:
+		// On a file row: narrow to this file
+		m.narrow.Active = true
+		m.narrow.CommitIdx = m.commitForFile(row.fileIndex)
+		m.narrow.FileIdx = row.fileIndex
+		m.narrow.HunkIdx = -1
+		m.narrow.CommitInfoOnly = false
+
+	case row.kind == RowKindCommitInfoHeader || row.kind == RowKindCommitInfoBody ||
+		row.kind == RowKindCommitInfoTopBorder || row.kind == RowKindCommitInfoBottomBorder:
+		// On a commit info row: narrow to just the commit info section
+		m.narrow.Active = true
+		m.narrow.CommitIdx = row.commitIndex
+		m.narrow.FileIdx = -1
+		m.narrow.HunkIdx = -1
+		m.narrow.CommitInfoOnly = true
+
+	case row.commitIndex >= 0 && !row.commitBodyIsBlank:
+		// On a commit row (header, body): narrow to this commit (including files)
+		m.narrow.Active = true
+		m.narrow.CommitIdx = row.commitIndex
+		m.narrow.FileIdx = -1
+		m.narrow.HunkIdx = -1
+		m.narrow.CommitInfoOnly = false
+
+	default:
+		// On a separator or other non-scoped row: don't enter narrow mode
+		return
+	}
+
+	// Rebuild rows with the new scope
+	m.rebuildRowsCache()
+
+	// Preserve cursor position: find the same row in the narrowed view
+	newRow := m.findRowOrNearestAbove(currentIdentity)
+	if newRow >= 0 {
+		m.scroll = newRow
+	} else {
+		m.scroll = 0
+	}
+	m.clampScroll()
+}
+
+// findFileHeaderRow returns the row index of the header for the given file.
+// Returns -1 if not found.
+func (m Model) findFileHeaderRow(fileIdx int) int {
+	rows := m.getRows()
+	for i, row := range rows {
+		if row.fileIndex == fileIdx && row.kind == RowKindHeader {
+			return i
+		}
+	}
+	return -1
+}
+
+// findCommitHeaderRow returns the row index of the header for the given commit.
+// Returns -1 if not found.
+func (m Model) findCommitHeaderRow(commitIdx int) int {
+	rows := m.getRows()
+	for i, row := range rows {
+		if row.commitIndex == commitIdx && row.kind == RowKindCommitHeader {
+			return i
+		}
+	}
+	return -1
 }
 
 // commitForFile returns the commit index that contains the given file index.
