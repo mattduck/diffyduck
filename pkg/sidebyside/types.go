@@ -321,4 +321,13 @@ type CommitSet struct {
 	// Cached stats (sum of all files, avoids recomputing in render loop)
 	TotalAdded   int
 	TotalRemoved int
+
+	// IsSnapshot indicates this is a working tree snapshot (not a real commit).
+	// Snapshots show absolute time, no SHA, and no details node.
+	IsSnapshot bool
+
+	// Snapshot refs for content fetching (only set for IsSnapshot commits).
+	// These are the refs to compare when fetching full file content.
+	SnapshotOldRef string // "from" snapshot SHA (for old/left side content)
+	SnapshotNewRef string // "to" snapshot SHA (for new/right side content)
 }

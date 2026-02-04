@@ -217,6 +217,12 @@ type Model struct {
 	totalCommitCount   int  // total commits in repo (0=unknown, -1=error)
 	commitBatchSize    int  // commits per batch (default 100)
 	loadingMoreCommits bool // true when fetching next batch
+
+	// Snapshot state (diff mode only)
+	snapshotsEnabled bool     // true when snapshots are available (working tree is involved in diff)
+	snapshots        []string // list of snapshot commit SHAs (index 0 is initial snapshot)
+	snapshotCount    int      // counter for "Diff N" naming
+	allMode          bool     // true if --all flag was used (include untracked files in snapshots)
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
@@ -406,6 +412,22 @@ func WithTruncatedFileCount(count int) Option {
 	}
 }
 
+// WithAllMode sets whether --all flag was used.
+// This affects snapshot creation (include untracked files).
+func WithAllMode(allMode bool) Option {
+	return func(m *Model) {
+		m.allMode = allMode
+	}
+}
+
+// WithSnapshotsEnabled enables or disables snapshot support.
+// Snapshots are only available when the diff involves the working tree.
+func WithSnapshotsEnabled(enabled bool) Option {
+	return func(m *Model) {
+		m.snapshotsEnabled = enabled
+	}
+}
+
 // New creates a new Model with the given file pairs.
 // This wraps files in a single CommitSet for backward compatibility.
 func New(files []sidebyside.FilePair, opts ...Option) Model {
@@ -565,12 +587,32 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, m.fetchCommitStats())
 	}
 
+	// Take initial snapshot for diff mode if enabled
+	if m.snapshotsEnabled && m.git != nil {
+		cmds = append(cmds, m.createSnapshot())
+	}
+
 	// Highlight remaining files async
 	if len(m.files) > 1 {
 		cmds = append(cmds, m.RequestHighlightFromPairsExcept(map[int]bool{0: true}))
 	}
 
 	return tea.Batch(cmds...)
+}
+
+// createSnapshot returns a command that creates a snapshot of the working tree.
+func (m Model) createSnapshot() tea.Cmd {
+	if m.git == nil {
+		return nil
+	}
+
+	gitClient := m.git
+	allMode := m.allMode
+
+	return func() tea.Msg {
+		sha, err := gitClient.CreateSnapshot(allMode)
+		return SnapshotCreatedMsg{SHA: sha, Err: err}
+	}
 }
 
 // needsStatsLoad returns true if any commit needs stats to be loaded.
@@ -1891,4 +1933,90 @@ func (m Model) findHunkEnd(pos, fileIdx int) int {
 		}
 	}
 	return end
+}
+
+// insertSnapshotCommit inserts a snapshot diff at the beginning of the commits list.
+// This updates commits, files, commitFileStarts, and scrolls to the top.
+func (m *Model) insertSnapshotCommit(commit sidebyside.CommitSet) {
+	// Insert at position 0
+	m.commits = append([]sidebyside.CommitSet{commit}, m.commits...)
+
+	// Update files: prepend the new commit's files
+	newFileCount := len(commit.Files)
+	m.files = append(commit.Files, m.files...)
+
+	// Update commitFileStarts: shift all indices by newFileCount
+	newStarts := make([]int, len(m.commits))
+	newStarts[0] = 0 // new commit starts at index 0
+	for i := 1; i < len(m.commits); i++ {
+		newStarts[i] = m.commitFileStarts[i-1] + newFileCount
+	}
+	m.commitFileStarts = newStarts
+
+	// Shift file-indexed maps to account for prepended files
+	m.shiftFileIndexMaps(newFileCount)
+
+	// Invalidate caches for all windows
+	m.invalidateAllRowCaches()
+	m.calculateTotalLines()
+
+	// Scroll to top to show the new snapshot
+	m.w().scroll = 0
+
+	// Highlight the new files asynchronously (they'll be highlighted via the normal flow)
+}
+
+// shiftFileIndexMaps shifts all file-indexed map keys by the given offset.
+// This is needed when files are prepended, changing all existing file indices.
+func (m *Model) shiftFileIndexMaps(offset int) {
+	// Shift highlightSpans
+	if len(m.highlightSpans) > 0 {
+		newMap := make(map[int]*FileHighlight, len(m.highlightSpans))
+		for k, v := range m.highlightSpans {
+			newMap[k+offset] = v
+		}
+		m.highlightSpans = newMap
+	}
+
+	// Shift pairsHighlightSpans
+	if len(m.pairsHighlightSpans) > 0 {
+		newMap := make(map[int]*PairsFileHighlight, len(m.pairsHighlightSpans))
+		for k, v := range m.pairsHighlightSpans {
+			newMap[k+offset] = v
+		}
+		m.pairsHighlightSpans = newMap
+	}
+
+	// Shift structureMaps
+	if len(m.structureMaps) > 0 {
+		newMap := make(map[int]*FileStructure, len(m.structureMaps))
+		for k, v := range m.structureMaps {
+			newMap[k+offset] = v
+		}
+		m.structureMaps = newMap
+	}
+
+	// Shift pairsStructureMaps
+	if len(m.pairsStructureMaps) > 0 {
+		newMap := make(map[int]*FileStructure, len(m.pairsStructureMaps))
+		for k, v := range m.pairsStructureMaps {
+			newMap[k+offset] = v
+		}
+		m.pairsStructureMaps = newMap
+	}
+
+	// Shift loadingFiles
+	if len(m.loadingFiles) > 0 {
+		newMap := make(map[int]time.Time, len(m.loadingFiles))
+		for k, v := range m.loadingFiles {
+			newMap[k+offset] = v
+		}
+		m.loadingFiles = newMap
+	}
+
+	// Clear inlineDiffCache - it uses fileIndex in its keys and shifting
+	// would be complex; clearing is safe since it's just a performance cache
+	if len(m.inlineDiffCache) > 0 {
+		m.inlineDiffCache = make(map[inlineDiffKey]inlineDiffResult)
+	}
 }

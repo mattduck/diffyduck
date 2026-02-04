@@ -1,0 +1,198 @@
+#+TITLE: Session Snapshots (Virtual Commits)
+#+DATE: 2026-02-03
+
+* Overview
+
+Add the ability to snapshot the working tree state during a diff session, showing
+incremental changes as virtual commits. This enables tracking progress while
+working - like reviewing PR commits one-by-one, but without requiring actual commits.
+
+* Mental Model
+
+- Program starts in diff mode, automatic snapshot S0 taken in background
+- User works on their code...
+- Press key: see diff S0→current as a virtual commit at top, snapshot S1 taken
+- User works more...
+- Press key: see diff S1→current as another virtual commit at top, snapshot S2 taken
+- And so on...
+
+Each keypress shows "what changed since I last looked" and advances the baseline.
+
+* Applicability
+
+This feature only makes sense when the diff involves the current working state.
+We need to detect this from the initial command:
+
+| Mode               | Applicable? | Notes                                    |
+|--------------------+-------------+------------------------------------------|
+| ModeDiffUnstaged   | Yes         | Working tree vs index                    |
+| ModeDiffCached     | Yes         | Index vs HEAD (index can change)         |
+| ModeDiffRefs (1)   | Yes         | ref1 vs working tree (ref2 is empty)     |
+| ModeDiffRefs (2)   | No          | Two arbitrary refs, neither is "current" |
+| ModeShow           | No          | Historical commit                        |
+| Log mode           | No          | Browsing history                         |
+| Pager mode         | No          | No git access                            |
+
+The Model should store a flag like `snapshotsEnabled bool` based on this.
+
+* Snapshot Mechanism
+
+** Creating Snapshots Without Affecting Git State
+
+Use a temporary index file to create dangling commits:
+
+#+BEGIN_SRC bash
+# Create temporary index
+export GIT_INDEX_FILE=/tmp/dfd-snapshot-$$-$timestamp
+git add -A  # or -u if not including untracked
+tree=$(git write-tree)
+commit=$(git commit-tree $tree -m "dfd snapshot")
+rm $GIT_INDEX_FILE
+echo $commit  # store this SHA
+#+END_SRC
+
+This approach:
+- Does NOT touch the real index
+- Does NOT create refs (no branches, tags, stash entries)
+- Creates a dangling commit (invisible to normal git operations)
+- Gets garbage collected automatically (default: 2 weeks for unreachable objects)
+- Works even while other processes modify files
+
+** Diffing Between Snapshots
+
+To diff between two snapshots:
+#+BEGIN_SRC bash
+git diff $snapshot1_sha $snapshot2_sha
+#+END_SRC
+
+To diff a snapshot against current working tree:
+#+BEGIN_SRC bash
+git diff $snapshot_sha
+#+END_SRC
+
+Both produce unified diff output our parser already handles.
+
+** Handling Untracked Files
+
+The initial command dictates whether untracked files are included:
+- If `--all` / `-a` flag was used: `git add -A` (include untracked)
+- Otherwise: `git add -u` (only tracked files)
+
+Store this as `allMode bool` in the snapshot state.
+
+* UI Design
+
+** Display as Virtual Commits
+
+Snapshots appear as commit nodes at the top of the view, similar to log mode:
+- Use the existing CommitSet structure
+- CommitInfo has pseudo-metadata:
+  - SHA: abbreviated snapshot commit SHA
+  - Subject: "Diff 1", "Diff 2", etc.
+  - Date: actual timestamp when snapshot was taken
+  - Author: could be empty or "(dfd session)"
+- Files: the actual diff between previous snapshot and this one
+- No details node needed (unlike real commits)
+
+When snapshots exist, the view becomes:
+#+BEGIN_EXAMPLE
+┌─ Diff 2 (just now) ─────────────────────────────
+│  src/file.go  +5 -2
+│  ...
+├─ Diff 1 (3 minutes ago) ────────────────────────
+│  src/other.go  +12 -0
+│  ...
+├─ (original diff) ───────────────────────────────
+│  <existing diff content>
+└─────────────────────────────────────────────────
+#+END_EXAMPLE
+
+** Keybinding
+
+`R` (capital R) - triggers snapshot and shows incremental diff
+
+** Folding Behavior
+
+- Snapshot commits can be folded/unfolded like regular commits in log mode
+- Initial state: probably Normal (showing files) since user just asked to see it
+- Original diff content remains below, unchanged
+
+* Implementation Plan
+
+** Phase 1: Snapshot Infrastructure [DONE]
+
+- [X] Add snapshot creation to pkg/git (or new pkg/snapshot)
+  - CreateSnapshot(allMode bool) -> SHA
+  - Uses temp GIT_INDEX_FILE approach
+  - Returns commit SHA
+- [X] Add snapshot diffing
+  - DiffSnapshots(sha1, sha2 string) -> unified diff
+  - DiffSnapshotToWorking(sha string) -> unified diff
+
+** Phase 2: Model State [DONE]
+
+- [X] Add to Model:
+  - snapshotsEnabled bool (based on mode detection)
+  - snapshots []string (list of snapshot SHAs)
+  - snapshotCount int (for "Diff N" naming)
+  - allMode bool (whether --all was used)
+- [X] Take initial snapshot on startup (in background via Cmd)
+- [X] Store initial snapshot as snapshots[0]
+
+** Phase 3: Keybinding & Update Logic [DONE]
+
+- [X] Add keybinding in keys.go (R key)
+- [X] On key press:
+  1. Create new snapshot
+  2. Diff previous snapshot -> new snapshot
+  3. Parse diff, transform to FilePairs
+  4. Insert new CommitSet at position 0 (before existing content)
+  5. Update snapshots list
+  6. Scroll to top to show new content
+
+** Phase 4: Rendering [DONE]
+
+- [X] Ensure CommitSets render properly when inserted dynamically
+- [X] Handle case where diff is empty (no changes since last snapshot)
+
+* Edge Cases
+
+** No Changes Since Last Snapshot
+
+When user presses the key but nothing changed:
+- Show a status message: "No changes since last snapshot"
+- Don't create a new snapshot or empty commit node
+
+** Initial Snapshot Fails
+
+If we can't create the initial snapshot (e.g., git errors):
+- Disable the feature gracefully
+- Maybe show a status message explaining why
+
+** Large Working Tree
+
+Creating a snapshot of a huge repo could be slow:
+- Initial snapshot happens in background (Cmd)
+- Show loading indicator if user presses key before initial snapshot completes?
+
+** Multiple dfd Instances
+
+Each instance maintains its own snapshot list in memory:
+- Snapshot SHAs are just stored in Model.snapshots
+- No shared state needed
+- Dangling commits from different instances don't conflict
+
+* Decisions
+
+- Keybinding: `R` (capital R)
+- Labeling: "Diff 1", "Diff 2", etc.
+- No cumulative view (S0→current) for now - only incremental (Sn-1→current)
+- Let git gc handle dangling commit cleanup (no explicit cleanup on exit)
+
+* Future Enhancements
+
+- [ ] Navigate between snapshots (jump to snapshot N)
+- [ ] Show timeline/history of snapshots
+- [ ] Export snapshots as actual commits (interactive rebase helper?)
+- [ ] "Reset" to re-baseline from current state
+- [ ] Persist snapshots across dfd restarts (store SHAs in temp file?)

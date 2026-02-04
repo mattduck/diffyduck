@@ -210,8 +210,15 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	authorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	// Fold icon colour matches commit border (yellow/color 3), fg=15 when cursor is on row
-	foldIconStyle := commitTreeStyle
+
+	// Tree style: snapshots use magenta (color 5), commits use yellow (color 3)
+	treeStyle := commitTreeStyle
+	if commit.IsSnapshot {
+		treeStyle = snapshotTreeStyle
+	}
+
+	// Fold icon colour matches tree style, fg=15 when cursor is on row
+	foldIconStyle := treeStyle
 	if isCursorRow {
 		foldIconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	}
@@ -272,8 +279,13 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	}
 
 	// Build fixed columns
-	// Format: [prefix][fold] [sha] [+added] [-removed] [files] [time] [author] [subject]
+	// Regular commits: [prefix][fold] [sha] [+added] [-removed] [files] [time] [author] [subject]
+	// Snapshots:       [prefix][fold] [sha?] [+added] [-removed] [files] [time] [subject]
+	//                  (SHA shown if available from background snapshot, otherwise omitted)
 
+	isSnapshot := commit.IsSnapshot
+
+	// For snapshots, show SHA only if available (may arrive async from background)
 	shaText := commitInfo.ShortSHA()
 	filesText := "-"
 	if fileCount > 0 {
@@ -287,7 +299,14 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		addedText = "+?"
 		removedText = "-?"
 	}
-	timeText := formatShortRelativeDate(commitInfo.Date)
+
+	// For snapshots, show absolute time; for commits, show relative time
+	var timeText string
+	if isSnapshot {
+		timeText = formatAbsoluteTime(commitInfo.Date)
+	} else {
+		timeText = formatShortRelativeDate(commitInfo.Date)
+	}
 
 	// Pad columns to max widths for alignment across commits (right-align numbers)
 	if len(filesText) < row.maxCommitFilesWidth {
@@ -305,12 +324,17 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	// Author: max 15 display columns, truncate with "..." if longer
 	// Use displayWidth for Unicode-aware width calculation
-	author := commitInfo.Author
-	maxAuthorLen := 15
-	authorWidth := displayWidth(author)
-	if authorWidth > maxAuthorLen {
-		author = runewidth.Truncate(author, maxAuthorLen, "...")
-		authorWidth = maxAuthorLen
+	// Skip author for snapshots
+	author := ""
+	authorWidth := 0
+	if !isSnapshot {
+		author = commitInfo.Author
+		maxAuthorLen := 15
+		authorWidth = displayWidth(author)
+		if authorWidth > maxAuthorLen {
+			author = runewidth.Truncate(author, maxAuthorLen, "...")
+			authorWidth = maxAuthorLen
+		}
 	}
 
 	// Build the fixed part with styling
@@ -330,22 +354,39 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	} else {
 		styledRemoved = removedStyle.Render(removedText)
 	}
-	// Apply search highlighting to SHA and author (preserving base styles)
-	styledSHA := m.highlightSearchInVisibleStyled(shaText, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), func(text string, _ int) string {
-		return shaStyle.Render(text)
-	})
-	styledAuthor := m.highlightSearchInVisibleStyled(author, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), func(text string, _ int) string {
-		return authorStyle.Render(text)
-	})
+	// Build fixed part based on whether this is a snapshot or regular commit
+	var fixedPart string
+	if isSnapshot {
+		// Snapshots: SHA only if available, no author
+		fixedPart = prefix + foldIconStyle.Render(foldIcon) + " "
+		if shaText != "" {
+			styledSHA := m.highlightSearchInVisibleStyled(shaText, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), func(text string, _ int) string {
+				return shaStyle.Render(text)
+			})
+			fixedPart += styledSHA + " "
+		}
+		fixedPart += styledAdded + " " +
+			styledRemoved + " " +
+			dimStyle.Render(filesText) + " " +
+			dimStyle.Render(timeText)
+	} else {
+		// Regular commits: include SHA and author
+		styledSHA := m.highlightSearchInVisibleStyled(shaText, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), func(text string, _ int) string {
+			return shaStyle.Render(text)
+		})
+		styledAuthor := m.highlightSearchInVisibleStyled(author, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide(), func(text string, _ int) string {
+			return authorStyle.Render(text)
+		})
 
-	fixedPart := prefix +
-		foldIconStyle.Render(foldIcon) + " " +
-		styledSHA + " " +
-		styledAdded + " " +
-		styledRemoved + " " +
-		dimStyle.Render(filesText) + " " +
-		dimStyle.Render(timeText) + " " +
-		styledAuthor
+		fixedPart = prefix +
+			foldIconStyle.Render(foldIcon) + " " +
+			styledSHA + " " +
+			styledAdded + " " +
+			styledRemoved + " " +
+			dimStyle.Render(filesText) + " " +
+			dimStyle.Render(timeText) + " " +
+			styledAuthor
+	}
 
 	// Subject: truncate to subjectDisplayWidth with Unicode-aware width
 	subject := commitInfo.Subject
@@ -395,9 +436,9 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 			headerLineWidth := row.headerBoxWidth
 			padding := m.width - headerLineWidth - 1 // -1 for ║
 			if padding > 0 {
-				result += strings.Repeat(" ", padding) + commitTreeStyle.Render("●")
+				result += strings.Repeat(" ", padding) + treeStyle.Render("●")
 			} else if padding == 0 {
-				result += commitTreeStyle.Render("●")
+				result += treeStyle.Render("●")
 			}
 		}
 	}
@@ -723,9 +764,15 @@ func (m Model) buildCommitBodyRowsSkipFirstBlank(commit *sidebyside.CommitSet, c
 // - CommitFolded: returns empty (node hidden)
 // - CommitNormal: returns only header row ("commit abc1234")
 // - CommitExpanded: returns header + body rows (Author, Date, message)
+// - IsSnapshot: returns empty (snapshots have no details node)
 func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) []displayRow {
 	var rows []displayRow
 	info := commit.Info
+
+	// No info rows for snapshots (they have no commit metadata to show)
+	if commit.IsSnapshot {
+		return rows
+	}
 
 	// No info rows if commit has no metadata or is folded
 	commitFoldLevel := m.commitFoldLevel(commitIdx)

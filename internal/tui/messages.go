@@ -107,3 +107,16 @@ type MoreCommitsLoadedMsg struct {
 type TotalCommitCountMsg struct {
 	Count int // total commits in repo, -1 if error
 }
+
+// SnapshotCreatedMsg is sent when a snapshot has been created.
+type SnapshotCreatedMsg struct {
+	SHA string // commit SHA of the snapshot
+	Err error  // error if snapshot creation failed
+}
+
+// SnapshotDiffReadyMsg is sent when a snapshot diff has been computed.
+type SnapshotDiffReadyMsg struct {
+	CommitSet   sidebyside.CommitSet // the diff as a commit set (with "Diff N" subject)
+	SnapshotSHA string               // full SHA of the new snapshot (for storing in snapshots list)
+	Err         error                // error if diff failed
+}

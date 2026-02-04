@@ -67,7 +67,8 @@ var (
 	commentRightDimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 
 	// Tree hierarchy styles
-	commitTreeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow for commit level
+	commitTreeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow for commit level
+	snapshotTreeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5")) // magenta for snapshots
 )
 
 // determineFileHeaderMode computes the HeaderMode for a file node based on its fold state.
@@ -1491,7 +1492,8 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 		if firstCommitUnfolded {
 			// Render first commit's top border in the margin (not cursor-selectable)
-			visible = append(visible, m.renderCommitBorderLine(true, true, false, TreePath{}))
+			isSnapshot := m.commits[0].IsSnapshot
+			visible = append(visible, m.renderCommitBorderLine(true, true, false, TreePath{}, isSnapshot))
 		} else if isDiffView && firstFileUnfolded && rows[0].isHeader {
 			// Render first file's top border (matches the header box style)
 			// In diff view, files are roots so no tree ancestors

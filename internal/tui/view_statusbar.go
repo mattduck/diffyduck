@@ -366,6 +366,40 @@ func formatShortRelativeDate(isoDate string) string {
 	}
 }
 
+// formatAbsoluteTime returns a compact absolute time string.
+// Used for snapshot headers instead of relative time.
+// Format: "15:04" for today, "Jan 2 15:04" for this year, "Jan 2 2006" for older.
+func formatAbsoluteTime(isoDate string) string {
+	if isoDate == "" {
+		return ""
+	}
+
+	// Try to parse ISO 8601 format
+	t, err := time.Parse(time.RFC3339, isoDate)
+	if err != nil {
+		// Try without timezone
+		t, err = time.Parse("2006-01-02T15:04:05", isoDate)
+		if err != nil {
+			return isoDate // Return as-is if can't parse
+		}
+	}
+
+	now := time.Now()
+
+	// Same day: just show time
+	if t.Year() == now.Year() && t.YearDay() == now.YearDay() {
+		return t.Format("15:04")
+	}
+
+	// Same year: show month, day, and time
+	if t.Year() == now.Year() {
+		return t.Format("Jan 2 15:04")
+	}
+
+	// Different year: show full date
+	return t.Format("Jan 2 2006")
+}
+
 // renderStatusBar renders the status bar at the bottom of the screen.
 // This now only contains the less-style indicator (file info is in top bar).
 func (m Model) renderStatusBar() string {
