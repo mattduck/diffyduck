@@ -153,7 +153,7 @@ func TestVisualMode_PerWindowIndependence(t *testing.T) {
 	m.height = 40
 
 	// Create a second window
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 	assert.Equal(t, 2, len(m.windows), "should have 2 windows")
 

@@ -21,6 +21,10 @@ func (m Model) shouldLoadMoreCommits() bool {
 	if m.loadedCommitCount == 0 {
 		return false
 	}
+	// Don't load if narrowed - the narrowed view is complete and new commits wouldn't appear
+	if m.w().narrow.Active {
+		return false
+	}
 	// Don't load if we've loaded all commits
 	if !m.hasMoreCommitsToLoad() {
 		return false

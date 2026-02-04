@@ -960,7 +960,8 @@ func (m Model) buildRows() []displayRow {
 	}
 
 	// Add pagination indicator if more commits may be available
-	if m.hasMoreCommitsToLoad() {
+	// Don't show in narrow mode - narrowed view is complete, loading more commits wouldn't add to it
+	if m.hasMoreCommitsToLoad() && !m.w().narrow.Active {
 		rows = append(rows, displayRow{
 			kind:      RowKindPaginationIndicator,
 			fileIndex: -1,

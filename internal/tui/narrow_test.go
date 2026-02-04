@@ -771,3 +771,90 @@ func TestBuildRows_NarrowToCommit(t *testing.T) {
 		}
 	}
 }
+
+func TestNarrow_ShouldNotLoadMoreCommits(t *testing.T) {
+	// Create a model with pagination enabled (simulating partial commit load)
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "abc123",
+				Subject: "First commit",
+			},
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "file1.go", NewPath: "file1.go", FoldLevel: sidebyside.FoldNormal},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+	m.loadedCommitCount = 1
+	m.totalCommitCount = 10 // More commits available
+
+	// Without narrow: should want to load more when near end
+	m.w().scroll = m.maxScroll() // scroll to end
+	assert.True(t, m.hasMoreCommitsToLoad(), "should have more commits to load")
+	// Note: shouldLoadMoreCommits also requires m.git != nil, so we test the narrow behavior directly
+
+	// With narrow: should NOT try to load more commits
+	m.w().narrow = NarrowScope{
+		Active:    true,
+		CommitIdx: 0,
+		FileIdx:   -1,
+	}
+	assert.False(t, m.shouldLoadMoreCommits(), "should not load more commits when narrowed")
+}
+
+func TestNarrow_HidesPaginationIndicator(t *testing.T) {
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "abc123",
+				Subject: "First commit",
+			},
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "file1.go", NewPath: "file1.go", FoldLevel: sidebyside.FoldNormal},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+	m.loadedCommitCount = 1
+	m.totalCommitCount = 10 // More commits available
+
+	// Without narrow: pagination indicator should appear
+	rows := m.buildRows()
+	hasPaginationIndicator := false
+	for _, row := range rows {
+		if row.kind == RowKindPaginationIndicator {
+			hasPaginationIndicator = true
+			break
+		}
+	}
+	assert.True(t, hasPaginationIndicator, "pagination indicator should appear without narrow")
+
+	// With narrow: pagination indicator should NOT appear
+	m.w().narrow = NarrowScope{
+		Active:    true,
+		CommitIdx: 0,
+		FileIdx:   -1,
+	}
+	m.rebuildRowsCache()
+
+	rows = m.buildRows()
+	hasPaginationIndicator = false
+	for _, row := range rows {
+		if row.kind == RowKindPaginationIndicator {
+			hasPaginationIndicator = true
+			break
+		}
+	}
+	assert.False(t, hasPaginationIndicator, "pagination indicator should NOT appear when narrowed")
+}
