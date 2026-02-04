@@ -330,6 +330,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case matchesKey(msg, keys.Quit):
+		// Close window if multiple, quit if last
+		if len(m.windows) > 1 {
+			return m.windowClose()
+		}
 		return m, tea.Quit
 
 	case matchesKey(msg, keys.SearchForward):

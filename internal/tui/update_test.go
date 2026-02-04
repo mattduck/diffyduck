@@ -3291,6 +3291,32 @@ func TestWindowClose_CannotCloseLastWindow(t *testing.T) {
 	assert.Equal(t, "Cannot close last window", m.statusMessage)
 }
 
+func TestQuitClosesWindowWhenMultiple(t *testing.T) {
+	m := makeTestModel(20)
+	newM, _ := m.windowSplitVertical()
+	m = newM.(Model)
+	assert.Equal(t, 2, len(m.windows))
+
+	// Press q - should close window, not quit
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
+	newM, cmd := m.Update(msg)
+	m = newM.(Model)
+
+	assert.Equal(t, 1, len(m.windows), "q should close window when multiple exist")
+	assert.Nil(t, cmd, "should not return quit command")
+}
+
+func TestQuitQuitsWhenSingleWindow(t *testing.T) {
+	m := makeTestModel(20)
+	assert.Equal(t, 1, len(m.windows))
+
+	// Press q - should quit
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
+	_, cmd := m.Update(msg)
+
+	assert.NotNil(t, cmd, "should return quit command")
+}
+
 func TestWindowFocusLeft(t *testing.T) {
 	m := makeTestModel(20)
 	newM, _ := m.windowSplitVertical()

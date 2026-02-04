@@ -224,7 +224,7 @@ Window
 1. **Split initial position**: New window starts at same scroll position as current window
 2. **Close last window**: Prevent closing, show a status message
 3. **Active window indicator**: Use existing focus/unfocus styling - active window shows focused cursor/less-bar, inactive window shows unfocused styling. When terminal loses focus, both windows show unfocused. On re-entry, only active window goes back to focused.
-4. **Quit behavior**: `q` quits the whole program (not just current window)
+4. **Quit behavior**: `q` closes the active window when multiple windows exist; only quits the program when on the last window
 
 ## Notes
 
