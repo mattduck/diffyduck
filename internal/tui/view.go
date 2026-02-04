@@ -42,6 +42,9 @@ var (
 	// Cursor highlight style (bg=7 silver, fg=0 black) for gutter areas
 	cursorStyle = lipgloss.NewStyle().Background(lipgloss.Color("7")).Foreground(lipgloss.Color("0"))
 
+	// Visual selection style (bg=7 silver, fg=0 black) - overrides all other styling
+	visualSelectionStyle = lipgloss.NewStyle().Background(lipgloss.Color("7")).Foreground(lipgloss.Color("0"))
+
 	// Cursor arrow style (fg=15 bright white, no background)
 	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 
@@ -1613,6 +1616,18 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		end = len(rows)
 	}
 
+	// Compute visual selection range for this window
+	selectionStart, selectionEnd := -1, -1
+	if m.w().visualSelection.Active {
+		anchor := m.w().visualSelection.AnchorRow
+		current := m.w().scroll
+		if anchor <= current {
+			selectionStart, selectionEnd = anchor, current
+		} else {
+			selectionStart, selectionEnd = current, anchor
+		}
+	}
+
 	for i := start; i < end && len(visible) < contentHeight; i++ {
 		row := rows[i]
 		isCursorRow := len(visible) == cursorViewportRow
@@ -1660,6 +1675,11 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 			rendered = m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow)
 		} else {
 			rendered = m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.treePath)
+		}
+
+		// Apply visual selection highlighting (overrides all other styles)
+		if selectionStart >= 0 && i >= selectionStart && i <= selectionEnd {
+			rendered = visualSelectionStyle.Render(ansi.Strip(rendered))
 		}
 
 		// Apply focus colour dimming to rows outside the focus area

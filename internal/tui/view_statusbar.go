@@ -423,6 +423,11 @@ func (m Model) renderStatusBar() string {
 		lessIndicator += " <N>"
 	}
 
+	// Add visual mode indicator
+	if m.w().visualSelection.Active {
+		lessIndicator += " <VISUAL>"
+	}
+
 	// Pad to max width to prevent shrinking (maxLessWidth is computed in calculateTotalLines)
 	lessWidth := displayWidth(lessIndicator)
 	if lessWidth < m.maxLessWidth {

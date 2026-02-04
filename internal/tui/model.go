@@ -86,6 +86,12 @@ type inlineDiffResult struct {
 	newSpans []inlinediff.Span
 }
 
+// VisualSelection tracks visual line selection mode state.
+type VisualSelection struct {
+	Active    bool // true when in visual mode
+	AnchorRow int  // row index where selection started
+}
+
 // Window represents a single view into the diff content.
 // Multiple windows can exist showing different parts of the same data.
 type Window struct {
@@ -115,6 +121,9 @@ type Window struct {
 	commentCursor int        // cursor position in commentInput (byte offset)
 	commentScroll int        // vertical scroll offset in comment editor
 	commentKey    commentKey // identifies which line the comment is attached to
+
+	// Visual selection mode (per-window so each split can have independent selection)
+	visualSelection VisualSelection
 }
 
 // Model represents the application state.

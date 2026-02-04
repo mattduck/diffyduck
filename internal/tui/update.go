@@ -308,6 +308,15 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchInput(msg)
 	}
 
+	// Handle visual mode - exit on ESC or C-g, otherwise delegate to normal keys
+	if m.w().visualSelection.Active {
+		if msg.String() == "esc" || msg.String() == "ctrl+g" {
+			m.w().visualSelection.Active = false
+			return m, nil
+		}
+		// Fall through to normal key handling for movement, quit, etc.
+	}
+
 	// Handle multi-key sequences (e.g., gg, gj, gk, ctrl+w %)
 	if m.pendingKey == "g" {
 		return m.handlePendingG(msg)
@@ -440,6 +449,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if cmd := m.handleSnapshot(); cmd != nil {
 			return m, cmd
 		}
+
+	case matchesKey(msg, keys.VisualMode):
+		m.w().visualSelection.Active = true
+		m.w().visualSelection.AnchorRow = m.w().scroll
+		return m, nil
 	}
 
 	// Check if we should load more commits after scroll changes
