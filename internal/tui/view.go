@@ -169,8 +169,11 @@ func (m Model) View() string {
 		return m.renderSingleWindowView()
 	}
 
-	// Multiple windows: render side by side with vertical divider
-	return m.renderMultiWindowView()
+	// Multiple windows: render based on split type
+	if m.windowSplitV {
+		return m.renderVerticalSplitView()
+	}
+	return m.renderHorizontalSplitView()
 }
 
 // renderSingleWindowView renders the view for a single window (original behavior).
@@ -214,8 +217,8 @@ func (m Model) renderSingleWindowView() string {
 	return strings.Join(output, "\n")
 }
 
-// renderMultiWindowView renders multiple windows side by side with a vertical divider.
-func (m Model) renderMultiWindowView() string {
+// renderVerticalSplitView renders multiple windows side by side with a vertical divider.
+func (m Model) renderVerticalSplitView() string {
 	// Calculate window widths based on split ratio
 	dividerWidth := 1
 	totalContentWidth := m.width - dividerWidth
@@ -257,6 +260,38 @@ func (m Model) renderMultiWindowView() string {
 		rightPadded := padToWidth(rightLines[i], rightWidth)
 		output = append(output, leftPadded+divider+rightPadded)
 	}
+
+	return strings.Join(output, "\n")
+}
+
+// renderHorizontalSplitView renders multiple windows stacked vertically with a horizontal divider.
+func (m Model) renderHorizontalSplitView() string {
+	// Calculate window heights based on split ratio
+	dividerHeight := 1
+	totalContentHeight := m.height - dividerHeight
+
+	// Use the horizontal split ratio (default 0.5 for 50/50)
+	ratio := m.windowSplitRatioH
+	if ratio <= 0 || ratio >= 1 {
+		ratio = 0.5 // fallback to 50/50 if uninitialized or invalid
+	}
+	topHeight := int(float64(totalContentHeight) * ratio)
+	bottomHeight := totalContentHeight - topHeight
+
+	// Render each window's content with their respective heights
+	topLines := m.renderWindowContentWithHeight(0, m.width, topHeight)
+	bottomLines := m.renderWindowContentWithHeight(1, m.width, bottomHeight)
+
+	// Build output: top window + divider + bottom window
+	var output []string
+	output = append(output, topLines...)
+
+	// Divider line (full block characters spanning the width, dim)
+	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	divider := dividerStyle.Render(strings.Repeat("▀", m.width))
+	output = append(output, divider)
+
+	output = append(output, bottomLines...)
 
 	return strings.Join(output, "\n")
 }
@@ -309,6 +344,68 @@ func (m Model) renderWindowContent(windowIdx int, windowWidth int) []string {
 	// Restore original state
 	m.activeWindowIdx = savedActiveIdx
 	m.width = savedWidth
+	m.focused = savedFocused
+
+	// Combine all lines
+	var lines []string
+	lines = append(lines, topBarLines...)
+	lines = append(lines, visibleRows...)
+	lines = append(lines, bottomBar)
+
+	return lines
+}
+
+// renderWindowContentWithHeight renders a window's content with explicit width and height.
+// Used by horizontal split where each window gets a portion of the total height.
+func (m Model) renderWindowContentWithHeight(windowIdx int, windowWidth int, windowHeight int) []string {
+	// Temporarily switch to this window for rendering
+	savedActiveIdx := m.activeWindowIdx
+	m.activeWindowIdx = windowIdx
+	savedWidth := m.width
+	m.width = windowWidth
+	savedHeight := m.height
+	m.height = windowHeight
+
+	// For inactive windows, render as unfocused (use unfocused cursor styling)
+	// so the user can tell which window is active
+	savedFocused := m.focused
+	isActiveWindow := windowIdx == savedActiveIdx
+	if !isActiveWindow {
+		m.focused = false // Inactive window renders as unfocused
+	}
+
+	// Render top bar
+	topBar := m.renderTopBar()
+	topBarLines := strings.Split(topBar, "\n")
+
+	// Calculate content height from the provided window height
+	bottomBarLines := 1
+	contentH := windowHeight - len(topBarLines) - bottomBarLines
+	if contentH < 1 {
+		contentH = 1
+	}
+
+	// Get rows for this window
+	rows := m.windows[windowIdx].cachedRows
+	if !m.windows[windowIdx].rowsCacheValid {
+		rows = m.buildRows()
+	}
+
+	// Apply scroll and viewport
+	visibleRows := m.getVisibleRows(rows, contentH)
+
+	// Pad content to fill height
+	for len(visibleRows) < contentH {
+		visibleRows = append(visibleRows, "")
+	}
+
+	// Render bottom bar
+	bottomBar := m.renderStatusBar()
+
+	// Restore original state
+	m.activeWindowIdx = savedActiveIdx
+	m.width = savedWidth
+	m.height = savedHeight
 	m.focused = savedFocused
 
 	// Combine all lines

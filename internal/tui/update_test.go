@@ -3253,12 +3253,12 @@ func TestWindowSplit_MaxTwoWindows(t *testing.T) {
 	m := makeTestModel(20)
 
 	// Create first split
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 	assert.Equal(t, 2, len(m.windows))
 
 	// Try to create another split - should fail
-	newM, _ = m.windowSplit()
+	newM, _ = m.windowSplitVertical()
 	m = newM.(Model)
 	assert.Equal(t, 2, len(m.windows), "should not create more than 2 windows")
 	assert.Equal(t, "Maximum 2 windows", m.statusMessage)
@@ -3268,7 +3268,7 @@ func TestWindowClose_ClosesCurrentWindow(t *testing.T) {
 	m := makeTestModel(20)
 
 	// Create a split
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 	assert.Equal(t, 2, len(m.windows))
 	assert.Equal(t, 1, m.activeWindowIdx)
@@ -3293,7 +3293,7 @@ func TestWindowClose_CannotCloseLastWindow(t *testing.T) {
 
 func TestWindowFocusLeft(t *testing.T) {
 	m := makeTestModel(20)
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 	assert.Equal(t, 1, m.activeWindowIdx)
 
@@ -3310,7 +3310,7 @@ func TestWindowFocusLeft(t *testing.T) {
 
 func TestWindowFocusRight(t *testing.T) {
 	m := makeTestModel(20)
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 	m.activeWindowIdx = 0 // Start at left window
 
@@ -3327,7 +3327,7 @@ func TestWindowFocusRight(t *testing.T) {
 
 func TestWindowIndependentScroll(t *testing.T) {
 	m := makeTestModel(100)
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	// Set different scroll positions
@@ -3344,7 +3344,7 @@ func TestWindowIndependentScroll(t *testing.T) {
 
 func TestWindowIndependentFoldState(t *testing.T) {
 	m := makeTestModel(20)
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	// Set different fold states in each window
@@ -3369,7 +3369,7 @@ func TestWindowCommentSync(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Split into two windows
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	// Window 0 is active, add a comment
@@ -3413,7 +3413,7 @@ func TestWindowCursorPreservedOnCommentAdd(t *testing.T) {
 	m.rebuildRowsCache()
 
 	// Split into two windows
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	// Rebuild both windows' caches
@@ -3480,7 +3480,7 @@ func TestWindowSearchNavigationIndependent(t *testing.T) {
 	m.searchQuery = "right" // matches every line
 
 	// Split into two windows
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	// Navigate search in window 0
@@ -3505,7 +3505,7 @@ func TestWindowCloseWhileInCommentMode(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Split into two windows
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	// Enter comment mode in window 0
@@ -3542,7 +3542,7 @@ func TestWindowSplitWhileInCommentMode(t *testing.T) {
 	m.w().commentKey = commentKey{fileIndex: 0, newLineNum: 5}
 
 	// Split
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	// Original window (index 0) should still be in comment mode
@@ -3559,7 +3559,7 @@ func TestInvalidateAllRowCaches(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Split into two windows and ensure both have valid caches
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	m.activeWindowIdx = 0
@@ -3583,7 +3583,7 @@ func TestWindowResizeLeft(t *testing.T) {
 	m.width = 100 // 100 char terminal
 
 	// Split into two windows
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	// Initial ratio should be 0.5
@@ -3611,7 +3611,7 @@ func TestWindowResizeRight(t *testing.T) {
 	m.width = 100 // 100 char terminal
 
 	// Split into two windows
-	newM, _ := m.windowSplit()
+	newM, _ := m.windowSplitVertical()
 	m = newM.(Model)
 
 	// Initial ratio should be 0.5
@@ -3647,6 +3647,189 @@ func TestWindowResizeNoopWithSingleWindow(t *testing.T) {
 	newM, _ = m.windowResizeRight()
 	m = newM.(Model)
 	assert.Equal(t, 0.5, m.windowSplitRatio, "ratio should not change without split")
+}
+
+func TestWindowSplitHorizontal_CreatesSecondWindow(t *testing.T) {
+	m := makeTestModel(20)
+	m.height = 40
+	assert.Equal(t, 1, len(m.windows))
+
+	newM, _ := m.windowSplitHorizontal()
+	m = newM.(Model)
+	assert.Equal(t, 2, len(m.windows))
+	assert.Equal(t, 1, m.activeWindowIdx, "new window should be active")
+	assert.False(t, m.windowSplitV, "split should be horizontal")
+}
+
+func TestWindowSplitHorizontal_MaxTwoWindows(t *testing.T) {
+	m := makeTestModel(20)
+	m.height = 40
+
+	// Create first split
+	newM, _ := m.windowSplitHorizontal()
+	m = newM.(Model)
+	assert.Equal(t, 2, len(m.windows))
+
+	// Try to create another split - should fail
+	newM, _ = m.windowSplitHorizontal()
+	m = newM.(Model)
+	assert.Equal(t, 2, len(m.windows), "should not create more than 2 windows")
+	assert.Equal(t, "Maximum 2 windows", m.statusMessage)
+}
+
+func TestWindowFocusDown(t *testing.T) {
+	m := makeTestModel(20)
+	m.height = 40
+	newM, _ := m.windowSplitHorizontal()
+	m = newM.(Model)
+	m.activeWindowIdx = 0 // Start at top window
+
+	// Focus down
+	newM, _ = m.windowFocusDown()
+	m = newM.(Model)
+	assert.Equal(t, 1, m.activeWindowIdx)
+
+	// Try to go further down - should stay at 1
+	newM, _ = m.windowFocusDown()
+	m = newM.(Model)
+	assert.Equal(t, 1, m.activeWindowIdx)
+}
+
+func TestWindowFocusUp(t *testing.T) {
+	m := makeTestModel(20)
+	m.height = 40
+	newM, _ := m.windowSplitHorizontal()
+	m = newM.(Model)
+	assert.Equal(t, 1, m.activeWindowIdx)
+
+	// Focus up
+	newM, _ = m.windowFocusUp()
+	m = newM.(Model)
+	assert.Equal(t, 0, m.activeWindowIdx)
+
+	// Try to go further up - should stay at 0
+	newM, _ = m.windowFocusUp()
+	m = newM.(Model)
+	assert.Equal(t, 0, m.activeWindowIdx)
+}
+
+func TestWindowFocusUpDown_NoopForVerticalSplit(t *testing.T) {
+	m := makeTestModel(20)
+	newM, _ := m.windowSplitVertical()
+	m = newM.(Model)
+	assert.True(t, m.windowSplitV, "should be vertical split")
+	m.activeWindowIdx = 0
+
+	// Focus down should be noop for vertical split
+	newM, _ = m.windowFocusDown()
+	m = newM.(Model)
+	assert.Equal(t, 0, m.activeWindowIdx, "j should not change focus in vertical split")
+
+	// Focus up should be noop for vertical split
+	m.activeWindowIdx = 1
+	newM, _ = m.windowFocusUp()
+	m = newM.(Model)
+	assert.Equal(t, 1, m.activeWindowIdx, "k should not change focus in vertical split")
+}
+
+func TestWindowFocusLeftRight_NoopForHorizontalSplit(t *testing.T) {
+	m := makeTestModel(20)
+	m.height = 40
+	newM, _ := m.windowSplitHorizontal()
+	m = newM.(Model)
+	assert.False(t, m.windowSplitV, "should be horizontal split")
+	m.activeWindowIdx = 0
+
+	// Focus right should be noop for horizontal split
+	newM, _ = m.windowFocusRight()
+	m = newM.(Model)
+	assert.Equal(t, 0, m.activeWindowIdx, "l should not change focus in horizontal split")
+
+	// Focus left should be noop for horizontal split
+	m.activeWindowIdx = 1
+	newM, _ = m.windowFocusLeft()
+	m = newM.(Model)
+	assert.Equal(t, 1, m.activeWindowIdx, "h should not change focus in horizontal split")
+}
+
+func TestWindowResizeDown(t *testing.T) {
+	m := makeTestModel(20)
+	m.height = 100
+	newM, _ := m.windowSplitHorizontal()
+	m = newM.(Model)
+	m.windowSplitRatioH = 0.5
+
+	// Resize down (give top window more space)
+	newM, _ = m.windowResizeDown()
+	m = newM.(Model)
+	assert.Greater(t, m.windowSplitRatioH, 0.5, "ratio should increase")
+
+	// Keep resizing until we hit the max
+	for i := 0; i < 20; i++ {
+		newM, _ = m.windowResizeDown()
+		m = newM.(Model)
+	}
+
+	// Should be clamped at maximum 0.8
+	assert.Equal(t, 0.8, m.windowSplitRatioH, "ratio should clamp at 0.8")
+}
+
+func TestWindowResizeUp(t *testing.T) {
+	m := makeTestModel(20)
+	m.height = 100
+	newM, _ := m.windowSplitHorizontal()
+	m = newM.(Model)
+	m.windowSplitRatioH = 0.5
+
+	// Resize up (give bottom window more space)
+	newM, _ = m.windowResizeUp()
+	m = newM.(Model)
+	assert.Less(t, m.windowSplitRatioH, 0.5, "ratio should decrease")
+
+	// Keep resizing until we hit the min
+	for i := 0; i < 20; i++ {
+		newM, _ = m.windowResizeUp()
+		m = newM.(Model)
+	}
+
+	// Should be clamped at minimum 0.2
+	assert.Equal(t, 0.2, m.windowSplitRatioH, "ratio should clamp at 0.2")
+}
+
+func TestWindowResizeUpDown_NoopForVerticalSplit(t *testing.T) {
+	m := makeTestModel(20)
+	m.height = 100
+	newM, _ := m.windowSplitVertical()
+	m = newM.(Model)
+	m.windowSplitRatioH = 0.5
+
+	// Resize down should be noop for vertical split
+	newM, _ = m.windowResizeDown()
+	m = newM.(Model)
+	assert.Equal(t, 0.5, m.windowSplitRatioH, "ratio should not change in vertical split")
+
+	// Resize up should be noop for vertical split
+	newM, _ = m.windowResizeUp()
+	m = newM.(Model)
+	assert.Equal(t, 0.5, m.windowSplitRatioH, "ratio should not change in vertical split")
+}
+
+func TestWindowResizeLeftRight_NoopForHorizontalSplit(t *testing.T) {
+	m := makeTestModel(20)
+	m.height = 100
+	newM, _ := m.windowSplitHorizontal()
+	m = newM.(Model)
+	m.windowSplitRatio = 0.5
+
+	// Resize left should be noop for horizontal split
+	newM, _ = m.windowResizeLeft()
+	m = newM.(Model)
+	assert.Equal(t, 0.5, m.windowSplitRatio, "ratio should not change in horizontal split")
+
+	// Resize right should be noop for horizontal split
+	newM, _ = m.windowResizeRight()
+	m = newM.(Model)
+	assert.Equal(t, 0.5, m.windowSplitRatio, "ratio should not change in horizontal split")
 }
 
 // =============================================================================

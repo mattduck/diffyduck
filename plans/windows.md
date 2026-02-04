@@ -7,10 +7,13 @@ Introduce multiple windows (views) into the same underlying diff data, similar t
 ## Requirements
 
 ### Window Management
-- **Create**: `Ctrl+W %` creates a vertical split (50/50)
+- **Create vertical**: `Ctrl+W %` creates a vertical split (50/50, side-by-side)
+- **Create horizontal**: `Ctrl+W "` creates a horizontal split (50/50, stacked top/bottom)
 - **Close**: `Ctrl+W x` closes the current window
-- **Navigate**: `Ctrl+W h` / `Ctrl+W l` move focus left/right (no wrapping)
-- **Resize**: `Ctrl+W Ctrl+H` shrinks left window, `Ctrl+W Ctrl+L` grows left window (8 chars per step, clamped 20%-80%)
+- **Navigate vertical**: `Ctrl+W h` / `Ctrl+W l` move focus left/right (no wrapping, only for vertical splits)
+- **Navigate horizontal**: `Ctrl+W j` / `Ctrl+W k` move focus down/up (no wrapping, only for horizontal splits)
+- **Resize vertical**: `Ctrl+W Ctrl+H` shrinks left window, `Ctrl+W Ctrl+L` grows left window (8 chars per step, clamped 20%-80%)
+- **Resize horizontal**: `Ctrl+W Ctrl+J` grows top window, `Ctrl+W Ctrl+K` shrinks top window (8 rows per step, clamped 20%-80%)
 - **Limit**: Maximum 2 windows initially
 
 ### Per-Window State
@@ -190,12 +193,20 @@ Window
 ### Phase 4: Window management keybindings [DONE]
 - Added `Ctrl+W` prefix handling in `handleKeyMsg` using `pendingKey` mechanism
 - Implemented `handlePendingCtrlW` for window commands:
-  - `%` - `windowSplit()`: creates 50/50 vertical split, copies state from active window
+  - `%` - `windowSplitVertical()`: creates 50/50 vertical split (side-by-side)
+  - `"` - `windowSplitHorizontal()`: creates 50/50 horizontal split (stacked top/bottom)
   - `x` - `windowClose()`: closes current window (prevents closing last)
-  - `h` - `windowFocusLeft()`: moves focus to left window
-  - `l` - `windowFocusRight()`: moves focus to right window
-- Updated `View()` to detect multiple windows and call `renderMultiWindowView()`
-- `renderMultiWindowView()` renders each window side-by-side with vertical divider
+  - `h` - `windowFocusLeft()`: moves focus to left window (vertical split only)
+  - `l` - `windowFocusRight()`: moves focus to right window (vertical split only)
+  - `j` - `windowFocusDown()`: moves focus to bottom window (horizontal split only)
+  - `k` - `windowFocusUp()`: moves focus to top window (horizontal split only)
+  - `Ctrl+H` - `windowResizeLeft()`: shrinks left window (vertical split only)
+  - `Ctrl+L` - `windowResizeRight()`: grows left window (vertical split only)
+  - `Ctrl+J` - `windowResizeDown()`: grows top window (horizontal split only)
+  - `Ctrl+K` - `windowResizeUp()`: shrinks top window (horizontal split only)
+- Updated `View()` to detect multiple windows and branch on `windowSplitV`
+- `renderVerticalSplitView()` renders windows side-by-side with full-block (█) divider
+- `renderHorizontalSplitView()` renders windows stacked with half-block (▀) divider
 - Inactive window renders with unfocused styling (gray cursor arrow)
 
 ### Phase 5: Comment editing per window [DONE]
@@ -218,5 +229,7 @@ Window
 ## Notes
 
 - This is similar to narrow mode in that windows provide different views of the same data
-- The divider between windows will need styling (probably a simple vertical line)
-- Terminal resize needs to redistribute space to windows
+- Vertical split divider uses full block (█) in dim gray for a clean visual separator
+- Horizontal split divider uses upper half block (▀) repeated across the width
+- Terminal resize redistributes space to windows based on split ratio
+- Navigation and resize commands are split-type-aware: h/l/Ctrl+H/Ctrl+L only work for vertical splits, j/k/Ctrl+J/Ctrl+K only work for horizontal splits

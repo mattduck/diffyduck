@@ -1224,51 +1224,57 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handlePendingCtrlW handles the second key after Ctrl+W prefix.
-// Ctrl+W %: create vertical split (50/50)
+// Ctrl+W %: create vertical split (side-by-side)
+// Ctrl+W ": create horizontal split (stacked top/bottom)
 // Ctrl+W x: close current window
-// Ctrl+W h: focus left window
-// Ctrl+W l: focus right window
-// Ctrl+W Ctrl+H: shrink left window (move divider left)
-// Ctrl+W Ctrl+L: grow left window (move divider right)
+// Vertical split navigation/resize:
+//
+//	Ctrl+W h/l: focus left/right window
+//	Ctrl+W Ctrl+H/L: resize left/right
+//
+// Horizontal split navigation/resize:
+//
+//	Ctrl+W j/k: focus down/up window
+//	Ctrl+W Ctrl+J/K: resize down/up
 func (m Model) handlePendingCtrlW(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.pendingKey = "" // Always clear pending state
 
 	switch msg.String() {
 	case "%":
-		// Create vertical split
-		return m.windowSplit()
+		// Create vertical split (side-by-side)
+		return m.windowSplitVertical()
+	case "\"":
+		// Create horizontal split (stacked top/bottom)
+		return m.windowSplitHorizontal()
 	case "x":
 		// Close current window
 		return m.windowClose()
+	// Vertical split: h/l for navigation, Ctrl+H/L for resize
 	case "h":
-		// Focus left window
 		return m.windowFocusLeft()
 	case "l":
-		// Focus right window
 		return m.windowFocusRight()
 	case "ctrl+h":
-		// Shrink left window (move divider left)
 		return m.windowResizeLeft()
 	case "ctrl+l":
-		// Grow left window (move divider right)
 		return m.windowResizeRight()
+	// Horizontal split: j/k for navigation, Ctrl+J/K for resize
+	case "j":
+		return m.windowFocusDown()
+	case "k":
+		return m.windowFocusUp()
+	case "ctrl+j":
+		return m.windowResizeDown()
+	case "ctrl+k":
+		return m.windowResizeUp()
 	}
 	// Any other key just cancels the pending state without action
 
 	return m, nil
 }
 
-// windowSplit creates a new window as a vertical split.
-// The new window starts with the same scroll position and fold state as the current window.
-// Maximum 2 windows.
-func (m Model) windowSplit() (tea.Model, tea.Cmd) {
-	if len(m.windows) >= 2 {
-		m.statusMessage = "Maximum 2 windows"
-		m.statusMessageTime = time.Now()
-		return m, nil
-	}
-
-	// Create new window copying current window's state
+// createWindowCopy creates a new window copying state from the current window.
+func (m Model) createWindowCopy() *Window {
 	currentWindow := m.w()
 	newWindow := &Window{
 		scroll:           currentWindow.scroll,
@@ -1291,8 +1297,37 @@ func (m Model) windowSplit() (tea.Model, tea.Cmd) {
 		newWindow.commitFoldLevels[k] = v
 	}
 
-	m.windows = append(m.windows, newWindow)
+	return newWindow
+}
+
+// windowSplitVertical creates a new window as a vertical split (side-by-side).
+// Maximum 2 windows.
+func (m Model) windowSplitVertical() (tea.Model, tea.Cmd) {
+	if len(m.windows) >= 2 {
+		m.statusMessage = "Maximum 2 windows"
+		m.statusMessageTime = time.Now()
+		return m, nil
+	}
+
+	m.windows = append(m.windows, m.createWindowCopy())
 	m.activeWindowIdx = len(m.windows) - 1 // Focus the new window
+	m.windowSplitV = true                  // Mark as vertical split
+
+	return m, nil
+}
+
+// windowSplitHorizontal creates a new window as a horizontal split (stacked top/bottom).
+// Maximum 2 windows.
+func (m Model) windowSplitHorizontal() (tea.Model, tea.Cmd) {
+	if len(m.windows) >= 2 {
+		m.statusMessage = "Maximum 2 windows"
+		m.statusMessageTime = time.Now()
+		return m, nil
+	}
+
+	m.windows = append(m.windows, m.createWindowCopy())
+	m.activeWindowIdx = len(m.windows) - 1 // Focus the new window
+	m.windowSplitV = false                 // Mark as horizontal split
 
 	return m, nil
 }
@@ -1317,36 +1352,62 @@ func (m Model) windowClose() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// windowFocusLeft moves focus to the left window (lower index).
+// windowFocusLeft moves focus to the left window (vertical split only).
 func (m Model) windowFocusLeft() (tea.Model, tea.Cmd) {
+	if len(m.windows) < 2 || !m.windowSplitV {
+		return m, nil // Only works for vertical split
+	}
 	if m.activeWindowIdx > 0 {
 		m.activeWindowIdx--
 	}
 	return m, nil
 }
 
-// windowFocusRight moves focus to the right window (higher index).
+// windowFocusRight moves focus to the right window (vertical split only).
 func (m Model) windowFocusRight() (tea.Model, tea.Cmd) {
+	if len(m.windows) < 2 || !m.windowSplitV {
+		return m, nil // Only works for vertical split
+	}
 	if m.activeWindowIdx < len(m.windows)-1 {
 		m.activeWindowIdx++
 	}
 	return m, nil
 }
 
-// windowResizeStep is the number of characters to move the divider per resize.
+// windowFocusUp moves focus to the upper window (horizontal split only).
+func (m Model) windowFocusUp() (tea.Model, tea.Cmd) {
+	if len(m.windows) < 2 || m.windowSplitV {
+		return m, nil // Only works for horizontal split
+	}
+	if m.activeWindowIdx > 0 {
+		m.activeWindowIdx--
+	}
+	return m, nil
+}
+
+// windowFocusDown moves focus to the lower window (horizontal split only).
+func (m Model) windowFocusDown() (tea.Model, tea.Cmd) {
+	if len(m.windows) < 2 || m.windowSplitV {
+		return m, nil // Only works for horizontal split
+	}
+	if m.activeWindowIdx < len(m.windows)-1 {
+		m.activeWindowIdx++
+	}
+	return m, nil
+}
+
+// windowResizeStep is the number of characters/lines to move the divider per resize.
 const windowResizeStep = 8
 
-// windowResizeLeft shrinks the left window by moving the divider left.
+// windowResizeLeft shrinks the left window (vertical split only).
 func (m Model) windowResizeLeft() (tea.Model, tea.Cmd) {
-	if len(m.windows) < 2 {
-		return m, nil // No split to resize
+	if len(m.windows) < 2 || !m.windowSplitV {
+		return m, nil // Only works for vertical split
 	}
 
-	// Calculate the step as a fraction of the total width
 	if m.width > 0 {
 		stepRatio := float64(windowResizeStep) / float64(m.width)
 		m.windowSplitRatio -= stepRatio
-		// Clamp to minimum 20%
 		if m.windowSplitRatio < 0.2 {
 			m.windowSplitRatio = 0.2
 		}
@@ -1354,19 +1415,49 @@ func (m Model) windowResizeLeft() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// windowResizeRight grows the left window by moving the divider right.
+// windowResizeRight grows the left window (vertical split only).
 func (m Model) windowResizeRight() (tea.Model, tea.Cmd) {
-	if len(m.windows) < 2 {
-		return m, nil // No split to resize
+	if len(m.windows) < 2 || !m.windowSplitV {
+		return m, nil // Only works for vertical split
 	}
 
-	// Calculate the step as a fraction of the total width
 	if m.width > 0 {
 		stepRatio := float64(windowResizeStep) / float64(m.width)
 		m.windowSplitRatio += stepRatio
-		// Clamp to maximum 80%
 		if m.windowSplitRatio > 0.8 {
 			m.windowSplitRatio = 0.8
+		}
+	}
+	return m, nil
+}
+
+// windowResizeUp shrinks the top window (horizontal split only).
+func (m Model) windowResizeUp() (tea.Model, tea.Cmd) {
+	if len(m.windows) < 2 || m.windowSplitV {
+		return m, nil // Only works for horizontal split
+	}
+
+	if m.height > 0 {
+		stepRatio := float64(windowResizeStep) / float64(m.height)
+		m.windowSplitRatioH -= stepRatio
+		if m.windowSplitRatioH < 0.2 {
+			m.windowSplitRatioH = 0.2
+		}
+	}
+	return m, nil
+}
+
+// windowResizeDown grows the top window (horizontal split only).
+func (m Model) windowResizeDown() (tea.Model, tea.Cmd) {
+	if len(m.windows) < 2 || m.windowSplitV {
+		return m, nil // Only works for horizontal split
+	}
+
+	if m.height > 0 {
+		stepRatio := float64(windowResizeStep) / float64(m.height)
+		m.windowSplitRatioH += stepRatio
+		if m.windowSplitRatioH > 0.8 {
+			m.windowSplitRatioH = 0.8
 		}
 	}
 	return m, nil
