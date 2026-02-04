@@ -147,8 +147,9 @@ type Model struct {
 	pairsStructureMaps map[int]*FileStructure // file index -> pairs-based structure
 
 	// Windows - multiple views into the same data
-	windows         []*Window // up to 2 windows
-	activeWindowIdx int       // index of focused window
+	windows          []*Window // up to 2 windows
+	activeWindowIdx  int       // index of focused window
+	windowSplitRatio float64   // left window's share of width (0.2 to 0.8, default 0.5)
 
 	// Terminal dimensions (shared across windows)
 	width  int // terminal width
@@ -452,6 +453,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		commits:             commits,
 		windows:             []*Window{newWindow()}, // start with one window
 		activeWindowIdx:     0,
+		windowSplitRatio:    0.5, // default 50/50 split
 		keys:                DefaultKeyMap(),
 		hscrollStep:         DefaultHScrollStep,
 		highlighter:         highlight.New(),

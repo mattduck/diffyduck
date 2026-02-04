@@ -1228,6 +1228,8 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // Ctrl+W x: close current window
 // Ctrl+W h: focus left window
 // Ctrl+W l: focus right window
+// Ctrl+W Ctrl+H: shrink left window (move divider left)
+// Ctrl+W Ctrl+L: grow left window (move divider right)
 func (m Model) handlePendingCtrlW(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.pendingKey = "" // Always clear pending state
 
@@ -1244,6 +1246,12 @@ func (m Model) handlePendingCtrlW(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "l":
 		// Focus right window
 		return m.windowFocusRight()
+	case "ctrl+h":
+		// Shrink left window (move divider left)
+		return m.windowResizeLeft()
+	case "ctrl+l":
+		// Grow left window (move divider right)
+		return m.windowResizeRight()
 	}
 	// Any other key just cancels the pending state without action
 
@@ -1321,6 +1329,45 @@ func (m Model) windowFocusLeft() (tea.Model, tea.Cmd) {
 func (m Model) windowFocusRight() (tea.Model, tea.Cmd) {
 	if m.activeWindowIdx < len(m.windows)-1 {
 		m.activeWindowIdx++
+	}
+	return m, nil
+}
+
+// windowResizeStep is the number of characters to move the divider per resize.
+const windowResizeStep = 8
+
+// windowResizeLeft shrinks the left window by moving the divider left.
+func (m Model) windowResizeLeft() (tea.Model, tea.Cmd) {
+	if len(m.windows) < 2 {
+		return m, nil // No split to resize
+	}
+
+	// Calculate the step as a fraction of the total width
+	if m.width > 0 {
+		stepRatio := float64(windowResizeStep) / float64(m.width)
+		m.windowSplitRatio -= stepRatio
+		// Clamp to minimum 20%
+		if m.windowSplitRatio < 0.2 {
+			m.windowSplitRatio = 0.2
+		}
+	}
+	return m, nil
+}
+
+// windowResizeRight grows the left window by moving the divider right.
+func (m Model) windowResizeRight() (tea.Model, tea.Cmd) {
+	if len(m.windows) < 2 {
+		return m, nil // No split to resize
+	}
+
+	// Calculate the step as a fraction of the total width
+	if m.width > 0 {
+		stepRatio := float64(windowResizeStep) / float64(m.width)
+		m.windowSplitRatio += stepRatio
+		// Clamp to maximum 80%
+		if m.windowSplitRatio > 0.8 {
+			m.windowSplitRatio = 0.8
+		}
 	}
 	return m, nil
 }

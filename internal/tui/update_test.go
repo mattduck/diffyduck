@@ -3578,6 +3578,77 @@ func TestInvalidateAllRowCaches(t *testing.T) {
 	assert.False(t, m.windows[1].rowsCacheValid, "window 1 cache should be invalid")
 }
 
+func TestWindowResizeLeft(t *testing.T) {
+	m := makeTestModel(20)
+	m.width = 100 // 100 char terminal
+
+	// Split into two windows
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	// Initial ratio should be 0.5
+	assert.Equal(t, 0.5, m.windowSplitRatio)
+
+	// Resize left (shrink left window)
+	newM, _ = m.windowResizeLeft()
+	m = newM.(Model)
+
+	// Ratio should decrease by 8/100 = 0.08
+	assert.InDelta(t, 0.42, m.windowSplitRatio, 0.001, "ratio should decrease")
+
+	// Multiple resizes
+	for i := 0; i < 10; i++ {
+		newM, _ = m.windowResizeLeft()
+		m = newM.(Model)
+	}
+
+	// Should be clamped at minimum 0.2
+	assert.Equal(t, 0.2, m.windowSplitRatio, "ratio should clamp at 0.2")
+}
+
+func TestWindowResizeRight(t *testing.T) {
+	m := makeTestModel(20)
+	m.width = 100 // 100 char terminal
+
+	// Split into two windows
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	// Initial ratio should be 0.5
+	assert.Equal(t, 0.5, m.windowSplitRatio)
+
+	// Resize right (grow left window)
+	newM, _ = m.windowResizeRight()
+	m = newM.(Model)
+
+	// Ratio should increase by 8/100 = 0.08
+	assert.InDelta(t, 0.58, m.windowSplitRatio, 0.001, "ratio should increase")
+
+	// Multiple resizes
+	for i := 0; i < 10; i++ {
+		newM, _ = m.windowResizeRight()
+		m = newM.(Model)
+	}
+
+	// Should be clamped at maximum 0.8
+	assert.Equal(t, 0.8, m.windowSplitRatio, "ratio should clamp at 0.8")
+}
+
+func TestWindowResizeNoopWithSingleWindow(t *testing.T) {
+	m := makeTestModel(20)
+	m.width = 100
+	m.windowSplitRatio = 0.5
+
+	// Without split, resize should be a no-op
+	newM, _ := m.windowResizeLeft()
+	m = newM.(Model)
+	assert.Equal(t, 0.5, m.windowSplitRatio, "ratio should not change without split")
+
+	newM, _ = m.windowResizeRight()
+	m = newM.(Model)
+	assert.Equal(t, 0.5, m.windowSplitRatio, "ratio should not change without split")
+}
+
 // =============================================================================
 // shiftFileIndexMaps tests
 // =============================================================================

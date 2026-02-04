@@ -216,10 +216,16 @@ func (m Model) renderSingleWindowView() string {
 
 // renderMultiWindowView renders multiple windows side by side with a vertical divider.
 func (m Model) renderMultiWindowView() string {
-	// Calculate window widths: 50/50 split with 1 char divider
+	// Calculate window widths based on split ratio
 	dividerWidth := 1
 	totalContentWidth := m.width - dividerWidth
-	leftWidth := totalContentWidth / 2
+
+	// Use the split ratio (default 0.5 for 50/50)
+	ratio := m.windowSplitRatio
+	if ratio <= 0 || ratio >= 1 {
+		ratio = 0.5 // fallback to 50/50 if uninitialized or invalid
+	}
+	leftWidth := int(float64(totalContentWidth) * ratio)
 	rightWidth := totalContentWidth - leftWidth
 
 	// Render each window's content

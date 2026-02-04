@@ -10,8 +10,8 @@ Introduce multiple windows (views) into the same underlying diff data, similar t
 - **Create**: `Ctrl+W %` creates a vertical split (50/50)
 - **Close**: `Ctrl+W x` closes the current window
 - **Navigate**: `Ctrl+W h` / `Ctrl+W l` move focus left/right (no wrapping)
+- **Resize**: `Ctrl+W Ctrl+H` shrinks left window, `Ctrl+W Ctrl+L` grows left window (8 chars per step, clamped 20%-80%)
 - **Limit**: Maximum 2 windows initially
-- **Layout**: Fixed 50% split, no resizing
 
 ### Per-Window State
 - Scroll position (vertical)
