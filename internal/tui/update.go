@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/diff"
@@ -26,11 +28,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focused = true
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
-			m.scroll -= 3
+			m.w().scroll -= 3
 			m.clampScroll()
 			m.resetSearchMatchForRow()
 		case tea.MouseButtonWheelDown:
-			m.scroll += 3
+			m.w().scroll += 3
 			m.clampScroll()
 			m.resetSearchMatchForRow()
 			// Check if we should load more commits after scrolling down
@@ -55,12 +57,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// If only 1 file, or all content fits on screen, start fully expanded (hunks)
 			if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
 				for i := range m.files {
-					m.files[i].FoldLevel = sidebyside.FoldExpanded
+					m.setFileFoldLevel(i, sidebyside.FoldExpanded)
 				}
 			} else {
 				// Otherwise start folded
 				for i := range m.files {
-					m.files[i].FoldLevel = sidebyside.FoldFolded
+					m.setFileFoldLevel(i, sidebyside.FoldFolded)
 				}
 			}
 			m.calculateTotalLines()
@@ -152,8 +154,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-			// Invalidate row cache (widths stay at defaults until 'r' refresh)
-			m.rowsCacheValid = false
+			// Invalidate row cache for all windows (widths stay at defaults until 'r' refresh)
+			m.invalidateAllRowCaches()
 		}
 
 		return m, nil
@@ -199,7 +201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loadingMoreCommits = false
 		if msg.Err != nil {
 			// Remove the ellipsis since we can't load more
-			m.rowsCacheValid = false
+			m.invalidateAllRowCaches()
 			return m, nil
 		}
 		if len(msg.Commits) == 0 {
@@ -208,7 +210,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.totalCommitCount = m.loadedCommitCount
 			}
 			// Rebuild rows to remove the pagination indicator
-			m.rowsCacheValid = false
+			m.invalidateAllRowCaches()
 			m.calculateTotalLines()
 			return m, nil
 		}
@@ -223,7 +225,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case TotalCommitCountMsg:
 		m.totalCommitCount = msg.Count
 		// Rebuild rows in case the ellipsis should appear or disappear
-		m.rowsCacheValid = false
+		m.invalidateAllRowCaches()
 		m.calculateTotalLines()
 		return m, nil
 	}
@@ -233,7 +235,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle comment input mode first (highest priority)
-	if m.commentMode {
+	if m.w().commentMode {
 		return m.handleCommentInput(msg)
 	}
 
@@ -242,14 +244,21 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchInput(msg)
 	}
 
-	// Handle multi-key sequences (e.g., gg, gj, gk)
+	// Handle multi-key sequences (e.g., gg, gj, gk, ctrl+w %)
 	if m.pendingKey == "g" {
 		return m.handlePendingG(msg)
+	}
+	if m.pendingKey == "ctrl+w" {
+		return m.handlePendingCtrlW(msg)
 	}
 
 	// Check for prefix keys that start multi-key sequences
 	if msg.String() == "g" {
 		m.pendingKey = "g"
+		return m, nil
+	}
+	if msg.String() == "ctrl+w" {
+		m.pendingKey = "ctrl+w"
 		return m, nil
 	}
 
@@ -285,41 +294,41 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case matchesKey(msg, keys.Up):
-		m.scroll--
+		m.w().scroll--
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.Down):
-		m.scroll++
+		m.w().scroll++
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.PageUp):
-		m.scroll -= m.height
+		m.w().scroll -= m.height
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.PageDown):
-		m.scroll += m.height
+		m.w().scroll += m.height
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.HalfUp):
-		m.scroll -= m.height / 2
+		m.w().scroll -= m.height / 2
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.HalfDown):
-		m.scroll += m.height / 2
+		m.w().scroll += m.height / 2
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.Top):
-		m.scroll = m.minScroll()
+		m.w().scroll = m.minScroll()
 		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.Bottom):
-		m.scroll = m.maxScroll()
+		m.w().scroll = m.maxScroll()
 		m.resetSearchMatchForRow()
 		// Trigger loading more commits if available
 		if m.shouldLoadMoreCommits() {
@@ -327,13 +336,13 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case matchesKey(msg, keys.Left):
-		m.hscroll -= m.hscrollStep
-		if m.hscroll < 0 {
-			m.hscroll = 0
+		m.w().hscroll -= m.hscrollStep
+		if m.w().hscroll < 0 {
+			m.w().hscroll = 0
 		}
 
 	case matchesKey(msg, keys.Right):
-		m.hscroll += m.hscrollStep
+		m.w().hscroll += m.hscrollStep
 
 	case matchesKey(msg, keys.FoldToggle):
 		return m.handleFoldToggle()
@@ -391,8 +400,8 @@ type cursorRowIdentity struct {
 // getCursorRowIdentity returns the identity of the row at the cursor position.
 func (m Model) getCursorRowIdentity() cursorRowIdentity {
 	// Use cached rows if valid, otherwise rebuild
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 	cursorPos := m.cursorLine()
@@ -475,8 +484,8 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 // Returns the line index of the found row.
 func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 	// Use cached rows if valid, otherwise rebuild
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 	if len(rows) == 0 {
@@ -644,7 +653,7 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 // adjustScrollToRow adjusts scroll so the cursor points to the given row index.
 func (m *Model) adjustScrollToRow(rowIndex int) {
 	// In the new cursor model, scroll directly represents the cursor line
-	m.scroll = rowIndex
+	m.w().scroll = rowIndex
 	m.clampScroll()
 }
 
@@ -666,8 +675,8 @@ func (m Model) nextFoldLevel(current sidebyside.FoldLevel) sidebyside.FoldLevel 
 // nextFoldLevelForFile returns the next fold level for a specific file.
 // Like nextFoldLevel but also skips FoldNormal for binary files
 // (binary files have no structural diff).
-func (m Model) nextFoldLevelForFile(fp sidebyside.FilePair) sidebyside.FoldLevel {
-	next := fp.FoldLevel.NextLevel()
+func (m Model) nextFoldLevelForFile(currentLevel sidebyside.FoldLevel, fp sidebyside.FilePair) sidebyside.FoldLevel {
+	next := currentLevel.NextLevel()
 	if (m.pagerMode || fp.IsBinary) && next == sidebyside.FoldNormal {
 		// Skip FoldNormal in pager mode or for binary files
 		return next.NextLevel() // Returns FoldExpanded
@@ -701,8 +710,8 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	// Capture cursor identity before fold change
 	identity := m.getCursorRowIdentity()
 
-	newLevel := m.nextFoldLevelForFile(m.files[fileIdx])
-	m.files[fileIdx].FoldLevel = newLevel
+	newLevel := m.nextFoldLevelForFile(m.fileFoldLevel(fileIdx), m.files[fileIdx])
+	m.setFileFoldLevel(fileIdx, newLevel)
 	// Clear full-file view when cycling away from FoldExpanded
 	if newLevel != sidebyside.FoldExpanded {
 		m.files[fileIdx].ShowFullFile = false
@@ -715,8 +724,8 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	if newLevel != sidebyside.FoldFolded && len(m.commits) > 0 {
 		commitIdx := m.commitForFile(fileIdx)
 		if commitIdx >= 0 && commitIdx < len(m.commits) {
-			if m.commits[commitIdx].FoldLevel == sidebyside.CommitFolded {
-				m.commits[commitIdx].FoldLevel = sidebyside.CommitNormal
+			if m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded {
+				m.setCommitFoldLevel(commitIdx, sidebyside.CommitNormal)
 			}
 		}
 	}
@@ -752,14 +761,14 @@ func (m Model) handleFullFileToggle() (tea.Model, tea.Cmd) {
 	targetNewLineNum := m.fullFileToggleSeparatorTarget(fileIdx)
 
 	// If file is not at FoldExpanded, expand it first
-	if m.files[fileIdx].FoldLevel != sidebyside.FoldExpanded {
-		m.files[fileIdx].FoldLevel = sidebyside.FoldExpanded
+	if m.fileFoldLevel(fileIdx) != sidebyside.FoldExpanded {
+		m.setFileFoldLevel(fileIdx, sidebyside.FoldExpanded)
 		// Ensure parent commit is visible
 		if len(m.commits) > 0 {
 			commitIdx := m.commitForFile(fileIdx)
 			if commitIdx >= 0 && commitIdx < len(m.commits) {
-				if m.commits[commitIdx].FoldLevel == sidebyside.CommitFolded {
-					m.commits[commitIdx].FoldLevel = sidebyside.CommitNormal
+				if m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded {
+					m.setCommitFoldLevel(commitIdx, sidebyside.CommitNormal)
 				}
 			}
 		}
@@ -799,8 +808,8 @@ func (m Model) handleFullFileToggle() (tea.Model, tea.Cmd) {
 //   - Separator (middle): if a breadcrumb exists, go to the innermost entry's
 //     start line; otherwise go to the first content line below.
 func (m Model) fullFileToggleSeparatorTarget(fileIdx int) int {
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 	cursorPos := m.cursorLine()
@@ -891,8 +900,8 @@ func (m Model) separatorMiddleTarget(rows []displayRow, cursorPos int, fileIdx i
 // findRowByNewLineNum finds the row in the current layout that matches the given
 // new-side line number for a specific file. Falls back to the nearest row above.
 func (m Model) findRowByNewLineNum(fileIdx int, targetLineNum int) int {
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 
@@ -931,7 +940,7 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	}
 
 	// When narrowed to a file, delegate to file-based toggle (single file)
-	if m.narrow.Active && m.narrow.FileIdx >= 0 {
+	if m.w().narrow.Active && m.w().narrow.FileIdx >= 0 {
 		return m.handleFoldToggleAllFiles()
 	}
 
@@ -940,10 +949,10 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 
 	// Determine which commits to operate on
 	startCommit, endCommit := 0, len(m.commits)
-	if m.narrow.Active && m.narrow.CommitIdx >= 0 {
+	if m.w().narrow.Active && m.w().narrow.CommitIdx >= 0 {
 		// Narrowed to a commit: only toggle that commit
-		startCommit = m.narrow.CommitIdx
-		endCommit = m.narrow.CommitIdx + 1
+		startCommit = m.w().narrow.CommitIdx
+		endCommit = m.w().narrow.CommitIdx + 1
 	}
 
 	// Check the visibility level of commits in scope
@@ -977,8 +986,8 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	// If expanding to level 2+, queue files for affected commits
 	var cmd tea.Cmd
 	if newLevel >= 2 {
-		if m.narrow.Active && m.narrow.CommitIdx >= 0 {
-			cmd = m.queueFilesForCommit(m.narrow.CommitIdx)
+		if m.w().narrow.Active && m.w().narrow.CommitIdx >= 0 {
+			cmd = m.queueFilesForCommit(m.w().narrow.CommitIdx)
 		} else {
 			cmd = m.queueFilesForAllCommits()
 		}
@@ -1016,7 +1025,7 @@ func (m *Model) setCommitsToLevel(start, end, level int) {
 	}
 
 	for i := start; i < end && i < len(m.commits); i++ {
-		m.commits[i].FoldLevel = commitFold
+		m.setCommitFoldLevel(i, commitFold)
 
 		// Set fold level for files belonging to this commit
 		fileStart := m.commitFileStarts[i]
@@ -1025,7 +1034,7 @@ func (m *Model) setCommitsToLevel(start, end, level int) {
 			fileEnd = m.commitFileStarts[i+1]
 		}
 		for j := fileStart; j < fileEnd; j++ {
-			m.files[j].FoldLevel = fileFold
+			m.setFileFoldLevel(j, fileFold)
 		}
 	}
 }
@@ -1043,17 +1052,17 @@ func (m Model) handleFoldToggleAllFiles() (tea.Model, tea.Cmd) {
 
 	// Determine file range to operate on
 	startFile, endFile := 0, len(m.files)
-	if m.narrow.Active && m.narrow.FileIdx >= 0 {
+	if m.w().narrow.Active && m.w().narrow.FileIdx >= 0 {
 		// Narrowed to a single file: only toggle that file
-		startFile = m.narrow.FileIdx
-		endFile = m.narrow.FileIdx + 1
+		startFile = m.w().narrow.FileIdx
+		endFile = m.w().narrow.FileIdx + 1
 	}
 
 	// Check if all files in scope are at the same level
-	firstLevel := m.files[startFile].FoldLevel
+	firstLevel := m.fileFoldLevel(startFile)
 	allSame := true
 	for i := startFile + 1; i < endFile; i++ {
-		if m.files[i].FoldLevel != firstLevel {
+		if m.fileFoldLevel(i) != firstLevel {
 			allSame = false
 			break
 		}
@@ -1069,7 +1078,7 @@ func (m Model) handleFoldToggleAllFiles() (tea.Model, tea.Cmd) {
 	}
 
 	for i := startFile; i < endFile; i++ {
-		m.files[i].FoldLevel = newLevel
+		m.setFileFoldLevel(i, newLevel)
 	}
 
 	m.calculateTotalLines()
@@ -1129,7 +1138,7 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "g":
 		// gg: go to top
-		m.scroll = m.minScroll()
+		m.w().scroll = m.minScroll()
 		m.resetSearchMatchForRow()
 	case "j":
 		// gj: next node (commit header, file header, or hunk separator)
@@ -1142,6 +1151,108 @@ func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	// Any other key just cancels the pending state without action
 
+	return m, nil
+}
+
+// handlePendingCtrlW handles the second key after Ctrl+W prefix.
+// Ctrl+W %: create vertical split (50/50)
+// Ctrl+W x: close current window
+// Ctrl+W h: focus left window
+// Ctrl+W l: focus right window
+func (m Model) handlePendingCtrlW(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.pendingKey = "" // Always clear pending state
+
+	switch msg.String() {
+	case "%":
+		// Create vertical split
+		return m.windowSplit()
+	case "x":
+		// Close current window
+		return m.windowClose()
+	case "h":
+		// Focus left window
+		return m.windowFocusLeft()
+	case "l":
+		// Focus right window
+		return m.windowFocusRight()
+	}
+	// Any other key just cancels the pending state without action
+
+	return m, nil
+}
+
+// windowSplit creates a new window as a vertical split.
+// The new window starts with the same scroll position and fold state as the current window.
+// Maximum 2 windows.
+func (m Model) windowSplit() (tea.Model, tea.Cmd) {
+	if len(m.windows) >= 2 {
+		m.statusMessage = "Maximum 2 windows"
+		m.statusMessageTime = time.Now()
+		return m, nil
+	}
+
+	// Create new window copying current window's state
+	currentWindow := m.w()
+	newWindow := &Window{
+		scroll:           currentWindow.scroll,
+		hscroll:          currentWindow.hscroll,
+		narrow:           currentWindow.narrow,
+		fileFoldLevels:   make(map[int]sidebyside.FoldLevel),
+		commitFoldLevels: make(map[int]sidebyside.CommitFoldLevel),
+		cachedRows:       nil,
+		rowsCacheValid:   false,
+		totalLines:       currentWindow.totalLines,
+		searchMatchIdx:   currentWindow.searchMatchIdx,
+		searchMatchSide:  currentWindow.searchMatchSide,
+	}
+
+	// Copy fold state from current window
+	for k, v := range currentWindow.fileFoldLevels {
+		newWindow.fileFoldLevels[k] = v
+	}
+	for k, v := range currentWindow.commitFoldLevels {
+		newWindow.commitFoldLevels[k] = v
+	}
+
+	m.windows = append(m.windows, newWindow)
+	m.activeWindowIdx = len(m.windows) - 1 // Focus the new window
+
+	return m, nil
+}
+
+// windowClose closes the current window.
+// Cannot close the last remaining window.
+func (m Model) windowClose() (tea.Model, tea.Cmd) {
+	if len(m.windows) <= 1 {
+		m.statusMessage = "Cannot close last window"
+		m.statusMessageTime = time.Now()
+		return m, nil
+	}
+
+	// Remove current window
+	m.windows = append(m.windows[:m.activeWindowIdx], m.windows[m.activeWindowIdx+1:]...)
+
+	// Adjust active index if needed
+	if m.activeWindowIdx >= len(m.windows) {
+		m.activeWindowIdx = len(m.windows) - 1
+	}
+
+	return m, nil
+}
+
+// windowFocusLeft moves focus to the left window (lower index).
+func (m Model) windowFocusLeft() (tea.Model, tea.Cmd) {
+	if m.activeWindowIdx > 0 {
+		m.activeWindowIdx--
+	}
+	return m, nil
+}
+
+// windowFocusRight moves focus to the right window (higher index).
+func (m Model) windowFocusRight() (tea.Model, tea.Cmd) {
+	if m.activeWindowIdx < len(m.windows)-1 {
+		m.activeWindowIdx++
+	}
 	return m, nil
 }
 
@@ -1451,23 +1562,23 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 				endIdx = m.commitFileStarts[commitIdx+1]
 			}
 		}
-		commit.FoldLevel = sidebyside.CommitNormal
+		m.setCommitFoldLevel(commitIdx, sidebyside.CommitNormal)
 		for i := startIdx; i < endIdx; i++ {
-			m.files[i].FoldLevel = sidebyside.FoldFolded
+			m.setFileFoldLevel(i, sidebyside.FoldFolded)
 		}
 		// Queue files for loading now that the commit is expanded
 		cmd = m.queueFilesForCommit(commitIdx)
 	case 2:
 		// Level 2 -> Level 3: Show file hunks
-		commit.FoldLevel = sidebyside.CommitExpanded
+		m.setCommitFoldLevel(commitIdx, sidebyside.CommitExpanded)
 		for i := startIdx; i < endIdx; i++ {
-			m.files[i].FoldLevel = sidebyside.FoldExpanded
+			m.setFileFoldLevel(i, sidebyside.FoldExpanded)
 		}
 	default:
 		// Level 3 -> Level 1: Collapse everything
-		commit.FoldLevel = sidebyside.CommitFolded
+		m.setCommitFoldLevel(commitIdx, sidebyside.CommitFolded)
 		for i := startIdx; i < endIdx; i++ {
-			m.files[i].FoldLevel = sidebyside.FoldFolded
+			m.setFileFoldLevel(i, sidebyside.FoldFolded)
 		}
 	}
 
@@ -1490,13 +1601,12 @@ func (m Model) handleCommitInfoFoldToggle() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	commit := &m.commits[commitIdx]
-
 	// Toggle between CommitNormal (info header only) and CommitExpanded (info + body)
-	if commit.FoldLevel == sidebyside.CommitNormal {
-		commit.FoldLevel = sidebyside.CommitExpanded
-	} else if commit.FoldLevel == sidebyside.CommitExpanded {
-		commit.FoldLevel = sidebyside.CommitNormal
+	currentLevel := m.commitFoldLevel(commitIdx)
+	if currentLevel == sidebyside.CommitNormal {
+		m.setCommitFoldLevel(commitIdx, sidebyside.CommitExpanded)
+	} else if currentLevel == sidebyside.CommitExpanded {
+		m.setCommitFoldLevel(commitIdx, sidebyside.CommitNormal)
 	}
 	// Note: If CommitFolded, the info header isn't visible, so this won't be reached
 
@@ -1577,7 +1687,7 @@ func (m *Model) loadCommitDiff(commitIdx int) {
 	}
 
 	// Invalidate caches
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 }
 
 // commitVisibilityLevel returns the current visibility level for the first commit (1, 2, or 3).
@@ -1595,10 +1705,8 @@ func (m Model) commitVisibilityLevelFor(commitIdx int) int {
 		return 1
 	}
 
-	commit := m.commits[commitIdx]
-
 	// Level 1: Commit itself is folded
-	if commit.FoldLevel == sidebyside.CommitFolded {
+	if m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded {
 		return 1
 	}
 
@@ -1611,7 +1719,7 @@ func (m Model) commitVisibilityLevelFor(commitIdx int) int {
 
 	// Check if any file in this commit is expanded beyond FoldFolded
 	for i := startIdx; i < endIdx; i++ {
-		if m.files[i].FoldLevel != sidebyside.FoldFolded {
+		if m.fileFoldLevel(i) != sidebyside.FoldFolded {
 			return 3
 		}
 	}

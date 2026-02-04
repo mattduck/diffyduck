@@ -159,7 +159,7 @@ func TestBuildRows_NarrowToFile(t *testing.T) {
 	fullRowCount := len(fullRows)
 
 	// Now narrow to the first file only
-	m.narrow = NarrowScope{
+	m.w().narrow = NarrowScope{
 		Active:    true,
 		CommitIdx: -1, // legacy mode has no commits
 		FileIdx:   0,
@@ -207,37 +207,37 @@ func TestToggleNarrow_EnterAndExit(t *testing.T) {
 	m.height = 40
 
 	// Move scroll to a file row (skip header, go to first content)
-	m.scroll = 2 // should be on first file's content
-	initialScroll := m.scroll
-	initialTotalLines := m.totalLines
+	m.w().scroll = 2 // should be on first file's content
+	initialScroll := m.w().scroll
+	initialTotalLines := m.w().totalLines
 
 	// Verify not in narrow mode
-	assert.False(t, m.narrow.Active)
+	assert.False(t, m.w().narrow.Active)
 
 	// Toggle narrow mode (enter)
 	m.toggleNarrow()
 
 	// Should now be in narrow mode
-	assert.True(t, m.narrow.Active, "should be in narrow mode after toggle")
-	assert.Equal(t, 0, m.narrow.FileIdx, "should be narrowed to file 0")
+	assert.True(t, m.w().narrow.Active, "should be in narrow mode after toggle")
+	assert.Equal(t, 0, m.w().narrow.FileIdx, "should be narrowed to file 0")
 	// Cursor should stay on the same content row (not reset to 0)
-	assert.GreaterOrEqual(t, m.scroll, 0, "scroll should be valid in narrow mode")
-	assert.Less(t, m.totalLines, initialTotalLines, "total lines should be reduced in narrow mode")
+	assert.GreaterOrEqual(t, m.w().scroll, 0, "scroll should be valid in narrow mode")
+	assert.Less(t, m.w().totalLines, initialTotalLines, "total lines should be reduced in narrow mode")
 
 	// Toggle narrow mode (exit)
 	m.toggleNarrow()
 
 	// Should be out of narrow mode
-	assert.False(t, m.narrow.Active, "should exit narrow mode after second toggle")
-	assert.Equal(t, m.totalLines, initialTotalLines, "total lines should be restored")
+	assert.False(t, m.w().narrow.Active, "should exit narrow mode after second toggle")
+	assert.Equal(t, m.w().totalLines, initialTotalLines, "total lines should be restored")
 
 	// Scroll should be restored to approximately the original position
 	// (cursor stays at the same content it was viewing)
-	assert.GreaterOrEqual(t, m.scroll, 0, "scroll should be valid")
-	assert.LessOrEqual(t, m.scroll, m.totalLines-1, "scroll should be within bounds")
+	assert.GreaterOrEqual(t, m.w().scroll, 0, "scroll should be valid")
+	assert.LessOrEqual(t, m.w().scroll, m.w().totalLines-1, "scroll should be within bounds")
 
 	// The cursor should be close to the original position
-	assert.InDelta(t, initialScroll, m.scroll, 3, "scroll should be close to original position")
+	assert.InDelta(t, initialScroll, m.w().scroll, 3, "scroll should be close to original position")
 }
 
 func TestToggleNarrow_ShiftN_WithNoSearch(t *testing.T) {
@@ -255,17 +255,17 @@ func TestToggleNarrow_ShiftN_WithNoSearch(t *testing.T) {
 	m := New(files)
 	m.width = 120
 	m.height = 40
-	m.scroll = 2 // on file content
+	m.w().scroll = 2 // on file content
 
 	// No search query - N should toggle narrow mode
 	assert.Empty(t, m.searchQuery)
-	assert.False(t, m.narrow.Active)
+	assert.False(t, m.w().narrow.Active)
 
 	// Press N (Shift+N)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
 	model := newM.(Model)
 
-	assert.True(t, model.narrow.Active, "N should toggle narrow mode when no search query")
+	assert.True(t, model.w().narrow.Active, "N should toggle narrow mode when no search query")
 }
 
 func TestNarrowMode_StatusBarIndicator(t *testing.T) {
@@ -290,7 +290,7 @@ func TestNarrowMode_StatusBarIndicator(t *testing.T) {
 	assert.NotContains(t, view, "<N>", "should not show <N> indicator when not in narrow mode")
 
 	// Enter narrow mode
-	m.scroll = 2
+	m.w().scroll = 2
 	m.toggleNarrow()
 
 	// In narrow mode - view should contain <N>
@@ -316,18 +316,18 @@ func TestToggleNarrow_ShiftN_WithActiveSearch(t *testing.T) {
 	m.height = 40
 	m.searchQuery = "match"
 	m.searchForward = true
-	m.scroll = 3 // on second content row
+	m.w().scroll = 3 // on second content row
 
 	// With active search query - N should do prevMatch, not narrow
 	assert.NotEmpty(t, m.searchQuery)
-	assert.False(t, m.narrow.Active)
+	assert.False(t, m.w().narrow.Active)
 
 	// Press N (Shift+N) - should do search, not narrow
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
 	model := newM.(Model)
 
 	// Should NOT enter narrow mode
-	assert.False(t, model.narrow.Active, "N should do prevMatch when search query is active")
+	assert.False(t, model.w().narrow.Active, "N should do prevMatch when search query is active")
 }
 
 func TestFoldToggleAll_NarrowedToFile(t *testing.T) {
@@ -356,7 +356,7 @@ func TestFoldToggleAll_NarrowedToFile(t *testing.T) {
 	m.height = 40
 
 	// Narrow to first file
-	m.narrow = NarrowScope{
+	m.w().narrow = NarrowScope{
 		Active:    true,
 		CommitIdx: -1,
 		FileIdx:   0,
@@ -364,16 +364,16 @@ func TestFoldToggleAll_NarrowedToFile(t *testing.T) {
 	}
 
 	// Both files start at FoldExpanded
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[1].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(1))
 
 	// Fold-toggle-all while narrowed to file 0
 	newM, _ := m.handleFoldToggleAllFiles()
 	model := newM.(Model)
 
 	// Only file 0 should change (to FoldFolded, next in cycle)
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel, "narrowed file should toggle")
-	assert.Equal(t, sidebyside.FoldExpanded, model.files[1].FoldLevel, "other file should NOT change")
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0), "narrowed file should toggle")
+	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(1), "other file should NOT change")
 }
 
 func TestNarrow_NavigationBounds(t *testing.T) {
@@ -404,24 +404,24 @@ func TestNarrow_NavigationBounds(t *testing.T) {
 	m.height = 40
 
 	// Enter narrow mode on first file
-	m.scroll = 2 // on first file content
+	m.w().scroll = 2 // on first file content
 	m.toggleNarrow()
 
-	assert.True(t, m.narrow.Active)
-	narrowTotalLines := m.totalLines
+	assert.True(t, m.w().narrow.Active)
+	narrowTotalLines := m.w().totalLines
 
 	// Press G (go to end)
-	m.scroll = m.maxScroll()
-	assert.Equal(t, narrowTotalLines-1, m.scroll, "G should go to end of narrowed view")
+	m.w().scroll = m.maxScroll()
+	assert.Equal(t, narrowTotalLines-1, m.w().scroll, "G should go to end of narrowed view")
 
 	// Press gg (go to top)
-	m.scroll = m.minScroll()
-	assert.Equal(t, 0, m.scroll, "gg should go to start of narrowed view")
+	m.w().scroll = m.minScroll()
+	assert.Equal(t, 0, m.w().scroll, "gg should go to start of narrowed view")
 
 	// Verify we can't scroll beyond narrow bounds
-	m.scroll = 100
+	m.w().scroll = 100
 	m.clampScroll()
-	assert.LessOrEqual(t, m.scroll, narrowTotalLines-1, "scroll should be clamped to narrow bounds")
+	assert.LessOrEqual(t, m.w().scroll, narrowTotalLines-1, "scroll should be clamped to narrow bounds")
 }
 
 func TestNarrow_FoldWithinNarrowMode(t *testing.T) {
@@ -443,11 +443,11 @@ func TestNarrow_FoldWithinNarrowMode(t *testing.T) {
 	m.height = 40
 
 	// Enter narrow mode
-	m.scroll = 2
+	m.w().scroll = 2
 	m.toggleNarrow()
-	assert.True(t, m.narrow.Active)
+	assert.True(t, m.w().narrow.Active)
 
-	initialTotalLines := m.totalLines
+	initialTotalLines := m.w().totalLines
 	assert.Greater(t, initialTotalLines, 1, "should have multiple rows when expanded")
 
 	// Fold the file via toggle-all (since we're narrowed to single file)
@@ -455,14 +455,14 @@ func TestNarrow_FoldWithinNarrowMode(t *testing.T) {
 	model := newM.(Model)
 
 	// Should still be in narrow mode
-	assert.True(t, model.narrow.Active, "should remain in narrow mode after fold")
+	assert.True(t, model.w().narrow.Active, "should remain in narrow mode after fold")
 
 	// Total lines should decrease (file is now folded)
-	assert.Less(t, model.totalLines, initialTotalLines, "total lines should decrease when folded")
+	assert.Less(t, model.w().totalLines, initialTotalLines, "total lines should decrease when folded")
 
 	// Scroll should be clamped to valid range
-	assert.GreaterOrEqual(t, model.scroll, 0)
-	assert.LessOrEqual(t, model.scroll, model.totalLines-1)
+	assert.GreaterOrEqual(t, model.w().scroll, 0)
+	assert.LessOrEqual(t, model.w().scroll, model.w().totalLines-1)
 }
 
 func TestNarrow_SearchScopedToNarrowedView(t *testing.T) {
@@ -491,28 +491,28 @@ func TestNarrow_SearchScopedToNarrowedView(t *testing.T) {
 	m.height = 40
 
 	// Narrow to first file only
-	m.scroll = 2 // first file content
+	m.w().scroll = 2 // first file content
 	m.toggleNarrow()
-	assert.True(t, m.narrow.Active)
-	assert.Equal(t, 0, m.narrow.FileIdx)
+	assert.True(t, m.w().narrow.Active)
+	assert.Equal(t, 0, m.w().narrow.FileIdx)
 
 	// Set up search
 	m.searchQuery = "match"
 	m.searchForward = true
-	m.scroll = 0
+	m.w().scroll = 0
 
 	// Find next match - should find it in the narrowed view (first file)
 	m.nextMatch()
 
 	// Verify we're still in narrow mode and on a valid row
-	assert.True(t, m.narrow.Active)
-	assert.GreaterOrEqual(t, m.scroll, 0)
-	assert.Less(t, m.scroll, m.totalLines)
+	assert.True(t, m.w().narrow.Active)
+	assert.GreaterOrEqual(t, m.w().scroll, 0)
+	assert.Less(t, m.w().scroll, m.w().totalLines)
 
 	// The match should be in the first file (the only file visible in narrow mode)
 	rows := m.buildRows()
-	if m.scroll < len(rows) {
-		row := rows[m.scroll]
+	if m.w().scroll < len(rows) {
+		row := rows[m.w().scroll]
 		// In narrow mode, all rows should belong to file 0 or be headers
 		if row.fileIndex >= 0 {
 			assert.Equal(t, 0, row.fileIndex, "match should be in narrowed file")
@@ -550,12 +550,12 @@ func TestNarrow_BlankRowBelongsToFile(t *testing.T) {
 	}
 
 	if blankRowIdx >= 0 {
-		m.scroll = blankRowIdx
+		m.w().scroll = blankRowIdx
 		m.toggleNarrow()
 
 		// Blank rows belong to a file, so should narrow to that file
-		assert.True(t, m.narrow.Active, "should enter narrow mode from blank row")
-		assert.Equal(t, blankFileIdx, m.narrow.FileIdx, "should narrow to the file the blank row belongs to")
+		assert.True(t, m.w().narrow.Active, "should enter narrow mode from blank row")
+		assert.Equal(t, blankFileIdx, m.w().narrow.FileIdx, "should narrow to the file the blank row belongs to")
 	}
 }
 
@@ -602,13 +602,13 @@ func TestNarrow_OnCommitInfoHeader(t *testing.T) {
 	require.GreaterOrEqual(t, infoRowIdx, 0, "should find a commit info row")
 
 	// Move cursor to commit info row and toggle narrow
-	m.scroll = infoRowIdx
+	m.w().scroll = infoRowIdx
 	m.toggleNarrow()
 
-	assert.True(t, m.narrow.Active, "should enter narrow mode on commit info row")
-	assert.Equal(t, 0, m.narrow.CommitIdx, "should narrow to commit 0")
-	assert.Equal(t, -1, m.narrow.FileIdx, "should not be file-scoped")
-	assert.True(t, m.narrow.CommitInfoOnly, "should be commit-info-only mode")
+	assert.True(t, m.w().narrow.Active, "should enter narrow mode on commit info row")
+	assert.Equal(t, 0, m.w().narrow.CommitIdx, "should narrow to commit 0")
+	assert.Equal(t, -1, m.w().narrow.FileIdx, "should not be file-scoped")
+	assert.True(t, m.w().narrow.CommitInfoOnly, "should be commit-info-only mode")
 
 	// Verify that only commit info rows are visible (no files, no commit header)
 	narrowedRows := m.getRows()
@@ -671,12 +671,12 @@ func TestNarrow_OnCommitInfoHeader_NormalFoldLevel(t *testing.T) {
 	require.GreaterOrEqual(t, infoRowIdx, 0, "should find a commit info header row even at CommitNormal level")
 
 	// Move cursor to commit info row and toggle narrow
-	m.scroll = infoRowIdx
+	m.w().scroll = infoRowIdx
 	m.toggleNarrow()
 
-	assert.True(t, m.narrow.Active, "should enter narrow mode on commit info header")
-	assert.Equal(t, 0, m.narrow.CommitIdx, "should narrow to commit 0")
-	assert.True(t, m.narrow.CommitInfoOnly, "should be commit-info-only mode")
+	assert.True(t, m.w().narrow.Active, "should enter narrow mode on commit info header")
+	assert.Equal(t, 0, m.w().narrow.CommitIdx, "should narrow to commit 0")
+	assert.True(t, m.w().narrow.CommitInfoOnly, "should be commit-info-only mode")
 
 	// Verify that only commit info rows are visible (no files, no commit header)
 	narrowedRows := m.getRows()
@@ -746,7 +746,7 @@ func TestBuildRows_NarrowToCommit(t *testing.T) {
 	fullRowCount := len(fullRows)
 
 	// Now narrow to the first commit only
-	m.narrow = NarrowScope{
+	m.w().narrow = NarrowScope{
 		Active:    true,
 		CommitIdx: 0,
 		FileIdx:   -1,

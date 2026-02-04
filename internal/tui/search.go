@@ -88,8 +88,8 @@ func (m Model) findMatchColsOnRowSide(rowIdx, side int) []int {
 		return nil
 	}
 
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 
@@ -151,8 +151,8 @@ func (m Model) findNextMatchRow(startRow int, forward bool) (int, bool) {
 		return 0, false
 	}
 
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 
@@ -257,8 +257,8 @@ func (m *Model) executeSearch() {
 	m.searchQuery = m.searchInput
 	m.searchInput = ""
 	m.searchMode = false
-	m.searchMatchIdx = 0  // Reset to first match
-	m.searchMatchSide = 0 // Start on new side (left)
+	m.w().searchMatchIdx = 0  // Reset to first match
+	m.w().searchMatchSide = 0 // Start on new side (left)
 
 	if m.searchQuery == "" {
 		return
@@ -268,12 +268,12 @@ func (m *Model) executeSearch() {
 	cursorRow := m.cursorLine()
 	if row, found := m.findNextMatchRow(cursorRow, m.searchForward); found {
 		m.adjustScrollToRow(row)
-		m.searchMatchIdx = 0
+		m.w().searchMatchIdx = 0
 		// Start on whichever side has matches (prefer new side)
 		if m.rowHasMatchOnSide(row, 0) {
-			m.searchMatchSide = 0
+			m.w().searchMatchSide = 0
 		} else {
-			m.searchMatchSide = 1
+			m.w().searchMatchSide = 1
 		}
 	}
 }
@@ -293,23 +293,23 @@ func (m *Model) nextMatch() bool {
 	}
 
 	cursorRow := m.cursorLine()
-	currentSideCount := len(m.findMatchColsOnRowSide(cursorRow, m.searchMatchSide))
+	currentSideCount := len(m.findMatchColsOnRowSide(cursorRow, m.w().searchMatchSide))
 
 	if m.searchForward {
 		// Forward search: try next match on current side first
-		if currentSideCount > 0 && m.searchMatchIdx < currentSideCount-1 {
-			m.searchMatchIdx++
+		if currentSideCount > 0 && m.w().searchMatchIdx < currentSideCount-1 {
+			m.w().searchMatchIdx++
 			return true
 		}
 
 		// Try other side of same row, but only if we haven't visited it yet
 		// (side 0 -> side 1 is allowed, but side 1 -> side 0 means we've done both)
-		otherSide := 1 - m.searchMatchSide
-		if otherSide > m.searchMatchSide {
+		otherSide := 1 - m.w().searchMatchSide
+		if otherSide > m.w().searchMatchSide {
 			otherSideCount := len(m.findMatchColsOnRowSide(cursorRow, otherSide))
 			if otherSideCount > 0 {
-				m.searchMatchSide = otherSide
-				m.searchMatchIdx = 0
+				m.w().searchMatchSide = otherSide
+				m.w().searchMatchIdx = 0
 				return true
 			}
 		}
@@ -317,30 +317,30 @@ func (m *Model) nextMatch() bool {
 		// No more matches on current row, go to next row
 		if row, found := m.findNextMatchRow(cursorRow+1, true); found {
 			m.adjustScrollToRow(row)
-			m.searchMatchIdx = 0
+			m.w().searchMatchIdx = 0
 			// Start on whichever side has matches (prefer new side)
 			if m.rowHasMatchOnSide(row, 0) {
-				m.searchMatchSide = 0
+				m.w().searchMatchSide = 0
 			} else {
-				m.searchMatchSide = 1
+				m.w().searchMatchSide = 1
 			}
 			return true
 		}
 	} else {
 		// Backward search: "next" means previous in document order
-		if currentSideCount > 0 && m.searchMatchIdx > 0 {
-			m.searchMatchIdx--
+		if currentSideCount > 0 && m.w().searchMatchIdx > 0 {
+			m.w().searchMatchIdx--
 			return true
 		}
 
 		// Try other side of same row, but only if we haven't visited it yet
 		// (backward: side 1 -> side 0 is allowed, but side 0 -> side 1 means we've done both)
-		otherSide := 1 - m.searchMatchSide
-		if otherSide < m.searchMatchSide {
+		otherSide := 1 - m.w().searchMatchSide
+		if otherSide < m.w().searchMatchSide {
 			otherSideCount := len(m.findMatchColsOnRowSide(cursorRow, otherSide))
 			if otherSideCount > 0 {
-				m.searchMatchSide = otherSide
-				m.searchMatchIdx = otherSideCount - 1
+				m.w().searchMatchSide = otherSide
+				m.w().searchMatchIdx = otherSideCount - 1
 				return true
 			}
 		}
@@ -350,11 +350,11 @@ func (m *Model) nextMatch() bool {
 			m.adjustScrollToRow(row)
 			// Set to last match on last side that has matches
 			if m.rowHasMatchOnSide(row, 1) {
-				m.searchMatchSide = 1
-				m.searchMatchIdx = len(m.findMatchColsOnRowSide(row, 1)) - 1
+				m.w().searchMatchSide = 1
+				m.w().searchMatchIdx = len(m.findMatchColsOnRowSide(row, 1)) - 1
 			} else {
-				m.searchMatchSide = 0
-				m.searchMatchIdx = max(0, len(m.findMatchColsOnRowSide(row, 0))-1)
+				m.w().searchMatchSide = 0
+				m.w().searchMatchIdx = max(0, len(m.findMatchColsOnRowSide(row, 0))-1)
 			}
 			return true
 		}
@@ -372,23 +372,23 @@ func (m *Model) prevMatch() bool {
 	}
 
 	cursorRow := m.cursorLine()
-	currentSideCount := len(m.findMatchColsOnRowSide(cursorRow, m.searchMatchSide))
+	currentSideCount := len(m.findMatchColsOnRowSide(cursorRow, m.w().searchMatchSide))
 
 	if m.searchForward {
 		// Forward search mode: "prev" means go backward in matches
-		if currentSideCount > 0 && m.searchMatchIdx > 0 {
-			m.searchMatchIdx--
+		if currentSideCount > 0 && m.w().searchMatchIdx > 0 {
+			m.w().searchMatchIdx--
 			return true
 		}
 
 		// Try other side of same row, but only if we haven't visited it yet
 		// (backward: side 1 -> side 0 is allowed, but side 0 -> side 1 means we've done both)
-		otherSide := 1 - m.searchMatchSide
-		if otherSide < m.searchMatchSide {
+		otherSide := 1 - m.w().searchMatchSide
+		if otherSide < m.w().searchMatchSide {
 			otherSideCount := len(m.findMatchColsOnRowSide(cursorRow, otherSide))
 			if otherSideCount > 0 {
-				m.searchMatchSide = otherSide
-				m.searchMatchIdx = otherSideCount - 1
+				m.w().searchMatchSide = otherSide
+				m.w().searchMatchIdx = otherSideCount - 1
 				return true
 			}
 		}
@@ -398,29 +398,29 @@ func (m *Model) prevMatch() bool {
 			m.adjustScrollToRow(row)
 			// Set to last match on last side that has matches
 			if m.rowHasMatchOnSide(row, 1) {
-				m.searchMatchSide = 1
-				m.searchMatchIdx = len(m.findMatchColsOnRowSide(row, 1)) - 1
+				m.w().searchMatchSide = 1
+				m.w().searchMatchIdx = len(m.findMatchColsOnRowSide(row, 1)) - 1
 			} else {
-				m.searchMatchSide = 0
-				m.searchMatchIdx = max(0, len(m.findMatchColsOnRowSide(row, 0))-1)
+				m.w().searchMatchSide = 0
+				m.w().searchMatchIdx = max(0, len(m.findMatchColsOnRowSide(row, 0))-1)
 			}
 			return true
 		}
 	} else {
 		// Backward search mode: "prev" means go forward in matches
-		if currentSideCount > 0 && m.searchMatchIdx < currentSideCount-1 {
-			m.searchMatchIdx++
+		if currentSideCount > 0 && m.w().searchMatchIdx < currentSideCount-1 {
+			m.w().searchMatchIdx++
 			return true
 		}
 
 		// Try other side of same row, but only if we haven't visited it yet
 		// (forward: side 0 -> side 1 is allowed, but side 1 -> side 0 means we've done both)
-		otherSide := 1 - m.searchMatchSide
-		if otherSide > m.searchMatchSide {
+		otherSide := 1 - m.w().searchMatchSide
+		if otherSide > m.w().searchMatchSide {
 			otherSideCount := len(m.findMatchColsOnRowSide(cursorRow, otherSide))
 			if otherSideCount > 0 {
-				m.searchMatchSide = otherSide
-				m.searchMatchIdx = 0
+				m.w().searchMatchSide = otherSide
+				m.w().searchMatchIdx = 0
 				return true
 			}
 		}
@@ -428,12 +428,12 @@ func (m *Model) prevMatch() bool {
 		// No more matches on current row, go to next row
 		if row, found := m.findNextMatchRow(cursorRow+1, true); found {
 			m.adjustScrollToRow(row)
-			m.searchMatchIdx = 0
+			m.w().searchMatchIdx = 0
 			// Start on whichever side has matches (prefer new side)
 			if m.rowHasMatchOnSide(row, 0) {
-				m.searchMatchSide = 0
+				m.w().searchMatchSide = 0
 			} else {
-				m.searchMatchSide = 1
+				m.w().searchMatchSide = 1
 			}
 			return true
 		}
@@ -453,20 +453,20 @@ func (m *Model) resetSearchMatchForRow() {
 	cursorRow := m.cursorLine()
 
 	// Reset to first match on this row (prefer side 0)
-	m.searchMatchIdx = 0
+	m.w().searchMatchIdx = 0
 	if m.rowHasMatchOnSide(cursorRow, 0) {
-		m.searchMatchSide = 0
+		m.w().searchMatchSide = 0
 	} else if m.rowHasMatchOnSide(cursorRow, 1) {
-		m.searchMatchSide = 1
+		m.w().searchMatchSide = 1
 	}
 }
 
 // currentMatchIdx returns the current match index for rendering.
 func (m Model) currentMatchIdx() int {
-	return m.searchMatchIdx
+	return m.w().searchMatchIdx
 }
 
 // currentMatchSide returns the current match side for rendering (0=new/left, 1=old/right).
 func (m Model) currentMatchSide() int {
-	return m.searchMatchSide
+	return m.w().searchMatchSide
 }

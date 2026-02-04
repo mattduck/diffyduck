@@ -32,138 +32,138 @@ func makeTestModel(numLines int) Model {
 
 func TestUpdate_ScrollDown(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	model := newM.(Model)
 
-	assert.Equal(t, 1, model.scroll)
+	assert.Equal(t, 1, model.w().scroll)
 }
 
 func TestUpdate_ScrollUp(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 10
+	m.w().scroll = 10
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 	model := newM.(Model)
 
-	assert.Equal(t, 9, model.scroll)
+	assert.Equal(t, 9, model.w().scroll)
 }
 
 func TestUpdate_ScrollUp_AtTop(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 	model := newM.(Model)
 
 	// Scroll clamps at 0 (no negative scroll in new model)
-	assert.Equal(t, 0, model.scroll)
+	assert.Equal(t, 0, model.w().scroll)
 }
 
 func TestUpdate_ScrollDown_AtBottom(t *testing.T) {
 	m := makeTestModel(30) // 30 pairs + 1 header = 31 lines
 	// height=20, contentHeight=19, cursorOffset=3
 	// maxScroll = 31 - 1 - 3 = 27
-	m.scroll = m.maxScroll()
+	m.w().scroll = m.maxScroll()
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	model := newM.(Model)
 
-	assert.Equal(t, m.maxScroll(), model.scroll) // can't exceed max
+	assert.Equal(t, m.maxScroll(), model.w().scroll) // can't exceed max
 }
 
 func TestUpdate_PageDown(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown, Alt: false})
 	model := newM.(Model)
 
 	// Arrow down should also work
-	assert.Equal(t, 1, model.scroll)
+	assert.Equal(t, 1, model.w().scroll)
 
 	// Page down
 	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	model2 := newM2.(Model)
 
-	assert.Equal(t, 21, model2.scroll) // 1 + 20
+	assert.Equal(t, 21, model2.w().scroll) // 1 + 20
 }
 
 func TestUpdate_PageUp(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 40
+	m.w().scroll = 40
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
 	model := newM.(Model)
 
-	assert.Equal(t, 20, model.scroll) // 40 - 20
+	assert.Equal(t, 20, model.w().scroll) // 40 - 20
 }
 
 func TestUpdate_PageDown_Space(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	model := newM.(Model)
 
-	assert.Equal(t, 20, model.scroll) // 0 + height (20)
+	assert.Equal(t, 20, model.w().scroll) // 0 + height (20)
 }
 
 func TestUpdate_PageDown_F(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
 	model := newM.(Model)
 
-	assert.Equal(t, 20, model.scroll) // 0 + height (20)
+	assert.Equal(t, 20, model.w().scroll) // 0 + height (20)
 }
 
 func TestUpdate_PageUp_B(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 40
+	m.w().scroll = 40
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	model := newM.(Model)
 
-	assert.Equal(t, 20, model.scroll) // 40 - height (20)
+	assert.Equal(t, 20, model.w().scroll) // 40 - height (20)
 }
 
 func TestUpdate_HalfPageDown(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	// ctrl+d is represented as KeyCtrlD
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
 	model := newM.(Model)
 
-	assert.Equal(t, 10, model.scroll) // height/2 = 20/2 = 10
+	assert.Equal(t, 10, model.w().scroll) // height/2 = 20/2 = 10
 }
 
 func TestUpdate_GoToTop_gg(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 50
+	m.w().scroll = 50
 
 	// First 'g' puts us in pending state
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model := newM.(Model)
 
 	// Should not have moved yet
-	assert.Equal(t, 50, model.scroll, "first g should not scroll")
+	assert.Equal(t, 50, model.w().scroll, "first g should not scroll")
 	assert.Equal(t, "g", model.pendingKey, "should be in pending state")
 
 	// Second 'g' completes the sequence
 	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model2 := newM2.(Model)
 
-	assert.Equal(t, m.minScroll(), model2.scroll, "gg should go to top")
+	assert.Equal(t, m.minScroll(), model2.w().scroll, "gg should go to top")
 	assert.Equal(t, "", model2.pendingKey, "pending state should be cleared")
 }
 
 func TestUpdate_PendingKey_CancelledByUnknown(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 50
+	m.w().scroll = 50
 
 	// Press 'g' to enter pending state
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
@@ -174,7 +174,7 @@ func TestUpdate_PendingKey_CancelledByUnknown(t *testing.T) {
 	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	model2 := newM2.(Model)
 
-	assert.Equal(t, 50, model2.scroll, "scroll should not change")
+	assert.Equal(t, 50, model2.w().scroll, "scroll should not change")
 	assert.Equal(t, "", model2.pendingKey, "pending state should be cleared")
 }
 
@@ -214,7 +214,7 @@ func TestUpdate_NextHeading_gj(t *testing.T) {
 	m := makeMultiFileTestModel()
 	// Start at top - gg puts cursor on file 0's header (first row in diff view)
 	m = sendKeys(m, "g", "g")
-	assert.Equal(t, m.minScroll(), m.scroll, "should be at top")
+	assert.Equal(t, m.minScroll(), m.w().scroll, "should be at top")
 
 	// After gg, cursor is on first file's header (in diff view, there's no top border row)
 	info := m.StatusInfo()
@@ -470,14 +470,14 @@ func TestUpdate_PrevHeading_gk_MultiCommit(t *testing.T) {
 
 func TestUpdate_GoToBottom(t *testing.T) {
 	m := makeTestModel(100) // 100 pairs + 1 header = 101 lines
-	m.scroll = 0
+	m.w().scroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
 	// G now goes to maxScroll so cursor is at last line
 	// maxScroll = 101 - 1 - cursorOffset
-	assert.Equal(t, m.maxScroll(), model.scroll)
+	assert.Equal(t, m.maxScroll(), model.w().scroll)
 }
 
 func TestUpdate_Quit(t *testing.T) {
@@ -491,7 +491,7 @@ func TestUpdate_Quit(t *testing.T) {
 
 func TestUpdate_WindowResize(t *testing.T) {
 	m := makeTestModel(50)
-	m.scroll = 40
+	m.w().scroll = 40
 
 	// Cursor row before resize
 	cursorRowBefore := m.cursorLine()
@@ -507,7 +507,7 @@ func TestUpdate_WindowResize(t *testing.T) {
 
 func TestUpdate_WindowResize_SmallContent(t *testing.T) {
 	m := makeTestModel(10) // 11 lines total
-	m.scroll = 5
+	m.w().scroll = 5
 
 	// Cursor row before resize
 	cursorRowBefore := m.cursorLine()
@@ -569,103 +569,103 @@ func TestUpdate_WindowResize_PreservesCursorOnHeaderSpacer(t *testing.T) {
 
 func TestUpdate_ScrollRight(t *testing.T) {
 	m := makeTestModel(10)
-	m.hscroll = 0
+	m.w().hscroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
 	model := newM.(Model)
 
-	assert.Equal(t, 4, model.hscroll) // default step is 4
+	assert.Equal(t, 4, model.w().hscroll) // default step is 4
 }
 
 func TestUpdate_ScrollLeft(t *testing.T) {
 	m := makeTestModel(10)
-	m.hscroll = 8
+	m.w().hscroll = 8
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
 	model := newM.(Model)
 
-	assert.Equal(t, 4, model.hscroll) // 8 - 4 = 4
+	assert.Equal(t, 4, model.w().hscroll) // 8 - 4 = 4
 }
 
 func TestUpdate_ScrollLeft_AtZero(t *testing.T) {
 	m := makeTestModel(10)
-	m.hscroll = 0
+	m.w().hscroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
 	model := newM.(Model)
 
-	assert.Equal(t, 0, model.hscroll) // can't go negative
+	assert.Equal(t, 0, model.w().hscroll) // can't go negative
 }
 
 func TestUpdate_ScrollLeft_ClampToZero(t *testing.T) {
 	m := makeTestModel(10)
-	m.hscroll = 2 // less than step (4)
+	m.w().hscroll = 2 // less than step (4)
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
 	model := newM.(Model)
 
-	assert.Equal(t, 0, model.hscroll) // clamps to 0, not negative
+	assert.Equal(t, 0, model.w().hscroll) // clamps to 0, not negative
 }
 
 func TestUpdate_ScrollRight_ArrowKey(t *testing.T) {
 	m := makeTestModel(10)
-	m.hscroll = 0
+	m.w().hscroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	model := newM.(Model)
 
-	assert.Equal(t, 4, model.hscroll)
+	assert.Equal(t, 4, model.w().hscroll)
 }
 
 func TestUpdate_ScrollLeft_ArrowKey(t *testing.T) {
 	m := makeTestModel(10)
-	m.hscroll = 8
+	m.w().hscroll = 8
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	model := newM.(Model)
 
-	assert.Equal(t, 4, model.hscroll)
+	assert.Equal(t, 4, model.w().hscroll)
 }
 
 func TestUpdate_MouseWheelDown(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
 	model := newM.(Model)
 
-	assert.Equal(t, 3, model.scroll) // scrolls 3 lines
+	assert.Equal(t, 3, model.w().scroll) // scrolls 3 lines
 }
 
 func TestUpdate_MouseWheelUp(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 10
+	m.w().scroll = 10
 
 	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
 	model := newM.(Model)
 
-	assert.Equal(t, 7, model.scroll) // 10 - 3
+	assert.Equal(t, 7, model.w().scroll) // 10 - 3
 }
 
 func TestUpdate_MouseWheelUp_AtTop(t *testing.T) {
 	m := makeTestModel(100)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
 	model := newM.(Model)
 
 	// Scroll clamps at 0 (no negative scroll in new model)
-	assert.Equal(t, 0, model.scroll)
+	assert.Equal(t, 0, model.w().scroll)
 }
 
 func TestUpdate_MouseWheelDown_AtBottom(t *testing.T) {
 	m := makeTestModel(30)
-	m.scroll = m.maxScroll()
+	m.w().scroll = m.maxScroll()
 
 	newM, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
 	model := newM.(Model)
 
-	assert.Equal(t, m.maxScroll(), model.scroll) // clamped to max
+	assert.Equal(t, m.maxScroll(), model.w().scroll) // clamped to max
 }
 
 func TestUpdate_MouseEvent_SetsFocused(t *testing.T) {
@@ -683,28 +683,28 @@ func TestUpdate_MouseEvent_SetsFocused(t *testing.T) {
 func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
 	m := makeTestModel(10)
 	// Initially at FoldExpanded (set by makeTestModel)
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
 
 	// Position cursor on file header (line 0 in diff view: no top border)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	// Press Tab to cycle to next level: Expanded -> Folded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0))
 
 	// Press Tab again to cycle to Normal (structural diff)
 	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model2 := newM2.(Model)
 
-	assert.Equal(t, sidebyside.FoldNormal, model2.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldNormal, model2.fileFoldLevel(0))
 
 	// Press Tab again to cycle back to Expanded (hunks)
 	newM3, _ := model2.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model3 := newM3.(Model)
 
-	assert.Equal(t, sidebyside.FoldExpanded, model3.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, model3.fileFoldLevel(0))
 }
 
 func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
@@ -732,17 +732,17 @@ func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
 	m.height = 20
 
 	// Both files at FoldNormal, commit at CommitNormal = level 3
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
-	assert.Equal(t, sidebyside.FoldNormal, m.files[1].FoldLevel)
-	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(1))
+	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0))
 
 	// Press Shift+Tab - should cycle from level 3 to level 1 (all folded)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
-	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel)
-	assert.Equal(t, sidebyside.CommitFolded, model.commits[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(1))
+	assert.Equal(t, sidebyside.CommitFolded, model.commitFoldLevel(0))
 }
 
 func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
@@ -752,15 +752,15 @@ func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Position cursor on file header (line 0 in diff view)
-	m.scroll = 0
+	m.w().scroll = 0
 
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0))
 
 	// Press Tab to advance to FoldExpanded
 	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(0))
 	// Without a fetcher, cmd should be nil
 	assert.Nil(t, cmd, "without fetcher, cmd should be nil")
 }
@@ -772,7 +772,7 @@ func TestUpdate_FoldToggle_SkipsFetch_WhenContentLoaded(t *testing.T) {
 	m.files[0].NewContent = []string{"already", "loaded"}
 
 	// Position cursor on file header (line 0 in diff view)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	// Press Tab to advance to FoldExpanded
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -806,16 +806,16 @@ func TestUpdate_FoldToggleAll_DifferentLevels(t *testing.T) {
 	m.height = 20
 
 	// Files at different levels = mixed state
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[1].FoldLevel)
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(1))
 
 	// Press Shift+Tab - mixed state resets to level 1 (all folded)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
-	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel)
-	assert.Equal(t, sidebyside.CommitFolded, model.commits[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(1))
+	assert.Equal(t, sidebyside.CommitFolded, model.commitFoldLevel(0))
 }
 
 func TestUpdate_FileContentLoadedMsg(t *testing.T) {
@@ -992,16 +992,16 @@ func TestUpdate_PagerMode_FoldToggle_SkipsNormal(t *testing.T) {
 	m.pagerMode = true // Enable pager mode
 
 	// Position cursor on file header (line 0 in diff view)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	// Initially at FoldExpanded (hunks)
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
 
 	// Press Tab - should go to FoldFolded (skipping FoldNormal in pager mode)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel,
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0),
 		"pager mode should go to FoldFolded")
 
 	// Press Tab again - should skip FoldNormal and go back to FoldExpanded
@@ -1036,16 +1036,16 @@ func TestUpdate_PagerMode_FoldToggleAll_SkipsExpanded(t *testing.T) {
 	m.height = 20
 
 	// Both at FoldNormal initially
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel)
-	assert.Equal(t, sidebyside.FoldNormal, m.files[1].FoldLevel)
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(1))
 
 	// Press Shift+Tab - should skip FoldExpanded and go to FoldFolded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel,
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0),
 		"pager mode should skip FoldExpanded for all files")
-	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel,
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(1),
 		"pager mode should skip FoldExpanded for all files")
 }
 
@@ -1055,23 +1055,23 @@ func TestUpdate_PagerMode_NormalMode_DoesNotSkipExpanded(t *testing.T) {
 	// pagerMode is false by default
 
 	// Position cursor on file header (line 0 in diff view)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	// Initially at FoldExpanded (hunks)
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
 
 	// Press Tab - should go to FoldFolded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel,
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0),
 		"normal mode should go to FoldFolded")
 
 	// Press Tab again - should go to FoldNormal (structural diff)
 	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model2 := newM2.(Model)
 
-	assert.Equal(t, sidebyside.FoldNormal, model2.files[0].FoldLevel,
+	assert.Equal(t, sidebyside.FoldNormal, model2.fileFoldLevel(0),
 		"normal mode should include FoldNormal in cycle")
 }
 
@@ -1106,18 +1106,16 @@ func TestNextFoldLevelForFile_BinaryFile(t *testing.T) {
 
 	// Binary file should skip FoldNormal (no structural diff for binary files)
 	binaryFile := sidebyside.FilePair{
-		OldPath:   "a/image.png",
-		NewPath:   "b/image.png",
-		IsBinary:  true,
-		FoldLevel: sidebyside.FoldExpanded,
+		OldPath:  "a/image.png",
+		NewPath:  "b/image.png",
+		IsBinary: true,
 	}
 
 	// Expanded -> Folded
-	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevelForFile(binaryFile))
+	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevelForFile(sidebyside.FoldExpanded, binaryFile))
 
 	// Folded -> Expanded (skip Normal)
-	binaryFile.FoldLevel = sidebyside.FoldFolded
-	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevelForFile(binaryFile))
+	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevelForFile(sidebyside.FoldFolded, binaryFile))
 }
 
 func TestNextFoldLevelForFile_NonBinaryFile(t *testing.T) {
@@ -1125,22 +1123,19 @@ func TestNextFoldLevelForFile_NonBinaryFile(t *testing.T) {
 
 	// Non-binary file should go through all levels
 	normalFile := sidebyside.FilePair{
-		OldPath:   "a/foo.go",
-		NewPath:   "b/foo.go",
-		IsBinary:  false,
-		FoldLevel: sidebyside.FoldNormal,
+		OldPath:  "a/foo.go",
+		NewPath:  "b/foo.go",
+		IsBinary: false,
 	}
 
 	// Normal -> Expanded
-	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevelForFile(normalFile))
+	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevelForFile(sidebyside.FoldNormal, normalFile))
 
 	// Expanded -> Folded
-	normalFile.FoldLevel = sidebyside.FoldExpanded
-	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevelForFile(normalFile))
+	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevelForFile(sidebyside.FoldExpanded, normalFile))
 
 	// Folded -> Normal
-	normalFile.FoldLevel = sidebyside.FoldFolded
-	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevelForFile(normalFile))
+	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevelForFile(sidebyside.FoldFolded, normalFile))
 }
 
 func TestFetchFileContent_SkipsBinaryFiles(t *testing.T) {
@@ -1181,7 +1176,7 @@ func findTopBorderRowForFile(rows []displayRow, fileIndex int) int {
 // moveCursorToRow adjusts scroll so that the cursor lands on the given row index.
 func moveCursorToRow(m Model, rowIdx int) Model {
 	// cursor is at scroll + cursorOffset(), so scroll = rowIdx - cursorOffset()
-	m.scroll = rowIdx
+	m.w().scroll = rowIdx
 	return m
 }
 
@@ -1557,7 +1552,7 @@ func TestCursorIdentity_CommitIndex_CapturedCorrectly(t *testing.T) {
 	require.True(t, rows[1].isCommitHeader, "row 1 should be commit header")
 
 	// Position cursor on second commit header (row 1)
-	m.scroll = 1
+	m.w().scroll = 1
 	m.calculateTotalLines()
 
 	identity := m.getCursorRowIdentity()
@@ -1631,13 +1626,13 @@ func TestFileContentLoaded_SkipsScrollPreservation_WhenCommitFolded(t *testing.T
 	m := createTwoCommitModelForIdentityTests()
 
 	// Both commits are folded
-	require.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel)
-	require.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel)
+	require.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
+	require.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(1))
 
 	// Position cursor on second commit header
-	m.scroll = 1
+	m.w().scroll = 1
 	m.calculateTotalLines()
-	initialScroll := m.scroll
+	initialScroll := m.w().scroll
 
 	// Simulate file content loading for file in first (folded) commit
 	msg := FileContentLoadedMsg{
@@ -1651,7 +1646,7 @@ func TestFileContentLoaded_SkipsScrollPreservation_WhenCommitFolded(t *testing.T
 
 	// Scroll should be unchanged because commit was folded
 	// (no scroll preservation needed, content doesn't affect visible rows)
-	assert.Equal(t, initialScroll, model.scroll,
+	assert.Equal(t, initialScroll, model.w().scroll,
 		"scroll should be unchanged when loading content for folded commit")
 }
 
@@ -1664,8 +1659,8 @@ func TestFileContentLoaded_SkipsScrollPreservation_WhenFileNotExpanded(t *testin
 	m.calculateTotalLines()
 
 	// Position cursor somewhere
-	m.scroll = 0
-	initialScroll := m.scroll
+	m.w().scroll = 0
+	initialScroll := m.w().scroll
 
 	// Simulate file content loading
 	msg := FileContentLoadedMsg{
@@ -1678,7 +1673,7 @@ func TestFileContentLoaded_SkipsScrollPreservation_WhenFileNotExpanded(t *testin
 	model := newM.(Model)
 
 	// Scroll should be unchanged because file is not in FoldExpanded mode
-	assert.Equal(t, initialScroll, model.scroll,
+	assert.Equal(t, initialScroll, model.w().scroll,
 		"scroll should be unchanged when loading content for non-expanded file")
 }
 
@@ -1754,7 +1749,7 @@ func TestFocusProximity_NearbyHunksIncluded(t *testing.T) {
 	m := makeHunkedTestModel()
 	m.rebuildRowsCache()
 
-	rows := m.cachedRows
+	rows := m.w().cachedRows
 
 	// Find a content row in hunk 1 (lines 10-15)
 	var hunk1ContentIdx int
@@ -1767,7 +1762,7 @@ func TestFocusProximity_NearbyHunksIncluded(t *testing.T) {
 	require.NotZero(t, hunk1ContentIdx, "should find hunk 1 content")
 
 	// Position cursor on hunk 1
-	m.scroll = hunk1ContentIdx
+	m.w().scroll = hunk1ContentIdx
 	m.clampScroll()
 
 	predicate := m.getFocusPredicate()
@@ -1833,7 +1828,7 @@ func TestFullFileToggle_Basic(t *testing.T) {
 	m = result.(Model)
 
 	assert.True(t, m.files[0].ShowFullFile, "ShowFullFile should be true after toggle")
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel, "FoldLevel should remain FoldExpanded")
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0), "FoldLevel should remain FoldExpanded")
 
 	// Toggle off
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
@@ -1869,7 +1864,7 @@ func TestFullFileToggle_ExpandsFromFolded(t *testing.T) {
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
 	m = result.(Model)
 
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel, "should auto-expand to FoldExpanded")
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0), "should auto-expand to FoldExpanded")
 	assert.True(t, m.files[0].ShowFullFile, "ShowFullFile should be true")
 }
 
@@ -1943,7 +1938,7 @@ func TestFullFileToggle_SeparatorTop_GoesToLineAbove(t *testing.T) {
 	require.True(t, sepTopIdx >= 0, "should have a SeparatorTop row")
 
 	// Position cursor on separator top
-	m.scroll = sepTopIdx
+	m.w().scroll = sepTopIdx
 
 	// Toggle full-file view
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
@@ -1951,7 +1946,7 @@ func TestFullFileToggle_SeparatorTop_GoesToLineAbove(t *testing.T) {
 
 	// Cursor should be on new-side line 3 (last content line above separator)
 	newRows := m.buildRows()
-	cursorRow := newRows[m.scroll]
+	cursorRow := newRows[m.w().scroll]
 	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
 	assert.Equal(t, 3, cursorRow.pair.New.Num, "cursor should be on line 3 (last line above separator)")
 }
@@ -1992,13 +1987,13 @@ func TestFullFileToggle_SeparatorBottom_GoesToLineBelow(t *testing.T) {
 	}
 	require.True(t, sepBottomIdx >= 0, "should have a SeparatorBottom row")
 
-	m.scroll = sepBottomIdx
+	m.w().scroll = sepBottomIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
 	m = result.(Model)
 
 	newRows := m.buildRows()
-	cursorRow := newRows[m.scroll]
+	cursorRow := newRows[m.w().scroll]
 	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
 	assert.Equal(t, 10, cursorRow.pair.New.Num, "cursor should be on line 10 (first line below separator)")
 }
@@ -2059,13 +2054,13 @@ func TestFullFileToggle_SeparatorMiddle_WithBreadcrumb(t *testing.T) {
 	}
 	require.True(t, sepIdx >= 0, "should have a Separator row")
 
-	m.scroll = sepIdx
+	m.w().scroll = sepIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
 	m = result.(Model)
 
 	newRows := m.buildRows()
-	cursorRow := newRows[m.scroll]
+	cursorRow := newRows[m.w().scroll]
 	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
 	assert.Equal(t, 15, cursorRow.pair.New.Num, "cursor should land on line 15 (function start from breadcrumb)")
 }
@@ -2108,13 +2103,13 @@ func TestFullFileToggle_SeparatorMiddle_NoBreadcrumb(t *testing.T) {
 	}
 	require.True(t, sepIdx >= 0, "should have a Separator row")
 
-	m.scroll = sepIdx
+	m.w().scroll = sepIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
 	m = result.(Model)
 
 	newRows := m.buildRows()
-	cursorRow := newRows[m.scroll]
+	cursorRow := newRows[m.w().scroll]
 	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should be on a content row")
 	assert.Equal(t, 10, cursorRow.pair.New.Num, "cursor should land on line 10 (first content below, no breadcrumb)")
 }
@@ -2150,7 +2145,7 @@ func TestFullFileToggle_OffFromFullFile_PreservesPosition(t *testing.T) {
 	rows := m.buildRows()
 	for i, row := range rows {
 		if row.kind == RowKindContent && row.fileIndex == 0 && row.pair.New.Num == 3 {
-			m.scroll = i
+			m.w().scroll = i
 			break
 		}
 	}
@@ -2161,7 +2156,7 @@ func TestFullFileToggle_OffFromFullFile_PreservesPosition(t *testing.T) {
 
 	assert.False(t, m.files[0].ShowFullFile)
 	newRows := m.buildRows()
-	cursorRow := newRows[m.scroll]
+	cursorRow := newRows[m.w().scroll]
 	assert.Equal(t, RowKindContent, cursorRow.kind, "cursor should still be on a content row")
 	assert.Equal(t, 3, cursorRow.pair.New.Num, "cursor should stay on line 3 after toggling off")
 }
@@ -2220,7 +2215,7 @@ func TestTab_SeparatorTop_ExpandsDown(t *testing.T) {
 		}
 	}
 	require.True(t, sepTopIdx >= 0)
-	m.scroll = sepTopIdx
+	m.w().scroll = sepTopIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
@@ -2252,7 +2247,7 @@ func TestTab_SeparatorBottom_ExpandsUp(t *testing.T) {
 		}
 	}
 	require.True(t, sepBotIdx >= 0)
-	m.scroll = sepBotIdx
+	m.w().scroll = sepBotIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
@@ -2293,7 +2288,7 @@ func TestTab_SeparatorMiddle_WithBreadcrumb(t *testing.T) {
 		}
 	}
 	require.True(t, sepIdx >= 0)
-	m.scroll = sepIdx
+	m.w().scroll = sepIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
@@ -2323,7 +2318,7 @@ func TestTab_SeparatorMiddle_NoBreadcrumb_Noop(t *testing.T) {
 		}
 	}
 	require.True(t, sepIdx >= 0)
-	m.scroll = sepIdx
+	m.w().scroll = sepIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
@@ -2374,7 +2369,7 @@ func TestTab_RepeatedExpansion_MergesHunks(t *testing.T) {
 	require.True(t, hasSep, "should have separator before expansion")
 
 	// First Enter: expand down 6 lines (gap is only 6, clamped)
-	m.scroll = sepTopIdx
+	m.w().scroll = sepTopIdx
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
 
@@ -2396,7 +2391,7 @@ func TestTab_NonSeparatorRow_Noop(t *testing.T) {
 	originalPairsLen := len(m.files[0].Pairs)
 
 	// Position on a content row
-	m.scroll = 0
+	m.w().scroll = 0
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
@@ -2421,7 +2416,7 @@ func TestTab_NoContent_Noop(t *testing.T) {
 		}
 	}
 	require.True(t, sepIdx >= 0)
-	m.scroll = sepIdx
+	m.w().scroll = sepIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
@@ -2469,7 +2464,7 @@ func TestTab_CursorAfterMerge(t *testing.T) {
 		}
 	}
 	require.True(t, sepTopIdx >= 0)
-	m.scroll = sepTopIdx
+	m.w().scroll = sepTopIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
@@ -2519,7 +2514,7 @@ func TestTab_SmallGap_CursorPositioning(t *testing.T) {
 			}
 		}
 		require.True(t, sepTopIdx >= 0)
-		m.scroll = sepTopIdx
+		m.w().scroll = sepTopIdx
 
 		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 		m = result.(Model)
@@ -2565,7 +2560,7 @@ func TestTab_SmallGap_CursorPositioning(t *testing.T) {
 			}
 		}
 		require.True(t, sepBotIdx >= 0)
-		m.scroll = sepBotIdx
+		m.w().scroll = sepBotIdx
 
 		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 		m = result.(Model)
@@ -2615,7 +2610,7 @@ func TestTab_ExpandNearFileBoundary(t *testing.T) {
 			}
 		}
 		require.True(t, sepTopIdx >= 0)
-		m.scroll = sepTopIdx
+		m.w().scroll = sepTopIdx
 
 		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 		m = result.(Model)
@@ -2665,7 +2660,7 @@ func TestTab_ExpandNearFileBoundary(t *testing.T) {
 			}
 		}
 		require.True(t, sepBotIdx >= 0)
-		m.scroll = sepBotIdx
+		m.w().scroll = sepBotIdx
 
 		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 		m = result.(Model)
@@ -2718,7 +2713,7 @@ func TestTab_MultipleSeparators_LastBottom(t *testing.T) {
 		}
 	}
 	require.True(t, sepBotIdx >= 0)
-	m.scroll = sepBotIdx
+	m.w().scroll = sepBotIdx
 
 	originalPairsLen := len(m.files[0].Pairs)
 
@@ -2776,7 +2771,7 @@ func TestFoldToggle_ResetsMultipleExpansions(t *testing.T) {
 		}
 	}
 	require.True(t, sepTopIdx >= 0)
-	m.scroll = sepTopIdx
+	m.w().scroll = sepTopIdx
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
 	assert.Greater(t, len(m.files[0].Pairs), originalPairsLen)
@@ -2791,7 +2786,7 @@ func TestFoldToggle_ResetsMultipleExpansions(t *testing.T) {
 		}
 	}
 	require.True(t, sepBotIdx >= 0)
-	m.scroll = sepBotIdx
+	m.w().scroll = sepBotIdx
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
 	assert.Greater(t, len(m.files[0].Pairs), originalPairsLen+15, "both expansions should be present")
@@ -2806,7 +2801,7 @@ func TestFoldToggle_ResetsMultipleExpansions(t *testing.T) {
 		}
 	}
 	require.True(t, headerIdx >= 0)
-	m.scroll = headerIdx
+	m.w().scroll = headerIdx
 
 	// FoldExpanded → FoldFolded → FoldNormal → FoldExpanded
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -2815,7 +2810,7 @@ func TestFoldToggle_ResetsMultipleExpansions(t *testing.T) {
 	m = result.(Model)
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
 	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "both expansions should be reset after fold cycle")
 }
 
@@ -2837,7 +2832,7 @@ func TestFoldToggle_ResetsPairsAfterExpansion(t *testing.T) {
 		}
 	}
 	require.True(t, sepTopIdx >= 0)
-	m.scroll = sepTopIdx
+	m.w().scroll = sepTopIdx
 
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
@@ -2854,18 +2849,18 @@ func TestFoldToggle_ResetsPairsAfterExpansion(t *testing.T) {
 		}
 	}
 	require.True(t, fileHeaderIdx >= 0)
-	m.scroll = fileHeaderIdx
+	m.w().scroll = fileHeaderIdx
 
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
-	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0))
 
 	// Unfold back (FoldFolded → FoldNormal → FoldExpanded requires two presses)
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel)
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
 
 	// Pairs should be back to original length
 	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "Pairs should reset to original after fold cycle")
@@ -2912,7 +2907,7 @@ func TestTab_ExpandWithMixedDiffTypes(t *testing.T) {
 			}
 		}
 		require.True(t, sepTopIdx >= 0)
-		m.scroll = sepTopIdx
+		m.w().scroll = sepTopIdx
 
 		originalLen := len(m.files[0].Pairs)
 		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -2961,7 +2956,7 @@ func TestTab_ExpandWithMixedDiffTypes(t *testing.T) {
 			}
 		}
 		require.True(t, sepBotIdx >= 0)
-		m.scroll = sepBotIdx
+		m.w().scroll = sepBotIdx
 
 		originalLen := len(m.files[0].Pairs)
 		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -3010,7 +3005,7 @@ func TestTab_ExpandWithMixedDiffTypes(t *testing.T) {
 			}
 		}
 		require.True(t, sepTopIdx >= 0)
-		m.scroll = sepTopIdx
+		m.w().scroll = sepTopIdx
 
 		originalLen := len(m.files[0].Pairs)
 		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -3159,7 +3154,7 @@ func TestTab_TrailingSeparator(t *testing.T) {
 			}
 		}
 		require.True(t, lastSepTopIdx >= 0)
-		m.scroll = lastSepTopIdx
+		m.w().scroll = lastSepTopIdx
 
 		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 		m = result.(Model)
@@ -3204,7 +3199,7 @@ func TestTab_TrailingSeparator(t *testing.T) {
 			}
 		}
 		require.True(t, lastSepTopIdx >= 0)
-		m.scroll = lastSepTopIdx
+		m.w().scroll = lastSepTopIdx
 
 		result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 		m = result.(Model)
@@ -3219,4 +3214,364 @@ func TestTab_TrailingSeparator(t *testing.T) {
 			}
 		}
 	})
+}
+
+// =============================================================================
+// Window Management Tests
+// =============================================================================
+
+func TestWindowSplit_CreatesSecondWindow(t *testing.T) {
+	m := makeTestModel(20)
+	m.w().scroll = 5
+	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+
+	// Should start with 1 window
+	assert.Equal(t, 1, len(m.windows))
+	assert.Equal(t, 0, m.activeWindowIdx)
+
+	// Ctrl+W % creates a split
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ctrl+w"), Alt: false})
+	m = newM.(Model)
+	assert.Equal(t, "ctrl+w", m.pendingKey)
+
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("%")})
+	m = newM.(Model)
+
+	// Should now have 2 windows
+	assert.Equal(t, 2, len(m.windows))
+	// New window should be active
+	assert.Equal(t, 1, m.activeWindowIdx)
+	// New window should have same scroll position
+	assert.Equal(t, 5, m.windows[1].scroll)
+	// New window should have same fold state
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
+}
+
+func TestWindowSplit_MaxTwoWindows(t *testing.T) {
+	m := makeTestModel(20)
+
+	// Create first split
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+	assert.Equal(t, 2, len(m.windows))
+
+	// Try to create another split - should fail
+	newM, _ = m.windowSplit()
+	m = newM.(Model)
+	assert.Equal(t, 2, len(m.windows), "should not create more than 2 windows")
+	assert.Equal(t, "Maximum 2 windows", m.statusMessage)
+}
+
+func TestWindowClose_ClosesCurrentWindow(t *testing.T) {
+	m := makeTestModel(20)
+
+	// Create a split
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+	assert.Equal(t, 2, len(m.windows))
+	assert.Equal(t, 1, m.activeWindowIdx)
+
+	// Close current window
+	newM, _ = m.windowClose()
+	m = newM.(Model)
+	assert.Equal(t, 1, len(m.windows))
+	assert.Equal(t, 0, m.activeWindowIdx)
+}
+
+func TestWindowClose_CannotCloseLastWindow(t *testing.T) {
+	m := makeTestModel(20)
+	assert.Equal(t, 1, len(m.windows))
+
+	// Try to close the last window - should fail
+	newM, _ := m.windowClose()
+	m = newM.(Model)
+	assert.Equal(t, 1, len(m.windows), "should not close last window")
+	assert.Equal(t, "Cannot close last window", m.statusMessage)
+}
+
+func TestWindowFocusLeft(t *testing.T) {
+	m := makeTestModel(20)
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+	assert.Equal(t, 1, m.activeWindowIdx)
+
+	// Focus left
+	newM, _ = m.windowFocusLeft()
+	m = newM.(Model)
+	assert.Equal(t, 0, m.activeWindowIdx)
+
+	// Try to go further left - should stay at 0
+	newM, _ = m.windowFocusLeft()
+	m = newM.(Model)
+	assert.Equal(t, 0, m.activeWindowIdx)
+}
+
+func TestWindowFocusRight(t *testing.T) {
+	m := makeTestModel(20)
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+	m.activeWindowIdx = 0 // Start at left window
+
+	// Focus right
+	newM, _ = m.windowFocusRight()
+	m = newM.(Model)
+	assert.Equal(t, 1, m.activeWindowIdx)
+
+	// Try to go further right - should stay at 1
+	newM, _ = m.windowFocusRight()
+	m = newM.(Model)
+	assert.Equal(t, 1, m.activeWindowIdx)
+}
+
+func TestWindowIndependentScroll(t *testing.T) {
+	m := makeTestModel(100)
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	// Set different scroll positions
+	m.windows[0].scroll = 10
+	m.windows[1].scroll = 50
+
+	// Scrolling in one window shouldn't affect the other
+	m.activeWindowIdx = 0
+	m.w().scroll = 15 // Scroll window 0
+
+	assert.Equal(t, 15, m.windows[0].scroll)
+	assert.Equal(t, 50, m.windows[1].scroll, "window 1 scroll should be unchanged")
+}
+
+func TestWindowIndependentFoldState(t *testing.T) {
+	m := makeTestModel(20)
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	// Set different fold states in each window
+	m.activeWindowIdx = 0
+	m.setFileFoldLevel(0, sidebyside.FoldFolded)
+
+	m.activeWindowIdx = 1
+	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+
+	// Verify fold states are independent
+	m.activeWindowIdx = 0
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0))
+
+	m.activeWindowIdx = 1
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
+}
+
+func TestWindowCommentSync(t *testing.T) {
+	// When a comment is added in one window, it should appear in both windows
+	m := makeTestModel(20)
+	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.calculateTotalLines()
+
+	// Split into two windows
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	// Window 0 is active, add a comment
+	m.activeWindowIdx = 0
+	key := commentKey{fileIndex: 0, newLineNum: 5}
+	m.comments[key] = "Test comment from window 0"
+
+	// Rebuild all caches (simulating what submitComment does)
+	m.rebuildAllRowCachesPreservingCursor()
+
+	// Both windows should have the comment in their cached rows
+	// Check window 0
+	m.activeWindowIdx = 0
+	rows0 := m.getRows()
+	hasComment0 := false
+	for _, row := range rows0 {
+		if row.kind == RowKindComment && row.commentLineNum == 5 {
+			hasComment0 = true
+			break
+		}
+	}
+	assert.True(t, hasComment0, "window 0 should have the comment row")
+
+	// Check window 1
+	m.activeWindowIdx = 1
+	rows1 := m.getRows()
+	hasComment1 := false
+	for _, row := range rows1 {
+		if row.kind == RowKindComment && row.commentLineNum == 5 {
+			hasComment1 = true
+			break
+		}
+	}
+	assert.True(t, hasComment1, "window 1 should also have the comment row")
+}
+
+func TestWindowCursorPreservedOnCommentAdd(t *testing.T) {
+	// When a comment is added, both windows should preserve cursor on same logical row
+	m := makeTestModel(20)
+	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.rebuildRowsCache()
+
+	// Split into two windows
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	// Rebuild both windows' caches
+	m.activeWindowIdx = 0
+	m.rebuildRowsCache()
+	m.activeWindowIdx = 1
+	m.rebuildRowsCache()
+
+	// Find content rows to position cursors on (skip header rows)
+	// Position window 0 on line 5, window 1 on line 15
+	m.activeWindowIdx = 0
+	rows0 := m.getRows()
+	var scroll0, scroll1 int
+	for i, row := range rows0 {
+		if row.kind == RowKindContent && row.pair.New.Num == 5 {
+			scroll0 = i
+		}
+		if row.kind == RowKindContent && row.pair.New.Num == 15 {
+			scroll1 = i
+		}
+	}
+
+	m.activeWindowIdx = 0
+	m.w().scroll = scroll0
+
+	m.activeWindowIdx = 1
+	m.w().scroll = scroll1
+
+	// Verify initial positions
+	m.activeWindowIdx = 0
+	identity0 := m.getCursorRowIdentity()
+	require.Equal(t, 5, identity0.newNum, "window 0 should start on line 5")
+
+	m.activeWindowIdx = 1
+	identity1 := m.getCursorRowIdentity()
+	require.Equal(t, 15, identity1.newNum, "window 1 should start on line 15")
+
+	// Add a comment near the top (should shift rows below it)
+	key := commentKey{fileIndex: 0, newLineNum: 2}
+	m.comments[key] = "Comment that shifts rows"
+	m.rebuildAllRowCachesPreservingCursor()
+
+	// Both windows should still be on their original logical rows (same line numbers)
+	m.activeWindowIdx = 0
+	newIdentity0 := m.getCursorRowIdentity()
+	assert.Equal(t, 5, newIdentity0.newNum, "window 0 should stay on line 5")
+
+	m.activeWindowIdx = 1
+	newIdentity1 := m.getCursorRowIdentity()
+	assert.Equal(t, 15, newIdentity1.newNum, "window 1 should stay on line 15")
+
+	// Scroll positions should have increased to account for the comment rows
+	assert.Greater(t, m.windows[0].scroll, scroll0, "window 0 scroll should increase due to comment")
+	assert.Greater(t, m.windows[1].scroll, scroll1, "window 1 scroll should increase due to comment")
+}
+
+func TestWindowSearchNavigationIndependent(t *testing.T) {
+	// Search navigation (n/N) should operate independently per window
+	m := makeTestModel(20)
+	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.calculateTotalLines()
+
+	// Set up a search query (shared state)
+	m.searchQuery = "right" // matches every line
+
+	// Split into two windows
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	// Navigate search in window 0
+	m.activeWindowIdx = 0
+	m.w().searchMatchIdx = 3
+	m.w().searchMatchSide = 1
+
+	// Navigate search in window 1 to different position
+	m.activeWindowIdx = 1
+	m.w().searchMatchIdx = 7
+	m.w().searchMatchSide = 1
+
+	// Verify they are independent
+	assert.Equal(t, 3, m.windows[0].searchMatchIdx, "window 0 search index should be 3")
+	assert.Equal(t, 7, m.windows[1].searchMatchIdx, "window 1 search index should be 7")
+}
+
+func TestWindowCloseWhileInCommentMode(t *testing.T) {
+	// Closing a window while in comment mode should work (comment is lost)
+	m := makeTestModel(20)
+	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.calculateTotalLines()
+
+	// Split into two windows
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	// Enter comment mode in window 0
+	m.activeWindowIdx = 0
+	m.w().commentMode = true
+	m.w().commentInput = "Unsaved comment"
+	m.w().commentKey = commentKey{fileIndex: 0, newLineNum: 5}
+
+	// Close window 0
+	newM, _ = m.windowClose()
+	m = newM.(Model)
+
+	// Should now have only 1 window
+	assert.Equal(t, 1, len(m.windows), "should have 1 window after close")
+
+	// The remaining window should not be in comment mode
+	assert.False(t, m.w().commentMode, "remaining window should not be in comment mode")
+
+	// The unsaved comment should not be in the comments map
+	key := commentKey{fileIndex: 0, newLineNum: 5}
+	_, exists := m.comments[key]
+	assert.False(t, exists, "unsaved comment should not be saved")
+}
+
+func TestWindowSplitWhileInCommentMode(t *testing.T) {
+	// Splitting while in comment mode: original stays in comment mode, new window doesn't
+	m := makeTestModel(20)
+	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.calculateTotalLines()
+
+	// Enter comment mode
+	m.w().commentMode = true
+	m.w().commentInput = "Editing a comment"
+	m.w().commentKey = commentKey{fileIndex: 0, newLineNum: 5}
+
+	// Split
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	// Original window (index 0) should still be in comment mode
+	assert.True(t, m.windows[0].commentMode, "original window should stay in comment mode")
+	assert.Equal(t, "Editing a comment", m.windows[0].commentInput)
+
+	// New window (index 1) should NOT be in comment mode
+	assert.False(t, m.windows[1].commentMode, "new window should not be in comment mode")
+	assert.Equal(t, "", m.windows[1].commentInput)
+}
+
+func TestInvalidateAllRowCaches(t *testing.T) {
+	m := makeTestModel(20)
+	m.calculateTotalLines()
+
+	// Split into two windows and ensure both have valid caches
+	newM, _ := m.windowSplit()
+	m = newM.(Model)
+
+	m.activeWindowIdx = 0
+	m.rebuildRowsCache()
+	assert.True(t, m.windows[0].rowsCacheValid)
+
+	m.activeWindowIdx = 1
+	m.rebuildRowsCache()
+	assert.True(t, m.windows[1].rowsCacheValid)
+
+	// Invalidate all
+	m.invalidateAllRowCaches()
+
+	// Both should be invalid
+	assert.False(t, m.windows[0].rowsCacheValid, "window 0 cache should be invalid")
+	assert.False(t, m.windows[1].rowsCacheValid, "window 1 cache should be invalid")
 }

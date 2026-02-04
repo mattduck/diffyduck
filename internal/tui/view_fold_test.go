@@ -81,7 +81,7 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 				keys:   DefaultKeyMap(),
 			}
 			m.calculateTotalLines()
-			m.scroll = m.minScroll() // Position cursor at top so header is visible
+			m.w().scroll = m.minScroll() // Position cursor at top so header is visible
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
@@ -117,7 +117,7 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	m.scroll = m.minScroll() // Position cursor at top so header is visible
+	m.w().scroll = m.minScroll() // Position cursor at top so header is visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -277,7 +277,7 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 	// Normal file (first): 1 header + 1 bottom border + 10 pairs + 1 blank margin + 1 top border (next file) = 14 lines
 	// Folded file (second): 1 header + 1 terminator row
 	// Total: 14 + 2 = 16 lines
-	assert.Equal(t, 16, m.totalLines, "totalLines should account for fold states")
+	assert.Equal(t, 16, m.w().totalLines, "totalLines should account for fold states")
 }
 
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
@@ -617,7 +617,7 @@ func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
 	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "after second Tab, should be at level 3")
 
 	// At level 3, the commit's FoldLevel should be CommitExpanded
-	assert.Equal(t, sidebyside.CommitExpanded, m.commits[0].FoldLevel,
+	assert.Equal(t, sidebyside.CommitExpanded, m.commitFoldLevel(0),
 		"at level 3, commit.FoldLevel should be CommitExpanded")
 
 	output := m.View()
@@ -675,17 +675,17 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 
 	// Verify we're at level 2
 	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "should start at level 2")
-	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit should be CommitNormal")
-	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file should be FoldFolded")
+	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0), "commit should be CommitNormal")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0), "file should be FoldFolded")
 
 	// Navigate to the file and expand it
 	// First, move cursor to be on the file (not the commit header)
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 	rows := m.buildRows()
 	for i, row := range rows {
 		if row.isHeader && row.fileIndex == 0 {
 			// Position cursor on this file header
-			m.scroll = i
+			m.w().scroll = i
 			break
 		}
 	}
@@ -695,14 +695,14 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 	m = newM.(Model)
 
 	// File should now be expanded
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel,
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0),
 		"file should be FoldNormal after toggle")
 
 	// The commit should now be at level 3 but still CommitNormal
 	// (file expansion doesn't force commit info to expand)
 	assert.Equal(t, 3, m.commitVisibilityLevelFor(0),
 		"commit visibility should be level 3 after file expansion")
-	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel,
+	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0),
 		"commit.FoldLevel should stay CommitNormal when a file is expanded")
 
 	// Verify the commit header shows the half-fill icon (◐) since commit is CommitNormal
@@ -763,7 +763,7 @@ func TestCommitBorder_CursorRendersArrowOnBorderLine(t *testing.T) {
 	require.NotEqual(t, -1, bottomBorderRowIdx, "should find commit bottom border row")
 
 	// Position cursor on the border row
-	m.scroll = bottomBorderRowIdx
+	m.w().scroll = bottomBorderRowIdx
 
 	// Render and check the output
 	output := m.View()

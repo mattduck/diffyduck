@@ -220,7 +220,7 @@ func TestCommitHeader_UnfoldedHasNoTrailingConnector(t *testing.T) {
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitNormal
 	m.width = 100
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -248,7 +248,7 @@ func TestCommitHeader_FoldedHasNoTrailingConnector(t *testing.T) {
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitFolded
 	m.width = 100
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -277,7 +277,7 @@ func TestCommitBottomBorder_ExtendsFullWidthWithCorner(t *testing.T) {
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitNormal
 	m.width = 100
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -309,7 +309,7 @@ func TestCommitHeader_VerticalAndCornerAligned(t *testing.T) {
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitNormal
 	m.width = 100
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -365,7 +365,7 @@ func TestCommitHeader_TruncatedSubjectAlignsWithBorder(t *testing.T) {
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitNormal
 	m.width = 120
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -491,7 +491,7 @@ func TestCommitHeader_UnfoldedUsesPerCommitSubjectWidth(t *testing.T) {
 	m.commits[0].FoldLevel = sidebyside.CommitNormal
 	m.commits[1].FoldLevel = sidebyside.CommitNormal
 	m.width = 120
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -524,7 +524,7 @@ func TestCommitInfoHeader_ExpandedHasTrailingConnector(t *testing.T) {
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitExpanded
 	m.width = 100
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -559,7 +559,7 @@ func TestCommitInfoHeader_NormalHasNoTrailingConnector(t *testing.T) {
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitNormal
 	m.width = 100
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -589,7 +589,7 @@ func TestCommitInfoHeader_ConnectorAlignsBetweenHeaderAndBorder(t *testing.T) {
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitExpanded
 	m.width = 100
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -625,7 +625,7 @@ func TestCommitInfoBottomBorder_HasClosingCorner(t *testing.T) {
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitExpanded
 	m.width = 100
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 

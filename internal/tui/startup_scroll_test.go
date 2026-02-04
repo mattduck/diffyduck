@@ -59,7 +59,7 @@ func FuncB() {
 
 	// Initial state: just 1 header row (no structural diff yet)
 	m.calculateTotalLines()
-	totalLinesBefore := m.totalLines
+	totalLinesBefore := m.w().totalLines
 
 	// Simulate highlighting which computes structural diff
 	cmd := m.RequestHighlight(0)
@@ -70,7 +70,7 @@ func FuncB() {
 	m.storeHighlightSpans(hlMsg)
 
 	// totalLines should now include structural diff rows
-	assert.Greater(t, m.totalLines, totalLinesBefore,
+	assert.Greater(t, m.w().totalLines, totalLinesBefore,
 		"totalLines should increase when structural diff is computed")
 
 	// Verify structural diff rows are in the cache
@@ -84,5 +84,5 @@ func FuncB() {
 	assert.Greater(t, structDiffCount, 0, "Should have structural diff rows")
 
 	// maxScroll should allow reaching all rows
-	assert.Equal(t, m.totalLines-1, m.maxScroll(), "maxScroll should be totalLines-1")
+	assert.Equal(t, m.w().totalLines-1, m.maxScroll(), "maxScroll should be totalLines-1")
 }

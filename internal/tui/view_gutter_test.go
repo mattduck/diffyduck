@@ -104,7 +104,7 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 			// Position cursor on row 3 (second content line in diff view layout: header=0, spacer=1, first content=2, second content=3)
 			// so we can test line 1's indicator without cursor arrow
 			// cursorLine = scroll + cursorOffset, so scroll = row - cursorOffset = 3 - cursorOffset
-			m.scroll = 3
+			m.w().scroll = 3
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
@@ -271,7 +271,7 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 	// Position scroll so content lines are visible
 	// In diff view layout: header=0, spacer=1, separator (3 lines)=2-4, content=5+
 	// Position cursor on content row
-	m.scroll = 5
+	m.w().scroll = 5
 
 	output := m.View()
 	lines := strings.Split(output, "\n")

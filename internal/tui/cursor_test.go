@@ -22,11 +22,11 @@ func TestCursorLine_EqualsScroll(t *testing.T) {
 	// In the new cursor model, cursorLine() directly equals scroll
 	m := makeTestModel(100)
 	m.height = 50
-	m.scroll = 0
+	m.w().scroll = 0
 
 	assert.Equal(t, 0, m.cursorLine(), "cursorLine should equal scroll when scroll=0")
 
-	m.scroll = 25
+	m.w().scroll = 25
 	assert.Equal(t, 25, m.cursorLine(), "cursorLine should equal scroll when scroll=25")
 }
 
@@ -35,16 +35,16 @@ func TestCursorViewportRow_MovesNearTop(t *testing.T) {
 	m := makeTestModel(100)
 	m.height = 50 // cursorOffset = 9
 
-	m.scroll = 0
+	m.w().scroll = 0
 	assert.Equal(t, 0, m.cursorViewportRow(), "cursor at viewport row 0 when scroll=0")
 
-	m.scroll = 5
+	m.w().scroll = 5
 	assert.Equal(t, 5, m.cursorViewportRow(), "cursor at viewport row 5 when scroll=5")
 
-	m.scroll = 9
+	m.w().scroll = 9
 	assert.Equal(t, 9, m.cursorViewportRow(), "cursor at viewport row 9 when scroll=9 (at cursorOffset)")
 
-	m.scroll = 15
+	m.w().scroll = 15
 	assert.Equal(t, 9, m.cursorViewportRow(), "cursor stays at viewport row 9 when scroll>cursorOffset")
 }
 
@@ -54,9 +54,9 @@ func TestCursorOffset_IsConstant(t *testing.T) {
 	m.height = 50
 
 	offset1 := m.cursorOffset()
-	m.scroll = 10
+	m.w().scroll = 10
 	offset2 := m.cursorOffset()
-	m.scroll = 50
+	m.w().scroll = 50
 	offset3 := m.cursorOffset()
 
 	assert.Equal(t, offset1, offset2, "cursor offset should not change with scroll")
@@ -71,13 +71,13 @@ func TestScrollUp_ClampsAtZero(t *testing.T) {
 	// Scrolling up from 0 should stay at 0 (no negative scroll)
 	m := makeTestModel(100)
 	m.height = 50
-	m.scroll = 0
+	m.w().scroll = 0
 
 	// Press k to scroll up - should stay at 0
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 	model := newM.(Model)
 
-	assert.Equal(t, 0, model.scroll, "scroll should clamp at 0")
+	assert.Equal(t, 0, model.w().scroll, "scroll should clamp at 0")
 }
 
 func TestMinScroll_IsZero(t *testing.T) {
@@ -93,7 +93,7 @@ func TestGoToTop_PutsCursorOnFirstLine(t *testing.T) {
 	// Pressing 'gg' should set scroll to 0 (cursor on first content row)
 	m := makeTestModel(100)
 	m.height = 50
-	m.scroll = 50
+	m.w().scroll = 50
 
 	// First 'g' enters pending state
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
@@ -102,7 +102,7 @@ func TestGoToTop_PutsCursorOnFirstLine(t *testing.T) {
 	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model2 := newM2.(Model)
 
-	assert.Equal(t, 0, model2.scroll, "gg should set scroll to 0 (first content row)")
+	assert.Equal(t, 0, model2.w().scroll, "gg should set scroll to 0 (first content row)")
 	assert.Equal(t, 0, model2.cursorLine(), "cursor should be on line 0")
 }
 
@@ -116,7 +116,7 @@ func TestStartup_ScrollIsZero_NoBlankSpaceAtTop(t *testing.T) {
 	m.width = 80
 	m.height = 50
 
-	assert.Equal(t, 0, m.scroll, "scroll should be 0 on startup")
+	assert.Equal(t, 0, m.w().scroll, "scroll should be 0 on startup")
 }
 
 // =============================================================================
@@ -129,14 +129,14 @@ func TestScrollDown_ToLastLine(t *testing.T) {
 	// header (1) + bottom border (1) + 10 pairs + 1 blank margin = 13 total lines (indices 0-12)
 	m := makeTestModel(10)
 	m.height = 50
-	m.scroll = 0
+	m.w().scroll = 0
 
 	// Go to bottom - should position cursor on last line
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
 	// In new model: scroll = cursorLine, so scroll should equal last line index (12)
-	assert.Equal(t, 12, model.scroll, "G should put cursor on last line (scroll=12)")
+	assert.Equal(t, 12, model.w().scroll, "G should put cursor on last line (scroll=12)")
 	assert.Equal(t, 12, model.cursorLine(), "cursor should be on line 12")
 }
 
@@ -147,7 +147,7 @@ func TestMaxScroll_AllowsCursorOnLastLine(t *testing.T) {
 	m.height = 50
 
 	maxScroll := m.maxScroll()
-	expected := m.totalLines - 1
+	expected := m.w().totalLines - 1
 	assert.Equal(t, expected, maxScroll, "maxScroll should be totalLines - 1")
 }
 
@@ -171,10 +171,10 @@ func TestStatusInfo_UseCursorPosition_NotScrollPosition(t *testing.T) {
 			{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},   // top border + header + bottom border + 20 pairs = 23 lines (0-22)
 			{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs}, // starts after 4 blanks + trailing top border
 		},
-		width:  80,
-		height: 50, // cursor offset = 9
-		scroll: 0,
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  50, // cursor offset = 9
+		windows: []*Window{{scroll: 0}},
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -187,7 +187,7 @@ func TestStatusInfo_UseCursorPosition_NotScrollPosition(t *testing.T) {
 	// First file: header (0) + bottom border (1) + 20 pairs (2-21) + 4 blanks (22-25) + trailing top border (26)
 	// Second file: header (27) + bottom border (28) + 20 pairs (29-48)...
 	// At scroll 27, cursor is on second file's header
-	m.scroll = 27
+	m.w().scroll = 27
 	info = m.StatusInfo()
 	assert.Equal(t, "second.go", info.FileName, "cursor at line 27 should be in second file")
 }
@@ -208,10 +208,10 @@ func TestStatusInfo_CursorOnBlankLine_CountsAsFileAbove(t *testing.T) {
 			{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},   // lines 0-5 (header + 5 pairs), then 4 blank lines (6-9)
 			{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs}, // line 10 is header
 		},
-		width:  80,
-		height: 10, // cursor offset = 1 (20% of 9)
-		scroll: 5,  // cursor at line 6 (first blank line after first file)
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  10,                     // cursor offset = 1 (20% of 9)
+		windows: []*Window{{scroll: 5}}, // cursor at line 6 (first blank line after first file)
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -242,7 +242,7 @@ func TestStatusInfo_CursorOnLastBlankLine_CountsAsLastFile(t *testing.T) {
 	m.calculateTotalLines() // 6 lines total
 
 	// Scroll so cursor is past all content
-	m.scroll = 10 // cursor at line 19, way past content
+	m.w().scroll = 10 // cursor at line 19, way past content
 
 	info := m.StatusInfo()
 	assert.Equal(t, "only.go", info.FileName, "cursor past content should show last file")
@@ -288,7 +288,7 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 		m.width = 80
 		m.height = 10 // cursor offset = 1 (20% of 8)
 		// Position cursor on the header (row 0) using minScroll
-		m.scroll = m.minScroll()
+		m.w().scroll = m.minScroll()
 
 		output := m.View()
 
@@ -328,7 +328,7 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 		m.width = 80
 		m.height = 10
 		// Position cursor on the header (row 0) using minScroll
-		m.scroll = m.minScroll()
+		m.w().scroll = m.minScroll()
 
 		output := m.View()
 		lines := strings.Split(output, "\n")
@@ -363,10 +363,10 @@ func TestView_CursorHighlight_OnFileHeader_UnfocusedNoBg(t *testing.T) {
 					},
 				},
 			},
-			width:  80,
-			height: 10,
-			scroll: 0, // cursor at line 1 (the header, after top border at line 0)
-			keys:   DefaultKeyMap(),
+			width:   80,
+			height:  10,
+			windows: []*Window{{scroll: 0}}, // cursor at line 1 (the header, after top border at line 0)
+			keys:    DefaultKeyMap(),
 		}
 		m.calculateTotalLines()
 
@@ -408,10 +408,10 @@ func TestView_FileHeader_SpansFullWidth(t *testing.T) {
 				},
 			},
 		},
-		width:  80,
-		height: 10,
-		scroll: 0, // cursor at line 0 (the header)
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  10,
+		windows: []*Window{{scroll: 0}}, // cursor at line 0 (the header)
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -460,10 +460,10 @@ func TestView_CursorHighlight_OnDiffLine(t *testing.T) {
 					},
 				},
 			},
-			width:  80,
-			height: 10,
-			scroll: 2, // cursor at line 2 (the diff line, after header + spacer)
-			keys:   DefaultKeyMap(),
+			width:   80,
+			height:  10,
+			windows: []*Window{{scroll: 2}}, // cursor at line 2 (the diff line, after header + spacer)
+			keys:    DefaultKeyMap(),
 		}
 		m.calculateTotalLines()
 
@@ -554,10 +554,10 @@ func TestView_CursorHighlight_OnHunkSeparator(t *testing.T) {
 					},
 				},
 			},
-			width:  80,
-			height: 15,
-			scroll: 4, // cursor on middle hunk separator row (after header, bottom border, first content, sep top)
-			keys:   DefaultKeyMap(),
+			width:   80,
+			height:  15,
+			windows: []*Window{{scroll: 4}}, // cursor on middle hunk separator row (after header, bottom border, first content, sep top)
+			keys:    DefaultKeyMap(),
 		}
 		m.calculateTotalLines()
 
@@ -597,10 +597,10 @@ func TestView_CursorHighlight_BothGuttersOnAddedLine(t *testing.T) {
 					},
 				},
 			},
-			width:  80,
-			height: 10,
-			scroll: 2, // cursor at line 2 (the added line, after header + spacer)
-			keys:   DefaultKeyMap(),
+			width:   80,
+			height:  10,
+			windows: []*Window{{scroll: 2}}, // cursor at line 2 (the added line, after header + spacer)
+			keys:    DefaultKeyMap(),
 		}
 		m.calculateTotalLines()
 
@@ -642,10 +642,10 @@ func TestFoldToggle_CursorOnHeader_StaysOnHeader(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
-		width:  80,
-		height: 20, // cursor offset = 3 (20% of 19)
-		scroll: 0,  // cursor at line 0 (the header)
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  20,                     // cursor offset = 3 (20% of 19)
+		windows: []*Window{{scroll: 0}}, // cursor at line 0 (the header)
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -690,10 +690,10 @@ func TestFoldToggle_CursorOnDiffLine_StaysOnDiffLine(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
-		width:  80,
-		height: 20, // cursor offset = 3
-		scroll: 2,  // cursor at line 2 (first diff line, after header + spacer)
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  20,                     // cursor offset = 3
+		windows: []*Window{{scroll: 2}}, // cursor at line 2 (first diff line, after header + spacer)
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -726,10 +726,10 @@ func TestFoldToggle_CursorOnDiffLine_FoldToHeader(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded, // Start at Expanded so next toggle goes to Folded
 			},
 		},
-		width:  80,
-		height: 20, // cursor offset = 3
-		scroll: 1,  // cursor at line 1 (first diff line)
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  20,                     // cursor offset = 3
+		windows: []*Window{{scroll: 1}}, // cursor at line 1 (first diff line)
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -781,7 +781,7 @@ func TestFoldToggle_CursorOnContent_StaysOnContent(t *testing.T) {
 			break
 		}
 	}
-	m.scroll = contentRowIdx
+	m.w().scroll = contentRowIdx
 
 	// Toggle fold on first file: Normal -> Expanded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -823,8 +823,8 @@ func TestFoldToggleAll_NoBlanksBetweenFoldedFiles(t *testing.T) {
 	model := newM.(Model)
 
 	// Verify both files are now Folded
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel)
-	assert.Equal(t, sidebyside.FoldFolded, model.files[1].FoldLevel)
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(1))
 
 	// Count rows - should have no blank lines between folded files
 	rows := model.buildRows()
@@ -877,7 +877,7 @@ func TestFoldToggle_CursorOnHunkSeparator_NoEffect(t *testing.T) {
 	assert.NotEqual(t, -1, sepLineIdx, "should have a hunk separator")
 
 	// Position cursor on separator
-	m.scroll = sepLineIdx
+	m.w().scroll = sepLineIdx
 	assert.Equal(t, sepLineIdx, m.cursorLine(), "cursor should be on hunk separator")
 
 	// TAB should do nothing when not on file header
@@ -885,7 +885,7 @@ func TestFoldToggle_CursorOnHunkSeparator_NoEffect(t *testing.T) {
 	model := newM.(Model)
 
 	// Fold level should remain unchanged
-	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel, "fold level should not change when TAB pressed on separator")
+	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(0), "fold level should not change when TAB pressed on separator")
 	// Cursor should remain on same line
 	assert.Equal(t, sepLineIdx, model.cursorLine(), "cursor should not move")
 }
@@ -919,7 +919,7 @@ func TestFoldToggleAll_PreservesScrollPosition(t *testing.T) {
 	// 0=first header, 1=first bottom border, 2=first diff,
 	// 3-6=blank (4 lines), 7=trailing top border, 8=second header, 9=second bottom border, 10=second diff
 	// Put cursor on second file's diff line (line 10)
-	m.scroll = 10
+	m.w().scroll = 10
 
 	assert.Equal(t, 10, m.cursorLine(), "cursor should start on second file's diff line")
 
@@ -969,7 +969,7 @@ func TestFoldToggleAll_CursorOnHeader_FoldAll(t *testing.T) {
 	require.True(t, secondHeaderIdx > 0, "should find second file header")
 
 	// Put cursor on second file's header
-	m.scroll = secondHeaderIdx
+	m.w().scroll = secondHeaderIdx
 	assert.Equal(t, secondHeaderIdx, m.cursorLine(), "cursor should start on second file header")
 
 	// Toggle all: Normal -> Expanded -> Folded
@@ -1029,7 +1029,7 @@ func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
 
 	// Position cursor on second file's header (line 1)
 	// In new model, scroll = cursorLine, so scroll = 1
-	m.scroll = 1
+	m.w().scroll = 1
 	assert.Equal(t, 1, m.cursorLine(), "cursor should be on line 1 (second file header)")
 
 	// Verify status bar shows second file
@@ -1042,9 +1042,9 @@ func TestFoldToggle_ExpandsFileAtCursor_NotFileAtScroll(t *testing.T) {
 	model := newM.(Model)
 
 	// THE BUG: This should expand second.go, but actually expands first.go
-	assert.Equal(t, sidebyside.FoldFolded, model.files[0].FoldLevel, "first file should still be folded")
-	assert.Equal(t, sidebyside.FoldNormal, model.files[1].FoldLevel, "second file should be expanded (Normal)")
-	assert.Equal(t, sidebyside.FoldFolded, model.files[2].FoldLevel, "third file should still be folded")
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0), "first file should still be folded")
+	assert.Equal(t, sidebyside.FoldNormal, model.fileFoldLevel(1), "second file should be expanded (Normal)")
+	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(2), "third file should still be folded")
 }
 
 // Test: When content loads asynchronously after expand, cursor should stay on same line
@@ -1092,7 +1092,7 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	// ...
 
 	// Position cursor on file header (line 0) to press TAB
-	m.scroll = 0
+	m.w().scroll = 0
 	assert.Equal(t, 0, m.cursorLine(), "cursor should be on header")
 
 	// Press Tab to expand (now works because we're on header)
@@ -1100,11 +1100,11 @@ func TestFoldToggle_AsyncContentLoad_PreservesScrollPosition(t *testing.T) {
 	model := newM.(Model)
 
 	// File should now be in Expanded mode
-	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel, "file should be Expanded")
+	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(0), "file should be Expanded")
 
 	// Since content isn't loaded yet, buildRows falls back to Normal view
 	// Now move cursor to line 6 (file line 12) to test content load behavior
-	model.scroll = 6
+	model.w().scroll = 6
 	assert.Equal(t, 6, model.cursorLine(), "cursor should be on line 6")
 
 	// Verify we're on the line with content "line12"
@@ -1174,10 +1174,10 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 			{OldPath: "a/beta.go", NewPath: "b/beta.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 			{OldPath: "a/gamma.go", NewPath: "b/gamma.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 		},
-		width:  80,
-		height: 15,
-		scroll: 0,
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  15,
+		windows: []*Window{{scroll: 0}},
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -1201,12 +1201,12 @@ func TestCursor_ScrollAndStatusStayInSync(t *testing.T) {
 
 	// Scroll through and verify status bar matches cursor position
 	for scroll := m.minScroll(); scroll <= m.maxScroll(); scroll++ {
-		m.scroll = scroll
+		m.w().scroll = scroll
 		cursorPos := m.cursorLine()
 		info := m.StatusInfo()
 
 		expectedFile, ok := rowToFile[cursorPos]
-		if ok && cursorPos >= 0 && cursorPos < m.totalLines {
+		if ok && cursorPos >= 0 && cursorPos < m.w().totalLines {
 			assert.Equal(t, expectedFile, info.FileName,
 				"at scroll %d, cursor at %d should show %s", scroll, cursorPos, expectedFile)
 		}
@@ -1234,10 +1234,10 @@ func TestResize_CursorOnHeader_StaysOnHeader(t *testing.T) {
 				FoldLevel: sidebyside.FoldExpanded,
 			},
 		},
-		width:  80,
-		height: 20, // cursor offset = 3
-		scroll: 0,  // cursor at line 0 (the header)
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  20,                     // cursor offset = 3
+		windows: []*Window{{scroll: 0}}, // cursor at line 0 (the header)
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -1301,7 +1301,7 @@ func TestResize_CursorOnTrailingTopBorder_StaysOnTrailingBorder(t *testing.T) {
 	require.True(t, rows[file1TopBorderIdx].isHeaderTopBorder, "should be a top border row")
 
 	// Position cursor on the top border
-	m.scroll = file1TopBorderIdx
+	m.w().scroll = file1TopBorderIdx
 	cursorPos := m.cursorLine()
 	require.Equal(t, file1TopBorderIdx, cursorPos, "cursor should be on second file's top border")
 
@@ -1353,7 +1353,7 @@ func TestResize_CursorOnTruncationIndicator_StaysOnTruncation(t *testing.T) {
 	require.NotEqual(t, -1, truncIdx, "should find truncation indicator row")
 
 	// Position cursor on truncation indicator
-	m.scroll = truncIdx
+	m.w().scroll = truncIdx
 	cursorPos := m.cursorLine()
 	require.Equal(t, truncIdx, cursorPos, "cursor should be on truncation indicator")
 
@@ -1416,7 +1416,7 @@ func TestResize_CursorOnSecondSeparator_StaysOnSecondSeparator(t *testing.T) {
 
 	// Position cursor on the SECOND separator
 	secondSepIdx := separatorIndices[1]
-	m.scroll = secondSepIdx
+	m.w().scroll = secondSepIdx
 	cursorPos := m.cursorLine()
 	require.Equal(t, secondSepIdx, cursorPos, "cursor should be on second separator")
 
@@ -1505,8 +1505,8 @@ func TestMultiCommit_BothStartFolded(t *testing.T) {
 	m := createTwoCommitModel()
 
 	// Both commits should start folded
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should start folded")
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should start folded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0), "commit 0 should start folded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(1), "commit 1 should start folded")
 
 	// Should have 2 rows (one header per commit)
 	rows := m.buildRows()
@@ -1532,7 +1532,7 @@ func TestMultiCommit_CursorOnFirstCommitHeader(t *testing.T) {
 	}
 
 	// Scroll to put cursor on first commit header (row 0)
-	m.scroll = 0 // This puts row 0 at cursor position
+	m.w().scroll = 0 // This puts row 0 at cursor position
 	m.calculateTotalLines()
 
 	cursorPos = m.cursorLine()
@@ -1551,7 +1551,7 @@ func TestMultiCommit_TabExpandsCorrectCommit_First(t *testing.T) {
 
 	// Position scroll so cursor is on row 0 (first commit header)
 	// In new model, cursorLine() = scroll, so just set scroll = 0
-	m.scroll = 0
+	m.w().scroll = 0
 
 	cursorPos := m.cursorLine()
 
@@ -1565,8 +1565,8 @@ func TestMultiCommit_TabExpandsCorrectCommit_First(t *testing.T) {
 	commitIdx := rows[cursorPos].commitIndex
 
 	// Verify we're starting correctly
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should start folded")
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should start folded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0), "commit 0 should start folded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(1), "commit 1 should start folded")
 
 	// Press Tab to expand the commit at cursor
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -1574,11 +1574,11 @@ func TestMultiCommit_TabExpandsCorrectCommit_First(t *testing.T) {
 
 	// The commit at cursor should be expanded, the other should stay folded
 	if commitIdx == 0 {
-		assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should be expanded after Tab")
-		assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should still be folded")
+		assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0), "commit 0 should be expanded after Tab")
+		assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(1), "commit 1 should still be folded")
 	} else {
-		assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should still be folded")
-		assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should be expanded after Tab")
+		assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0), "commit 0 should still be folded")
+		assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(1), "commit 1 should be expanded after Tab")
 	}
 }
 
@@ -1594,13 +1594,13 @@ func TestMultiCommit_TabExpandsCorrectCommit_Second(t *testing.T) {
 
 	// Set scroll to put cursor on row 1 (second commit header)
 	// In new model, cursorLine() = scroll, so just set scroll = 1
-	m.scroll = 1
+	m.w().scroll = 1
 
 	// Verify cursor position
 	cursorPos := m.cursorLine()
 	if cursorPos != 1 {
 		// If cursor isn't on row 1, manually verify we're in the right area
-		t.Logf("cursorPos=%d, scroll=%d", cursorPos, m.scroll)
+		t.Logf("cursorPos=%d, scroll=%d", cursorPos, m.w().scroll)
 	}
 
 	// Press Tab
@@ -1610,8 +1610,8 @@ func TestMultiCommit_TabExpandsCorrectCommit_Second(t *testing.T) {
 	// Check which commit got expanded
 	// If cursor was on second commit, it should expand; if on first, first should expand
 	if cursorPos == 1 {
-		assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should still be folded")
-		assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should be expanded after Tab")
+		assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0), "commit 0 should still be folded")
+		assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(1), "commit 1 should be expanded after Tab")
 	} else {
 		// Cursor was on first commit, so first got expanded (fallback behavior)
 		t.Logf("Cursor was on row %d, not second commit header", cursorPos)
@@ -1622,14 +1622,14 @@ func TestMultiCommit_ExpandFirstThenSecond(t *testing.T) {
 	m := createTwoCommitModel()
 
 	// Expand first commit by setting cursor on row 0
-	m.scroll = 0 // Put cursor near top
+	m.w().scroll = 0 // Put cursor near top
 
 	// Tab to expand first commit (uses fallback to commit 0)
 	newM, _ := m.handleCommitFoldCycle()
 	m = newM.(Model)
 
-	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should be expanded")
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should still be folded")
+	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0), "commit 0 should be expanded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(1), "commit 1 should still be folded")
 
 	// Now rows include: commit 0 header, commit 0 body rows, commit 0 files, commit 1 header
 	rows := m.buildRows()
@@ -1646,7 +1646,7 @@ func TestMultiCommit_ExpandFirstThenSecond(t *testing.T) {
 
 	// Position cursor on second commit header
 	// In new model, cursorLine() = scroll, so just set scroll = secondCommitRow
-	m.scroll = secondCommitRow
+	m.w().scroll = secondCommitRow
 
 	// Verify cursor is on second commit header
 	cursorPos := m.cursorLine()
@@ -1656,8 +1656,8 @@ func TestMultiCommit_ExpandFirstThenSecond(t *testing.T) {
 		m = newM.(Model)
 
 		// Both should now be expanded
-		assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should still be expanded")
-		assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should now be expanded")
+		assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0), "commit 0 should still be expanded")
+		assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(1), "commit 1 should now be expanded")
 	} else {
 		t.Skipf("Could not position cursor on second commit header (cursorPos=%d, secondCommitRow=%d)", cursorPos, secondCommitRow)
 	}
@@ -1907,7 +1907,7 @@ func TestMultiCommit_CursorCommitIndex_OnCommitHeader(t *testing.T) {
 	require.Equal(t, 2, len(rows), "should have 2 rows when both folded")
 
 	// Position cursor on first commit header (row 0)
-	m.scroll = 0
+	m.w().scroll = 0
 	cursorPos := m.cursorLine()
 	if cursorPos >= len(rows) {
 		cursorPos = 0
@@ -1938,7 +1938,7 @@ func TestMultiCommit_CursorCommitIndex_OnCommitBody(t *testing.T) {
 	}
 
 	if bodyRowIdx >= 0 {
-		m.scroll = bodyRowIdx
+		m.w().scroll = bodyRowIdx
 		commitIdx := m.cursorCommitIndex()
 		assert.Equal(t, 0, commitIdx, "cursor on commit 0 body should return commit 0")
 	}
@@ -1964,7 +1964,7 @@ func TestMultiCommit_CursorCommitIndex_OnFileRow_ReturnsNegative(t *testing.T) {
 	}
 
 	if fileRowIdx >= 0 {
-		m.scroll = fileRowIdx
+		m.w().scroll = fileRowIdx
 		commitIdx := m.cursorCommitIndex()
 		assert.Equal(t, -1, commitIdx, "cursor on file content row should return -1")
 	}
@@ -1978,16 +1978,16 @@ func TestMultiCommit_TabOnCommit0_OnlyExpandsCommit0(t *testing.T) {
 	m := createTwoCommitModel()
 
 	// Both start folded
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel)
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel)
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(1))
 
 	// Press Tab (uses handleCommitFoldCycle with fallback to commit 0)
 	newM, _ := m.handleCommitFoldCycle()
 	m = newM.(Model)
 
 	// Commit 0 should be expanded, commit 1 should still be folded
-	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should be expanded")
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should still be folded")
+	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0), "commit 0 should be expanded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(1), "commit 1 should still be folded")
 }
 
 func TestMultiCommit_TabCycle_CommitFoldLevels(t *testing.T) {
@@ -2022,16 +2022,16 @@ func TestMultiCommit_ExpandingCommit_DoesNotAffectOtherCommitFiles(t *testing.T)
 	m.calculateTotalLines()
 
 	// Commit 1's files should still be folded
-	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "commit 1's files should still be folded")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(1), "commit 1's files should still be folded")
 
 	// Now expand commit 1
 	m.commits[1].FoldLevel = sidebyside.CommitNormal
 	m.calculateTotalLines()
 
 	// Commit 0's files should still be at their level
-	assert.Equal(t, sidebyside.FoldNormal, m.files[0].FoldLevel, "commit 0's files should remain unchanged")
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0), "commit 0's files should remain unchanged")
 	// Commit 1's files should still be folded (commit expanded but files not)
-	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "commit 1's files should still be folded")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(1), "commit 1's files should still be folded")
 }
 
 func TestMultiCommit_MixedFoldStates(t *testing.T) {
@@ -2061,12 +2061,12 @@ func TestMultiCommit_ScrollThroughFoldedCommits(t *testing.T) {
 	require.Equal(t, 2, len(rows), "should have 2 rows when both folded")
 
 	// Should be able to scroll to reach both headers
-	m.scroll = 0
+	m.w().scroll = 0
 	cursorPos := m.cursorLine()
 
 	// With small viewport, we should be able to reach all rows
 	for i := 0; i < len(rows); i++ {
-		m.scroll = i
+		m.w().scroll = i
 		cursorPos = m.cursorLine()
 		if cursorPos >= 0 && cursorPos < len(rows) {
 			assert.True(t, rows[cursorPos].isCommitHeader, "row %d should be commit header", cursorPos)
@@ -2078,7 +2078,7 @@ func TestMultiCommit_ExpandCommit_ScrollBoundsUpdate(t *testing.T) {
 	m := createTwoCommitModel()
 
 	// Get initial total lines (2 when both folded)
-	initialTotal := m.totalLines
+	initialTotal := m.w().totalLines
 	assert.Equal(t, 2, initialTotal, "should have 2 total lines when both folded")
 
 	// Expand first commit
@@ -2086,7 +2086,7 @@ func TestMultiCommit_ExpandCommit_ScrollBoundsUpdate(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Total lines should increase
-	assert.Greater(t, m.totalLines, initialTotal, "total lines should increase when commit expanded")
+	assert.Greater(t, m.w().totalLines, initialTotal, "total lines should increase when commit expanded")
 }
 
 func TestMultiCommit_CollapseCommit_CursorAdjusts(t *testing.T) {
@@ -2109,7 +2109,7 @@ func TestMultiCommit_CollapseCommit_CursorAdjusts(t *testing.T) {
 	}
 
 	if contentRowIdx > 0 {
-		m.scroll = contentRowIdx
+		m.w().scroll = contentRowIdx
 
 		// Collapse commit 0
 		m.commits[0].FoldLevel = sidebyside.CommitFolded
@@ -2124,14 +2124,14 @@ func TestMultiCommit_NavigateJK_ThroughFoldedCommits(t *testing.T) {
 	m := createTwoCommitModel()
 
 	// Start at top
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 
 	// Press j to scroll down
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	m = newM.(Model)
 
 	// Scroll should have increased
-	assert.Greater(t, m.scroll, m.minScroll(), "j should scroll down")
+	assert.Greater(t, m.w().scroll, m.minScroll(), "j should scroll down")
 }
 
 // =============================================================================
@@ -2273,7 +2273,7 @@ func TestMultiCommit_CursorCommitIndex_OnCommitNHeader(t *testing.T) {
 	// Test cursor on each commit header
 	for i := 0; i < 3; i++ {
 		// Position cursor on commit i header
-		m.scroll = i
+		m.w().scroll = i
 		cursorPos := m.cursorLine()
 
 		// Clamp to valid range
@@ -2307,16 +2307,16 @@ func TestMultiCommit_CollapsingCommit1_DoesNotAffectCommit0(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Record commit 0's state
-	commit0FoldLevel := m.commits[0].FoldLevel
-	file0FoldLevel := m.files[0].FoldLevel
+	commit0FoldLevel := m.commitFoldLevel(0)
+	file0FoldLevel := m.fileFoldLevel(0)
 
 	// Collapse commit 1
-	m.commits[1].FoldLevel = sidebyside.CommitFolded
+	m.setCommitFoldLevel(1, sidebyside.CommitFolded)
 	m.calculateTotalLines()
 
 	// Commit 0 should be unchanged
-	assert.Equal(t, commit0FoldLevel, m.commits[0].FoldLevel, "commit 0 fold level should be unchanged")
-	assert.Equal(t, file0FoldLevel, m.files[0].FoldLevel, "commit 0's file fold level should be unchanged")
+	assert.Equal(t, commit0FoldLevel, m.commitFoldLevel(0), "commit 0 fold level should be unchanged")
+	assert.Equal(t, file0FoldLevel, m.fileFoldLevel(0), "commit 0's file fold level should be unchanged")
 }
 
 // =============================================================================
@@ -2572,7 +2572,7 @@ func TestMultiCommit_AfterExpanding_JKReachesFileRows(t *testing.T) {
 
 	if fileContentRowIdx > 0 {
 		// Start at top
-		m.scroll = m.minScroll()
+		m.w().scroll = m.minScroll()
 
 		// Keep pressing j until we reach the file content row
 		maxIterations := len(rows) + 10
@@ -2807,7 +2807,7 @@ func TestMultiCommit_IsOnCommitHeader(t *testing.T) {
 	for i, row := range rows {
 		if row.isCommitHeader {
 			// Position cursor on this row
-			m.scroll = i
+			m.w().scroll = i
 			cursorPos := m.cursorLine()
 			if cursorPos >= 0 && cursorPos < len(rows) {
 				assert.True(t, rows[cursorPos].isCommitHeader,
@@ -2841,7 +2841,7 @@ func TestMultiCommit_TabOnCommitNHeader_OnlyExpandsCommitN(t *testing.T) {
 	// Position cursor on commit 1 (middle commit, row 1)
 	// cursorLine() = scroll + cursorOffset()
 	// We want cursorLine() = 1, so scroll = 1 - cursorOffset()
-	m.scroll = 1
+	m.w().scroll = 1
 	cursorPos := m.cursorLine()
 
 	// Ensure cursor is on row 1
@@ -2851,9 +2851,9 @@ func TestMultiCommit_TabOnCommitNHeader_OnlyExpandsCommitN(t *testing.T) {
 		m = newM.(Model)
 
 		// Only commit 1 should be expanded
-		assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should still be folded")
-		assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should be expanded")
-		assert.Equal(t, sidebyside.CommitFolded, m.commits[2].FoldLevel, "commit 2 should still be folded")
+		assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0), "commit 0 should still be folded")
+		assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(1), "commit 1 should be expanded")
+		assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(2), "commit 2 should still be folded")
 	} else {
 		t.Skipf("Could not position cursor on commit 1 header (cursorPos=%d)", cursorPos)
 	}
@@ -3025,10 +3025,10 @@ func TestShiftTab_CyclesAllCommitsThroughLevels(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = newM.(Model)
 
-	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel, "commit 0 should be CommitNormal")
-	assert.Equal(t, sidebyside.CommitNormal, m.commits[1].FoldLevel, "commit 1 should be CommitNormal")
-	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file 0 should be FoldFolded")
-	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "file 1 should be FoldFolded")
+	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0), "commit 0 should be CommitNormal")
+	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(1), "commit 1 should be CommitNormal")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0), "file 0 should be FoldFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(1), "file 1 should be FoldFolded")
 	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "commit 0 should be at level 2")
 	assert.Equal(t, 2, m.commitVisibilityLevelFor(1), "commit 1 should be at level 2")
 
@@ -3036,10 +3036,10 @@ func TestShiftTab_CyclesAllCommitsThroughLevels(t *testing.T) {
 	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = newM.(Model)
 
-	assert.Equal(t, sidebyside.CommitExpanded, m.commits[0].FoldLevel, "commit 0 should be CommitExpanded")
-	assert.Equal(t, sidebyside.CommitExpanded, m.commits[1].FoldLevel, "commit 1 should be CommitExpanded")
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[0].FoldLevel, "file 0 should be FoldExpanded")
-	assert.Equal(t, sidebyside.FoldExpanded, m.files[1].FoldLevel, "file 1 should be FoldExpanded")
+	assert.Equal(t, sidebyside.CommitExpanded, m.commitFoldLevel(0), "commit 0 should be CommitExpanded")
+	assert.Equal(t, sidebyside.CommitExpanded, m.commitFoldLevel(1), "commit 1 should be CommitExpanded")
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0), "file 0 should be FoldExpanded")
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(1), "file 1 should be FoldExpanded")
 	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "commit 0 should be at level 3")
 	assert.Equal(t, 3, m.commitVisibilityLevelFor(1), "commit 1 should be at level 3")
 
@@ -3047,10 +3047,10 @@ func TestShiftTab_CyclesAllCommitsThroughLevels(t *testing.T) {
 	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = newM.(Model)
 
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should be CommitFolded")
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should be CommitFolded")
-	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file 0 should be FoldFolded")
-	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "file 1 should be FoldFolded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0), "commit 0 should be CommitFolded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(1), "commit 1 should be CommitFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0), "file 0 should be FoldFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(1), "file 1 should be FoldFolded")
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should be back at level 1")
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should be back at level 1")
 }
@@ -3083,10 +3083,10 @@ func TestShiftTab_MixedLevels_ResetsToLevel1(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = newM.(Model)
 
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should be CommitFolded")
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[1].FoldLevel, "commit 1 should be CommitFolded")
-	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file 0 should be FoldFolded")
-	assert.Equal(t, sidebyside.FoldFolded, m.files[1].FoldLevel, "file 1 should be FoldFolded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0), "commit 0 should be CommitFolded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(1), "commit 1 should be CommitFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0), "file 0 should be FoldFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(1), "file 1 should be FoldFolded")
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should be at level 1")
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should be at level 1")
 }
@@ -3124,8 +3124,8 @@ func TestShiftTab_FileExpanded_TreatedAsLevel3(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = newM.(Model)
 
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel, "commit 0 should be CommitFolded")
-	assert.Equal(t, sidebyside.FoldFolded, m.files[0].FoldLevel, "file 0 should be FoldFolded")
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0), "commit 0 should be CommitFolded")
+	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0), "file 0 should be FoldFolded")
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should be at level 1")
 }
 
@@ -3205,25 +3205,25 @@ func TestMultiCommit_FileNumbersResetPerCommit(t *testing.T) {
 	}
 
 	// Test first file of first commit (global index 0)
-	m.scroll = fileRowIndices[0]
+	m.w().scroll = fileRowIndices[0]
 	info := m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile, "first file in commit 0 should be #1")
 	assert.Equal(t, 2, info.TotalFiles, "commit 0 has 2 total files")
 
 	// Test second file of first commit (global index 1)
-	m.scroll = fileRowIndices[1]
+	m.w().scroll = fileRowIndices[1]
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile, "second file in commit 0 should be #2")
 	assert.Equal(t, 2, info.TotalFiles, "commit 0 has 2 total files")
 
 	// Test first file of second commit (global index 2) - should reset to #1
-	m.scroll = fileRowIndices[2]
+	m.w().scroll = fileRowIndices[2]
 	info = m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile, "first file in commit 1 should be #1 (reset)")
 	assert.Equal(t, 3, info.TotalFiles, "commit 1 has 3 total files")
 
 	// Test third file of second commit (global index 4)
-	m.scroll = fileRowIndices[4]
+	m.w().scroll = fileRowIndices[4]
 	info = m.StatusInfo()
 	assert.Equal(t, 3, info.CurrentFile, "third file in commit 1 should be #3")
 	assert.Equal(t, 3, info.TotalFiles, "commit 1 has 3 total files")
@@ -3273,7 +3273,7 @@ func TestFoldToggleAll_CursorOnCommitBody_StaysOnSameCommit_SingleCommit(t *test
 	require.NotZero(t, authorRowIdx, "should find Author: row in commit info body")
 
 	// Position cursor on the Author: row
-	m.scroll = authorRowIdx
+	m.w().scroll = authorRowIdx
 	m.clampScroll()
 
 	// Verify cursor is on commit info body
@@ -3359,7 +3359,7 @@ func TestFoldToggleAll_CursorOnCommitBody_StaysOnSameCommit_MultiCommit(t *testi
 	require.NotZero(t, secondCommitAuthorRowIdx, "should find Second Author row in second commit info body")
 
 	// Position cursor on the second commit's Author: row
-	m.scroll = secondCommitAuthorRowIdx
+	m.w().scroll = secondCommitAuthorRowIdx
 	m.clampScroll()
 
 	// Verify cursor is on second commit's info body
@@ -3433,7 +3433,7 @@ func TestFoldToggleAll_CursorOnCommitBodyDate_StaysOnDateLine(t *testing.T) {
 	require.NotZero(t, dateRowIdx, "should find Date: row in commit info body")
 
 	// Position cursor on the Date: row
-	m.scroll = dateRowIdx
+	m.w().scroll = dateRowIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()
@@ -3520,7 +3520,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_StaysOnSameRow(t *testing.T) {
 	require.NotZero(t, structRowIdx, "should find structural diff row when folded")
 
 	// Position cursor on the structural diff row
-	m.scroll = structRowIdx
+	m.w().scroll = structRowIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()
@@ -3625,7 +3625,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_MultiFile_StaysOnSameFile(t *testi
 	require.NotZero(t, secondFileStructDiffIdx, "should find SecondFunc structural diff row")
 
 	// Position cursor on the second file's structural diff row
-	m.scroll = secondFileStructDiffIdx
+	m.w().scroll = secondFileStructDiffIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()
@@ -3707,7 +3707,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_StaysOnSpecificRow(t *testing.T) {
 	require.NotZero(t, funcBRowIdx, "should find FuncB structural diff row")
 
 	// Position cursor on FuncB row
-	m.scroll = funcBRowIdx
+	m.w().scroll = funcBRowIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()
@@ -3815,7 +3815,7 @@ func TestFoldToggleAll_CursorOnStructuralDiff_WithCommit_StaysOnSameFile(t *test
 	require.NotZero(t, secondStructDiffIdx, "should find SecondFunc structural diff row")
 
 	// Position cursor on second file's structural diff
-	m.scroll = secondStructDiffIdx
+	m.w().scroll = secondStructDiffIdx
 	m.clampScroll()
 
 	cursorBefore := m.cursorLine()

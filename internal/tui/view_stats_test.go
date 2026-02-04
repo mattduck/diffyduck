@@ -229,7 +229,7 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	m.scroll = m.minScroll() // Position cursor at top so header is visible
+	m.w().scroll = m.minScroll() // Position cursor at top so header is visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -287,7 +287,7 @@ func TestFileHeaderWithStats_StatsColumnAlignment(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	m.scroll = m.minScroll() // Position cursor at top so headers are visible
+	m.w().scroll = m.minScroll() // Position cursor at top so headers are visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -333,7 +333,7 @@ func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	m.scroll = m.minScroll() // Position cursor at top so header is visible
+	m.w().scroll = m.minScroll() // Position cursor at top so header is visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -383,7 +383,7 @@ func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	m.scroll = m.minScroll() // Position cursor at top so header is visible
+	m.w().scroll = m.minScroll() // Position cursor at top so header is visible
 
 	output := m.View()
 	lines := strings.Split(output, "\n")

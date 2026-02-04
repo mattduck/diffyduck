@@ -312,7 +312,7 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 		shouldRecalculate := false
 		commitIdx := m.commitForFile(msg.FileIndex)
 		if commitIdx >= 0 && commitIdx < len(m.commits) {
-			if m.commits[commitIdx].FoldLevel != sidebyside.CommitFolded {
+			if m.commitFoldLevel(commitIdx) != sidebyside.CommitFolded {
 				shouldRecalculate = true
 			}
 		} else {

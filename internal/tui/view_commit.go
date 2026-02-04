@@ -728,7 +728,8 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 	info := commit.Info
 
 	// No info rows if commit has no metadata or is folded
-	if !info.HasMetadata() || commit.FoldLevel == sidebyside.CommitFolded {
+	commitFoldLevel := m.commitFoldLevel(commitIdx)
+	if !info.HasMetadata() || commitFoldLevel == sidebyside.CommitFolded {
 		return rows
 	}
 
@@ -751,8 +752,8 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 	// Details level - grey style (Color 7) for subdued appearance
 	detailsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	detailsLevel := TreeLevel{
-		IsLast:   !hasFiles,                                   // details is last only if no files follow
-		IsFolded: commit.FoldLevel == sidebyside.CommitNormal, // folded when just showing header
+		IsLast:   !hasFiles,                                  // details is last only if no files follow
+		IsFolded: commitFoldLevel == sidebyside.CommitNormal, // folded when just showing header
 		Style:    detailsStyle,
 		Depth:    0, // depth 0 since commit is the root (not in tree)
 	}
@@ -777,7 +778,7 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 
 	// Determine header mode: expanded shows borders, normal shows single line
 	infoHeaderMode := HeaderSingleLine
-	if commit.FoldLevel == sidebyside.CommitExpanded {
+	if commitFoldLevel == sidebyside.CommitExpanded {
 		infoHeaderMode = HeaderThreeLine
 	}
 
@@ -789,7 +790,7 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 		header:             headerText,
 		dateParts:          dateParts,
 		headerMode:         infoHeaderMode,
-		commitFoldLevel:    commit.FoldLevel,
+		commitFoldLevel:    commitFoldLevel,
 		commitIndex:        commitIdx,
 		treePath:           detailsTreePath,
 		headerBoxWidth:     headerBoxWidth,
@@ -797,7 +798,7 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 	})
 
 	// If parent is CommitNormal, only show header (info folded)
-	if commit.FoldLevel == sidebyside.CommitNormal {
+	if commitFoldLevel == sidebyside.CommitNormal {
 		return rows
 	}
 

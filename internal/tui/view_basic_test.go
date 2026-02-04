@@ -83,10 +83,10 @@ func TestView_WithScroll(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 		},
-		width:  80,
-		height: 5,
-		scroll: 10, // Start scrolled down
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  5,
+		windows: []*Window{{scroll: 10}}, // Start scrolled down
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -330,7 +330,7 @@ func TestView_HorizontalScroll(t *testing.T) {
 		},
 		width:       80,
 		height:      10,
-		hscroll:     8, // Scroll right by 8 columns
+		windows:     []*Window{{hscroll: 8}}, // Scroll right by 8 columns
 		hscrollStep: DefaultHScrollStep,
 		keys:        DefaultKeyMap(),
 	}
@@ -440,7 +440,7 @@ func TestView_ScrolledToMax(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	m.scroll = m.maxScroll()
+	m.w().scroll = m.maxScroll()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -479,7 +479,7 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 	}
 	m.calculateTotalLines()
 	// Scroll to end to verify END appears
-	m.scroll = m.maxScroll()
+	m.w().scroll = m.maxScroll()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")

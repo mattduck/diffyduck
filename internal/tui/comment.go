@@ -14,10 +14,10 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Paste && len(msg.Runes) > 0 {
 		text := sanitizePastedText(string(msg.Runes))
 		if text != "" {
-			before := m.commentInput[:m.commentCursor]
-			after := m.commentInput[m.commentCursor:]
-			m.commentInput = before + text + after
-			m.commentCursor += len(text)
+			before := m.w().commentInput[:m.w().commentCursor]
+			after := m.w().commentInput[m.w().commentCursor:]
+			m.w().commentInput = before + text + after
+			m.w().commentCursor += len(text)
 			m.commentEnsureCursorVisible()
 			m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		}
@@ -106,10 +106,10 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		text = sanitizePastedText(text)
 		// Insert at cursor position
-		before := m.commentInput[:m.commentCursor]
-		after := m.commentInput[m.commentCursor:]
-		m.commentInput = before + text + after
-		m.commentCursor += len(text)
+		before := m.w().commentInput[:m.w().commentCursor]
+		after := m.w().commentInput[m.w().commentCursor:]
+		m.w().commentInput = before + text + after
+		m.w().commentCursor += len(text)
 		m.commentEnsureCursorVisible()
 		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
 		return m, nil
@@ -134,8 +134,8 @@ func (m *Model) startComment() bool {
 	cursorRow := m.cursorLine()
 
 	// Get the display row at cursor
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 	if cursorRow < 0 || cursorRow >= len(rows) {
@@ -148,51 +148,52 @@ func (m *Model) startComment() bool {
 	}
 
 	// Set up comment key for this line
-	m.commentKey = commentKey{
+	m.w().commentKey = commentKey{
 		fileIndex:  row.fileIndex,
 		newLineNum: row.pair.New.Num,
 	}
 
 	// Load existing comment if any
-	if existing, ok := m.comments[m.commentKey]; ok {
-		m.commentInput = existing
-		m.commentCursor = len(existing)
+	if existing, ok := m.comments[m.w().commentKey]; ok {
+		m.w().commentInput = existing
+		m.w().commentCursor = len(existing)
 	} else {
-		m.commentInput = ""
-		m.commentCursor = 0
+		m.w().commentInput = ""
+		m.w().commentCursor = 0
 	}
 
-	m.commentMode = true
-	m.commentScroll = 0
+	m.w().commentMode = true
+	m.w().commentScroll = 0
 	m.commentEnsureCursorVisible()
 	return true
 }
 
 // submitComment saves the comment (or deletes if empty) and exits comment mode.
 func (m *Model) submitComment() {
-	text := strings.TrimSpace(m.commentInput)
+	text := strings.TrimSpace(m.w().commentInput)
 	if text == "" {
 		// Empty comment = delete
-		delete(m.comments, m.commentKey)
+		delete(m.comments, m.w().commentKey)
 	} else {
-		m.comments[m.commentKey] = text
+		m.comments[m.w().commentKey] = text
 	}
 
-	m.commentMode = false
-	m.commentInput = ""
-	m.commentCursor = 0
-	m.commentScroll = 0
+	m.w().commentMode = false
+	m.w().commentInput = ""
+	m.w().commentCursor = 0
+	m.w().commentScroll = 0
 
-	// Rebuild row cache immediately so totalLines is current for navigation
-	m.rebuildRowsCache()
+	// Rebuild row cache for ALL windows so they all see the new comment.
+	// Each window's cursor is preserved on its same logical row.
+	m.rebuildAllRowCachesPreservingCursor()
 }
 
 // cancelComment exits comment mode without saving.
 func (m *Model) cancelComment() {
-	m.commentMode = false
-	m.commentInput = ""
-	m.commentCursor = 0
-	m.commentScroll = 0
+	m.w().commentMode = false
+	m.w().commentInput = ""
+	m.w().commentCursor = 0
+	m.w().commentScroll = 0
 }
 
 // canComment returns true if the given row can have a comment attached.
@@ -210,123 +211,123 @@ func (m Model) canComment(row displayRow) bool {
 // insertCommentRune inserts a rune at the cursor position.
 func (m *Model) insertCommentRune(r rune) {
 	// Insert at cursor position
-	before := m.commentInput[:m.commentCursor]
-	after := m.commentInput[m.commentCursor:]
-	m.commentInput = before + string(r) + after
-	m.commentCursor += len(string(r))
+	before := m.w().commentInput[:m.w().commentCursor]
+	after := m.w().commentInput[m.w().commentCursor:]
+	m.w().commentInput = before + string(r) + after
+	m.w().commentCursor += len(string(r))
 }
 
 // commentDeleteBackward deletes the character before the cursor.
 func (m *Model) commentDeleteBackward() {
-	if m.commentCursor == 0 {
+	if m.w().commentCursor == 0 {
 		return
 	}
 
 	// Find the start of the previous rune
-	before := m.commentInput[:m.commentCursor]
+	before := m.w().commentInput[:m.w().commentCursor]
 	runes := []rune(before)
 	if len(runes) == 0 {
 		return
 	}
 	newBefore := string(runes[:len(runes)-1])
-	after := m.commentInput[m.commentCursor:]
+	after := m.w().commentInput[m.w().commentCursor:]
 
-	m.commentInput = newBefore + after
-	m.commentCursor = len(newBefore)
+	m.w().commentInput = newBefore + after
+	m.w().commentCursor = len(newBefore)
 }
 
 // commentDeleteForward deletes the character after the cursor.
 func (m *Model) commentDeleteForward() {
-	if m.commentCursor >= len(m.commentInput) {
+	if m.w().commentCursor >= len(m.w().commentInput) {
 		return
 	}
 
 	// Find the end of the current rune
-	after := m.commentInput[m.commentCursor:]
+	after := m.w().commentInput[m.w().commentCursor:]
 	runes := []rune(after)
 	if len(runes) == 0 {
 		return
 	}
 	newAfter := string(runes[1:])
 
-	m.commentInput = m.commentInput[:m.commentCursor] + newAfter
+	m.w().commentInput = m.w().commentInput[:m.w().commentCursor] + newAfter
 }
 
 // commentMoveForward moves the cursor forward one character.
 func (m *Model) commentMoveForward() {
-	if m.commentCursor >= len(m.commentInput) {
+	if m.w().commentCursor >= len(m.w().commentInput) {
 		return
 	}
 
-	after := m.commentInput[m.commentCursor:]
+	after := m.w().commentInput[m.w().commentCursor:]
 	runes := []rune(after)
 	if len(runes) > 0 {
-		m.commentCursor += len(string(runes[0]))
+		m.w().commentCursor += len(string(runes[0]))
 	}
 }
 
 // commentMoveBack moves the cursor backward one character.
 func (m *Model) commentMoveBack() {
-	if m.commentCursor == 0 {
+	if m.w().commentCursor == 0 {
 		return
 	}
 
-	before := m.commentInput[:m.commentCursor]
+	before := m.w().commentInput[:m.w().commentCursor]
 	runes := []rune(before)
 	if len(runes) > 0 {
-		m.commentCursor = len(string(runes[:len(runes)-1]))
+		m.w().commentCursor = len(string(runes[:len(runes)-1]))
 	}
 }
 
 // commentMoveLineStart moves the cursor to the start of the current line.
 func (m *Model) commentMoveLineStart() {
-	before := m.commentInput[:m.commentCursor]
+	before := m.w().commentInput[:m.w().commentCursor]
 	lastNewline := strings.LastIndex(before, "\n")
 	if lastNewline == -1 {
-		m.commentCursor = 0
+		m.w().commentCursor = 0
 	} else {
-		m.commentCursor = lastNewline + 1
+		m.w().commentCursor = lastNewline + 1
 	}
 }
 
 // commentMoveLineEnd moves the cursor to the end of the current line.
 func (m *Model) commentMoveLineEnd() {
-	after := m.commentInput[m.commentCursor:]
+	after := m.w().commentInput[m.w().commentCursor:]
 	nextNewline := strings.Index(after, "\n")
 	if nextNewline == -1 {
-		m.commentCursor = len(m.commentInput)
+		m.w().commentCursor = len(m.w().commentInput)
 	} else {
-		m.commentCursor += nextNewline
+		m.w().commentCursor += nextNewline
 	}
 }
 
 // commentKillToEnd deletes from cursor to end of line.
 func (m *Model) commentKillToEnd() {
-	after := m.commentInput[m.commentCursor:]
+	after := m.w().commentInput[m.w().commentCursor:]
 	nextNewline := strings.Index(after, "\n")
 	if nextNewline == -1 {
 		// Kill to end of input
-		m.commentInput = m.commentInput[:m.commentCursor]
+		m.w().commentInput = m.w().commentInput[:m.w().commentCursor]
 	} else {
 		// Kill to newline (keep the newline)
-		m.commentInput = m.commentInput[:m.commentCursor] + after[nextNewline:]
+		m.w().commentInput = m.w().commentInput[:m.w().commentCursor] + after[nextNewline:]
 	}
 }
 
 // commentKillToStart deletes from cursor to beginning of line.
 func (m *Model) commentKillToStart() {
-	before := m.commentInput[:m.commentCursor]
-	after := m.commentInput[m.commentCursor:]
+	before := m.w().commentInput[:m.w().commentCursor]
+	after := m.w().commentInput[m.w().commentCursor:]
 
 	lastNewline := strings.LastIndex(before, "\n")
 	if lastNewline == -1 {
 		// On first line, kill from beginning
-		m.commentInput = after
-		m.commentCursor = 0
+		m.w().commentInput = after
+		m.w().commentCursor = 0
 	} else {
 		// Kill from after the newline to cursor
-		m.commentInput = before[:lastNewline+1] + after
-		m.commentCursor = lastNewline + 1
+		m.w().commentInput = before[:lastNewline+1] + after
+		m.w().commentCursor = lastNewline + 1
 	}
 }
 
@@ -448,7 +449,7 @@ func commentVisualLines(input string, wrapWidth int) []string {
 
 // commentVisualLineCount returns the total number of visual lines after wrapping.
 func (m *Model) commentVisualLineCount() int {
-	return len(commentVisualLines(m.commentInput, m.commentPromptWrapWidth()))
+	return len(commentVisualLines(m.w().commentInput, m.commentPromptWrapWidth()))
 }
 
 // commentCursorVisualPos maps the byte cursor position to a visual line index
@@ -491,7 +492,7 @@ func commentCursorVisualPos(input string, cursor int, wrapWidth int) (visualLine
 
 // commentCursorLineIndex returns the 0-based visual line index where the cursor is.
 func (m *Model) commentCursorLineIndex() int {
-	line, _ := commentCursorVisualPos(m.commentInput, m.commentCursor, m.commentPromptWrapWidth())
+	line, _ := commentCursorVisualPos(m.w().commentInput, m.w().commentCursor, m.commentPromptWrapWidth())
 	return line
 }
 
@@ -501,13 +502,13 @@ func (m *Model) commentEnsureCursorVisible() {
 	maxVisible := m.commentMaxVisibleLines()
 
 	// If cursor is above visible area, scroll up
-	if cursorLine < m.commentScroll {
-		m.commentScroll = cursorLine
+	if cursorLine < m.w().commentScroll {
+		m.w().commentScroll = cursorLine
 	}
 
 	// If cursor is below visible area, scroll down
-	if cursorLine >= m.commentScroll+maxVisible {
-		m.commentScroll = cursorLine - maxVisible + 1
+	if cursorLine >= m.w().commentScroll+maxVisible {
+		m.w().commentScroll = cursorLine - maxVisible + 1
 	}
 
 	// Clamp scroll to valid range
@@ -516,17 +517,17 @@ func (m *Model) commentEnsureCursorVisible() {
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
-	if m.commentScroll > maxScroll {
-		m.commentScroll = maxScroll
+	if m.w().commentScroll > maxScroll {
+		m.w().commentScroll = maxScroll
 	}
-	if m.commentScroll < 0 {
-		m.commentScroll = 0
+	if m.w().commentScroll < 0 {
+		m.w().commentScroll = 0
 	}
 }
 
 // commentMoveUp moves the cursor up one line, preserving column position.
 func (m *Model) commentMoveUp() {
-	before := m.commentInput[:m.commentCursor]
+	before := m.w().commentInput[:m.w().commentCursor]
 
 	// Find the start of the current line
 	currentLineStart := strings.LastIndex(before, "\n")
@@ -536,7 +537,7 @@ func (m *Model) commentMoveUp() {
 	}
 
 	// Column position within current line
-	col := m.commentCursor - currentLineStart - 1
+	col := m.w().commentCursor - currentLineStart - 1
 
 	// Find the start of the previous line
 	prevLineStart := strings.LastIndex(before[:currentLineStart], "\n")
@@ -551,14 +552,14 @@ func (m *Model) commentMoveUp() {
 	if col > prevLineLen {
 		col = prevLineLen
 	}
-	m.commentCursor = prevLineStart + 1 + col
+	m.w().commentCursor = prevLineStart + 1 + col
 	m.commentEnsureCursorVisible()
 }
 
 // commentMoveDown moves the cursor down one line, preserving column position.
 func (m *Model) commentMoveDown() {
-	before := m.commentInput[:m.commentCursor]
-	after := m.commentInput[m.commentCursor:]
+	before := m.w().commentInput[:m.w().commentCursor]
+	after := m.w().commentInput[m.w().commentCursor:]
 
 	// Find where current line starts
 	currentLineStart := strings.LastIndex(before, "\n")
@@ -567,7 +568,7 @@ func (m *Model) commentMoveDown() {
 	}
 
 	// Column position within current line
-	col := m.commentCursor - currentLineStart - 1
+	col := m.w().commentCursor - currentLineStart - 1
 
 	// Find the next newline (end of current line)
 	nextNewline := strings.Index(after, "\n")
@@ -577,8 +578,8 @@ func (m *Model) commentMoveDown() {
 	}
 
 	// Find the end of the next line (or end of input)
-	nextLineStart := m.commentCursor + nextNewline + 1
-	restAfterNextLine := m.commentInput[nextLineStart:]
+	nextLineStart := m.w().commentCursor + nextNewline + 1
+	restAfterNextLine := m.w().commentInput[nextLineStart:]
 	nextLineEnd := strings.Index(restAfterNextLine, "\n")
 	var nextLineLen int
 	if nextLineEnd == -1 {
@@ -591,6 +592,6 @@ func (m *Model) commentMoveDown() {
 	if col > nextLineLen {
 		col = nextLineLen
 	}
-	m.commentCursor = nextLineStart + col
+	m.w().commentCursor = nextLineStart + col
 	m.commentEnsureCursorVisible()
 }

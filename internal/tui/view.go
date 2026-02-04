@@ -163,6 +163,17 @@ func (m Model) View() string {
 		return ""
 	}
 
+	// Single window: render normally
+	if len(m.windows) <= 1 {
+		return m.renderSingleWindowView()
+	}
+
+	// Multiple windows: render side by side with vertical divider
+	return m.renderMultiWindowView()
+}
+
+// renderSingleWindowView renders the view for a single window (original behavior).
+func (m Model) renderSingleWindowView() string {
 	// Render top bar first to determine its actual height.
 	// Top bar height varies: 2 lines (commit + divider) when on commit section,
 	// 3 lines (commit + file + divider) when on a file.
@@ -177,8 +188,8 @@ func (m Model) View() string {
 	}
 
 	// Use cached rows if available, otherwise rebuild (cache should normally be valid)
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 
@@ -200,6 +211,121 @@ func (m Model) View() string {
 	output = append(output, bottomBar)
 
 	return strings.Join(output, "\n")
+}
+
+// renderMultiWindowView renders multiple windows side by side with a vertical divider.
+func (m Model) renderMultiWindowView() string {
+	// Calculate window widths: 50/50 split with 1 char divider
+	dividerWidth := 1
+	totalContentWidth := m.width - dividerWidth
+	leftWidth := totalContentWidth / 2
+	rightWidth := totalContentWidth - leftWidth
+
+	// Render each window's content
+	leftLines := m.renderWindowContent(0, leftWidth)
+	rightLines := m.renderWindowContent(1, rightWidth)
+
+	// Ensure both have the same number of lines
+	maxLines := len(leftLines)
+	if len(rightLines) > maxLines {
+		maxLines = len(rightLines)
+	}
+	for len(leftLines) < maxLines {
+		leftLines = append(leftLines, "")
+	}
+	for len(rightLines) < maxLines {
+		rightLines = append(rightLines, "")
+	}
+
+	// Divider character (full block, dim)
+	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	divider := dividerStyle.Render("█")
+
+	// Join horizontally: left | divider | right
+	var output []string
+	for i := 0; i < maxLines; i++ {
+		// Pad left side to exact width
+		leftPadded := padToWidth(leftLines[i], leftWidth)
+		// Pad right side to exact width
+		rightPadded := padToWidth(rightLines[i], rightWidth)
+		output = append(output, leftPadded+divider+rightPadded)
+	}
+
+	return strings.Join(output, "\n")
+}
+
+// renderWindowContent renders the content for a specific window at a given width.
+// Returns the lines as a slice (top bar, content rows, bottom bar).
+func (m Model) renderWindowContent(windowIdx int, windowWidth int) []string {
+	// Temporarily switch to this window for rendering
+	savedActiveIdx := m.activeWindowIdx
+	m.activeWindowIdx = windowIdx
+	savedWidth := m.width
+	m.width = windowWidth
+
+	// For inactive windows, render as unfocused (use unfocused cursor styling)
+	// so the user can tell which window is active
+	savedFocused := m.focused
+	isActiveWindow := windowIdx == savedActiveIdx
+	if !isActiveWindow {
+		m.focused = false // Inactive window renders as unfocused
+	}
+
+	// Render top bar
+	topBar := m.renderTopBar()
+	topBarLines := strings.Split(topBar, "\n")
+
+	// Calculate content height
+	bottomBarLines := 1
+	contentH := m.height - len(topBarLines) - bottomBarLines
+	if contentH < 1 {
+		contentH = 1
+	}
+
+	// Get rows for this window
+	rows := m.windows[windowIdx].cachedRows
+	if !m.windows[windowIdx].rowsCacheValid {
+		rows = m.buildRows()
+	}
+
+	// Apply scroll and viewport
+	visibleRows := m.getVisibleRows(rows, contentH)
+
+	// Pad content to fill height
+	for len(visibleRows) < contentH {
+		visibleRows = append(visibleRows, "")
+	}
+
+	// Render bottom bar
+	bottomBar := m.renderStatusBar()
+
+	// Restore original state
+	m.activeWindowIdx = savedActiveIdx
+	m.width = savedWidth
+	m.focused = savedFocused
+
+	// Combine all lines
+	var lines []string
+	lines = append(lines, topBarLines...)
+	lines = append(lines, visibleRows...)
+	lines = append(lines, bottomBar)
+
+	return lines
+}
+
+// padToWidth pads or truncates a string to exactly the specified display width.
+// Uses ansi.StringWidth because the input string may contain ANSI escape codes.
+func padToWidth(s string, width int) string {
+	currentWidth := ansi.StringWidth(s)
+	if currentWidth == width {
+		return s
+	}
+	if currentWidth < width {
+		// Pad with spaces
+		return s + strings.Repeat(" ", width-currentWidth)
+	}
+	// Truncate (need to be careful with ANSI codes)
+	return ansi.Truncate(s, width, "")
 }
 
 // RowKind identifies the type of a display row.
@@ -386,7 +512,7 @@ func (m Model) buildRows() []displayRow {
 	// Calculate consistent header box width for borders from max per-file width
 	maxBoxWidth := 0
 	for commitIdx, commit := range m.commits {
-		if commit.Info.HasMetadata() && commit.FoldLevel == sidebyside.CommitFolded {
+		if commit.Info.HasMetadata() && m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded {
 			continue
 		}
 		startIdx := m.commitFileStarts[commitIdx]
@@ -497,15 +623,15 @@ func (m Model) buildRows() []displayRow {
 	// not as part of the content rows (so it doesn't affect cursor line numbering).
 	for commitIdx, commit := range m.commits {
 		// Skip commits outside narrow scope
-		if !m.narrow.IncludesCommit(commitIdx) {
+		if !m.w().narrow.IncludesCommit(commitIdx) {
 			continue
 		}
 		// Add commit header row if commit has metadata
 		// Skip commit-level rows when narrowed to file level or commit-info-only
-		if commit.Info.HasMetadata() && !m.narrow.IsFileLevelOrBelow() && !m.narrow.IsCommitInfoOnly() {
-			commitFolded := commit.FoldLevel == sidebyside.CommitFolded
+		if commit.Info.HasMetadata() && !m.w().narrow.IsFileLevelOrBelow() && !m.w().narrow.IsCommitInfoOnly() {
+			commitFolded := m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded
 			isFirstCommit := commitIdx == 0
-			prevCommitUnfolded := !isFirstCommit && m.commits[commitIdx-1].FoldLevel != sidebyside.CommitFolded
+			prevCommitUnfolded := !isFirstCommit && m.commitFoldLevel(commitIdx-1) != sidebyside.CommitFolded
 
 			// Compute header mode for this commit
 			commitHeaderMode := determineCommitHeaderMode(commitFolded, isFirstCommit, prevCommitUnfolded)
@@ -562,7 +688,7 @@ func (m Model) buildRows() []displayRow {
 				kind:                   RowKindCommitHeader,
 				fileIndex:              -1,
 				isCommitHeader:         true,
-				commitFoldLevel:        commit.FoldLevel,
+				commitFoldLevel:        m.commitFoldLevel(commitIdx),
 				commitIndex:            commitIdx,
 				maxCommitFilesWidth:    maxCommitFilesWidth,
 				maxCommitAddWidth:      maxCommitAddWidth,
@@ -575,7 +701,7 @@ func (m Model) buildRows() []displayRow {
 			})
 
 			// If commit is folded, skip its files
-			if commit.FoldLevel == sidebyside.CommitFolded {
+			if commitFolded {
 				continue
 			}
 
@@ -619,7 +745,7 @@ func (m Model) buildRows() []displayRow {
 				fileIndex:             -1,
 				isCommitInfoTopBorder: true,
 				commitIndex:           commitIdx,
-				commitFoldLevel:       commit.FoldLevel,
+				commitFoldLevel:       m.commitFoldLevel(commitIdx),
 				headerBoxWidth:        infoHeaderBoxWidth,
 				treePrefixWidth:       treePrefixWidth,
 				treePath:              detailsBorderTreePath,
@@ -631,7 +757,7 @@ func (m Model) buildRows() []displayRow {
 
 		// When narrowed to commit-info-only, add just the commit info rows
 		// (no parent commit header, no files)
-		if commit.Info.HasMetadata() && m.narrow.IsCommitInfoOnly() {
+		if commit.Info.HasMetadata() && m.w().narrow.IsCommitInfoOnly() {
 			rows = append(rows, m.buildCommitInfoRows(&commit, commitIdx)...)
 		}
 
@@ -647,10 +773,10 @@ func (m Model) buildRows() []displayRow {
 		// Always add this row when commit-info is expanded to prevent content shift;
 		// render as border or blank based on first file's mode.
 		// Skip when narrowed to file level or commit info only (no files shown).
-		if startIdx < endIdx && commit.Info.HasMetadata() && !m.narrow.IsFileLevelOrBelow() && !m.narrow.IsCommitInfoOnly() {
-			commitInfoExpanded := commit.FoldLevel == sidebyside.CommitExpanded
+		if startIdx < endIdx && commit.Info.HasMetadata() && !m.w().narrow.IsFileLevelOrBelow() && !m.w().narrow.IsCommitInfoOnly() {
+			commitInfoExpanded := m.commitFoldLevel(commitIdx) == sidebyside.CommitExpanded
 			if commitInfoExpanded {
-				firstFileFolded := m.files[startIdx].FoldLevel == sidebyside.FoldFolded
+				firstFileFolded := m.fileFoldLevel(startIdx) == sidebyside.FoldFolded
 				// First file's prev sibling is commit-info, not another file
 				firstFileHeaderMode := determineFileHeaderMode(firstFileFolded, false, commitInfoExpanded)
 				firstIsLastFile := startIdx == endIdx-1
@@ -675,7 +801,7 @@ func (m Model) buildRows() []displayRow {
 		// Add file rows for this commit
 		for fileIdx := startIdx; fileIdx < endIdx; fileIdx++ {
 			// Skip files outside narrow scope
-			if !m.narrow.IncludesFile(fileIdx) {
+			if !m.w().narrow.IncludesFile(fileIdx) {
 				continue
 			}
 			fp := m.files[fileIdx]
@@ -686,14 +812,13 @@ func (m Model) buildRows() []displayRow {
 		// This row becomes the top border slot for the next commit when this commit is unfolded
 		// Skip when narrowed to file level (no inter-commit separators needed)
 		// Also skip if next commit is outside the narrow scope
-		if commit.Info.HasMetadata() && commitIdx+1 < len(m.commits) && m.commits[commitIdx+1].Info.HasMetadata() && !m.narrow.IsFileLevelOrBelow() && m.narrow.IncludesCommit(commitIdx+1) {
-			nextCommit := m.commits[commitIdx+1]
-			thisCommitUnfolded := commit.FoldLevel != sidebyside.CommitFolded
+		if commit.Info.HasMetadata() && commitIdx+1 < len(m.commits) && m.commits[commitIdx+1].Info.HasMetadata() && !m.w().narrow.IsFileLevelOrBelow() && m.w().narrow.IncludesCommit(commitIdx+1) {
+			thisCommitUnfolded := m.commitFoldLevel(commitIdx) != sidebyside.CommitFolded
 
 			if thisCommitUnfolded {
 				// Unfolded commit produces margin; add top border slot for next commit
 				// Compute next commit's header mode to determine if border should be visible
-				nextCommitFolded := nextCommit.FoldLevel == sidebyside.CommitFolded
+				nextCommitFolded := m.commitFoldLevel(commitIdx+1) == sidebyside.CommitFolded
 				nextCommitHeaderMode := determineCommitHeaderMode(nextCommitFolded, false, true) // prev (this) is unfolded
 
 				rows = append(rows, displayRow{
@@ -788,7 +913,7 @@ func (m Model) buildRowsLegacy() []displayRow {
 	// not as part of the content rows (so it doesn't affect cursor line numbering).
 	for fileIdx, fp := range m.files {
 		// Skip files outside narrow scope
-		if !m.narrow.IncludesFile(fileIdx) {
+		if !m.w().narrow.IncludesFile(fileIdx) {
 			continue
 		}
 		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), headerBoxWidth)
@@ -818,11 +943,11 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	// Check if previous sibling is unfolded (for determining header mode)
 	prevSiblingUnfolded := false
 	if fileIdx > commitStartIdx {
-		prevSiblingUnfolded = m.files[fileIdx-1].FoldLevel != sidebyside.FoldFolded
+		prevSiblingUnfolded = m.fileFoldLevel(fileIdx-1) != sidebyside.FoldFolded
 	}
 
 	// Compute header mode based on fold state and prev sibling
-	isFolded := fp.FoldLevel == sidebyside.FoldFolded
+	isFolded := m.fileFoldLevel(fileIdx) == sidebyside.FoldFolded
 	headerMode := determineFileHeaderMode(isFolded, isFirstFile, prevSiblingUnfolded)
 
 	isLastFile := fileIdx == commitEndIdx-1
@@ -880,9 +1005,9 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.
 		contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 
-		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: fp.FoldLevel, status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
+		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: m.fileFoldLevel(fileIdx), status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
 
-		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: ownBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: headerMode, treePath: contentTreePath})
+		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: m.fileFoldLevel(fileIdx), status: status, headerBoxWidth: ownBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: headerMode, treePath: contentTreePath})
 
 		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth)
 		rows = append(rows, bodyRows...)
@@ -900,17 +1025,17 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		})
 
 		// Skip next file's top border if next file is outside narrow scope
-		if !isLastFile && m.narrow.IncludesFile(fileIdx+1) {
+		if !isLastFile && m.w().narrow.IncludesFile(fileIdx+1) {
 			// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
 			// Current file is unfolded, so next file's prev sibling is unfolded
 			// Always add this row to prevent content shift; render as border or blank based on next file's mode
-			nextFileFolded := m.files[fileIdx+1].FoldLevel == sidebyside.FoldFolded
+			nextFileFolded := m.fileFoldLevel(fileIdx+1) == sidebyside.FoldFolded
 			nextFileHeaderMode := determineFileHeaderMode(nextFileFolded, false, true)
 			nextIsLastFile := fileIdx+1 == commitEndIdx-1
 			// Force IsLast=false so │ continuation shows on the top border row;
 			// the branch point (├/└) appears on the header row below, not here.
 			nextBorderTreePath := m.buildFileTreePath(fileIdx+1, false, nextFileFolded, TreeRowContent)
-			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: fp.FoldLevel, status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath, isLastFileInCommit: nextIsLastFile})
+			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: m.fileFoldLevel(fileIdx), status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath, isLastFileInCommit: nextIsLastFile})
 		}
 	}
 
@@ -920,7 +1045,8 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 // buildFileBodyRows dispatches to the appropriate content builder based on fold level.
 // Returns content rows (structural diff or hunks) without header/spacer/margin.
 func (m Model) buildFileBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool, isFolded bool, headerBoxWidth int) []displayRow {
-	switch fp.FoldLevel {
+	foldLevel := m.fileFoldLevel(fileIdx)
+	switch foldLevel {
 	case sidebyside.FoldFolded:
 		// Folded: header only, no content
 		return nil
@@ -1355,11 +1481,11 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		// Check if first commit is unfolded (for rendering commit top border)
 		firstCommitUnfolded := len(m.commits) > 0 &&
 			m.commits[0].Info.HasMetadata() &&
-			m.commits[0].FoldLevel != sidebyside.CommitFolded
+			m.commitFoldLevel(0) != sidebyside.CommitFolded
 
 		// Check if first file is unfolded and we're in diff view (no commit metadata)
 		firstFileUnfolded := len(m.files) > 0 &&
-			m.files[0].FoldLevel != sidebyside.FoldFolded
+			m.fileFoldLevel(0) != sidebyside.FoldFolded
 		isDiffView := len(m.commits) == 0 ||
 			(len(m.commits) > 0 && !m.commits[0].Info.HasMetadata())
 

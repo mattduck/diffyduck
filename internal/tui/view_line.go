@@ -261,7 +261,7 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 
 	// Apply search highlighting to the comment text
 	// Comments are always on side 0 (new/left side)
-	highlightedText := m.highlightSearchInVisible(lineText, isCursorRow, m.searchMatchIdx, 0, m.searchMatchSide)
+	highlightedText := m.highlightSearchInVisible(lineText, isCursorRow, m.w().searchMatchIdx, 0, m.w().searchMatchSide)
 
 	lineWidth := displayWidth(lineText)
 	padding := contentWidth - lineWidth
@@ -384,7 +384,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	actualContentWidth := contentWidth - gutterWidth
 
 	// Apply horizontal scroll to get visible portion
-	visible := horizontalSlice(expanded, m.hscroll, actualContentWidth)
+	visible := horizontalSlice(expanded, m.w().hscroll, actualContentWidth)
 
 	// Apply styling with layers: syntax (base) -> inline diff -> search (top)
 	// Exception: context lines on old side are dimmed (no syntax highlighting)
@@ -545,7 +545,7 @@ func (m Model) applyInlineSpans(original, expanded, visible string, spans []inli
 		vc := 0
 		for i, vr := range visibleRunes {
 			if unicode.IsSpace(vr) {
-				ac := m.hscroll + vc
+				ac := m.w().hscroll + vc
 				for _, span := range spans {
 					sc := byteToCol[span.Start]
 					ec := byteToCol[span.End]
@@ -566,7 +566,7 @@ func (m Model) applyInlineSpans(original, expanded, visible string, spans []inli
 
 	for vi, vr := range visibleRunes {
 		vrWidth := runewidth.RuneWidth(vr)
-		actualCol := m.hscroll + visibleCol
+		actualCol := m.w().hscroll + visibleCol
 
 		// Check if in search match first (takes precedence)
 		inSearch := false
@@ -727,7 +727,7 @@ func (m Model) applySyntaxHighlight(original, _, visible string, syntaxSpans []h
 
 	for _, vr := range visibleRunes {
 		vrWidth := runewidth.RuneWidth(vr)
-		actualCol := m.hscroll + visibleCol
+		actualCol := m.w().hscroll + visibleCol
 
 		// Check if in search match first (takes precedence)
 		inSearch := false

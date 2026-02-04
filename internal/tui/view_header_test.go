@@ -166,7 +166,7 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 				keys:   DefaultKeyMap(),
 			}
 			m.calculateTotalLines()
-			m.scroll = m.minScroll()
+			m.w().scroll = m.minScroll()
 
 			output := m.View()
 			lines := strings.Split(output, "\n")
@@ -217,7 +217,7 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 	}
 	m.calculateTotalLines()
 	// Position cursor on file header (row 0)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -258,7 +258,7 @@ func TestView_FileHeaderNoVerticalDivider(t *testing.T) {
 	}
 	m.calculateTotalLines()
 	// Position cursor on file header
-	m.scroll = 0
+	m.w().scroll = 0
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -352,7 +352,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 
 	// In diff view layout: header=0, spacer(bottom border)=1, content=2
 	// Position cursor on bottom border (row 1)
-	m.scroll = 1
+	m.w().scroll = 1
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -377,7 +377,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 
 	// Test content line with cursor
 	// Position cursor on content line (row 2 in diff view)
-	m.scroll = 2
+	m.w().scroll = 2
 	output2 := m.View()
 	lines2 := strings.Split(output2, "\n")
 
@@ -1831,7 +1831,7 @@ func TestDiffView_CursorStartsOnFileHeader(t *testing.T) {
 		"first row should be file header (RowKindHeader), not top border")
 
 	// At minScroll, the cursor should be on row 0 (the file header)
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 	cursorPos := m.cursorLine()
 	assert.Equal(t, 0, cursorPos,
 		"at minScroll, cursor should be on row 0 (file header)")

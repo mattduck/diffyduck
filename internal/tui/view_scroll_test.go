@@ -23,10 +23,10 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 		},
-		width:  80,
-		height: 20,
-		scroll: 0,
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  20,
+		windows: []*Window{{scroll: 0}},
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -65,7 +65,7 @@ func TestStatusInfo_AtEnd(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Set scroll to maxScroll so cursor is at the end
-	m.scroll = m.maxScroll()
+	m.w().scroll = m.maxScroll()
 
 	info := m.StatusInfo()
 
@@ -95,10 +95,10 @@ func TestStatusInfo_MultipleFiles(t *testing.T) {
 			{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs1},
 			{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs2},
 		},
-		width:  80,
-		height: 20,
-		scroll: 0,
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  20,
+		windows: []*Window{{scroll: 0}},
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 
@@ -111,7 +111,7 @@ func TestStatusInfo_MultipleFiles(t *testing.T) {
 	// Scroll to file 2's header
 	// File 1: header (0) + bottom border (1) + 20 pairs (2-21) + 4 blanks (22-25) + top border (26)
 	// File 2: header (27) + ...
-	m.scroll = 27
+	m.w().scroll = 27
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile)
 	assert.Equal(t, "second.go", info.FileName)
@@ -145,7 +145,7 @@ func TestView_StatusBarContent(t *testing.T) {
 	// totalLines = 1 header + 20 pairs + 1 summary = 22
 	// cursorOffset = (10-2)*20/100 = 1
 	// To put cursor on line 20 (last pair), scroll = 20 - cursorOffset = 19
-	m.scroll = 19
+	m.w().scroll = 19
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -198,10 +198,10 @@ func TestStatusInfo_ScrollPastAllContent(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
 		},
-		width:  80,
-		height: 10,
-		scroll: 100, // Way past the content (only 6 lines: 1 header + 5 pairs)
-		keys:   DefaultKeyMap(),
+		width:   80,
+		height:  10,
+		windows: []*Window{{scroll: 100}}, // Way past the content (only 6 lines: 1 header + 5 pairs)
+		keys:    DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
 	m.clampScroll() // This should clamp to maxScroll
@@ -236,20 +236,20 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 	// cursorOffset = 10 * 20 / 100 = 2, maxCursor = 102
 
 	// At minScroll, cursor is at line 0, percentage should be 0
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 	info := m.StatusInfo()
 	assert.Equal(t, 0, info.Percentage)
 	assert.False(t, info.AtEnd)
 
 	// At scroll that puts cursor at approx line 50, percentage should be ~49
 	// (50/102 * 100 = 49.0, rounded to 49)
-	m.scroll = 50 // cursor at 50
+	m.w().scroll = 50 // cursor at 50
 	info = m.StatusInfo()
 	assert.Equal(t, 49, info.Percentage)
 	assert.False(t, info.AtEnd)
 
 	// At maxScroll, cursor is at last line, percentage should be 100
-	m.scroll = m.maxScroll()
+	m.w().scroll = m.maxScroll()
 	info = m.StatusInfo()
 	assert.Equal(t, 100, info.Percentage)
 	assert.True(t, info.AtEnd)
@@ -292,19 +292,19 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	require.NotZero(t, secondFileHeaderRow, "should find second file header")
 
 	// Test: two rows before second file's header (blank line) should show first.go
-	m.scroll = secondFileHeaderRow - 2
+	m.w().scroll = secondFileHeaderRow - 2
 	info := m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile, "blank line before second file should show file 1")
 	assert.Equal(t, fileNames[0], info.FileName)
 
 	// Test: top border row should show previous file (first.go)
-	m.scroll = secondFileHeaderRow - 1
+	m.w().scroll = secondFileHeaderRow - 1
 	info = m.StatusInfo()
 	assert.Equal(t, 1, info.CurrentFile, "top border should show file above")
 	assert.Equal(t, fileNames[0], info.FileName)
 
 	// Test: header row of second file should show second.go
-	m.scroll = secondFileHeaderRow
+	m.w().scroll = secondFileHeaderRow
 	info = m.StatusInfo()
 	assert.Equal(t, 2, info.CurrentFile, "header of second file should show file 2")
 	assert.Equal(t, fileNames[1], info.FileName)
@@ -337,11 +337,11 @@ func TestStatusBar_NonShrinkingWidth(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Navigate to a high line number to establish max width
-	m.scroll = 500
+	m.w().scroll = 500
 	bar1 := m.renderStatusBar()
 
 	// Navigate back to start
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 	bar2 := m.renderStatusBar()
 
 	// The less indicator part should have the same width in both cases

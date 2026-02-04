@@ -138,7 +138,7 @@ func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
 	}
 	m.calculateTotalLines()
 	// Position cursor on the file header (not summary)
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -261,7 +261,7 @@ func TestStatusBar_NewFormat_AtEnd(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 	m.calculateTotalLines()
-	m.scroll = m.maxScroll()
+	m.w().scroll = m.maxScroll()
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -590,17 +590,17 @@ func TestStatusInfo_BreadcrumbsOnChunkSeparator(t *testing.T) {
 	require.NotZero(t, sepIdx, "should find hunk separator row")
 
 	// Test 1: Cursor on separator top - no breadcrumb
-	m.scroll = sepTopIdx
+	m.w().scroll = sepTopIdx
 	info := m.StatusInfo()
 	assert.Empty(t, info.Breadcrumbs, "cursor on separator top should NOT show breadcrumb")
 
 	// Test 2: Cursor on separator (middle/breadcrumb line) - should show breadcrumb
-	m.scroll = sepIdx
+	m.w().scroll = sepIdx
 	info = m.StatusInfo()
 	assert.Contains(t, info.Breadcrumbs, "func MyFunction", "cursor on separator should show breadcrumb")
 
 	// Test 3: Cursor on separator bottom - should show breadcrumb
-	m.scroll = sepBottomIdx
+	m.w().scroll = sepBottomIdx
 	info = m.StatusInfo()
 	assert.Contains(t, info.Breadcrumbs, "func MyFunction", "cursor on separator bottom should show breadcrumb")
 }
@@ -644,7 +644,7 @@ func TestTopBar_WithCommitInfo(t *testing.T) {
 	// cursorLine = scroll + cursorOffset, where cursorOffset ≈ contentHeight * 0.2
 	// For height=20, contentHeight ≈ 17, cursorOffset ≈ 3
 	// To get cursor on row 8: scroll = 8 - 3 = 5
-	m.scroll = 10 // Set high enough to be past commit body rows
+	m.w().scroll = 10 // Set high enough to be past commit body rows
 
 	topBar := m.renderTopBar()
 	lines := strings.Split(topBar, "\n")
@@ -740,7 +740,7 @@ func TestTopBar_DynamicHeight_OnCommitSection(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Test 1: Cursor on commit section (scroll=0 puts cursor on commit body)
-	m.scroll = 0
+	m.w().scroll = 0
 	topBarOnCommit := m.renderTopBar()
 	linesOnCommit := strings.Split(topBarOnCommit, "\n")
 
@@ -750,7 +750,7 @@ func TestTopBar_DynamicHeight_OnCommitSection(t *testing.T) {
 	assert.Contains(t, linesOnCommit[3], "▔", "fourth line should be divider")
 
 	// Test 2: Cursor on file (scroll high enough to be past commit body)
-	m.scroll = 15
+	m.w().scroll = 15
 	topBarOnFile := m.renderTopBar()
 	linesOnFile := strings.Split(topBarOnFile, "\n")
 
@@ -794,7 +794,7 @@ func TestView_NoPaddingLineAboveBottomBar(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Put cursor on commit section (scroll=0)
-	m.scroll = 0
+	m.w().scroll = 0
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -1024,27 +1024,27 @@ func TestCommitFoldCycle(t *testing.T) {
 
 	// Start at Level 1 (folded)
 	assert.Equal(t, 1, m.commitVisibilityLevel(), "should start at level 1")
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel)
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
 
 	// Cycle to Level 2 (file headings only)
 	m.handleCommitFoldCycle()
 	assert.Equal(t, 2, m.commitVisibilityLevel(), "should be at level 2 after first cycle")
-	assert.Equal(t, sidebyside.CommitNormal, m.commits[0].FoldLevel)
-	for _, f := range m.files {
-		assert.Equal(t, sidebyside.FoldFolded, f.FoldLevel, "all files should be FoldFolded at level 2")
+	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0))
+	for i := range m.files {
+		assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(i), "all files should be FoldFolded at level 2")
 	}
 
 	// Cycle to Level 3 (file hunks visible)
 	m.handleCommitFoldCycle()
 	assert.Equal(t, 3, m.commitVisibilityLevel(), "should be at level 3 after second cycle")
-	for _, f := range m.files {
-		assert.Equal(t, sidebyside.FoldExpanded, f.FoldLevel, "all files should be FoldExpanded at level 3")
+	for i := range m.files {
+		assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(i), "all files should be FoldExpanded at level 3")
 	}
 
 	// Cycle back to Level 1 (folded)
 	m.handleCommitFoldCycle()
 	assert.Equal(t, 1, m.commitVisibilityLevel(), "should be back at level 1 after third cycle")
-	assert.Equal(t, sidebyside.CommitFolded, m.commits[0].FoldLevel)
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
 }
 
 func TestCommitFoldCycleWithMixedFiles(t *testing.T) {
@@ -1400,19 +1400,19 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find a row belonging to second commit")
 
 	// Position cursor on first commit header
-	m.scroll = firstCommitHeaderIdx
+	m.w().scroll = firstCommitHeaderIdx
 	commit := m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "first111", commit.Info.SHA, "cursor on first commit header should return first commit")
 
 	// Position cursor on first commit info body - should still return first commit
-	m.scroll = firstCommitInfoBodyIdx
+	m.w().scroll = firstCommitInfoBodyIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "first111", commit.Info.SHA, "cursor on first commit info body should return first commit")
 
 	// Position cursor on second commit header
-	m.scroll = secondCommitHeaderIdx
+	m.w().scroll = secondCommitHeaderIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit header should return second commit")
@@ -1428,7 +1428,7 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitInfoBodyIdx, "should find an info body row belonging to second commit")
 
 	// Position cursor on second commit info body - should return second commit
-	m.scroll = secondCommitInfoBodyIdx
+	m.w().scroll = secondCommitInfoBodyIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit info body should return second commit")
@@ -1448,7 +1448,7 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitFileIdx, "should find a file row belonging to second commit")
 
 	// Position cursor on second commit's file - should return second commit
-	m.scroll = secondCommitFileIdx
+	m.w().scroll = secondCommitFileIdx
 	commit = m.currentCommit()
 	require.NotNil(t, commit, "should return a commit")
 	assert.Equal(t, "second22", commit.Info.SHA, "cursor on second commit's file should return second commit")
@@ -1503,7 +1503,7 @@ func TestTopBar_ShowsCorrectCommit_WhenCursorMoves(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
 
 	// Position cursor on second commit header
-	m.scroll = secondCommitHeaderIdx
+	m.w().scroll = secondCommitHeaderIdx
 
 	topBar := m.renderTopBar()
 
@@ -1602,14 +1602,14 @@ func TestTopBar_ShowsCorrectStats_WhenCursorMoves(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
 
 	// Position cursor on first commit - should show "1 file" and "+5 -3"
-	m.scroll = firstCommitHeaderIdx
+	m.w().scroll = firstCommitHeaderIdx
 	topBar := m.renderTopBar()
 	assert.Contains(t, topBar, "1 file", "first commit should show 1 file")
 	assert.Contains(t, topBar, "+5", "first commit should show +5")
 	assert.Contains(t, topBar, "-3", "first commit should show -3")
 
 	// Position cursor on second commit - should show "2 files" and "+10 -2"
-	m.scroll = secondCommitHeaderIdx
+	m.w().scroll = secondCommitHeaderIdx
 	topBar = m.renderTopBar()
 	assert.Contains(t, topBar, "2 files", "second commit should show 2 files")
 	assert.Contains(t, topBar, "+10", "second commit should show +10")
@@ -1648,13 +1648,13 @@ func TestIsOnCommitHeader(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Position cursor on commit header (row 0)
-	m.scroll = 0 // minScroll, so cursor is at row 0
+	m.w().scroll = 0 // minScroll, so cursor is at row 0
 	assert.True(t, m.isOnCommitHeader(), "cursor at row 0 should be on commit header")
 
 	// Move cursor down past commit header
-	m.scroll = 0 // cursor is now at cursorOffset, which should be after commit header
+	m.w().scroll = 0 // cursor is now at cursorOffset, which should be after commit header
 	// For small heights this might still be on commit header, so let's be more explicit
-	m.scroll = 1 // Move scroll so cursor is further down
+	m.w().scroll = 1 // Move scroll so cursor is further down
 	// This might or might not be on commit header depending on total lines
 	// Let's just verify isOnCommitHeader returns the correct value
 	rows := m.getRows()

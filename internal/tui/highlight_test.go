@@ -1577,7 +1577,7 @@ func FuncA() {
 
 	// Build rows to populate cache
 	m.rebuildRowsCache()
-	totalLinesBefore := m.totalLines
+	totalLinesBefore := m.w().totalLines
 
 	// Request and store highlighting
 	cmd := m.RequestHighlight(0)
@@ -1589,7 +1589,7 @@ func FuncA() {
 
 	// totalLines should increase to include structural diff rows
 	// because file is folded and structural diff has changes
-	assert.Greater(t, m.totalLines, totalLinesBefore,
+	assert.Greater(t, m.w().totalLines, totalLinesBefore,
 		"totalLines should increase when structural diff is stored for folded file")
 }
 
@@ -1641,7 +1641,7 @@ func FuncA() {
 
 	// Build rows to populate cache
 	m.rebuildRowsCache()
-	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+	assert.True(t, m.w().rowsCacheValid, "cache should be valid after rebuild")
 
 	// Request and store highlighting
 	cmd := m.RequestHighlight(0)
@@ -1652,7 +1652,7 @@ func FuncA() {
 	m.storeHighlightSpans(hlMsg)
 
 	// Cache should NOT be invalidated because commit is folded
-	assert.True(t, m.rowsCacheValid, "cache should remain valid when commit is folded")
+	assert.True(t, m.w().rowsCacheValid, "cache should remain valid when commit is folded")
 }
 
 func TestStoreHighlightSpans_DoesNotInvalidateCacheWhenNoStructuralChanges(t *testing.T) {
@@ -1695,7 +1695,7 @@ func FuncA() {
 
 	// Build rows to populate cache
 	m.rebuildRowsCache()
-	assert.True(t, m.rowsCacheValid, "cache should be valid after rebuild")
+	assert.True(t, m.w().rowsCacheValid, "cache should be valid after rebuild")
 
 	// Request and store highlighting
 	cmd := m.RequestHighlight(0)
@@ -1713,7 +1713,7 @@ func FuncA() {
 	}
 
 	// Cache should remain valid when no structural changes
-	assert.True(t, m.rowsCacheValid, "cache should remain valid when no structural changes")
+	assert.True(t, m.w().rowsCacheValid, "cache should remain valid when no structural changes")
 }
 
 func TestStoreHighlightSpans_InvalidatesCacheInDiffMode(t *testing.T) {
@@ -1759,7 +1759,7 @@ func FuncA() {
 
 	// Build rows to populate cache
 	m.rebuildRowsCache()
-	totalLinesBefore := m.totalLines
+	totalLinesBefore := m.w().totalLines
 
 	// Request and store highlighting
 	cmd := m.RequestHighlight(0)
@@ -1770,6 +1770,6 @@ func FuncA() {
 	m.storeHighlightSpans(hlMsg)
 
 	// totalLines should increase when structural diff has changes (file is folded, so preview rows appear)
-	assert.Greater(t, m.totalLines, totalLinesBefore,
+	assert.Greater(t, m.w().totalLines, totalLinesBefore,
 		"totalLines should increase in diff mode when structural diff has changes")
 }

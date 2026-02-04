@@ -29,7 +29,7 @@ func (m *Model) initStartupQueue() tea.Cmd {
 		// Skip files in folded commits - they'll be loaded on demand when expanded
 		commitIdx := m.commitForFile(i)
 		if commitIdx >= 0 && commitIdx < len(m.commits) {
-			if m.commits[commitIdx].FoldLevel == sidebyside.CommitFolded {
+			if m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded {
 				continue
 			}
 		}
@@ -91,8 +91,8 @@ func (m *Model) queueFilesForCommit(commitIdx int) tea.Cmd {
 // queueFilesForAllCommits queues files for all non-folded commits.
 // Called when shift-tab expands all commits at once.
 func (m *Model) queueFilesForAllCommits() tea.Cmd {
-	for i, commit := range m.commits {
-		if commit.FoldLevel != sidebyside.CommitFolded {
+	for i := range m.commits {
+		if m.commitFoldLevel(i) != sidebyside.CommitFolded {
 			// Get file range for this commit
 			startIdx := m.commitFileStarts[i]
 			endIdx := len(m.files)

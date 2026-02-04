@@ -156,7 +156,7 @@ func TestComment_AddCommentOnContextLine(t *testing.T) {
 	// Add a comment on context line 1 (first line in our test model)
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key] = "Comment on context line"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	rows := m.buildRows()
@@ -192,7 +192,7 @@ func TestComment_StartCommentOnContextLine(t *testing.T) {
 	require.NotEqual(t, -1, contextRowIdx, "should find context line row")
 
 	// Position cursor on the context line
-	m.scroll = contextRowIdx
+	m.w().scroll = contextRowIdx
 	cursorPos := m.cursorLine()
 	require.Equal(t, contextRowIdx, cursorPos, "cursor should be on context line row")
 
@@ -201,9 +201,9 @@ func TestComment_StartCommentOnContextLine(t *testing.T) {
 	require.True(t, success, "should be able to start a comment on context line")
 
 	// Verify the comment key is for line 1
-	assert.Equal(t, 1, m.commentKey.newLineNum,
+	assert.Equal(t, 1, m.w().commentKey.newLineNum,
 		"comment should be attached to line 1")
-	assert.True(t, m.commentMode, "should be in comment mode")
+	assert.True(t, m.w().commentMode, "should be in comment mode")
 }
 
 // Test: canComment returns false for non-content rows
@@ -230,7 +230,7 @@ func TestComment_CanCommentRequiresContentRow(t *testing.T) {
 func TestComment_AddingCommentIncreasesTotalLines(t *testing.T) {
 	m := makeCommentableTestModel(10)
 	m.calculateTotalLines()
-	initialTotalLines := m.totalLines
+	initialTotalLines := m.w().totalLines
 
 	// Add a comment on the first content line
 	key := commentKey{fileIndex: 0, newLineNum: 1}
@@ -240,9 +240,9 @@ func TestComment_AddingCommentIncreasesTotalLines(t *testing.T) {
 	m.rebuildRowsCache()
 
 	// Total lines should increase by the number of comment box rows (3 minimum: top border, content, bottom border)
-	assert.Greater(t, m.totalLines, initialTotalLines,
+	assert.Greater(t, m.w().totalLines, initialTotalLines,
 		"totalLines should increase after adding a comment (was %d, now %d)",
-		initialTotalLines, m.totalLines)
+		initialTotalLines, m.w().totalLines)
 }
 
 // Test: Comment rows should be included in buildRows
@@ -256,7 +256,7 @@ func TestComment_BuildRowsIncludesCommentRows(t *testing.T) {
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key] = "Test comment"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	// Count rows after comment
 	rowsAfter := len(m.buildRows())
@@ -273,7 +273,7 @@ func TestComment_CursorTracksCommentRows(t *testing.T) {
 
 	// Position cursor on first content line (line 3 after top border, header, bottom border)
 	// In new model, scroll = cursorLine, so scroll = 3
-	m.scroll = 3
+	m.w().scroll = 3
 	cursorPos := m.cursorLine()
 	require.Equal(t, 3, cursorPos, "cursor should be on first content line")
 
@@ -285,7 +285,7 @@ func TestComment_CursorTracksCommentRows(t *testing.T) {
 	// Add a comment on line 1 (first content line)
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key] = "Comment on line 1"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Now scroll down so cursor is on line 5 (which should be offset by comment rows)
@@ -305,15 +305,15 @@ func TestComment_CursorTracksCommentRows(t *testing.T) {
 	require.NotEqual(t, -1, targetRowIdx, "should find row for file line 3")
 
 	// Position cursor on that row
-	m.scroll = targetRowIdx
+	m.w().scroll = targetRowIdx
 	cursorPos = m.cursorLine()
 
 	// Now try to start a comment - it should attach to line 3, not some offset line
 	success := m.startComment()
 	require.True(t, success, "should be able to start a comment")
 
-	assert.Equal(t, 3, m.commentKey.newLineNum,
-		"comment should attach to file line 3, not an offset line (got line %d)", m.commentKey.newLineNum)
+	assert.Equal(t, 3, m.w().commentKey.newLineNum,
+		"comment should attach to file line 3, not an offset line (got line %d)", m.w().commentKey.newLineNum)
 }
 
 // Test: After adding comment, scrolling, and adding another comment,
@@ -325,7 +325,7 @@ func TestComment_MultipleCommentsCorrectlyPositioned(t *testing.T) {
 	// Add first comment on line 1
 	key1 := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key1] = "First comment"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Find row for file line 5
@@ -339,18 +339,18 @@ func TestComment_MultipleCommentsCorrectlyPositioned(t *testing.T) {
 	}
 
 	// Position cursor on line 5
-	m.scroll = line5RowIdx
+	m.w().scroll = line5RowIdx
 
 	// Start and submit a comment
 	success := m.startComment()
 	require.True(t, success, "should be able to start comment on line 5")
 
 	// The comment should be for line 5
-	assert.Equal(t, 5, m.commentKey.newLineNum,
-		"second comment should be on line 5, got line %d", m.commentKey.newLineNum)
+	assert.Equal(t, 5, m.w().commentKey.newLineNum,
+		"second comment should be on line 5, got line %d", m.w().commentKey.newLineNum)
 
 	// Submit the comment
-	m.commentInput = "Second comment"
+	m.w().commentInput = "Second comment"
 	m.submitComment()
 
 	// Verify we now have two comments
@@ -367,15 +367,15 @@ func TestComment_SubmitInvalidatesCache(t *testing.T) {
 
 	// Ensure cache is valid
 	_ = m.getRows()
-	require.True(t, m.rowsCacheValid, "cache should be valid after getRows")
+	require.True(t, m.w().rowsCacheValid, "cache should be valid after getRows")
 
 	// Start a comment
-	m.scroll = 0
+	m.w().scroll = 0
 	rows := m.buildRows()
 	// Find first commentable row
 	for i, r := range rows {
 		if m.canComment(r) {
-			m.scroll = i
+			m.w().scroll = i
 			break
 		}
 	}
@@ -383,11 +383,11 @@ func TestComment_SubmitInvalidatesCache(t *testing.T) {
 	success := m.startComment()
 	require.True(t, success, "should be able to start a comment")
 
-	m.commentInput = "New comment"
+	m.w().commentInput = "New comment"
 	m.submitComment()
 
 	// Cache should be rebuilt (valid) with updated totalLines after submit
-	assert.True(t, m.rowsCacheValid,
+	assert.True(t, m.w().rowsCacheValid,
 		"row cache should be rebuilt after submitting a comment")
 }
 
@@ -402,18 +402,18 @@ func TestComment_DeleteInvalidatesCache(t *testing.T) {
 
 	// Ensure cache is valid
 	_ = m.getRows()
-	require.True(t, m.rowsCacheValid, "cache should be valid after getRows")
+	require.True(t, m.w().rowsCacheValid, "cache should be valid after getRows")
 
 	// Start editing the comment
-	m.commentKey = key
-	m.commentInput = m.comments[key]
-	m.commentMode = true
+	m.w().commentKey = key
+	m.w().commentInput = m.comments[key]
+	m.w().commentMode = true
 
 	// Delete it (submit empty)
-	m.commentInput = ""
+	m.w().commentInput = ""
 	m.submitComment()
 
-	assert.True(t, m.rowsCacheValid,
+	assert.True(t, m.w().rowsCacheValid,
 		"row cache should be rebuilt after deleting a comment")
 	assert.NotContains(t, m.comments, key, "comment should be deleted")
 }
@@ -425,7 +425,7 @@ func TestComment_RowKindExists(t *testing.T) {
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key] = "Test comment"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -449,7 +449,7 @@ func TestComment_RowBelongsToLineAbove(t *testing.T) {
 	// Add a comment on line 2
 	key := commentKey{fileIndex: 0, newLineNum: 2}
 	m.comments[key] = "Comment on line 2"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
@@ -479,18 +479,18 @@ func TestComment_NavigationIncludesCommentRows(t *testing.T) {
 	// Add a multi-line comment (will take multiple rows in the box)
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key] = "Line 1\nLine 2\nLine 3"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
-	initialTotal := m.totalLines
+	initialTotal := m.w().totalLines
 
 	// The comment should add rows (border + 3 content lines + border = 5 rows)
 	// Removing the comment should reduce totalLines
 	delete(m.comments, key)
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
-	assert.Less(t, m.totalLines, initialTotal,
+	assert.Less(t, m.w().totalLines, initialTotal,
 		"removing multi-line comment should reduce totalLines")
 }
 
@@ -504,7 +504,7 @@ func TestComment_MaxScrollAccountsForComments(t *testing.T) {
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key] = "Test comment"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	maxScrollAfter := m.maxScroll()
@@ -521,14 +521,14 @@ func TestComment_StatusInfoCorrectWithComments(t *testing.T) {
 	// Add comment on line 1
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key] = "A comment"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Position cursor on line 5 content
 	rows := m.buildRows()
 	for i, r := range rows {
 		if r.kind == RowKindContent && r.pair.New.Num == 5 {
-			m.scroll = i
+			m.w().scroll = i
 			break
 		}
 	}
@@ -537,7 +537,7 @@ func TestComment_StatusInfoCorrectWithComments(t *testing.T) {
 
 	// CurrentLine should reflect the actual row position (including comment rows)
 	// TotalLines should include comment rows
-	assert.Equal(t, m.totalLines, info.TotalLines,
+	assert.Equal(t, m.w().totalLines, info.TotalLines,
 		"StatusInfo.TotalLines should include comment rows")
 }
 
@@ -553,7 +553,7 @@ func TestComment_OnLastLine(t *testing.T) {
 	// Add comment on last content line (line 5)
 	key := commentKey{fileIndex: 0, newLineNum: 5}
 	m.comments[key] = "Comment on last line"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Should not panic or have issues
@@ -585,7 +585,7 @@ func TestComment_MultipleCommentsInFile(t *testing.T) {
 	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = "Comment 1"
 	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "Comment 3"
 	m.comments[commentKey{fileIndex: 0, newLineNum: 5}] = "Comment 5"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	rows := m.buildRows()
@@ -624,7 +624,7 @@ func TestComment_ScrollPastComment(t *testing.T) {
 	// Add comment near the top
 	key := commentKey{fileIndex: 0, newLineNum: 2}
 	m.comments[key] = "A comment near the top"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Scroll to bottom
@@ -632,7 +632,7 @@ func TestComment_ScrollPastComment(t *testing.T) {
 	model := newM.(Model)
 
 	// Should be able to scroll to the end without issues
-	assert.Equal(t, model.maxScroll(), model.scroll,
+	assert.Equal(t, model.maxScroll(), model.w().scroll,
 		"should be able to scroll to max position")
 
 	// Cursor should be on last content line
@@ -660,7 +660,7 @@ func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
 	m.comments[key] = "Test comment"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Find the comment row position
@@ -675,7 +675,7 @@ func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
 	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
 
 	// Position cursor on comment row
-	m.scroll = commentRowIdx
+	m.w().scroll = commentRowIdx
 	cursorPos := m.cursorLine()
 	require.Equal(t, commentRowIdx, cursorPos, "cursor should be on comment row")
 
@@ -702,7 +702,7 @@ func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	// Add a comment on a content line
 	key := commentKey{fileIndex: 0, newLineNum: 5}
 	m.comments[key] = "Comment on line 5"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Find the comment row position
@@ -717,7 +717,7 @@ func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
 
 	// Position cursor on comment row
-	m.scroll = commentRowIdx
+	m.w().scroll = commentRowIdx
 	cursorPos := m.cursorLine()
 	require.Equal(t, commentRowIdx, cursorPos, "cursor should be on comment row")
 
@@ -726,7 +726,7 @@ func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	model := newM.(Model)
 
 	// Fold level should remain unchanged
-	assert.Equal(t, sidebyside.FoldExpanded, model.files[0].FoldLevel,
+	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(0),
 		"fold level should not change when TAB pressed on comment row")
 
 	// Cursor should still be on comment row
@@ -765,7 +765,7 @@ func TestComment_MultipleFiles_Navigation(t *testing.T) {
 	// Add comments in both files
 	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Comment in first file"
 	m.comments[commentKey{fileIndex: 1, newLineNum: 3}] = "Comment in second file"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Navigate to second file using gj
@@ -813,7 +813,7 @@ func TestComment_NearHunkBoundary(t *testing.T) {
 	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Comment before boundary"
 	// Add comment on first line after hunk boundary
 	m.comments[commentKey{fileIndex: 0, newLineNum: 100}] = "Comment after boundary"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	rows := m.buildRows()
@@ -862,7 +862,7 @@ func TestComment_VeryLongComment(t *testing.T) {
 		"comments that exceed the available width."
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key] = longComment
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	rows := m.buildRows()
@@ -892,7 +892,7 @@ func TestComment_UnicodeCharacters(t *testing.T) {
 	unicodeComment := "This has émojis 🎉 and special chars: ñ, ü, 中文, 日本語"
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	m.comments[key] = unicodeComment
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	rows := m.buildRows()
@@ -920,7 +920,7 @@ func TestComment_BreadcrumbOnCommentRow(t *testing.T) {
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 5}
 	m.comments[key] = "A comment"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Find the comment row position
@@ -935,7 +935,7 @@ func TestComment_BreadcrumbOnCommentRow(t *testing.T) {
 	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
 
 	// Position cursor on comment row
-	m.scroll = commentRowIdx
+	m.w().scroll = commentRowIdx
 
 	// Get breadcrumbs (this tests that commentLineNum is used for lookups)
 	row := rows[commentRowIdx]
@@ -948,17 +948,17 @@ func TestComment_StatusInfo_CorrectPositionWithComments(t *testing.T) {
 	m := makeCommentableTestModel(10)
 	m.calculateTotalLines()
 
-	totalBefore := m.totalLines
+	totalBefore := m.w().totalLines
 
 	// Add comments on lines 1, 2, 3
 	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = "Comment 1"
 	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Comment 2"
 	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "Comment 3"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Total lines should have increased
-	assert.Greater(t, m.totalLines, totalBefore,
+	assert.Greater(t, m.w().totalLines, totalBefore,
 		"totalLines should increase with comments")
 
 	// Position cursor on line 8 content
@@ -972,7 +972,7 @@ func TestComment_StatusInfo_CorrectPositionWithComments(t *testing.T) {
 	}
 	require.NotEqual(t, -1, line8Idx, "should find line 8")
 
-	m.scroll = line8Idx
+	m.w().scroll = line8Idx
 
 	info := m.StatusInfo()
 
@@ -980,7 +980,7 @@ func TestComment_StatusInfo_CorrectPositionWithComments(t *testing.T) {
 	assert.Equal(t, line8Idx+1, info.CurrentLine,
 		"StatusInfo.CurrentLine should account for comment rows")
 	// TotalLines should include comment rows
-	assert.Equal(t, m.totalLines, info.TotalLines,
+	assert.Equal(t, m.w().totalLines, info.TotalLines,
 		"StatusInfo.TotalLines should include comment rows")
 }
 
@@ -991,11 +991,11 @@ func TestComment_GoToTop_WithComments(t *testing.T) {
 
 	// Add a comment near the top
 	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = "Comment at top"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Start somewhere in the middle
-	m.scroll = 10
+	m.w().scroll = 10
 
 	// Press gg to go to top
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
@@ -1004,7 +1004,7 @@ func TestComment_GoToTop_WithComments(t *testing.T) {
 	model = newM.(Model)
 
 	// Should be at minimum scroll (cursor on first row)
-	assert.Equal(t, model.minScroll(), model.scroll,
+	assert.Equal(t, model.minScroll(), model.w().scroll,
 		"gg should go to top even with comments present")
 }
 
@@ -1017,18 +1017,18 @@ func TestComment_GoToBottom_WithComments(t *testing.T) {
 	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Comment 2"
 	m.comments[commentKey{fileIndex: 0, newLineNum: 5}] = "Comment 5"
 	m.comments[commentKey{fileIndex: 0, newLineNum: 10}] = "Comment at end"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Start at top
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 
 	// Press G to go to bottom
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	model := newM.(Model)
 
 	// Should be at maximum scroll (cursor on last row)
-	assert.Equal(t, model.maxScroll(), model.scroll,
+	assert.Equal(t, model.maxScroll(), model.w().scroll,
 		"G should go to bottom even with comments present")
 
 	// Cursor should be on valid row
@@ -1048,26 +1048,26 @@ func TestComment_PageDown_ThroughComments(t *testing.T) {
 	for i := 1; i <= 30; i += 5 {
 		m.comments[commentKey{fileIndex: 0, newLineNum: i}] = "Comment on line"
 	}
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
-	initialScroll := m.scroll
+	initialScroll := m.w().scroll
 
 	// Page down
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	model := newM.(Model)
 
 	// Should have scrolled forward
-	assert.Greater(t, model.scroll, initialScroll,
+	assert.Greater(t, model.w().scroll, initialScroll,
 		"page down should increase scroll")
 
 	// Page down again
-	secondScroll := model.scroll
+	secondScroll := model.w().scroll
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	model = newM.(Model)
 
 	// Should continue to scroll
-	assert.GreaterOrEqual(t, model.scroll, secondScroll,
+	assert.GreaterOrEqual(t, model.w().scroll, secondScroll,
 		"second page down should scroll further or stay at max")
 }
 
@@ -1081,28 +1081,28 @@ func TestComment_PageUp_ThroughComments(t *testing.T) {
 	for i := 1; i <= 30; i += 5 {
 		m.comments[commentKey{fileIndex: 0, newLineNum: i}] = "Comment on line"
 	}
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Start at bottom
-	m.scroll = m.maxScroll()
-	initialScroll := m.scroll
+	m.w().scroll = m.maxScroll()
+	initialScroll := m.w().scroll
 
 	// Page up
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
 	model := newM.(Model)
 
 	// Should have scrolled backward
-	assert.Less(t, model.scroll, initialScroll,
+	assert.Less(t, model.w().scroll, initialScroll,
 		"page up should decrease scroll")
 
 	// Page up again
-	secondScroll := model.scroll
+	secondScroll := model.w().scroll
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgUp})
 	model = newM.(Model)
 
 	// Should continue to scroll
-	assert.LessOrEqual(t, model.scroll, secondScroll,
+	assert.LessOrEqual(t, model.w().scroll, secondScroll,
 		"second page up should scroll further or stay at min")
 }
 
@@ -1110,23 +1110,23 @@ func TestComment_PageUp_ThroughComments(t *testing.T) {
 func TestComment_JK_NavigationIncludesComments(t *testing.T) {
 	m := makeCommentableTestModel(5)
 	m.calculateTotalLines()
-	totalBefore := m.totalLines
+	totalBefore := m.w().totalLines
 
 	// Add a multi-line comment
 	m.comments[commentKey{fileIndex: 0, newLineNum: 2}] = "Line 1\nLine 2\nLine 3"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	// Comment box adds rows: border + 3 lines + border = 5 rows
 	expectedIncrease := 5
-	assert.Equal(t, totalBefore+expectedIncrease, m.totalLines,
+	assert.Equal(t, totalBefore+expectedIncrease, m.w().totalLines,
 		"totalLines should increase by comment box rows (got %d, expected %d)",
-		m.totalLines, totalBefore+expectedIncrease)
+		m.w().totalLines, totalBefore+expectedIncrease)
 
 	// Navigate with j through all rows
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 	visitedRows := 0
-	for m.scroll < m.maxScroll() {
+	for m.w().scroll < m.maxScroll() {
 		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 		m = newM.(Model)
 		visitedRows++
@@ -1145,7 +1145,7 @@ func TestComment_ExpandedVsNormalView(t *testing.T) {
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 3}
 	m.comments[key] = "Test comment"
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	expandedRows := m.buildRows()
@@ -1160,7 +1160,7 @@ func TestComment_ExpandedVsNormalView(t *testing.T) {
 
 	// Switch to folded view
 	m.files[0].FoldLevel = sidebyside.FoldFolded
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
 	foldedRows := m.buildRows()
@@ -1185,143 +1185,143 @@ func TestComment_ExpandedVsNormalView(t *testing.T) {
 // Test: Up arrow moves cursor to previous line
 func TestComment_MoveUp_BasicNavigation(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "line1\nline2\nline3"
-	m.commentCursor = 12 // at 'l' of "line3"
+	m.w().commentMode = true
+	m.w().commentInput = "line1\nline2\nline3"
+	m.w().commentCursor = 12 // at 'l' of "line3"
 
 	m.commentMoveUp()
 
 	// Should be at same column on line2
-	assert.Equal(t, 6, m.commentCursor, "cursor should move to line2")
+	assert.Equal(t, 6, m.w().commentCursor, "cursor should move to line2")
 }
 
 // Test: Down arrow moves cursor to next line
 func TestComment_MoveDown_BasicNavigation(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "line1\nline2\nline3"
-	m.commentCursor = 0 // at 'l' of "line1"
+	m.w().commentMode = true
+	m.w().commentInput = "line1\nline2\nline3"
+	m.w().commentCursor = 0 // at 'l' of "line1"
 
 	m.commentMoveDown()
 
 	// Should be at same column on line2
-	assert.Equal(t, 6, m.commentCursor, "cursor should move to line2")
+	assert.Equal(t, 6, m.w().commentCursor, "cursor should move to line2")
 }
 
 // Test: Up arrow on first line does nothing
 func TestComment_MoveUp_FirstLine_NoOp(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "line1\nline2"
-	m.commentCursor = 2 // in middle of "line1"
+	m.w().commentMode = true
+	m.w().commentInput = "line1\nline2"
+	m.w().commentCursor = 2 // in middle of "line1"
 
 	m.commentMoveUp()
 
-	assert.Equal(t, 2, m.commentCursor, "cursor should stay on first line")
+	assert.Equal(t, 2, m.w().commentCursor, "cursor should stay on first line")
 }
 
 // Test: Down arrow on last line does nothing
 func TestComment_MoveDown_LastLine_NoOp(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "line1\nline2"
-	m.commentCursor = 8 // in middle of "line2"
+	m.w().commentMode = true
+	m.w().commentInput = "line1\nline2"
+	m.w().commentCursor = 8 // in middle of "line2"
 
 	m.commentMoveDown()
 
-	assert.Equal(t, 8, m.commentCursor, "cursor should stay on last line")
+	assert.Equal(t, 8, m.w().commentCursor, "cursor should stay on last line")
 }
 
 // Test: Up arrow preserves column position
 func TestComment_MoveUp_PreservesColumn(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "abcdef\nghijkl"
-	m.commentCursor = 10 // at 'j' in "ghijkl" (col 3)
+	m.w().commentMode = true
+	m.w().commentInput = "abcdef\nghijkl"
+	m.w().commentCursor = 10 // at 'j' in "ghijkl" (col 3)
 
 	m.commentMoveUp()
 
 	// Should be at 'd' in "abcdef" (col 3)
-	assert.Equal(t, 3, m.commentCursor)
+	assert.Equal(t, 3, m.w().commentCursor)
 }
 
 // Test: Down arrow preserves column position
 func TestComment_MoveDown_PreservesColumn(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "abcdef\nghijkl"
-	m.commentCursor = 3 // at 'd' in "abcdef" (col 3)
+	m.w().commentMode = true
+	m.w().commentInput = "abcdef\nghijkl"
+	m.w().commentCursor = 3 // at 'd' in "abcdef" (col 3)
 
 	m.commentMoveDown()
 
 	// Should be at 'j' in "ghijkl" (col 3)
-	assert.Equal(t, 10, m.commentCursor)
+	assert.Equal(t, 10, m.w().commentCursor)
 }
 
 // Test: Up arrow clamps to shorter line
 func TestComment_MoveUp_ClampsToShorterLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "short\nvery long line"
-	m.commentCursor = 15 // near end of "very long line"
+	m.w().commentMode = true
+	m.w().commentInput = "short\nvery long line"
+	m.w().commentCursor = 15 // near end of "very long line"
 
 	m.commentMoveUp()
 
 	// Should clamp to end of "short" (position 5)
-	assert.Equal(t, 5, m.commentCursor)
+	assert.Equal(t, 5, m.w().commentCursor)
 }
 
 // Test: Down arrow clamps to shorter line
 func TestComment_MoveDown_ClampsToShorterLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "very long line\nshort"
-	m.commentCursor = 10 // at 'l' in "very long line" (col 10)
+	m.w().commentMode = true
+	m.w().commentInput = "very long line\nshort"
+	m.w().commentCursor = 10 // at 'l' in "very long line" (col 10)
 
 	m.commentMoveDown()
 
 	// Should clamp to end of "short" (position 15+5=20)
-	assert.Equal(t, 20, m.commentCursor)
+	assert.Equal(t, 20, m.w().commentCursor)
 }
 
 // Test: Up/Down with key message
 func TestComment_UpDownKeys_Integration(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "line1\nline2\nline3"
-	m.commentCursor = 12 // at 'l' of "line3"
+	m.w().commentMode = true
+	m.w().commentInput = "line1\nline2\nline3"
+	m.w().commentCursor = 12 // at 'l' of "line3"
 
 	// Press Up
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	m2 := newModel.(Model)
 
-	assert.Equal(t, 6, m2.commentCursor, "Up key should move to previous line")
+	assert.Equal(t, 6, m2.w().commentCursor, "Up key should move to previous line")
 
 	// Press Down
 	newModel, _ = m2.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m3 := newModel.(Model)
 
-	assert.Equal(t, 12, m3.commentCursor, "Down key should move back to next line")
+	assert.Equal(t, 12, m3.w().commentCursor, "Down key should move back to next line")
 }
 
 // Test: Ctrl+P and Ctrl+N also work for up/down
 func TestComment_CtrlPN_Navigation(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "line1\nline2"
-	m.commentCursor = 6 // at 'l' of "line2"
+	m.w().commentMode = true
+	m.w().commentInput = "line1\nline2"
+	m.w().commentCursor = 6 // at 'l' of "line2"
 
 	// Press Ctrl+P (up)
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
 	m2 := newModel.(Model)
 
-	assert.Equal(t, 0, m2.commentCursor, "Ctrl+P should move to previous line")
+	assert.Equal(t, 0, m2.w().commentCursor, "Ctrl+P should move to previous line")
 
 	// Press Ctrl+N (down)
 	newModel, _ = m2.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
 	m3 := newModel.(Model)
 
-	assert.Equal(t, 6, m3.commentCursor, "Ctrl+N should move to next line")
+	assert.Equal(t, 6, m3.w().commentCursor, "Ctrl+N should move to next line")
 }
 
 // =============================================================================
@@ -1331,252 +1331,252 @@ func TestComment_CtrlPN_Navigation(t *testing.T) {
 // Test: insertCommentRune inserts at cursor
 func TestComment_InsertRune(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 2
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 2
 
 	m.insertCommentRune('X')
 
-	assert.Equal(t, "heXllo", m.commentInput)
-	assert.Equal(t, 3, m.commentCursor)
+	assert.Equal(t, "heXllo", m.w().commentInput)
+	assert.Equal(t, 3, m.w().commentCursor)
 }
 
 // Test: insertCommentRune handles unicode
 func TestComment_InsertRune_Unicode(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 5
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 5
 
 	m.insertCommentRune('世')
 
-	assert.Equal(t, "hello世", m.commentInput)
+	assert.Equal(t, "hello世", m.w().commentInput)
 }
 
 // Test: commentDeleteBackward at start does nothing
 func TestComment_DeleteBackward_AtStart(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 0
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 0
 
 	m.commentDeleteBackward()
 
-	assert.Equal(t, "hello", m.commentInput)
-	assert.Equal(t, 0, m.commentCursor)
+	assert.Equal(t, "hello", m.w().commentInput)
+	assert.Equal(t, 0, m.w().commentCursor)
 }
 
 // Test: commentDeleteBackward deletes previous char
 func TestComment_DeleteBackward_Middle(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 3
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 3
 
 	m.commentDeleteBackward()
 
-	assert.Equal(t, "helo", m.commentInput)
-	assert.Equal(t, 2, m.commentCursor)
+	assert.Equal(t, "helo", m.w().commentInput)
+	assert.Equal(t, 2, m.w().commentCursor)
 }
 
 // Test: commentDeleteForward at end does nothing
 func TestComment_DeleteForward_AtEnd(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 5
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 5
 
 	m.commentDeleteForward()
 
-	assert.Equal(t, "hello", m.commentInput)
-	assert.Equal(t, 5, m.commentCursor)
+	assert.Equal(t, "hello", m.w().commentInput)
+	assert.Equal(t, 5, m.w().commentCursor)
 }
 
 // Test: commentDeleteForward deletes next char
 func TestComment_DeleteForward_Middle(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 2
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 2
 
 	m.commentDeleteForward()
 
-	assert.Equal(t, "helo", m.commentInput)
-	assert.Equal(t, 2, m.commentCursor)
+	assert.Equal(t, "helo", m.w().commentInput)
+	assert.Equal(t, 2, m.w().commentCursor)
 }
 
 // Test: commentMoveForward at end does nothing
 func TestComment_MoveForward_AtEnd(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 5
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 5
 
 	m.commentMoveForward()
 
-	assert.Equal(t, 5, m.commentCursor)
+	assert.Equal(t, 5, m.w().commentCursor)
 }
 
 // Test: commentMoveForward moves one char
 func TestComment_MoveForward_Middle(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 2
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 2
 
 	m.commentMoveForward()
 
-	assert.Equal(t, 3, m.commentCursor)
+	assert.Equal(t, 3, m.w().commentCursor)
 }
 
 // Test: commentMoveBack at start does nothing
 func TestComment_MoveBack_AtStart(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 0
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 0
 
 	m.commentMoveBack()
 
-	assert.Equal(t, 0, m.commentCursor)
+	assert.Equal(t, 0, m.w().commentCursor)
 }
 
 // Test: commentMoveBack moves one char
 func TestComment_MoveBack_Middle(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello"
-	m.commentCursor = 3
+	m.w().commentMode = true
+	m.w().commentInput = "hello"
+	m.w().commentCursor = 3
 
 	m.commentMoveBack()
 
-	assert.Equal(t, 2, m.commentCursor)
+	assert.Equal(t, 2, m.w().commentCursor)
 }
 
 // Test: commentMoveLineStart on first line
 func TestComment_MoveLineStart_FirstLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello\nworld"
-	m.commentCursor = 3
+	m.w().commentMode = true
+	m.w().commentInput = "hello\nworld"
+	m.w().commentCursor = 3
 
 	m.commentMoveLineStart()
 
-	assert.Equal(t, 0, m.commentCursor)
+	assert.Equal(t, 0, m.w().commentCursor)
 }
 
 // Test: commentMoveLineStart on second line
 func TestComment_MoveLineStart_SecondLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello\nworld"
-	m.commentCursor = 9 // in "world"
+	m.w().commentMode = true
+	m.w().commentInput = "hello\nworld"
+	m.w().commentCursor = 9 // in "world"
 
 	m.commentMoveLineStart()
 
-	assert.Equal(t, 6, m.commentCursor) // start of "world"
+	assert.Equal(t, 6, m.w().commentCursor) // start of "world"
 }
 
 // Test: commentMoveLineEnd on first line
 func TestComment_MoveLineEnd_FirstLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello\nworld"
-	m.commentCursor = 2
+	m.w().commentMode = true
+	m.w().commentInput = "hello\nworld"
+	m.w().commentCursor = 2
 
 	m.commentMoveLineEnd()
 
-	assert.Equal(t, 5, m.commentCursor) // before newline
+	assert.Equal(t, 5, m.w().commentCursor) // before newline
 }
 
 // Test: commentMoveLineEnd on last line
 func TestComment_MoveLineEnd_LastLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello\nworld"
-	m.commentCursor = 7
+	m.w().commentMode = true
+	m.w().commentInput = "hello\nworld"
+	m.w().commentCursor = 7
 
 	m.commentMoveLineEnd()
 
-	assert.Equal(t, 11, m.commentCursor) // end of input
+	assert.Equal(t, 11, m.w().commentCursor) // end of input
 }
 
 // Test: commentKillToEnd kills to newline
 func TestComment_KillToEnd_MiddleLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello\nworld"
-	m.commentCursor = 2
+	m.w().commentMode = true
+	m.w().commentInput = "hello\nworld"
+	m.w().commentCursor = 2
 
 	m.commentKillToEnd()
 
-	assert.Equal(t, "he\nworld", m.commentInput)
+	assert.Equal(t, "he\nworld", m.w().commentInput)
 }
 
 // Test: commentKillToEnd kills to end of input
 func TestComment_KillToEnd_LastLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello\nworld"
-	m.commentCursor = 8
+	m.w().commentMode = true
+	m.w().commentInput = "hello\nworld"
+	m.w().commentCursor = 8
 
 	m.commentKillToEnd()
 
-	assert.Equal(t, "hello\nwo", m.commentInput)
+	assert.Equal(t, "hello\nwo", m.w().commentInput)
 }
 
 // Test: commentKillToStart kills to beginning of line (first line)
 func TestComment_KillToStart_FirstLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello\nworld"
-	m.commentCursor = 3
+	m.w().commentMode = true
+	m.w().commentInput = "hello\nworld"
+	m.w().commentCursor = 3
 
 	m.commentKillToStart()
 
-	assert.Equal(t, "lo\nworld", m.commentInput)
-	assert.Equal(t, 0, m.commentCursor)
+	assert.Equal(t, "lo\nworld", m.w().commentInput)
+	assert.Equal(t, 0, m.w().commentCursor)
 }
 
 // Test: commentKillToStart kills to newline (not first line)
 func TestComment_KillToStart_SecondLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello\nworld"
-	m.commentCursor = 9 // at 'l' in "world"
+	m.w().commentMode = true
+	m.w().commentInput = "hello\nworld"
+	m.w().commentCursor = 9 // at 'l' in "world"
 
 	m.commentKillToStart()
 
-	assert.Equal(t, "hello\nld", m.commentInput)
-	assert.Equal(t, 6, m.commentCursor)
+	assert.Equal(t, "hello\nld", m.w().commentInput)
+	assert.Equal(t, 6, m.w().commentCursor)
 }
 
 // Test: commentKillToStart at beginning of line is a no-op
 func TestComment_KillToStart_AtLineStart(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello\nworld"
-	m.commentCursor = 6 // at start of "world"
+	m.w().commentMode = true
+	m.w().commentInput = "hello\nworld"
+	m.w().commentCursor = 6 // at start of "world"
 
 	m.commentKillToStart()
 
-	assert.Equal(t, "hello\nworld", m.commentInput)
-	assert.Equal(t, 6, m.commentCursor)
+	assert.Equal(t, "hello\nworld", m.w().commentInput)
+	assert.Equal(t, 6, m.w().commentCursor)
 }
 
 // Test: Ctrl+U key triggers kill to start
 func TestComment_CtrlU_KillsToStart(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello world"
-	m.commentCursor = 6 // at 'w'
+	m.w().commentMode = true
+	m.w().commentInput = "hello world"
+	m.w().commentCursor = 6 // at 'w'
 
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
 	m2 := newModel.(Model)
 
-	assert.Equal(t, "world", m2.commentInput)
-	assert.Equal(t, 0, m2.commentCursor)
-	assert.True(t, m2.commentMode)
+	assert.Equal(t, "world", m2.w().commentInput)
+	assert.Equal(t, 0, m2.w().commentCursor)
+	assert.True(t, m2.w().commentMode)
 }
 
 // =============================================================================
@@ -1586,102 +1586,102 @@ func TestComment_CtrlU_KillsToStart(t *testing.T) {
 // Test: commentPaste inserts single line text at cursor
 func TestComment_Paste_SingleLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "hello world"
-	m.commentCursor = 6 // at 'w'
+	m.w().commentMode = true
+	m.w().commentInput = "hello world"
+	m.w().commentCursor = 6 // at 'w'
 
 	// Simulate paste by directly calling the insert logic
 	pasteText := "beautiful "
-	before := m.commentInput[:m.commentCursor]
-	after := m.commentInput[m.commentCursor:]
-	m.commentInput = before + pasteText + after
-	m.commentCursor += len(pasteText)
+	before := m.w().commentInput[:m.w().commentCursor]
+	after := m.w().commentInput[m.w().commentCursor:]
+	m.w().commentInput = before + pasteText + after
+	m.w().commentCursor += len(pasteText)
 
-	assert.Equal(t, "hello beautiful world", m.commentInput)
-	assert.Equal(t, 16, m.commentCursor)
+	assert.Equal(t, "hello beautiful world", m.w().commentInput)
+	assert.Equal(t, 16, m.w().commentCursor)
 }
 
 // Test: commentPaste inserts multi-line text at cursor
 func TestComment_Paste_MultiLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "start end"
-	m.commentCursor = 6 // at 'e' in "end"
+	m.w().commentMode = true
+	m.w().commentInput = "start end"
+	m.w().commentCursor = 6 // at 'e' in "end"
 
 	// Simulate paste of multi-line content
 	pasteText := "line1\nline2\nline3 "
-	before := m.commentInput[:m.commentCursor]
-	after := m.commentInput[m.commentCursor:]
-	m.commentInput = before + pasteText + after
-	m.commentCursor += len(pasteText)
+	before := m.w().commentInput[:m.w().commentCursor]
+	after := m.w().commentInput[m.w().commentCursor:]
+	m.w().commentInput = before + pasteText + after
+	m.w().commentCursor += len(pasteText)
 
-	assert.Equal(t, "start line1\nline2\nline3 end", m.commentInput)
-	assert.Equal(t, 24, m.commentCursor) // 6 + len("line1\nline2\nline3 ") = 6 + 18 = 24
+	assert.Equal(t, "start line1\nline2\nline3 end", m.w().commentInput)
+	assert.Equal(t, 24, m.w().commentCursor) // 6 + len("line1\nline2\nline3 ") = 6 + 18 = 24
 }
 
 // Test: paste into empty comment
 func TestComment_Paste_IntoEmpty(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = ""
-	m.commentCursor = 0
+	m.w().commentMode = true
+	m.w().commentInput = ""
+	m.w().commentCursor = 0
 
 	pasteText := "first line\nsecond line"
-	before := m.commentInput[:m.commentCursor]
-	after := m.commentInput[m.commentCursor:]
-	m.commentInput = before + pasteText + after
-	m.commentCursor += len(pasteText)
+	before := m.w().commentInput[:m.w().commentCursor]
+	after := m.w().commentInput[m.w().commentCursor:]
+	m.w().commentInput = before + pasteText + after
+	m.w().commentCursor += len(pasteText)
 
-	assert.Equal(t, "first line\nsecond line", m.commentInput)
-	assert.Equal(t, 22, m.commentCursor)
+	assert.Equal(t, "first line\nsecond line", m.w().commentInput)
+	assert.Equal(t, 22, m.w().commentCursor)
 }
 
 // Test: paste at end of existing multi-line comment
 func TestComment_Paste_AtEndOfMultiLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "existing\ncomment"
-	m.commentCursor = 16 // at end
+	m.w().commentMode = true
+	m.w().commentInput = "existing\ncomment"
+	m.w().commentCursor = 16 // at end
 
 	pasteText := "\nnew line"
-	before := m.commentInput[:m.commentCursor]
-	after := m.commentInput[m.commentCursor:]
-	m.commentInput = before + pasteText + after
-	m.commentCursor += len(pasteText)
+	before := m.w().commentInput[:m.w().commentCursor]
+	after := m.w().commentInput[m.w().commentCursor:]
+	m.w().commentInput = before + pasteText + after
+	m.w().commentCursor += len(pasteText)
 
-	assert.Equal(t, "existing\ncomment\nnew line", m.commentInput)
-	assert.Equal(t, 25, m.commentCursor)
+	assert.Equal(t, "existing\ncomment\nnew line", m.w().commentInput)
+	assert.Equal(t, 25, m.w().commentCursor)
 }
 
 // Test: cursor position is correct after multi-line paste
 func TestComment_Paste_CursorPositionAfterMultiLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "AB"
-	m.commentCursor = 1 // between A and B
+	m.w().commentMode = true
+	m.w().commentInput = "AB"
+	m.w().commentCursor = 1 // between A and B
 
 	pasteText := "X\nY\nZ"
-	before := m.commentInput[:m.commentCursor]
-	after := m.commentInput[m.commentCursor:]
-	m.commentInput = before + pasteText + after
-	m.commentCursor += len(pasteText)
+	before := m.w().commentInput[:m.w().commentCursor]
+	after := m.w().commentInput[m.w().commentCursor:]
+	m.w().commentInput = before + pasteText + after
+	m.w().commentCursor += len(pasteText)
 
 	// Result should be "AX\nY\nZB" with cursor after Z (before B)
-	assert.Equal(t, "AX\nY\nZB", m.commentInput)
-	assert.Equal(t, 6, m.commentCursor) // 1 + 5 = 6
+	assert.Equal(t, "AX\nY\nZB", m.w().commentInput)
+	assert.Equal(t, 6, m.w().commentCursor) // 1 + 5 = 6
 
 	// Verify cursor is at the right position by checking what's before/after
-	assert.Equal(t, "AX\nY\nZ", m.commentInput[:m.commentCursor])
-	assert.Equal(t, "B", m.commentInput[m.commentCursor:])
+	assert.Equal(t, "AX\nY\nZ", m.w().commentInput[:m.w().commentCursor])
+	assert.Equal(t, "B", m.w().commentInput[m.w().commentCursor:])
 }
 
 // Test: renderCommentPrompt with multi-line input shows all lines
 func TestComment_RenderPrompt_MultiLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
 	m.width = 80
-	m.commentMode = true
-	m.commentInput = "line1\nline2\nline3"
-	m.commentCursor = 12 // at 'l' of "line3"
+	m.w().commentMode = true
+	m.w().commentInput = "line1\nline2\nline3"
+	m.w().commentCursor = 12 // at 'l' of "line3"
 
 	// renderCommentPrompt is called via renderStatusBar
 	output := m.renderStatusBar()
@@ -1707,9 +1707,9 @@ func TestComment_RenderPrompt_MultiLine(t *testing.T) {
 func TestComment_RenderPrompt_TrailingNewline(t *testing.T) {
 	m := makeCommentableTestModel(5)
 	m.width = 80
-	m.commentMode = true
-	m.commentInput = "pasted\n" // trailing newline creates empty line
-	m.commentCursor = 7         // after the newline (on empty line)
+	m.w().commentMode = true
+	m.w().commentInput = "pasted\n" // trailing newline creates empty line
+	m.w().commentCursor = 7         // after the newline (on empty line)
 
 	output := m.renderStatusBar()
 	lines := strings.Split(output, "\n")
@@ -1728,23 +1728,23 @@ func TestComment_RenderPrompt_TrailingNewline(t *testing.T) {
 // Test: paste with trailing newline updates cursor correctly
 func TestComment_Paste_TrailingNewline(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = ""
-	m.commentCursor = 0
+	m.w().commentMode = true
+	m.w().commentInput = ""
+	m.w().commentCursor = 0
 
 	// Simulate pasting text with trailing newline (common when copying lines)
 	pasteText := "copied line\n"
-	m.commentInput = pasteText
-	m.commentCursor = len(pasteText)
+	m.w().commentInput = pasteText
+	m.w().commentCursor = len(pasteText)
 
 	// Cursor should be at position 12 (after the newline)
-	assert.Equal(t, 12, m.commentCursor)
+	assert.Equal(t, 12, m.w().commentCursor)
 
 	// The input should be "copied line\n"
-	assert.Equal(t, "copied line\n", m.commentInput)
+	assert.Equal(t, "copied line\n", m.w().commentInput)
 
 	// When we split this, we get ["copied line", ""]
-	lines := strings.Split(m.commentInput, "\n")
+	lines := strings.Split(m.w().commentInput, "\n")
 	assert.Equal(t, 2, len(lines))
 	assert.Equal(t, "copied line", lines[0])
 	assert.Equal(t, "", lines[1])
@@ -1755,9 +1755,9 @@ func TestComment_FullView_MultiLineInput(t *testing.T) {
 	m := makeCommentableTestModel(5)
 	m.width = 80
 	m.height = 30
-	m.commentMode = true
-	m.commentInput = "first line\nsecond line\nthird line"
-	m.commentCursor = 33 // at end
+	m.w().commentMode = true
+	m.w().commentInput = "first line\nsecond line\nthird line"
+	m.w().commentCursor = 33 // at end
 
 	m.calculateTotalLines()
 	output := m.View()
@@ -1779,20 +1779,20 @@ func TestComment_PromptHeight_MultiLine(t *testing.T) {
 	m := makeCommentableTestModel(5)
 
 	// Not in comment mode - should return 1
-	m.commentMode = false
+	m.w().commentMode = false
 	assert.Equal(t, 1, m.commentPromptHeight())
 
 	// In comment mode with single line
-	m.commentMode = true
-	m.commentInput = "single line"
+	m.w().commentMode = true
+	m.w().commentInput = "single line"
 	assert.Equal(t, 2, m.commentPromptHeight()) // 1 content line + 1 help line
 
 	// In comment mode with multiple lines
-	m.commentInput = "line1\nline2\nline3"
+	m.w().commentInput = "line1\nline2\nline3"
 	assert.Equal(t, 4, m.commentPromptHeight()) // 3 content lines + 1 help line
 
 	// With trailing newline (adds empty line)
-	m.commentInput = "line1\nline2\n"
+	m.w().commentInput = "line1\nline2\n"
 	assert.Equal(t, 4, m.commentPromptHeight()) // 3 lines (including empty) + 1 help line
 }
 
@@ -1817,23 +1817,23 @@ func TestComment_MaxVisibleLines(t *testing.T) {
 func TestComment_Scrolling_ManyLines(t *testing.T) {
 	m := makeCommentableTestModel(5)
 	m.height = 30 // maxVisible = 10
-	m.commentMode = true
+	m.w().commentMode = true
 
 	// Create 15 lines of content
 	lines := make([]string, 15)
 	for i := range lines {
 		lines[i] = "line" + string(rune('A'+i))
 	}
-	m.commentInput = strings.Join(lines, "\n")
+	m.w().commentInput = strings.Join(lines, "\n")
 
 	// Initially scroll is 0, cursor at end
-	m.commentCursor = len(m.commentInput)
-	m.commentScroll = 0
+	m.w().commentCursor = len(m.w().commentInput)
+	m.w().commentScroll = 0
 	m.commentEnsureCursorVisible()
 
 	// Cursor is on line 14 (0-indexed), maxVisible is 10
 	// Scroll should be at least 14 - 10 + 1 = 5
-	assert.GreaterOrEqual(t, m.commentScroll, 5)
+	assert.GreaterOrEqual(t, m.w().commentScroll, 5)
 
 	// commentPromptHeight should include scroll indicators
 	// We have 15 lines, showing 10, scroll > 0 so indicator above
@@ -1844,27 +1844,27 @@ func TestComment_Scrolling_ManyLines(t *testing.T) {
 	assert.GreaterOrEqual(t, height, 11) // at least 10 lines + 1 help
 
 	// Move cursor to beginning
-	m.commentCursor = 0
+	m.w().commentCursor = 0
 	m.commentEnsureCursorVisible()
 
 	// Scroll should be 0 now
-	assert.Equal(t, 0, m.commentScroll)
+	assert.Equal(t, 0, m.w().commentScroll)
 }
 
 // Test: cursor movement keeps cursor visible in scroll window
 func TestComment_CursorMovement_KeepsVisible(t *testing.T) {
 	m := makeCommentableTestModel(5)
 	m.height = 30 // maxVisible = 10
-	m.commentMode = true
+	m.w().commentMode = true
 
 	// Create 20 lines of content
 	lines := make([]string, 20)
 	for i := range lines {
 		lines[i] = "content"
 	}
-	m.commentInput = strings.Join(lines, "\n")
-	m.commentCursor = 0
-	m.commentScroll = 0
+	m.w().commentInput = strings.Join(lines, "\n")
+	m.w().commentCursor = 0
+	m.w().commentScroll = 0
 
 	// Move down repeatedly
 	for i := 0; i < 15; i++ {
@@ -1876,7 +1876,7 @@ func TestComment_CursorMovement_KeepsVisible(t *testing.T) {
 
 	// Scroll should have adjusted to keep cursor visible
 	// With maxVisible=10, scroll should be at least 15 - 10 + 1 = 6
-	assert.GreaterOrEqual(t, m.commentScroll, 6)
+	assert.GreaterOrEqual(t, m.w().commentScroll, 6)
 
 	// Move back up
 	for i := 0; i < 15; i++ {
@@ -1887,7 +1887,7 @@ func TestComment_CursorMovement_KeepsVisible(t *testing.T) {
 	assert.Equal(t, 0, m.commentCursorLineIndex())
 
 	// Scroll should be 0
-	assert.Equal(t, 0, m.commentScroll)
+	assert.Equal(t, 0, m.w().commentScroll)
 }
 
 // Test: scroll indicators appear when content is scrolled
@@ -1895,18 +1895,18 @@ func TestComment_ScrollIndicators_Rendering(t *testing.T) {
 	m := makeCommentableTestModel(5)
 	m.height = 30 // maxVisible = 10
 	m.width = 80
-	m.commentMode = true
+	m.w().commentMode = true
 
 	// Create 15 lines of content
 	lines := make([]string, 15)
 	for i := range lines {
 		lines[i] = "line" + string(rune('A'+i))
 	}
-	m.commentInput = strings.Join(lines, "\n")
+	m.w().commentInput = strings.Join(lines, "\n")
 
 	// Scroll to middle (show both indicators)
-	m.commentScroll = 3
-	m.commentCursor = 50 // somewhere in middle
+	m.w().commentScroll = 3
+	m.w().commentCursor = 50 // somewhere in middle
 
 	output := m.renderCommentPrompt()
 
@@ -1921,13 +1921,13 @@ func TestComment_ScrollIndicators_Rendering(t *testing.T) {
 	assert.Contains(t, output, "C-j to submit")
 
 	// Scroll to top - only down indicator
-	m.commentScroll = 0
+	m.w().commentScroll = 0
 	output = m.renderCommentPrompt()
 	assert.NotContains(t, output, "↑")
 	assert.Contains(t, output, "↓")
 
 	// Scroll to bottom - only up indicator
-	m.commentScroll = 5 // 15 lines - 10 visible = 5 max scroll
+	m.w().commentScroll = 5 // 15 lines - 10 visible = 5 max scroll
 	output = m.renderCommentPrompt()
 	assert.Contains(t, output, "↑")
 	assert.NotContains(t, output, "↓ ")
@@ -1938,22 +1938,22 @@ func TestComment_CursorPosition_StableWithGrowingPrompt(t *testing.T) {
 	m := makeCommentableTestModel(20)
 	m.height = 40
 	m.width = 80
-	m.scroll = 5
+	m.w().scroll = 5
 
 	// Record cursor position before entering comment mode
 	cursorLineBefore := m.cursorLine()
 	cursorOffsetBefore := m.cursorOffset()
 
 	// Enter comment mode
-	m.commentMode = true
-	m.commentInput = "short"
+	m.w().commentMode = true
+	m.w().commentInput = "short"
 
 	// Cursor calculations should use baseContentHeight, so they stay stable
 	assert.Equal(t, cursorOffsetBefore, m.cursorOffset(), "cursorOffset should not change with small comment")
 	assert.Equal(t, cursorLineBefore, m.cursorLine(), "cursorLine should not change with small comment")
 
 	// Grow the comment significantly
-	m.commentInput = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8"
+	m.w().commentInput = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8"
 
 	// Cursor calculations should STILL be stable
 	assert.Equal(t, cursorOffsetBefore, m.cursorOffset(), "cursorOffset should not change with large comment")
@@ -2065,15 +2065,15 @@ func TestComment_Paste_SanitizesText(t *testing.T) {
 // Test: cancelComment exits comment mode
 func TestComment_Cancel(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.commentMode = true
-	m.commentInput = "some text"
-	m.commentCursor = 5
+	m.w().commentMode = true
+	m.w().commentInput = "some text"
+	m.w().commentCursor = 5
 
 	m.cancelComment()
 
-	assert.False(t, m.commentMode)
-	assert.Empty(t, m.commentInput)
-	assert.Equal(t, 0, m.commentCursor)
+	assert.False(t, m.w().commentMode)
+	assert.Empty(t, m.w().commentInput)
+	assert.Equal(t, 0, m.w().commentCursor)
 }
 
 // Test: handleCommentInput dispatches keys correctly
@@ -2254,16 +2254,16 @@ func TestComment_HandleInput_AllKeys(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := makeCommentableTestModel(5)
-			m.commentMode = true
-			m.commentInput = tt.input
-			m.commentCursor = tt.cursor
+			m.w().commentMode = true
+			m.w().commentInput = tt.input
+			m.w().commentCursor = tt.cursor
 
 			newModel, _ := m.Update(tt.key)
 			m2 := newModel.(Model)
 
-			assert.Equal(t, tt.wantInput, m2.commentInput, "input mismatch")
-			assert.Equal(t, tt.wantCursor, m2.commentCursor, "cursor mismatch")
-			assert.Equal(t, tt.wantMode, m2.commentMode, "mode mismatch")
+			assert.Equal(t, tt.wantInput, m2.w().commentInput, "input mismatch")
+			assert.Equal(t, tt.wantCursor, m2.w().commentCursor, "cursor mismatch")
+			assert.Equal(t, tt.wantMode, m2.w().commentMode, "mode mismatch")
 		})
 	}
 }
@@ -2457,7 +2457,7 @@ func TestComment_BuildRows_CommentTreePathMatchesContent(t *testing.T) {
 	m.comments = map[commentKey]string{
 		{fileIndex: 0, newLineNum: 2}: "A comment",
 	}
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 

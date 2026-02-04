@@ -26,7 +26,7 @@ func (m Model) shouldLoadMoreCommits() bool {
 		return false
 	}
 	// Check if cursor is within threshold of end
-	return m.maxScroll()-m.scroll < PaginationScrollThreshold
+	return m.maxScroll()-m.w().scroll < PaginationScrollThreshold
 }
 
 // hasMoreCommitsToLoad returns true if there are more commits available to load.
@@ -104,7 +104,8 @@ func (m *Model) appendCommits(commits []sidebyside.CommitSet) {
 		m.files = append(m.files, c.Files...)
 	}
 	m.loadedCommitCount = len(m.commits)
-	m.rowsCacheValid = false
+	// Invalidate all windows since new commits affect all views
+	m.invalidateAllRowCaches()
 	m.calculateTotalLines()
 }
 

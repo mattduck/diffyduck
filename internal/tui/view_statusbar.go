@@ -66,8 +66,9 @@ func (m *Model) renderCommitLine() string {
 
 	// Build commit line: ◐ a1b2c3d Subject line    N files +X -Y
 	// Fold level icon: ◯ = folded, ◐ = normal, ● = expanded
+	commitIdx := m.currentCommitIndex()
 	var foldIcon string
-	switch commit.FoldLevel {
+	switch m.commitFoldLevel(commitIdx) {
 	case sidebyside.CommitFolded:
 		foldIcon = "◯"
 	case sidebyside.CommitNormal:
@@ -83,7 +84,6 @@ func (m *Model) renderCommitLine() string {
 	subject := commitInfo.Subject
 
 	// Calculate stats for the current commit's files only
-	commitIdx := m.currentCommitIndex()
 	var startIdx, endIdx int
 	if len(m.commits) > 0 && len(m.commitFileStarts) > 0 {
 		startIdx = m.commitFileStarts[commitIdx]
@@ -370,7 +370,7 @@ func formatShortRelativeDate(isoDate string) string {
 // This now only contains the less-style indicator (file info is in top bar).
 func (m Model) renderStatusBar() string {
 	// In comment mode, show comment prompt
-	if m.commentMode {
+	if m.w().commentMode {
 		return m.renderCommentPrompt()
 	}
 
@@ -385,7 +385,7 @@ func (m Model) renderStatusBar() string {
 	lessIndicator := formatLessIndicator(info.CurrentLine, info.TotalLines, info.Percentage, info.AtEnd)
 
 	// Add narrow mode indicator
-	if m.narrow.Active {
+	if m.w().narrow.Active {
 		lessIndicator += " <N>"
 	}
 
@@ -541,14 +541,14 @@ func (m Model) renderCommentPrompt() string {
 	wrapWidth := m.commentPromptWrapWidth()
 
 	// Build visual (wrapped) lines from comment input
-	lines := commentVisualLines(m.commentInput, wrapWidth)
+	lines := commentVisualLines(m.w().commentInput, wrapWidth)
 
 	// Find cursor position in visual lines
-	cursorLine, cursorCol := commentCursorVisualPos(m.commentInput, m.commentCursor, wrapWidth)
+	cursorLine, cursorCol := commentCursorVisualPos(m.w().commentInput, m.w().commentCursor, wrapWidth)
 
 	// Calculate visible range based on scroll
 	maxVisible := m.commentMaxVisibleLines()
-	startLine := m.commentScroll
+	startLine := m.w().commentScroll
 	endLine := startLine + maxVisible
 	if endLine > len(lines) {
 		endLine = len(lines)

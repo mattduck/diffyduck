@@ -86,6 +86,37 @@ type inlineDiffResult struct {
 	newSpans []inlinediff.Span
 }
 
+// Window represents a single view into the diff content.
+// Multiple windows can exist showing different parts of the same data.
+type Window struct {
+	// Viewport state
+	scroll  int // vertical scroll offset (line index at top of viewport)
+	hscroll int // horizontal scroll offset (display columns)
+
+	// Narrow mode - scopes this window to a single node
+	narrow NarrowScope
+
+	// Fold state - per-window so each window can have different fold levels
+	fileFoldLevels   map[int]sidebyside.FoldLevel       // file index -> fold level
+	commitFoldLevels map[int]sidebyside.CommitFoldLevel // commit index -> fold level
+
+	// Row cache - per-window since it depends on fold/narrow state
+	cachedRows     []displayRow // cached result of buildRows()
+	rowsCacheValid bool         // true if cachedRows is up to date
+	totalLines     int          // total number of displayable lines
+
+	// Search navigation state (per-window, though query is shared)
+	searchMatchIdx  int // index of current match within cursor row on current side (0 = first)
+	searchMatchSide int // which side the current match is on (0 = new/left, 1 = old/right)
+
+	// Comment editing state (per-window so you can edit in one window while browsing in another)
+	commentMode   bool       // true when editing a comment
+	commentInput  string     // text being edited
+	commentCursor int        // cursor position in commentInput (byte offset)
+	commentScroll int        // vertical scroll offset in comment editor
+	commentKey    commentKey // identifies which line the comment is attached to
+}
+
 // Model represents the application state.
 type Model struct {
 	// Data - hierarchical: commits contain files
@@ -115,23 +146,23 @@ type Model struct {
 	structureMaps      map[int]*FileStructure // file index -> full content structure
 	pairsStructureMaps map[int]*FileStructure // file index -> pairs-based structure
 
-	// Viewport state
-	scroll  int // vertical scroll offset (line index at top of viewport)
-	hscroll int // horizontal scroll offset (display columns)
-	width   int // terminal width
-	height  int // terminal height (viewport height)
+	// Windows - multiple views into the same data
+	windows         []*Window // up to 2 windows
+	activeWindowIdx int       // index of focused window
+
+	// Terminal dimensions (shared across windows)
+	width  int // terminal width
+	height int // terminal height (viewport height)
 
 	// Configuration
 	keys        KeyMap
 	hscrollStep int // columns to scroll horizontally per keypress
 
-	// Search state
-	searchMode      bool   // true when in search input mode
-	searchForward   bool   // true for forward search (/), false for backward (?)
-	searchInput     string // current input being typed
-	searchQuery     string // executed search query
-	searchMatchIdx  int    // index of current match within cursor row on current side (0 = first)
-	searchMatchSide int    // which side the current match is on (0 = new/left, 1 = old/right)
+	// Search state (query is shared across windows, navigation is per-window)
+	searchMode    bool   // true when in search input mode
+	searchForward bool   // true for forward search (/), false for backward (?)
+	searchInput   string // current input being typed
+	searchQuery   string // executed search query
 
 	// Multi-key sequence state
 	pendingKey string // first key of a multi-key sequence (e.g., "g" waiting for second key)
@@ -139,8 +170,7 @@ type Model struct {
 	// Initial state tracking
 	initialFoldSet bool // true once initial fold levels have been determined
 
-	// Derived/cached
-	totalLines         int // total number of displayable lines across all files
+	// Derived/cached (shared across windows)
 	maxLineNumSeen     int // largest line number seen (for dynamic gutter width, only grows)
 	maxLessWidth       int // max width of less indicator (never shrinks to prevent jittering)
 	maxNewContentWidth int // display width of new-side content (left side); defaults to 90, updated on 'r' refresh
@@ -152,10 +182,6 @@ type Model struct {
 	cachedCommitTimeWidth int // max relative time width (e.g., "12 months")
 	cachedCommitSubjWidth int // max subject width (capped at 120)
 	cachedStructDiffWidth int // max structural diff content width
-
-	// Row cache - avoids rebuilding on every scroll
-	cachedRows     []displayRow // cached result of buildRows()
-	rowsCacheValid bool         // true if cachedRows is up to date
 
 	// Inline diff cache - avoids recomputing Myers diff on every render
 	inlineDiffCache map[inlineDiffKey]inlineDiffResult
@@ -176,19 +202,11 @@ type Model struct {
 	// Focus colour mode - dims content outside current hunk to reduce visual clutter
 	focusColour bool
 
-	// Narrow mode - scopes the pager to a single node (commit, file, or hunk)
-	narrow NarrowScope
-
 	// Clipboard
 	clipboard Clipboard // clipboard interface for copy/paste
 
-	// Comment state
-	commentMode   bool                  // true when editing a comment
-	commentInput  string                // text being edited
-	commentCursor int                   // cursor position in commentInput (byte offset)
-	commentScroll int                   // vertical scroll offset within comment editor
-	commentKey    commentKey            // which line is being commented
-	comments      map[commentKey]string // stored comments
+	// Comment data - shared across windows (the actual stored comments)
+	comments map[commentKey]string // stored comments
 
 	// Status message (echo area)
 	statusMessage     string    // message to display in status bar
@@ -209,6 +227,95 @@ const DefaultCommitBatchSize = 100
 
 // PaginationScrollThreshold is the number of rows from the end to trigger loading more commits.
 const PaginationScrollThreshold = 20
+
+// MaxWindows is the maximum number of windows allowed.
+const MaxWindows = 2
+
+// w returns the active window. This is the primary way to access per-window state.
+// Use this for modifications (pointer receiver methods).
+// Lazily initializes the windows slice if empty (for backwards compatibility with tests).
+func (m *Model) w() *Window {
+	if len(m.windows) == 0 {
+		m.windows = []*Window{newWindow()}
+	}
+	return m.windows[m.activeWindowIdx]
+}
+
+// wv returns the active window for value receiver methods (read-only access).
+func (m Model) wv() *Window {
+	if len(m.windows) == 0 {
+		// Can't modify the slice in a value receiver, so return a temporary window
+		// This case should rarely happen in practice
+		return newWindow()
+	}
+	return m.windows[m.activeWindowIdx]
+}
+
+// newWindow creates a new Window with default state.
+func newWindow() *Window {
+	return &Window{
+		scroll:           0,
+		hscroll:          0,
+		narrow:           NarrowScope{},
+		fileFoldLevels:   make(map[int]sidebyside.FoldLevel),
+		commitFoldLevels: make(map[int]sidebyside.CommitFoldLevel),
+		cachedRows:       nil,
+		rowsCacheValid:   false,
+		totalLines:       0,
+	}
+}
+
+// fileFoldLevel returns the fold level for a file in the active window.
+// Falls back to the data's default FoldLevel if no window override exists.
+func (m *Model) fileFoldLevel(fileIdx int) sidebyside.FoldLevel {
+	w := m.w()
+	if w.fileFoldLevels == nil {
+		w.fileFoldLevels = make(map[int]sidebyside.FoldLevel)
+	}
+	if level, ok := w.fileFoldLevels[fileIdx]; ok {
+		return level
+	}
+	// Fall back to default from data
+	if fileIdx >= 0 && fileIdx < len(m.files) {
+		return m.files[fileIdx].FoldLevel
+	}
+	return sidebyside.FoldNormal
+}
+
+// setFileFoldLevel sets the fold level for a file in the active window.
+func (m *Model) setFileFoldLevel(fileIdx int, level sidebyside.FoldLevel) {
+	w := m.w()
+	if w.fileFoldLevels == nil {
+		w.fileFoldLevels = make(map[int]sidebyside.FoldLevel)
+	}
+	w.fileFoldLevels[fileIdx] = level
+}
+
+// commitFoldLevel returns the fold level for a commit in the active window.
+// Falls back to the data's default FoldLevel if no window override exists.
+func (m *Model) commitFoldLevel(commitIdx int) sidebyside.CommitFoldLevel {
+	w := m.w()
+	if w.commitFoldLevels == nil {
+		w.commitFoldLevels = make(map[int]sidebyside.CommitFoldLevel)
+	}
+	if level, ok := w.commitFoldLevels[commitIdx]; ok {
+		return level
+	}
+	// Fall back to default from data
+	if commitIdx >= 0 && commitIdx < len(m.commits) {
+		return m.commits[commitIdx].FoldLevel
+	}
+	return sidebyside.CommitNormal
+}
+
+// setCommitFoldLevel sets the fold level for a commit in the active window.
+func (m *Model) setCommitFoldLevel(commitIdx int, level sidebyside.CommitFoldLevel) {
+	w := m.w()
+	if w.commitFoldLevels == nil {
+		w.commitFoldLevels = make(map[int]sidebyside.CommitFoldLevel)
+	}
+	w.commitFoldLevels[commitIdx] = level
+}
 
 // FileHighlight stores syntax highlighting spans for a file's old and new content.
 type FileHighlight struct {
@@ -321,6 +428,8 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 
 	m := Model{
 		commits:             commits,
+		windows:             []*Window{newWindow()}, // start with one window
+		activeWindowIdx:     0,
 		keys:                DefaultKeyMap(),
 		hscrollStep:         DefaultHScrollStep,
 		highlighter:         highlight.New(),
@@ -363,7 +472,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 	// Skip if in log mode with folded commits (first file won't be visible anyway).
 	// The rest will be highlighted async in Init().
 	firstFileVisible := len(m.files) > 0 &&
-		(len(m.commits) == 0 || m.commits[0].FoldLevel != sidebyside.CommitFolded)
+		(len(m.commits) == 0 || m.commitFoldLevel(0) != sidebyside.CommitFolded)
 	if firstFileVisible {
 		m.highlightPairsSync(0)
 	}
@@ -429,11 +538,11 @@ func (m *Model) calculateTotalLines() {
 // updateMaxLessWidth updates maxLessWidth if the current totalLines would require more width.
 // This is called from calculateTotalLines to ensure the less indicator never shrinks.
 func (m *Model) updateMaxLessWidth() {
-	if m.totalLines == 0 {
+	if m.w().totalLines == 0 {
 		return
 	}
 	// Calculate width for worst case: "line TOTAL/TOTAL (END)"
-	maxIndicator := formatLessIndicator(m.totalLines, m.totalLines, 100, true)
+	maxIndicator := formatLessIndicator(m.w().totalLines, m.w().totalLines, 100, true)
 	width := displayWidth(maxIndicator)
 	if width > m.maxLessWidth {
 		m.maxLessWidth = width
@@ -552,7 +661,7 @@ func (m Model) commentMaxVisibleLines() int {
 // commentPromptHeight returns the number of lines needed for the comment prompt.
 // Returns 1 when not in comment mode (for normal status bar).
 func (m Model) commentPromptHeight() int {
-	if !m.commentMode {
+	if !m.w().commentMode {
 		return 1
 	}
 	// Count visual (wrapped) lines
@@ -569,11 +678,11 @@ func (m Model) commentPromptHeight() int {
 	extraLines := 0
 	if totalLines > maxVisible {
 		// Check if there's content above (scroll > 0)
-		if m.commentScroll > 0 {
+		if m.w().commentScroll > 0 {
 			extraLines++
 		}
 		// Check if there's content below
-		if m.commentScroll+maxVisible < totalLines {
+		if m.w().commentScroll+maxVisible < totalLines {
 			extraLines++
 		}
 	}
@@ -599,7 +708,7 @@ func (m Model) contentHeight() int {
 	h := m.baseContentHeight()
 	// Subtract space for comment prompt when in comment mode
 	// (bottom bar is already counted in baseContentHeight)
-	if m.commentMode {
+	if m.w().commentMode {
 		h -= m.commentPromptHeight() - 1 // -1 since bottom bar already counted
 	}
 	if h < 1 {
@@ -620,8 +729,8 @@ func (m Model) cursorOffset() int {
 // Once scroll reaches cursorOffset, the cursor stays at the fixed 20% position.
 func (m Model) cursorViewportRow() int {
 	offset := m.cursorOffset()
-	if m.scroll < offset {
-		return m.scroll
+	if m.w().scroll < offset {
+		return m.w().scroll
 	}
 	return offset
 }
@@ -631,16 +740,16 @@ func (m Model) cursorViewportRow() int {
 // content scrolls up and this returns a positive value.
 func (m Model) contentStartLine() int {
 	offset := m.cursorOffset()
-	if m.scroll <= offset {
+	if m.w().scroll <= offset {
 		return 0
 	}
-	return m.scroll - offset
+	return m.w().scroll - offset
 }
 
 // cursorLine returns the display row index that the cursor points to.
 // In the new cursor model, scroll directly represents the cursor line.
 func (m Model) cursorLine() int {
-	return m.scroll
+	return m.w().scroll
 }
 
 // minScroll returns the minimum valid scroll offset.
@@ -652,19 +761,19 @@ func (m Model) minScroll() int {
 // maxScroll returns the maximum valid scroll offset.
 // This allows the cursor to reach the last line of content.
 func (m Model) maxScroll() int {
-	if m.totalLines == 0 {
+	if m.w().totalLines == 0 {
 		return 0
 	}
-	return m.totalLines - 1
+	return m.w().totalLines - 1
 }
 
 // clampScroll ensures scroll is within valid bounds.
 func (m *Model) clampScroll() {
-	if min := m.minScroll(); m.scroll < min {
-		m.scroll = min
+	if min := m.minScroll(); m.w().scroll < min {
+		m.w().scroll = min
 	}
-	if max := m.maxScroll(); m.scroll > max {
-		m.scroll = max
+	if max := m.maxScroll(); m.w().scroll > max {
+		m.w().scroll = max
 	}
 }
 
@@ -689,10 +798,10 @@ type StatusInfo struct {
 func (m Model) StatusInfo() StatusInfo {
 	info := StatusInfo{
 		TotalFiles: len(m.files),
-		TotalLines: m.totalLines,
+		TotalLines: m.w().totalLines,
 	}
 
-	if m.totalLines == 0 || len(m.files) == 0 {
+	if m.w().totalLines == 0 || len(m.files) == 0 {
 		return info
 	}
 
@@ -703,11 +812,11 @@ func (m Model) StatusInfo() StatusInfo {
 	info.CurrentLine = cursorPos + 1
 
 	// Calculate percentage based on cursor position through the content
-	if m.totalLines <= 1 {
+	if m.w().totalLines <= 1 {
 		info.Percentage = 100
 		info.AtEnd = true
 	} else {
-		maxCursor := m.totalLines - 1
+		maxCursor := m.w().totalLines - 1
 		if cursorPos >= maxCursor {
 			info.Percentage = 100
 			info.AtEnd = true
@@ -739,7 +848,7 @@ func (m Model) StatusInfo() StatusInfo {
 		}
 
 		info.FileName = formatFilePath(fp.OldPath, fp.NewPath)
-		info.FoldLevel = fp.FoldLevel
+		info.FoldLevel = m.fileFoldLevel(fileIdx)
 		info.FileStatus = string(fileStatusFromPair(fp))
 		info.Added, info.Removed = countFileStats(fp)
 
@@ -756,8 +865,8 @@ func (m Model) StatusInfo() StatusInfo {
 // fileIdx is 0-based, cursorPos is the display row index.
 func (m Model) getEntriesForCursor(fileIdx int, cursorPos int) []structure.Entry {
 	// Get the display row at cursor position (use cache if valid)
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 	if cursorPos < 0 || cursorPos >= len(rows) {
@@ -902,15 +1011,15 @@ func (m Model) fileAtLine(line int) (int, string) {
 	if line < 0 {
 		line = 0
 	}
-	if line >= m.totalLines {
+	if line >= m.w().totalLines {
 		// Past all content - return last file
 		lastFile := m.files[len(m.files)-1]
 		return len(m.files), formatFilePath(lastFile.OldPath, lastFile.NewPath)
 	}
 
 	// Use cached rows if valid, otherwise rebuild
-	rows := m.cachedRows
-	if !m.rowsCacheValid {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid {
 		rows = m.buildRows()
 	}
 	if line >= len(rows) {
@@ -1037,8 +1146,8 @@ func (m *Model) lineNumWidth() int {
 // Only grows, never shrinks (prevents jitter when divider position changes).
 // Measures new-side content (displayed on the left).
 func (m *Model) updateMaxNewContentWidth() {
-	for _, fp := range m.files {
-		if fp.FoldLevel != sidebyside.FoldExpanded {
+	for fileIdx, fp := range m.files {
+		if m.fileFoldLevel(fileIdx) != sidebyside.FoldExpanded {
 			continue // only measure content width for hunk view (FoldExpanded)
 		}
 
@@ -1156,7 +1265,7 @@ func (m *Model) RefreshLayout() {
 	m.updateMaxNewContentWidth()
 	m.updateColumnWidths()
 	m.updateStructuralDiffWidth()
-	m.rowsCacheValid = false
+	m.w().rowsCacheValid = false
 }
 
 // rebuildRowsCache unconditionally rebuilds the cached rows.
@@ -1165,18 +1274,60 @@ func (m *Model) rebuildRowsCache() {
 	// NOTE: maxLineNumSeen, maxNewContentWidth, and column widths are NOT updated
 	// automatically here for performance. Press 'r' to refresh layout.
 
-	m.cachedRows = m.buildRows()
-	m.rowsCacheValid = true
-	m.totalLines = len(m.cachedRows)
+	m.w().cachedRows = m.buildRows()
+	m.w().rowsCacheValid = true
+	m.w().totalLines = len(m.w().cachedRows)
 	m.updateMaxLessWidth()
+}
+
+// invalidateAllRowCaches marks all windows' row caches as invalid.
+// Use this when display data changes but row structure stays the same
+// (e.g., stats loaded, highlighting applied).
+func (m *Model) invalidateAllRowCaches() {
+	for _, w := range m.windows {
+		w.rowsCacheValid = false
+	}
+}
+
+// rebuildAllRowCachesPreservingCursor rebuilds row caches for ALL windows,
+// preserving each window's cursor position on the same logical row.
+// Use this when shared state changes (e.g., comments added, content loaded).
+func (m *Model) rebuildAllRowCachesPreservingCursor() {
+	if len(m.windows) == 0 {
+		return
+	}
+
+	savedActiveIdx := m.activeWindowIdx
+
+	// Phase 1: Capture cursor identity for each window before invalidating caches
+	identities := make([]cursorRowIdentity, len(m.windows))
+	for i := range m.windows {
+		m.activeWindowIdx = i
+		identities[i] = m.getCursorRowIdentity()
+	}
+
+	// Phase 2: Invalidate all caches
+	for _, w := range m.windows {
+		w.rowsCacheValid = false
+	}
+
+	// Phase 3: Rebuild each window and restore cursor position
+	for i := range m.windows {
+		m.activeWindowIdx = i
+		m.rebuildRowsCache()
+		newRowIdx := m.findRowOrNearestAbove(identities[i])
+		m.adjustScrollToRow(newRowIdx)
+	}
+
+	m.activeWindowIdx = savedActiveIdx
 }
 
 // getRows returns the cached rows, rebuilding if necessary.
 func (m *Model) getRows() []displayRow {
-	if !m.rowsCacheValid {
+	if !m.w().rowsCacheValid {
 		m.rebuildRowsCache()
 	}
-	return m.cachedRows
+	return m.w().cachedRows
 }
 
 // currentCommitIndex returns the index of the commit the cursor is currently in.
@@ -1240,21 +1391,21 @@ func (m *Model) currentCommit() *sidebyside.CommitSet {
 // When entering narrow mode, determines the scope from the current cursor position.
 // When exiting, tries to keep the cursor at its current content position in the widened view.
 func (m *Model) toggleNarrow() {
-	if m.narrow.Active {
+	if m.w().narrow.Active {
 		// Capture current position BEFORE clearing narrow mode
 		currentIdentity := m.getCursorRowIdentity()
-		narrowedFileIdx := m.narrow.FileIdx
-		narrowedCommitIdx := m.narrow.CommitIdx
+		narrowedFileIdx := m.w().narrow.FileIdx
+		narrowedCommitIdx := m.w().narrow.CommitIdx
 
 		// Clear narrow scope and rebuild rows
-		m.narrow = NarrowScope{}
+		m.w().narrow = NarrowScope{}
 		m.rebuildRowsCache()
 
 		// Strategy: try to find the current row in the widened view.
 		// This keeps the user at the same content they were viewing.
 		newRow := m.findRowOrNearestAbove(currentIdentity)
 		if newRow >= 0 {
-			m.scroll = newRow
+			m.w().scroll = newRow
 			m.clampScroll()
 			return
 		}
@@ -1264,21 +1415,21 @@ func (m *Model) toggleNarrow() {
 		if narrowedFileIdx >= 0 {
 			headerRow := m.findFileHeaderRow(narrowedFileIdx)
 			if headerRow >= 0 {
-				m.scroll = headerRow
+				m.w().scroll = headerRow
 				m.clampScroll()
 				return
 			}
 		} else if narrowedCommitIdx >= 0 {
 			headerRow := m.findCommitHeaderRow(narrowedCommitIdx)
 			if headerRow >= 0 {
-				m.scroll = headerRow
+				m.w().scroll = headerRow
 				m.clampScroll()
 				return
 			}
 		}
 
 		// Last resort: go to top
-		m.scroll = m.minScroll()
+		m.w().scroll = m.minScroll()
 		m.clampScroll()
 		return
 	}
@@ -1299,28 +1450,28 @@ func (m *Model) toggleNarrow() {
 	switch {
 	case row.fileIndex >= 0:
 		// On a file row: narrow to this file
-		m.narrow.Active = true
-		m.narrow.CommitIdx = m.commitForFile(row.fileIndex)
-		m.narrow.FileIdx = row.fileIndex
-		m.narrow.HunkIdx = -1
-		m.narrow.CommitInfoOnly = false
+		m.w().narrow.Active = true
+		m.w().narrow.CommitIdx = m.commitForFile(row.fileIndex)
+		m.w().narrow.FileIdx = row.fileIndex
+		m.w().narrow.HunkIdx = -1
+		m.w().narrow.CommitInfoOnly = false
 
 	case row.kind == RowKindCommitInfoHeader || row.kind == RowKindCommitInfoBody ||
 		row.kind == RowKindCommitInfoTopBorder || row.kind == RowKindCommitInfoBottomBorder:
 		// On a commit info row: narrow to just the commit info section
-		m.narrow.Active = true
-		m.narrow.CommitIdx = row.commitIndex
-		m.narrow.FileIdx = -1
-		m.narrow.HunkIdx = -1
-		m.narrow.CommitInfoOnly = true
+		m.w().narrow.Active = true
+		m.w().narrow.CommitIdx = row.commitIndex
+		m.w().narrow.FileIdx = -1
+		m.w().narrow.HunkIdx = -1
+		m.w().narrow.CommitInfoOnly = true
 
 	case row.commitIndex >= 0 && !row.commitBodyIsBlank:
 		// On a commit row (header, body): narrow to this commit (including files)
-		m.narrow.Active = true
-		m.narrow.CommitIdx = row.commitIndex
-		m.narrow.FileIdx = -1
-		m.narrow.HunkIdx = -1
-		m.narrow.CommitInfoOnly = false
+		m.w().narrow.Active = true
+		m.w().narrow.CommitIdx = row.commitIndex
+		m.w().narrow.FileIdx = -1
+		m.w().narrow.HunkIdx = -1
+		m.w().narrow.CommitInfoOnly = false
 
 	default:
 		// On a separator or other non-scoped row: don't enter narrow mode
@@ -1333,9 +1484,9 @@ func (m *Model) toggleNarrow() {
 	// Preserve cursor position: find the same row in the narrowed view
 	newRow := m.findRowOrNearestAbove(currentIdentity)
 	if newRow >= 0 {
-		m.scroll = newRow
+		m.w().scroll = newRow
 	} else {
-		m.scroll = 0
+		m.w().scroll = 0
 	}
 	m.clampScroll()
 }
@@ -1399,8 +1550,8 @@ func (m Model) getFocusPredicate() func(rowIdx int, row displayRow) bool {
 		return nil
 	}
 
-	rows := m.cachedRows
-	if !m.rowsCacheValid || len(rows) == 0 {
+	rows := m.w().cachedRows
+	if !m.w().rowsCacheValid || len(rows) == 0 {
 		return nil
 	}
 
@@ -1453,7 +1604,7 @@ const focusProximityThreshold = 15
 // Special case: SeparatorTop is treated as the bottom border of the hunk ABOVE.
 // Also expands to include nearby hunks within focusProximityThreshold lines.
 func (m Model) getHunkBounds(cursorPos, fileIdx int) (int, int, int) {
-	rows := m.cachedRows
+	rows := m.w().cachedRows
 	cursorKind := rows[cursorPos].kind
 
 	var start, end int
@@ -1573,7 +1724,7 @@ func (m Model) getHunkBounds(cursorPos, fileIdx int) (int, int, int) {
 // focusProximityThreshold SOURCE lines of the current bounds.
 // Uses actual line numbers from the code, not display row indices.
 func (m Model) expandToNearbyHunks(start, end, fileIdx int) (int, int) {
-	rows := m.cachedRows
+	rows := m.w().cachedRows
 
 	// Get the source line range of current focus area
 	minLine, maxLine := m.getSourceLineRange(start, end)
@@ -1664,7 +1815,7 @@ func (m Model) expandToNearbyHunks(start, end, fileIdx int) (int, int) {
 // getSourceLineRange returns the min and max source line numbers in the given row range.
 // Uses the New side line numbers (left side in the UI).
 func (m Model) getSourceLineRange(start, end int) (minLine, maxLine int) {
-	rows := m.cachedRows
+	rows := m.w().cachedRows
 	for i := start; i < end && i < len(rows); i++ {
 		row := rows[i]
 		if row.kind == RowKindContent {
@@ -1692,7 +1843,7 @@ func (m Model) getSourceLineRange(start, end int) (minLine, maxLine int) {
 
 // findHunkStart finds the start of the hunk containing the given position.
 func (m Model) findHunkStart(pos, fileIdx int) int {
-	rows := m.cachedRows
+	rows := m.w().cachedRows
 	start := pos
 	for start > 0 {
 		prevRow := rows[start-1]
@@ -1720,7 +1871,7 @@ func (m Model) findHunkStart(pos, fileIdx int) int {
 
 // findHunkEnd finds the end of the hunk containing the given position.
 func (m Model) findHunkEnd(pos, fileIdx int) int {
-	rows := m.cachedRows
+	rows := m.w().cachedRows
 	end := pos + 1
 	for end < len(rows) {
 		nextRow := rows[end]

@@ -339,7 +339,7 @@ func TestSearch_NextMatch_AfterScrollToTop(t *testing.T) {
 	model := newM.(Model)
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model = newM.(Model)
-	assert.Equal(t, m.minScroll(), model.scroll)
+	assert.Equal(t, m.minScroll(), model.w().scroll)
 
 	// Press n to go to next match - should find first match from cursor position
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
@@ -405,25 +405,25 @@ func TestSearch_NextMatch_CyclesWithinRow(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(2)
-	m.searchMatchIdx = 0 // start at first match
+	m.w().searchMatchIdx = 0 // start at first match
 
 	// Press n - should go to second match on same row
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model := newM.(Model)
 	assert.Equal(t, 2, model.cursorLine(), "cursor should stay on same row")
-	assert.Equal(t, 1, model.searchMatchIdx, "should be at second match")
+	assert.Equal(t, 1, model.w().searchMatchIdx, "should be at second match")
 
 	// Press n again - should go to third match on same row
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model = newM.(Model)
 	assert.Equal(t, 2, model.cursorLine(), "cursor should still be on same row")
-	assert.Equal(t, 2, model.searchMatchIdx, "should be at third match")
+	assert.Equal(t, 2, model.w().searchMatchIdx, "should be at third match")
 
 	// Press n again - no more matches on this row, should stay (no other rows have matches)
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model = newM.(Model)
 	assert.Equal(t, 2, model.cursorLine(), "cursor should stay on same row")
-	assert.Equal(t, 2, model.searchMatchIdx, "should stay at third match")
+	assert.Equal(t, 2, model.w().searchMatchIdx, "should stay at third match")
 }
 
 func TestSearch_PrevMatch_CyclesWithinRow(t *testing.T) {
@@ -433,25 +433,25 @@ func TestSearch_PrevMatch_CyclesWithinRow(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(2)
-	m.searchMatchIdx = 2 // start at last match
+	m.w().searchMatchIdx = 2 // start at last match
 
 	// Press N - should go to second match on same row
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
 	model := newM.(Model)
 	assert.Equal(t, 2, model.cursorLine(), "cursor should stay on same row")
-	assert.Equal(t, 1, model.searchMatchIdx, "should be at second match")
+	assert.Equal(t, 1, model.w().searchMatchIdx, "should be at second match")
 
 	// Press N again - should go to first match on same row
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
 	model = newM.(Model)
 	assert.Equal(t, 2, model.cursorLine(), "cursor should still be on same row")
-	assert.Equal(t, 0, model.searchMatchIdx, "should be at first match")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "should be at first match")
 
 	// Press N again - no more matches backward, should stay
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
 	model = newM.(Model)
 	assert.Equal(t, 2, model.cursorLine(), "cursor should stay on same row")
-	assert.Equal(t, 0, model.searchMatchIdx, "should stay at first match")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "should stay at first match")
 }
 
 func TestSearch_NextMatch_CyclesThenMovesToNextRow(t *testing.T) {
@@ -462,19 +462,19 @@ func TestSearch_NextMatch_CyclesThenMovesToNextRow(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(2)
-	m.searchMatchIdx = 0
+	m.w().searchMatchIdx = 0
 
 	// Press n - go to second match on row 2
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model := newM.(Model)
 	assert.Equal(t, 2, model.cursorLine())
-	assert.Equal(t, 1, model.searchMatchIdx)
+	assert.Equal(t, 1, model.w().searchMatchIdx)
 
 	// Press n - no more matches on row 2, move to row 3
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model = newM.(Model)
 	assert.Equal(t, 3, model.cursorLine(), "should move to next row")
-	assert.Equal(t, 0, model.searchMatchIdx, "should be at first match on new row")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "should be at first match on new row")
 }
 
 func TestSearch_BackwardSearch_NextMatch(t *testing.T) {
@@ -486,7 +486,7 @@ func TestSearch_BackwardSearch_NextMatch(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = false // backward search
 	m.adjustScrollToRow(3)  // start at second match
-	m.searchMatchIdx = 0
+	m.w().searchMatchIdx = 0
 
 	// Press n in backward search - should go to previous row
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
@@ -503,7 +503,7 @@ func TestSearch_BackwardSearch_PrevMatch(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = false // backward search
 	m.adjustScrollToRow(2)  // start at first match
-	m.searchMatchIdx = 0
+	m.w().searchMatchIdx = 0
 
 	// Press N in backward search - should go to next row
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
@@ -518,13 +518,13 @@ func TestSearch_BackwardSearch_CyclesWithinRow(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = false // backward search
 	m.adjustScrollToRow(2)
-	m.searchMatchIdx = 1 // start at second match
+	m.w().searchMatchIdx = 1 // start at second match
 
 	// In backward search, n goes backward, so decrement index
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model := newM.(Model)
 	assert.Equal(t, 2, model.cursorLine())
-	assert.Equal(t, 0, model.searchMatchIdx, "should go to first match")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "should go to first match")
 }
 
 // Test findMatchColsOnRow function directly
@@ -795,19 +795,19 @@ func TestSearch_CyclesBetweenSides(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(2)
-	m.searchMatchIdx = 0
-	m.searchMatchSide = 0 // start on new side
+	m.w().searchMatchIdx = 0
+	m.w().searchMatchSide = 0 // start on new side
 
 	// Should start on new side (0)
-	assert.Equal(t, 0, m.searchMatchSide)
-	assert.Equal(t, 0, m.searchMatchIdx)
+	assert.Equal(t, 0, m.w().searchMatchSide)
+	assert.Equal(t, 0, m.w().searchMatchIdx)
 
 	// Press n - should move to old side (1) since new side has only 1 match
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model := newM.(Model)
 	assert.Equal(t, 2, model.cursorLine(), "should stay on same row")
-	assert.Equal(t, 1, model.searchMatchSide, "should move to old side")
-	assert.Equal(t, 0, model.searchMatchIdx, "should be at first match on old side")
+	assert.Equal(t, 1, model.w().searchMatchSide, "should move to old side")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "should be at first match on old side")
 }
 
 // Test that nextMatch doesn't cycle forever between sides on the same row
@@ -841,21 +841,21 @@ func TestSearch_NextMatch_DoesNotCycleForeverBetweenSides(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(2) // first content row
-	m.searchMatchIdx = 0
-	m.searchMatchSide = 0 // start on new side
+	m.w().searchMatchIdx = 0
+	m.w().searchMatchSide = 0 // start on new side
 
 	// Press n - should move to old side (1)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model := newM.(Model)
 	assert.Equal(t, 2, model.cursorLine(), "should stay on row 2")
-	assert.Equal(t, 1, model.searchMatchSide, "should be on old side")
+	assert.Equal(t, 1, model.w().searchMatchSide, "should be on old side")
 
 	// Press n again - should NOT cycle back to side 0, should move to next row (row 3)
 	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	model = newM.(Model)
 	assert.Equal(t, 3, model.cursorLine(), "should move to row 3, not cycle back to side 0")
-	assert.Equal(t, 0, model.searchMatchSide, "should start on new side of new row")
-	assert.Equal(t, 0, model.searchMatchIdx, "should be at first match")
+	assert.Equal(t, 0, model.w().searchMatchSide, "should start on new side of new row")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "should be at first match")
 }
 
 // Test that prevMatch (N) doesn't cycle forever between sides when going backward
@@ -888,8 +888,8 @@ func TestSearch_PrevMatch_DoesNotCycleForeverBetweenSides(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(3) // second content row
-	m.searchMatchIdx = 0
-	m.searchMatchSide = 0 // start on new side
+	m.w().searchMatchIdx = 0
+	m.w().searchMatchSide = 0 // start on new side
 
 	// Press N (prev) - should move to old side (1) going backward
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
@@ -900,7 +900,7 @@ func TestSearch_PrevMatch_DoesNotCycleForeverBetweenSides(t *testing.T) {
 	// But the fix says: backward means side 1 -> side 0, not side 0 -> side 1
 	// So from side 0, we can't go to side 1 when going backward, we go to prev row
 	assert.Equal(t, 2, model.cursorLine(), "should move to row 2")
-	assert.Equal(t, 1, model.searchMatchSide, "should be on old side (last side of prev row)")
+	assert.Equal(t, 1, model.w().searchMatchSide, "should be on old side (last side of prev row)")
 }
 
 // Test that cursor movement (j/k) resets search match index to 0
@@ -912,16 +912,16 @@ func TestSearch_CursorMove_ResetsMatchIndex(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(2)
-	m.searchMatchIdx = 2 // pretend we're at the third match
-	m.searchMatchSide = 0
+	m.w().searchMatchIdx = 2 // pretend we're at the third match
+	m.w().searchMatchSide = 0
 
 	// Press j to move down
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	model := newM.(Model)
 
 	assert.Equal(t, 3, model.cursorLine(), "should move to row 3")
-	assert.Equal(t, 0, model.searchMatchIdx, "match index should reset to 0 after cursor move")
-	assert.Equal(t, 0, model.searchMatchSide, "match side should reset to 0 (new side)")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "match index should reset to 0 after cursor move")
+	assert.Equal(t, 0, model.w().searchMatchSide, "match side should reset to 0 (new side)")
 }
 
 // Test that cursor movement (k) also resets search match index
@@ -933,15 +933,15 @@ func TestSearch_CursorMoveUp_ResetsMatchIndex(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(3)
-	m.searchMatchIdx = 2 // pretend we're at the third match
-	m.searchMatchSide = 0
+	m.w().searchMatchIdx = 2 // pretend we're at the third match
+	m.w().searchMatchSide = 0
 
 	// Press k to move up
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 	model := newM.(Model)
 
 	assert.Equal(t, 2, model.cursorLine(), "should move to row 2")
-	assert.Equal(t, 0, model.searchMatchIdx, "match index should reset to 0 after cursor move")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "match index should reset to 0 after cursor move")
 }
 
 // Test that page down also resets search match index
@@ -955,14 +955,14 @@ func TestSearch_PageDown_ResetsMatchIndex(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(3)
-	m.searchMatchIdx = 1 // at second match
-	m.searchMatchSide = 0
+	m.w().searchMatchIdx = 1 // at second match
+	m.w().searchMatchSide = 0
 
 	// Press ctrl+d for page down
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
 	model := newM.(Model)
 
-	assert.Equal(t, 0, model.searchMatchIdx, "match index should reset to 0 after page down")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "match index should reset to 0 after page down")
 }
 
 // Test that gg (go to top) resets search match index
@@ -975,15 +975,15 @@ func TestSearch_GoToTop_ResetsMatchIndex(t *testing.T) {
 	m.searchQuery = "foo"
 	m.searchForward = true
 	m.adjustScrollToRow(5) // at row 5
-	m.searchMatchIdx = 1
-	m.searchMatchSide = 0
+	m.w().searchMatchIdx = 1
+	m.w().searchMatchSide = 0
 
 	// Press g then g for gg
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	newM, _ = newM.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model := newM.(Model)
 
-	assert.Equal(t, 0, model.searchMatchIdx, "match index should reset to 0 after gg")
+	assert.Equal(t, 0, model.w().searchMatchIdx, "match index should reset to 0 after gg")
 }
 
 // =============================================================================
@@ -1308,7 +1308,7 @@ func TestSearch_NextMatch_VisitsCommentMatches(t *testing.T) {
 
 	// Test that nextMatch can navigate to both types
 	// Position cursor at the very start
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 
 	// Find first match from beginning
 	firstRow, found := m.findNextMatchRow(0, true)
@@ -1316,8 +1316,8 @@ func TestSearch_NextMatch_VisitsCommentMatches(t *testing.T) {
 
 	// Move to that row
 	m.adjustScrollToRow(firstRow)
-	m.searchMatchIdx = 0
-	m.searchMatchSide = 0
+	m.w().searchMatchIdx = 0
+	m.w().searchMatchSide = 0
 
 	// Navigate through all matches and verify we see both content and comment
 	visitedKinds := make(map[RowKind]bool)
@@ -1665,7 +1665,7 @@ func TestSearch_NextMatch_LandsOnCorrectCommentLine(t *testing.T) {
 
 	m.searchQuery = "target"
 	m.searchForward = true
-	m.scroll = m.minScroll()
+	m.w().scroll = m.minScroll()
 
 	// Find the match
 	row, found := m.findNextMatchRow(0, true)
