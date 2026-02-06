@@ -461,43 +461,24 @@ func (m Model) renderStatusBar() string {
 		loadingWidth = 1 + 1 + len(" Loading...") // space + spinner + text
 	}
 
-	// Pager mode indicator (right-aligned)
-	var pagerIndicator string
-	if m.pagerMode {
-		pagerIndicator = "PAGER"
-	}
-
-	// Debug stats (right-aligned, before pager indicator)
+	// Debug stats (right-aligned)
 	var debugStats string
 	var debugWidth int
 	if m.debugMode {
 		debugStats, debugWidth = m.formatDebugStats()
 	}
 
-	// Combine: reversed_less_indicator + status_msg + loading + padding + debug_stats + pager_indicator
+	// Combine: reversed_less_indicator + status_msg + loading + padding + debug_stats
 	content := styledLessIndicator + statusMsg + loadingIndicator
 	contentWidth := displayWidth(" "+lessIndicator) + statusMsgWidth + loadingWidth
-	pagerWidth := displayWidth(pagerIndicator)
 
 	// Calculate padding between content and right-side indicators
-	rightWidth := debugWidth + pagerWidth
-	if debugWidth > 0 && pagerWidth > 0 {
-		rightWidth++ // space between debug and pager
-	}
-	padding := m.width - contentWidth - rightWidth
+	padding := m.width - contentWidth - debugWidth
 	if padding < 0 {
 		padding = 0
 	}
 
-	// Build right side
-	var rightSide string
-	if debugStats != "" && pagerIndicator != "" {
-		rightSide = debugStats + " " + pagerIndicator
-	} else {
-		rightSide = debugStats + pagerIndicator
-	}
-
-	return content + strings.Repeat(" ", padding) + rightSide
+	return content + strings.Repeat(" ", padding) + debugStats
 }
 
 // formatDebugStats returns formatted memory and goroutine stats for debug mode.

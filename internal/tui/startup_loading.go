@@ -19,11 +19,6 @@ func (m *Model) initStartupQueue() tea.Cmd {
 	}
 	m.startupQueuedInit = true
 
-	// Can't fetch in pager mode
-	if m.pagerMode {
-		return nil
-	}
-
 	// Queue supported files only in non-folded commits
 	for i, file := range m.files {
 		// Skip files in folded commits - they'll be loaded on demand when expanded

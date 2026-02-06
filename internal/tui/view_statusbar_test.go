@@ -472,68 +472,6 @@ func TestBottomBar_SearchMode_ShowsSearchPrompt(t *testing.T) {
 	assert.Contains(t, bottomBar, "/test", "bottom bar should show search prompt")
 }
 
-func TestStatusBar_PagerIndicator(t *testing.T) {
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "a/foo.go",
-				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
-				Pairs: []sidebyside.LinePair{
-					{
-						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-					},
-				},
-			},
-		},
-		width:     80,
-		height:    10,
-		keys:      DefaultKeyMap(),
-		pagerMode: true,
-	}
-	m.calculateTotalLines()
-
-	output := m.View()
-	lines := strings.Split(output, "\n")
-	bottomBar := lines[len(lines)-1]
-
-	// Bottom bar should show PAGER indicator in pager mode
-	assert.Contains(t, bottomBar, "PAGER", "bottom bar should show PAGER indicator in pager mode")
-}
-
-func TestStatusBar_NoPagerIndicator_WhenNotPagerMode(t *testing.T) {
-	m := Model{
-		focused: true,
-		files: []sidebyside.FilePair{
-			{
-				OldPath:   "a/foo.go",
-				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
-				Pairs: []sidebyside.LinePair{
-					{
-						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-						New: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
-					},
-				},
-			},
-		},
-		width:     80,
-		height:    10,
-		keys:      DefaultKeyMap(),
-		pagerMode: false,
-	}
-	m.calculateTotalLines()
-
-	output := m.View()
-	lines := strings.Split(output, "\n")
-	bottomBar := lines[len(lines)-1]
-
-	// Bottom bar should NOT show PAGER indicator when not in pager mode
-	assert.NotContains(t, bottomBar, "PAGER", "bottom bar should not show PAGER indicator when not in pager mode")
-}
-
 func TestStatusInfo_BreadcrumbsOnChunkSeparator(t *testing.T) {
 	// When cursor is on chunk separator (middle) or separator bottom rows,
 	// StatusInfo should show breadcrumbs for that chunk's first line.

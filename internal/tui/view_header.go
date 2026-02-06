@@ -31,7 +31,6 @@ func formatFileHeader(fp sidebyside.FilePair) string {
 
 // foldLevelIcon returns the icon for a given fold level.
 // ○ = Folded (header only), ◐ = Normal (structural diff), ● = Expanded (hunks)
-// In pager mode, FoldNormal shows ● (filled) to indicate max expansion.
 func (m Model) foldLevelIcon(level sidebyside.FoldLevel) string {
 	switch level {
 	case sidebyside.FoldFolded:
@@ -39,10 +38,6 @@ func (m Model) foldLevelIcon(level sidebyside.FoldLevel) string {
 	case sidebyside.FoldExpanded:
 		return "●"
 	default: // FoldNormal
-		if m.pagerMode {
-			// In pager mode, FoldNormal is max expansion (no FoldExpanded available)
-			return "●"
-		}
 		return "◐"
 	}
 }

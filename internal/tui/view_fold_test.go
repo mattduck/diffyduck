@@ -10,8 +10,7 @@ import (
 )
 
 func TestFoldLevelIcon(t *testing.T) {
-	// Normal mode (non-pager)
-	m := Model{pagerMode: false}
+	m := Model{}
 	tests := []struct {
 		level    sidebyside.FoldLevel
 		expected string
@@ -23,26 +22,6 @@ func TestFoldLevelIcon(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.level.String(), func(t *testing.T) {
-			icon := m.foldLevelIcon(tt.level)
-			assert.Equal(t, tt.expected, icon)
-		})
-	}
-}
-
-func TestFoldLevelIcon_PagerMode(t *testing.T) {
-	// Pager mode - FoldNormal shows filled (●) to indicate max expansion
-	m := Model{pagerMode: true}
-	tests := []struct {
-		level    sidebyside.FoldLevel
-		expected string
-	}{
-		{sidebyside.FoldFolded, "○"},
-		{sidebyside.FoldNormal, "●"}, // Filled in pager mode!
-		{sidebyside.FoldExpanded, "●"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.level.String()+"_pager", func(t *testing.T) {
 			icon := m.foldLevelIcon(tt.level)
 			assert.Equal(t, tt.expected, icon)
 		})

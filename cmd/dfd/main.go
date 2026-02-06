@@ -15,7 +15,6 @@ import (
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/git"
-	"github.com/user/diffyduck/pkg/pager"
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"golang.org/x/term"
 )
@@ -29,7 +28,7 @@ func main() {
 
 // parsedArgs contains parsed command line arguments.
 type parsedArgs struct {
-	cmd      string   // "diff", "show", "log", "pager", "clean"
+	cmd      string   // "diff", "show", "log", "clean"
 	refs     []string // 0-2 refs for diff, 0-1 for show/log (before --)
 	paths    []string // file paths (after --)
 	excludes []string // --exclude/-e glob patterns
@@ -62,7 +61,7 @@ func parseArgs(args []string) (parsedArgs, error) {
 	remaining := args
 	if len(remaining) > 0 {
 		switch remaining[0] {
-		case "diff", "show", "log", "pager", "clean":
+		case "diff", "show", "log", "clean":
 			result.cmd = remaining[0]
 			remaining = remaining[1:]
 		}
@@ -218,7 +217,7 @@ func (p *parsedArgs) validate() error {
 		if p.snapshots != nil {
 			return fmt.Errorf("--snapshots/--no-snapshots are only valid for diff command")
 		}
-	case "pager", "clean":
+	case "clean":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("%s does not accept arguments", p.cmd)
 		}
@@ -374,11 +373,6 @@ func run() error {
 	// Handle clean command - deletes all persisted snapshot refs
 	if args.cmd == "clean" {
 		return runClean()
-	}
-
-	// Check for pager mode: explicit "pager" command or piped stdin
-	if args.cmd == "pager" || pager.IsStdinPipe() {
-		return runPagerMode(args.debug)
 	}
 
 	// Handle log command separately
@@ -881,45 +875,6 @@ func getDiffAll(g *git.RealGit, baseRef string, paths, excludes []string) (strin
 	}
 
 	return output, nil
-}
-
-// runPagerMode handles pager mode where diff input comes from stdin.
-func runPagerMode(debugMode bool) error {
-	// Read and strip ANSI codes from stdin
-	input, err := pager.ReadStdin()
-	if err != nil {
-		return fmt.Errorf("read stdin: %w", err)
-	}
-
-	// Parse the diff
-	d, err := diff.Parse(input)
-	if err != nil {
-		return fmt.Errorf("parse diff: %w", err)
-	}
-
-	if len(d.Files) == 0 {
-		fmt.Println("No changes")
-		return nil
-	}
-
-	// Transform to side-by-side format
-	files, truncatedFileCount := sidebyside.TransformDiff(d)
-
-	// Create and run the TUI in pager mode (no fetcher available)
-	opts := []tui.Option{tui.WithPagerMode(), tui.WithTruncatedFileCount(truncatedFileCount)}
-	if debugMode {
-		opts = append(opts, tui.WithDebugMode())
-	}
-	model := tui.New(files, opts...)
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
-
-	finalModel, err := p.Run()
-	if err != nil {
-		return fmt.Errorf("TUI error: %w", err)
-	}
-	printExitComments(finalModel)
-
-	return nil
 }
 
 // printExitComments prints all comments as a unified diff patch to stdout

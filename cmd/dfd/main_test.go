@@ -27,7 +27,6 @@ func TestParseArgs_SubcommandDetection(t *testing.T) {
 		{"diff default", []string{"HEAD"}, "diff"},
 		{"show", []string{"show"}, "show"},
 		{"log", []string{"log"}, "log"},
-		{"pager", []string{"pager"}, "pager"},
 		{"clean", []string{"clean"}, "clean"},
 	}
 	for _, tt := range tests {

@@ -141,9 +141,6 @@ type Model struct {
 	git                git.Git          // for creating on-demand fetchers in log mode
 	truncatedFileCount int              // number of files omitted due to limit
 
-	// Pager mode
-	pagerMode bool // true when running as a pager (stdin input, no fetcher)
-
 	// Debug mode
 	debugMode bool // true when --debug flag is passed, shows memory/goroutine stats
 
@@ -394,14 +391,6 @@ func WithFetcher(f *content.Fetcher) Option {
 func WithGit(g git.Git) Option {
 	return func(m *Model) {
 		m.git = g
-	}
-}
-
-// WithPagerMode enables pager mode, which limits functionality since
-// full file content cannot be fetched from git.
-func WithPagerMode() Option {
-	return func(m *Model) {
-		m.pagerMode = true
 	}
 }
 

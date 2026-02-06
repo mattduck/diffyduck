@@ -790,16 +790,8 @@ func (m *Model) adjustScrollToRow(rowIndex int) {
 // nextFoldLevel returns the next fold level.
 // Cycle: Normal -> Expanded -> Folded -> Normal
 // (structural diff -> hunks -> header only -> structural diff)
-// In pager mode, FoldNormal is skipped since structural diff requires
-// full file content which is unavailable.
-// Pager mode cycle: Expanded -> Folded -> Expanded
 func (m Model) nextFoldLevel(current sidebyside.FoldLevel) sidebyside.FoldLevel {
-	next := current.NextLevel()
-	if m.pagerMode && next == sidebyside.FoldNormal {
-		// Skip FoldNormal in pager mode (no structural diff available)
-		return next.NextLevel() // Returns FoldExpanded
-	}
-	return next
+	return current.NextLevel()
 }
 
 // nextFoldLevelForFile returns the next fold level for a specific file.
@@ -807,8 +799,8 @@ func (m Model) nextFoldLevel(current sidebyside.FoldLevel) sidebyside.FoldLevel 
 // (binary files have no structural diff).
 func (m Model) nextFoldLevelForFile(currentLevel sidebyside.FoldLevel, fp sidebyside.FilePair) sidebyside.FoldLevel {
 	next := currentLevel.NextLevel()
-	if (m.pagerMode || fp.IsBinary) && next == sidebyside.FoldNormal {
-		// Skip FoldNormal in pager mode or for binary files
+	if fp.IsBinary && next == sidebyside.FoldNormal {
+		// Skip FoldNormal for binary files
 		return next.NextLevel() // Returns FoldExpanded
 	}
 	return next
@@ -873,11 +865,6 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 // When enabled, FoldExpanded shows full file content (with diff alignment) instead of hunks.
 // This is independent of the fold cycle — Tab still cycles normally.
 func (m Model) handleFullFileToggle() (tea.Model, tea.Cmd) {
-	// Not available in pager mode (no fetcher)
-	if m.pagerMode {
-		return m, nil
-	}
-
 	fileIdx := m.currentFileIndex()
 	if fileIdx < 0 || fileIdx >= len(m.files) {
 		return m, nil
