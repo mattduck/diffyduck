@@ -52,6 +52,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
+		// Rebuild help content on resize (column layout depends on width)
+		if m.helpMode {
+			m.helpLines = m.buildHelpLines()
+			m.clampHelpScroll()
+		}
+
 		// Set initial fold levels on first window size message
 		if !m.initialFoldSet && len(m.files) > 0 {
 			m.initialFoldSet = true
@@ -329,6 +335,30 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchInput(msg)
 	}
 
+	// Handle multi-key sequences first (before mode checks, since prefix
+	// could have been set in any mode that supports g-prefix)
+	if m.pendingKey == "g" {
+		return m.handlePendingG(msg)
+	}
+	if m.pendingKey == "ctrl+w" {
+		return m.handlePendingCtrlW(msg)
+	}
+
+	// Toggle help screen (C-h) — available except in text-editing modes
+	if msg.String() == "ctrl+h" {
+		m.helpMode = !m.helpMode
+		m.helpScroll = 0
+		if m.helpMode {
+			m.helpLines = m.buildHelpLines()
+		}
+		return m, nil
+	}
+
+	// Handle help screen navigation when active
+	if m.helpMode {
+		return m.handleHelpKey(msg)
+	}
+
 	// Handle visual mode - exit on ESC or C-g, otherwise delegate to normal keys
 	if m.w().visualSelection.Active {
 		if msg.String() == "esc" || msg.String() == "ctrl+g" {
@@ -336,14 +366,6 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// Fall through to normal key handling for movement, quit, etc.
-	}
-
-	// Handle multi-key sequences (e.g., gg, gj, gk, ctrl+w %)
-	if m.pendingKey == "g" {
-		return m.handlePendingG(msg)
-	}
-	if m.pendingKey == "ctrl+w" {
-		return m.handlePendingCtrlW(msg)
 	}
 
 	// Check for prefix keys that start multi-key sequences
@@ -1242,6 +1264,14 @@ func (m Model) handleSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // handlePendingG handles the second key after 'g' is pressed.
 func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.pendingKey = "" // Always clear pending state
+
+	// In help mode, only gg is meaningful
+	if m.helpMode {
+		if msg.String() == "g" {
+			m.helpScroll = 0
+		}
+		return m, nil
+	}
 
 	switch msg.String() {
 	case "g":

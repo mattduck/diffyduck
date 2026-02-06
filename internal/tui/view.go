@@ -167,6 +167,11 @@ func (m Model) View() string {
 		return ""
 	}
 
+	// Help screen replaces the entire view
+	if m.helpMode {
+		return m.renderHelp()
+	}
+
 	// Single window: render normally
 	if len(m.windows) <= 1 {
 		return m.renderSingleWindowView()

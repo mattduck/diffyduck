@@ -243,6 +243,11 @@ type Model struct {
 	allMode          bool     // true if --all flag was used (include untracked files in snapshots)
 	continueMode     bool     // true if --continue flag was used (load persisted snapshots)
 	baseSHA          string   // SHA of the base ref we're diffing against (for keying snapshot refs)
+
+	// Help screen
+	helpMode   bool     // true when help screen is displayed
+	helpScroll int      // scroll offset in help content
+	helpLines  []string // pre-rendered help content lines
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
