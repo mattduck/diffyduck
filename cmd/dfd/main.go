@@ -1162,12 +1162,10 @@ func run() error {
 	model := tui.NewWithCommits(commits, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
 
-	finalModel, err := p.Run()
+	_, err = p.Run()
 	if err != nil {
 		return fmt.Errorf("TUI error: %w", err)
 	}
-	printExitComments(finalModel)
-
 	return nil
 }
 
@@ -1452,11 +1450,10 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 	model := tui.NewWithCommits(commitSets, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
 
-	finalModel, err := p.Run()
+	_, err = p.Run()
 	if err != nil {
 		return fmt.Errorf("TUI error: %w", err)
 	}
-	printExitComments(finalModel)
 
 	return nil
 }
@@ -1511,6 +1508,11 @@ func getDiffAll(g *git.RealGit, baseRef string, paths, excludes []string) (strin
 
 // printExitComments prints all comments as a unified diff patch to stdout
 // when the TUI exits, if any comments were added during the session.
+// Currently unused — comments are persisted in git refs now, so printing
+// on exit is no longer needed. We may re-enable some way to print comments
+// later (e.g. via a CLI flag or subcommand).
+//
+//nolint:unused
 func printExitComments(finalModel tea.Model) {
 	if m, ok := finalModel.(tui.Model); ok {
 		if snippet := m.AllCommentsSnippet(); snippet != "" {
