@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -1010,22 +1009,23 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 		return 0
 	}
 
-	diff := fs.StructuralDiff
-	if !diff.HasChanges() {
-		return 0
-	}
-
-	changes := diff.ChangedOnly()
-	if len(changes) == 0 {
+	topLevel, _ := structure.TopChanges(fs.StructuralDiff, maxStructuralDiffItems)
+	if len(topLevel) == 0 {
 		return 0
 	}
 
 	// Calculate max stats width across all entries
 	maxStatsWidth := 0
-	for _, c := range changes {
-		w := statsTextWidth(c.LinesAdded, c.LinesRemoved)
+	for _, node := range topLevel {
+		w := statsTextWidth(node.Change.LinesAdded, node.Change.LinesRemoved)
 		if w > maxStatsWidth {
 			maxStatsWidth = w
+		}
+		for _, child := range node.Children {
+			w := statsTextWidth(child.LinesAdded, child.LinesRemoved)
+			if w > maxStatsWidth {
+				maxStatsWidth = w
+			}
 		}
 	}
 
@@ -1036,7 +1036,6 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 		numDigits := len(fmt.Sprintf("%d", totalFiles))
 		iconPartWidth := 9 + numDigits
 		maxBoxWidth := m.width * 80 / 100
-		// Overhead: kind(max 5) + space(1) + maxStatsWidth (stats follow the signature)
 		overhead := 5 + 1 + maxStatsWidth
 		maxSignatureWidth = maxBoxWidth - iconPartWidth - overhead
 		if maxSignatureWidth < 20 {
@@ -1047,7 +1046,6 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 		}
 	}
 
-	// Helper to get display width of name or signature (expanded to fill available space)
 	entryDisplayWidth := func(entry *structure.Entry) int {
 		sig := entry.FormatSignature(maxSignatureWidth)
 		if sig == "" {
@@ -1057,107 +1055,20 @@ func (m Model) structuralDiffMaxContentWidth(fileIdx int) int {
 	}
 
 	maxWidth := 0
-
-	// Build tree structure to identify children (same logic as buildStructuralDiffRows)
-	type widthTreeNode struct {
-		change   structure.ElementChange
-		children []structure.ElementChange
-	}
-
-	var topLevel []widthTreeNode
-	methodsAssigned := make(map[int]bool)
-
-	// First pass: find types and their children
-	for i, c := range changes {
-		entry := c.Entry()
-		if entry == nil {
-			continue
-		}
-		if entry.Kind == "type" || entry.Kind == "class" {
-			node := widthTreeNode{change: c}
-			for j, other := range changes {
-				if i == j {
-					continue
-				}
-				otherEntry := other.Entry()
-				if otherEntry == nil {
-					continue
-				}
-				if otherEntry.Kind == "func" || otherEntry.Kind == "def" {
-					typeStart, typeEnd := entry.StartLine, entry.EndLine
-					otherStart := otherEntry.StartLine
-					if otherStart >= typeStart && otherStart <= typeEnd {
-						node.children = append(node.children, other)
-						methodsAssigned[j] = true
-					}
-				}
-			}
-			topLevel = append(topLevel, node)
-			methodsAssigned[i] = true
-		}
-	}
-
-	// Second pass: remaining top-level items
-	for i, c := range changes {
-		if !methodsAssigned[i] {
-			topLevel = append(topLevel, widthTreeNode{change: c})
-		}
-	}
-
-	// Sort by total lines changed and truncate (same as buildStructuralDiffRows)
-	sort.SliceStable(topLevel, func(i, j int) bool {
-		totalI := topLevel[i].change.LinesAdded + topLevel[i].change.LinesRemoved
-		for _, child := range topLevel[i].children {
-			totalI += child.LinesAdded + child.LinesRemoved
-		}
-		totalJ := topLevel[j].change.LinesAdded + topLevel[j].change.LinesRemoved
-		for _, child := range topLevel[j].children {
-			totalJ += child.LinesAdded + child.LinesRemoved
-		}
-		return totalI > totalJ
-	})
-	// Sort children within each node by lines changed (descending)
-	for i := range topLevel {
-		sort.SliceStable(topLevel[i].children, func(a, b int) bool {
-			ca := topLevel[i].children[a]
-			cb := topLevel[i].children[b]
-			return (ca.LinesAdded + ca.LinesRemoved) > (cb.LinesAdded + cb.LinesRemoved)
-		})
-	}
-	// Truncate to top N displayed rows (parent + children = 1 row each)
-	{
-		rowCount := 0
-		keptCount := 0
-		for _, node := range topLevel {
-			nodeRows := 1 + len(node.children)
-			if rowCount+nodeRows > maxStructuralDiffItems {
-				break
-			}
-			keptCount++
-			rowCount += nodeRows
-		}
-		if keptCount < len(topLevel) {
-			topLevel = topLevel[:keptCount]
-		}
-	}
-
-	// Calculate max width from visible items
 	for _, node := range topLevel {
-		entry := node.change.Entry()
+		entry := node.Change.Entry()
 		if entry == nil {
 			continue
 		}
-		// Width for parent: kind + space(1) + name/sig + stats
-		width := runewidth.StringWidth(entry.Kind) + 1 + entryDisplayWidth(entry) + statsTextWidth(node.change.LinesAdded, node.change.LinesRemoved)
+		width := runewidth.StringWidth(entry.Kind) + 1 + entryDisplayWidth(entry) + statsTextWidth(node.Change.LinesAdded, node.Change.LinesRemoved)
 		if width > maxWidth {
 			maxWidth = width
 		}
-		for _, child := range node.children {
+		for _, child := range node.Children {
 			childEntry := child.Entry()
 			if childEntry == nil {
 				continue
 			}
-			// Width for child: childIndent(2) + kind + space(1) + name/sig + stats
 			childWidth := 2 + runewidth.StringWidth(childEntry.Kind) + 1 + entryDisplayWidth(childEntry) + statsTextWidth(child.LinesAdded, child.LinesRemoved)
 			if childWidth > maxWidth {
 				maxWidth = childWidth
@@ -1178,14 +1089,8 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		return nil
 	}
 
-	diff := fs.StructuralDiff
-	if !diff.HasChanges() {
-		return nil
-	}
-
-	// Get only the changed elements
-	changes := diff.ChangedOnly()
-	if len(changes) == 0 {
+	topLevel, truncatedCount := structure.TopChanges(fs.StructuralDiff, maxStructuralDiffItems)
+	if len(topLevel) == 0 {
 		return nil
 	}
 
@@ -1194,112 +1099,17 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 
 	var rows []displayRow
 
-	// Content starts right after tree continuation
 	// Children get 2 extra spaces for indent
-	childPrefix := "  " // 2 extra spaces for child indent
-
-	// Build a tree structure: top-level items and their children
-	// Types/classes can contain methods
-	type treeNode struct {
-		change   structure.ElementChange
-		children []structure.ElementChange
-	}
-
-	// Group methods under their parent types (by checking line containment)
-	var topLevel []treeNode
-	methodsAssigned := make(map[int]bool) // track which changes are assigned as children
-
-	// First pass: find all types/classes that could be parents
-	for i, c := range changes {
-		entry := c.Entry()
-		if entry == nil {
-			continue
-		}
-		if entry.Kind == "type" || entry.Kind == "class" {
-			node := treeNode{change: c}
-			// Find methods that are within this type's range
-			for j, other := range changes {
-				if i == j {
-					continue
-				}
-				otherEntry := other.Entry()
-				if otherEntry == nil {
-					continue
-				}
-				// Check if this is a method/function within the type's lines
-				if otherEntry.Kind == "func" || otherEntry.Kind == "def" {
-					// Use the entry that has line info (prefer new, fall back to old)
-					typeStart, typeEnd := entry.StartLine, entry.EndLine
-					otherStart := otherEntry.StartLine
-
-					if otherStart >= typeStart && otherStart <= typeEnd {
-						node.children = append(node.children, other)
-						methodsAssigned[j] = true
-					}
-				}
-			}
-			topLevel = append(topLevel, node)
-			methodsAssigned[i] = true
-		}
-	}
-
-	// Second pass: add remaining items as top-level
-	for i, c := range changes {
-		if !methodsAssigned[i] {
-			topLevel = append(topLevel, treeNode{change: c})
-		}
-	}
-
-	// Sort top-level nodes by total lines changed (added + removed), descending
-	nodeTotalLines := func(n treeNode) int {
-		total := n.change.LinesAdded + n.change.LinesRemoved
-		for _, child := range n.children {
-			total += child.LinesAdded + child.LinesRemoved
-		}
-		return total
-	}
-	changeTotalLines := func(c structure.ElementChange) int {
-		return c.LinesAdded + c.LinesRemoved
-	}
-	sort.SliceStable(topLevel, func(i, j int) bool {
-		return nodeTotalLines(topLevel[i]) > nodeTotalLines(topLevel[j])
-	})
-
-	// Sort children within each node by lines changed (descending)
-	for i := range topLevel {
-		sort.SliceStable(topLevel[i].children, func(a, b int) bool {
-			return changeTotalLines(topLevel[i].children[a]) > changeTotalLines(topLevel[i].children[b])
-		})
-	}
-
-	// Truncate to top N displayed rows (parent + children each count as one row).
-	// Walk nodes in sorted order and include as many as fit within the limit.
-	truncatedCount := 0
-	rowCount := 0
-	keptCount := 0
-	for _, node := range topLevel {
-		nodeRows := 1 + len(node.children) // parent + children
-		if rowCount+nodeRows > maxStructuralDiffItems {
-			break
-		}
-		keptCount++
-		rowCount += nodeRows
-	}
-	if keptCount < len(topLevel) {
-		truncatedCount = len(topLevel) - keptCount
-		topLevel = topLevel[:keptCount]
-	}
+	childPrefix := "  "
 
 	// Calculate max stats width across all entries for signature narrowing.
-	// Stats are shown unaligned (e.g., " +3 -4") straight after the signature,
-	// so we need the widest stats string to reserve space.
 	maxStatsWidth := 0
 	for _, node := range topLevel {
-		w := statsTextWidth(node.change.LinesAdded, node.change.LinesRemoved)
+		w := statsTextWidth(node.Change.LinesAdded, node.Change.LinesRemoved)
 		if w > maxStatsWidth {
 			maxStatsWidth = w
 		}
-		for _, child := range node.children {
+		for _, child := range node.Children {
 			w := statsTextWidth(child.LinesAdded, child.LinesRemoved)
 			if w > maxStatsWidth {
 				maxStatsWidth = w
@@ -1314,7 +1124,6 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		numDigits := len(fmt.Sprintf("%d", totalFiles))
 		iconPartWidth := 9 + numDigits
 		maxBoxWidth := m.width * 80 / 100
-		// Overhead: kind(max 5) + space(1) + maxStatsWidth (stats follow the signature)
 		overhead := 5 + 1 + maxStatsWidth
 		maxSignatureWidth = maxBoxWidth - iconPartWidth - overhead
 		if maxSignatureWidth < 20 {
@@ -1325,11 +1134,8 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		}
 	}
 
-	// Helper to format entry name or signature
 	formatEntry := func(entry *structure.Entry) string {
-		// For functions/methods, use FormatSignature to show params and return type
-		// For types/classes, FormatSignature returns "" so we fall back to Name
-		sig := entry.FormatSignature(0) // Check if it has a signature at all
+		sig := entry.FormatSignature(0)
 		if sig == "" {
 			return entry.Name
 		}
@@ -1338,13 +1144,12 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 
 	// Render tree
 	for _, node := range topLevel {
-		c := node.change
+		c := node.Change
 		entry := c.Entry()
 		if entry == nil {
 			continue
 		}
 
-		// Format: "kind name/sig" (no symbol prefix; stats rendered after signature)
 		nameOrSig := formatEntry(entry)
 		line := entry.Kind + " " + nameOrSig
 
@@ -1365,7 +1170,7 @@ func (m Model) buildStructuralDiffRows(fileIdx int, headerBoxWidth int, isLastFi
 		// Add children (methods within types) with extra indentation.
 		// If the parent is added/deleted, children inherit that styling
 		// so their identifiers also show bold+underline in the diff color.
-		for _, child := range node.children {
+		for _, child := range node.Children {
 			childEntry := child.Entry()
 			if childEntry == nil {
 				continue

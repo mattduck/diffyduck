@@ -59,7 +59,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			if node.IsHead {
 				nameCol = "* " + displayName
 			} else {
-				nameCol = "  " + displayName
+				nameCol = displayName
 			}
 		} else {
 			connector := "├─ "
@@ -152,7 +152,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			// Blank line between independent trees
 			lines = append(lines, line{})
 		}
-		walk(root, "  ", true, true)
+		walk(root, "", true, true)
 	}
 
 	// Compute max widths

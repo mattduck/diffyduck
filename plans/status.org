@@ -1,0 +1,259 @@
+* Status Command
+
+Print-and-exit subcommand (`dfd status`, alias `s`) showing a rich overview
+of the working tree: branch context, staged/unstaged file changes with
+per-file structural diffs, and untracked files.
+
+** Goals
+
+*** Phase 1: Core status output [TODO]
+- [ ] New subcommand: ~status~ / ~s~
+- [ ] Branch tree section (reuse ~branches.Render~)
+- [ ] Staged changes section (~git diff --cached~)
+- [ ] Unstaged changes section (~git diff~)
+- [ ] Untracked files section (~git ls-files --others --exclude-standard~)
+- [ ] Per-file +/- line counts
+- [ ] Per-file structural diff (treesitter symbols) with 5-item cutoff
+- [ ] Sections only shown when non-empty
+
+*** Phase 2: Enhancements (future)
+- Rebase/merge/cherry-pick conflict status
+- Stash list
+- Config options (cutoff count, disable sections)
+- Color theme integration
+
+** Requirements (from discussion)
+
+#+begin_quote
+"show the branches info first, then show something similar-ish to what we
+show in our diff view, where instead of just showing filenames, we show the
++ and - line counts per file. and, we also do the treesitter parsing to show
+the ordered code structure changes like we do in the diff command, with the
+same ordering, and with a similar cutoff of 'N more' if it's more than some
+amount"
+#+end_quote
+
+#+begin_quote
+"we should also show the difference between staged and unstaged changes,
+which is something we don't currently do in the main diff command. so we'll
+need to find a way to style that"
+#+end_quote
+
+#+begin_quote
+"for v1, we _dont_ have to support rebase/merge conflict statuses"
+#+end_quote
+
+#+begin_quote
+"I don't think we need to right-align the numbers though, just let them come
+straight after their filenames or code names"
+#+end_quote
+
+#+begin_quote
+(branches) "Full tree — same as 'dfd branches' output"
+(untracked) "Yes, separate section"
+(symbols) "we need multiple. not like the breadcrumb, but like the unfolded
+file status where we list the top N symbols/functions/whatever and their
+individual counts. we should reuse that code as much as possible, and have
+similar styling"
+(cutoff) "5 per file"
+#+end_quote
+
+** Target output
+
+#+begin_example
+  main
+  └─ second ↑2
+     └─ fourth (HEAD) ↑3 ↓0
+
+Staged:
+  + pkg/status/render.go +42 -0
+    func Render(...) +42 -0
+  ~ pkg/git/git.go +15 -3
+    func (g *RealGit) StatusFiles(...) +12 -1
+    func (g *RealGit) Diff(...) +3 -2
+
+Unstaged:
+  ~ internal/tui/model.go +28 -5
+    func (m Model) Update(...) +18 -3
+    func (m Model) renderStatus(...) +10 -2
+  ~ pkg/config/config.go +8 -0
+    type StatusConfig +8 -0
+  ~ pkg/diff/parser.go +3 -1
+    func parseHunkHeader(...) +3 -1
+                       ...(2 more)
+
+Untracked:
+  pkg/status/render_test.go
+  pkg/status/testdata/expected.txt
+#+end_example
+
+- File lines: status indicator (~+~ / ~-~ / ~~~ / ~→~) + path + colored ~+N -M~
+- Structure lines: 4-space indent, ~kind signature~ + ~+N -M~ (left-aligned after sig)
+- Per-file cutoff: 5 symbols, then ~...(N more)~
+- Sections: "Staged:", "Unstaged:", "Untracked:" — only printed when non-empty
+- Blank line between sections
+- Branch tree: non-verbose (no SHA / date / subject / author)
+
+** Design
+
+*** Package layout
+
+New package: ~pkg/status/~
+- ~render.go~ — build the full status output string
+- ~render_test.go~ — unit tests for rendering
+
+Alternatively, the rendering could live in ~cmd/dfd/~ like ~runBranches~
+does for branches, but since there's meaningful logic (structural diff
+per-file, section formatting), a dedicated package keeps it testable.
+
+*** Data flow
+
+#+begin_example
+1. git.LocalBranches()         → branches.BuildTree() → branches.Render()
+2. git.Diff("--cached")        → diff.Parse()         → staged FilePairs
+3. git.Diff()                  → diff.Parse()         → unstaged FilePairs
+4. git.ListUntrackedFiles()    → untracked paths
+5. For each staged/unstaged file:
+   a. Fetch old/new content     → git.GetFileContent(ref, path)
+   b. Extract structure         → structure.Extract(content, lang)
+   c. Compute structural diff   → structure.ComputeDiff(old, new, added, removed)
+   d. Sort + truncate to 5      → render symbols
+6. Assemble sections → print
+#+end_example
+
+*** Git operations needed
+
+All existing:
+- ~g.Diff("--cached")~ — staged diff (already supported via variadic args)
+- ~g.Diff()~ — unstaged diff (already supported)
+- ~g.ListUntrackedFiles()~ — untracked files (exists)
+- ~g.GetFileContent(ref, path)~ — file content for structure extraction
+- ~g.LocalBranches()~ + ~branches.BuildTree/Render~ — branch tree
+
+For content fetching to compute structural diffs:
+- Staged: old = ~HEAD:path~, new = ~:path~ (index)
+- Unstaged: old = ~:path~ (index), new = working tree (read file directly)
+- If nothing staged, unstaged old = ~HEAD:path~
+
+We may want a helper that determines old/new refs based on whether a file
+is staged, unstaged, or both.
+
+*** Reusable code
+
+From ~pkg/structure/~:
+- ~Extract()~ — parse file content to get structure map
+- ~ComputeDiff()~ — compute structural diff
+- ~ElementChange~, ~ChangeKind~ — types
+
+From ~internal/tui/view_commit.go~ (logic to extract, not TUI rendering):
+- Tree-building logic (group methods under parent types)
+- Sort by total lines changed (descending)
+- Truncation with ~...(N more)~
+
+We'll port the tree-building + sorting + truncation logic into a shared
+helper (probably in ~pkg/structure/~) so both TUI and status command can
+use it without duplication.
+
+From ~pkg/diff/~:
+- ~Parse()~ — parse unified diff
+- ~File~, ~Hunk~, ~Line~ — types for extracting added/removed line numbers
+
+From ~pkg/branches/~:
+- ~BuildTree()~, ~Render()~ — direct reuse
+
+*** Rendering approach
+
+ANSI terminal output (like branches), not Bubble Tea. Use direct ANSI
+escape codes or lipgloss for color. Match the diff view's color conventions:
+- Green for added (~+~)
+- Red for removed (~-~)
+- Blue for modified (~~)
+- Cyan for renamed (~→~)
+- Dim/dark green+red for structural diff line counts
+- fg=8 for keyword in structural diff (~func~, ~type~)
+- Section headers in bold or bright white
+
+** Implementation plan
+
+*** Step 1: Extract shared structural diff helpers
+
+Move the tree-building, sorting, and truncation logic from
+~internal/tui/view_commit.go:buildStructuralDiffRows~ into a reusable
+function in ~pkg/structure/~.
+
+New function in ~pkg/structure/display.go~:
+#+begin_src go
+// TopChanges groups methods under parent types, sorts by total lines
+// changed (descending), and truncates to maxItems.
+// Returns the visible items and count of truncated top-level items.
+type DisplayNode struct {
+    Change   ElementChange
+    Children []ElementChange
+}
+
+func TopChanges(diff *StructuralDiff, maxItems int) (nodes []DisplayNode, truncated int)
+#+end_src
+
+*** Step 2: Add ~pkg/status/~ package
+
+~pkg/status/render.go~:
+- ~Render(branches string, staged, unstaged []FileStatus, untracked []string) string~
+- ~FileStatus~ struct: Path, OldPath, Status, Added, Removed, Symbols []SymbolLine
+- ~SymbolLine~ struct: Kind, Signature, Added, Removed, IsTruncation, TruncCount
+- Section rendering helpers (colorized file lines, symbol lines)
+
+*** Step 3: Wire up in ~cmd/dfd/main.go~
+
+- Add ~status~ subcommand + ~s~ alias in argument parsing
+- Add ~usageStatus~ const for help text
+- Add ~runStatus()~ function:
+  1. Get branch tree (reuse ~runBranches~ logic)
+  2. Get staged diff (~g.Diff("--cached")~), parse, compute structure
+  3. Get unstaged diff (~g.Diff()~), parse, compute structure
+  4. Get untracked files
+  5. Render and print
+
+*** Step 4: Content fetching for structural diffs
+
+For each file in staged/unstaged diffs, fetch old and new content to
+extract structure:
+
+Staged files:
+- Old: ~g.GetFileContent("HEAD", path)~
+- New: ~g.GetFileContent("", path)~ (index/staged version)
+
+Unstaged files:
+- Old: ~g.GetFileContent("", path)~ (index version)
+- New: read from working tree (~os.ReadFile~)
+
+Handle edge cases:
+- New files (old = empty)
+- Deleted files (new = empty)
+- Binary files (skip structure)
+- Files that exist in both staged and unstaged (show in both sections)
+
+*** Step 5: Tests
+
+- Unit tests for ~TopChanges~ in ~pkg/structure/~
+- Unit tests for rendering in ~pkg/status/render_test.go~
+  (use string assertions on ANSI-stripped output)
+- Integration test with a temp git repo (following git isolation patterns)
+
+*** Step 6: CLI integration
+
+- Add to ~parseArgs~ in ~cmd/dfd/main.go~
+- Add ~usageStatus~ help text
+- Add to ~usageGeneral~ commands section
+- Wire single-letter alias ~s~
+
+** Open questions / decisions
+
+- Should we detect files that appear in BOTH staged and unstaged and show
+  them in both sections? (Yes — git status does this, e.g. partially staged
+  files.) The structural diff in each section reflects only that section's
+  changes.
+- Performance: structural diff requires fetching file content and running
+  treesitter. For a status command this should be fast enough since we're
+  not rendering a TUI, but we could parallelise file processing if needed.
+- Should ~dfd status~ accept flags? For v1, no flags. Later: ~--no-structure~
+  to skip treesitter, ~--short~ for compact output.

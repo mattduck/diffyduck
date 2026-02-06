@@ -19,7 +19,9 @@ import (
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/git"
+	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/user/diffyduck/pkg/status"
 	"golang.org/x/term"
 )
 
@@ -97,6 +99,10 @@ type parsedArgs struct {
 	// log-specific
 	count int // -n <count>, 0 = unlimited
 
+	// status-specific
+	symbols        int    // -S/--symbols [N], -1 = not set, 0 = unlimited, >0 = max per file
+	untrackedFiles string // --untracked-files/-u: "all" (default), "normal", "no"
+
 	// branches-specific
 	verbose bool // -v/--verbose
 
@@ -131,6 +137,8 @@ func expandAlias(s string) string {
 		return "log"
 	case "b":
 		return "branches"
+	case "s":
+		return "status"
 	default:
 		return s
 	}
@@ -139,13 +147,13 @@ func expandAlias(s string) string {
 // parseArgs parses command line arguments into structured fields.
 // Unknown flags produce an error. No arguments are passed through to git verbatim.
 func parseArgs(args []string) (parsedArgs, error) {
-	result := parsedArgs{cmd: "diff"}
+	result := parsedArgs{cmd: "diff", symbols: -1, untrackedFiles: "all"}
 
 	// Consume subcommand if present
 	remaining := args
 	if len(remaining) > 0 {
 		switch remaining[0] {
-		case "diff", "d", "show", "log", "l", "clean", "branches", "b", "config":
+		case "diff", "d", "show", "log", "l", "clean", "branches", "b", "config", "status", "s":
 			result.cmd = expandAlias(remaining[0])
 			result.helpCmd = result.cmd // target for --help flag
 			remaining = remaining[1:]
@@ -282,6 +290,60 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		}
 		p.count = n
 
+	// Symbols: -S [N], --symbols [N], --symbols=N
+	case arg == "-S" || arg == "--symbols":
+		// Default to 5 per file; consume optional integer argument
+		p.symbols = 5
+		if i+1 < len(args) {
+			if n, err := strconv.Atoi(args[i+1]); err == nil {
+				if n <= 0 {
+					p.symbols = 2000
+				} else if n > 2000 {
+					p.symbols = 2000
+				} else {
+					p.symbols = n
+				}
+				return 1, nil
+			}
+		}
+	case strings.HasPrefix(arg, "--symbols="):
+		nStr := strings.TrimPrefix(arg, "--symbols=")
+		n, err := strconv.Atoi(nStr)
+		if err != nil {
+			return 0, fmt.Errorf("--symbols requires an integer, got %q", nStr)
+		}
+		if n <= 0 {
+			p.symbols = 2000
+		} else if n > 2000 {
+			p.symbols = 2000
+		} else {
+			p.symbols = n
+		}
+
+	// Untracked files: -u<mode>, --untracked-files=<mode>
+	// Modes: no, normal, all (default: all)
+	case arg == "--untracked-files":
+		// Bare flag without value means "all"
+		p.untrackedFiles = "all"
+	case strings.HasPrefix(arg, "--untracked-files="):
+		mode := strings.TrimPrefix(arg, "--untracked-files=")
+		switch mode {
+		case "no", "normal", "all":
+			p.untrackedFiles = mode
+		default:
+			return 0, fmt.Errorf("--untracked-files must be no, normal, or all; got %q", mode)
+		}
+	case arg == "-u":
+		p.untrackedFiles = "all"
+	case strings.HasPrefix(arg, "-u"):
+		mode := strings.TrimPrefix(arg, "-u")
+		switch mode {
+		case "no", "normal", "all":
+			p.untrackedFiles = mode
+		default:
+			return 0, fmt.Errorf("-u mode must be no, normal, or all; got %q", mode)
+		}
+
 	// config flags
 	case arg == "--init":
 		p.configInit = true
@@ -319,6 +381,9 @@ func (p *parsedArgs) validate() error {
 		if p.verbose {
 			return fmt.Errorf("-v is only valid for branches command")
 		}
+		if p.symbols >= 0 || p.untrackedFiles != "all" {
+			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
+		}
 	case "show":
 		if len(p.refs) > 1 {
 			return fmt.Errorf("show accepts at most 1 ref, got %d", len(p.refs))
@@ -335,6 +400,9 @@ func (p *parsedArgs) validate() error {
 		if p.verbose {
 			return fmt.Errorf("-v is only valid for branches command")
 		}
+		if p.symbols >= 0 || p.untrackedFiles != "all" {
+			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
+		}
 	case "log":
 		if len(p.refs) > 1 {
 			return fmt.Errorf("log accepts at most 1 ref range, got %d", len(p.refs))
@@ -348,25 +416,35 @@ func (p *parsedArgs) validate() error {
 		if p.verbose {
 			return fmt.Errorf("-v is only valid for branches command")
 		}
+		if p.symbols >= 0 || p.untrackedFiles != "all" {
+			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
+		}
 	case "clean":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("%s does not accept arguments", p.cmd)
 		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose {
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("%s does not accept flags", p.cmd)
 		}
 	case "branches":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("branches does not accept arguments")
 		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 {
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("branches only accepts -v/--verbose")
+		}
+	case "status":
+		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
+			return fmt.Errorf("status does not accept arguments")
+		}
+		if p.cached || p.unstaged || p.count > 0 || p.verbose || p.allMode {
+			return fmt.Errorf("status only accepts -S/--symbols and -u/--untracked-files")
 		}
 	case "config":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("config does not accept arguments")
 		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 {
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("config does not accept diff/log flags")
 		}
 		if p.configForce && !p.configInit {
@@ -527,6 +605,8 @@ func printUsage(cmd string) {
 		fmt.Print(usageClean)
 	case "branches":
 		fmt.Print(usageBranches)
+	case "status":
+		fmt.Print(usageStatus)
 	case "config":
 		fmt.Print(usageConfig)
 	default:
@@ -547,6 +627,7 @@ Commands:
   clean      Delete persisted snapshots
   branches, b
              Show branch dependency tree
+  status, s  Show rich working tree status
   config     Manage configuration
 
 Global flags:
@@ -654,6 +735,34 @@ Examples:
   dfd branches -v          Show branch tree with commit subjects
 `
 
+const usageStatus = `dfd status - show rich working tree status
+
+Usage:
+  dfd status [-S [N]] [-u<mode>]
+
+Flags:
+  -S, --symbols [N]              Show structural diffs (functions, types) per file
+                                 N = max symbols per file (default 5, 0 = unlimited)
+  -u, --untracked-files[=<mode>] Show untracked files (default: all)
+                                 no     = hide untracked files
+                                 normal = list paths only
+                                 all    = expand with diffs (default)
+
+Displays branch tree, staged/unstaged changes, and untracked files.
+Untracked files are expanded with diffs by default; use -uno or
+-unormal to just list paths or hide them entirely.
+With -S, each changed file shows affected functions, methods, and types
+with per-element line counts.
+
+Examples:
+  dfd status               Show working tree status (untracked expanded)
+  dfd status -S            Include structural diffs (5 per file)
+  dfd status -S 10         Include structural diffs (10 per file)
+  dfd status -uno          Hide untracked files
+  dfd status -unormal      List untracked paths only
+  dfd s                    Same (short alias)
+`
+
 const usageConfig = `dfd config - manage configuration
 
 Usage:
@@ -719,6 +828,15 @@ func run() error {
 	// Handle branches command - show branch dependency tree
 	if args.cmd == "branches" {
 		return runBranches(args.verbose)
+	}
+
+	// Handle status command - rich working tree status
+	if args.cmd == "status" {
+		maxSymbols := 0 // default: no symbols
+		if args.symbols >= 0 {
+			maxSymbols = args.symbols
+		}
+		return runStatus(args.untrackedFiles, maxSymbols)
 	}
 
 	// Handle config command
@@ -1069,6 +1187,73 @@ func runBranches(verbose bool) error {
 		return fmt.Errorf("build branch tree: %w", err)
 	}
 	fmt.Print(branches.Render(roots, verbose))
+	return nil
+}
+
+// runStatus prints a rich working tree status: branch tree, staged/unstaged
+// changes with structural diffs, and untracked files.
+// untrackedMode is "all" (expand with diffs), "normal" (list paths), or "no" (hide).
+func runStatus(untrackedMode string, maxSymbols int) error {
+	g := git.New()
+	hl := highlight.New()
+
+	// 1. Branch tree
+	var branchTree string
+	branchList, err := g.LocalBranches()
+	if err == nil && len(branchList) > 0 {
+		roots, err := branches.BuildTree(branchList, g)
+		if err == nil {
+			branchTree = branches.Render(roots, false)
+		}
+	}
+
+	// Content fetcher using git
+	fetchContent := func(ref, path string) (string, error) {
+		return g.GetFileContent(ref, path)
+	}
+
+	// Working directory for reading unstaged files
+	workDir, _ := os.Getwd()
+	readFile := status.ReadWorkingFile(workDir)
+
+	// 2. Staged changes
+	stagedDiffStr, _ := g.Diff("--cached")
+	var stagedChanges []status.FileChange
+	if stagedDiffStr != "" {
+		parsed, _ := diff.Parse(stagedDiffStr)
+		stagedChanges = status.BuildFileChanges(parsed, hl, fetchContent, readFile, true, maxSymbols)
+	}
+
+	// 3. Unstaged changes
+	unstagedDiffStr, _ := g.Diff()
+	var unstagedChanges []status.FileChange
+	if unstagedDiffStr != "" {
+		parsed, _ := diff.Parse(unstagedDiffStr)
+		unstagedChanges = status.BuildFileChanges(parsed, hl, fetchContent, readFile, false, maxSymbols)
+	}
+
+	// 4. Untracked files
+	var untracked []string
+	var untrackedChanges []status.FileChange
+	if untrackedMode != "no" {
+		untracked, _ = g.ListUntrackedFiles()
+
+		if untrackedMode == "all" && len(untracked) > 0 {
+			for _, path := range untracked {
+				newDiff, err := g.DiffNewFile(path)
+				if err != nil || newDiff == "" {
+					continue
+				}
+				parsed, _ := diff.Parse(newDiff)
+				fcs := status.BuildFileChanges(parsed, hl, fetchContent, readFile, false, maxSymbols)
+				untrackedChanges = append(untrackedChanges, fcs...)
+			}
+			untracked = nil // expanded changes replace the plain list
+		}
+	}
+
+	// Render and print
+	fmt.Print(status.Render(branchTree, stagedChanges, unstagedChanges, untracked, untrackedChanges))
 	return nil
 }
 

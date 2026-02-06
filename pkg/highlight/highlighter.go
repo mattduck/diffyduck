@@ -129,6 +129,31 @@ func (h *Highlighter) HighlightWithStructure(filename string, content []byte) ([
 	return spans, structMap, nil
 }
 
+// ExtractStructure returns only the structure map for the given source code,
+// without computing highlight spans. Returns nil if the language is not supported.
+func (h *Highlighter) ExtractStructure(filename string, content []byte) *structure.Map {
+	cfg := h.registry.ForFile(filename)
+	if cfg == nil || h.extractor == nil {
+		return nil
+	}
+
+	parser, _ := h.getParserAndQuery(cfg)
+	if parser == nil {
+		return nil
+	}
+
+	h.mu.Lock()
+	tree := parser.Parse(content, nil)
+	h.mu.Unlock()
+
+	if tree == nil {
+		return nil
+	}
+	defer tree.Close()
+
+	return h.extractor.Extract(tree, content, cfg.Name)
+}
+
 // getParserAndQuery returns cached parser and query for the language config.
 func (h *Highlighter) getParserAndQuery(cfg *LanguageConfig) (*tree_sitter.Parser, *tree_sitter.Query) {
 	h.mu.Lock()
