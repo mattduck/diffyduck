@@ -1944,6 +1944,10 @@ func (m *Model) loadCommitDiff(commitIdx int) {
 		for i := commitIdx + 1; i < len(m.commitFileStarts); i++ {
 			m.commitFileStarts[i] += delta
 		}
+
+		// Shift file-indexed maps (highlights, structure, comments, etc.)
+		// so data for subsequent commits stays aligned with their new indices.
+		m.shiftFileIndexMapsFrom(endIdx, delta)
 	} else {
 		// Same file count - just replace in place
 		for i, f := range files {

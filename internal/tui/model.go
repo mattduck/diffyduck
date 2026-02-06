@@ -2080,6 +2080,106 @@ func (m *Model) insertSnapshotCommit(commit sidebyside.CommitSet) {
 	// Highlight the new files asynchronously (they'll be highlighted via the normal flow)
 }
 
+// shiftFileIndexMapsFrom shifts file-indexed map keys >= fromIdx by delta.
+// Keys in [fromIdx-delta, fromIdx) after a negative delta are removed (their
+// files no longer exist). Used by loadCommitDiff when file counts change.
+func (m *Model) shiftFileIndexMapsFrom(fromIdx, delta int) {
+	// Shift highlightSpans
+	if len(m.highlightSpans) > 0 {
+		newMap := make(map[int]*FileHighlight, len(m.highlightSpans))
+		for k, v := range m.highlightSpans {
+			if k >= fromIdx {
+				newMap[k+delta] = v
+			} else {
+				newMap[k] = v
+			}
+		}
+		m.highlightSpans = newMap
+	}
+
+	// Shift pairsHighlightSpans
+	if len(m.pairsHighlightSpans) > 0 {
+		newMap := make(map[int]*PairsFileHighlight, len(m.pairsHighlightSpans))
+		for k, v := range m.pairsHighlightSpans {
+			if k >= fromIdx {
+				newMap[k+delta] = v
+			} else {
+				newMap[k] = v
+			}
+		}
+		m.pairsHighlightSpans = newMap
+	}
+
+	// Shift structureMaps
+	if len(m.structureMaps) > 0 {
+		newMap := make(map[int]*FileStructure, len(m.structureMaps))
+		for k, v := range m.structureMaps {
+			if k >= fromIdx {
+				newMap[k+delta] = v
+			} else {
+				newMap[k] = v
+			}
+		}
+		m.structureMaps = newMap
+	}
+
+	// Shift pairsStructureMaps
+	if len(m.pairsStructureMaps) > 0 {
+		newMap := make(map[int]*FileStructure, len(m.pairsStructureMaps))
+		for k, v := range m.pairsStructureMaps {
+			if k >= fromIdx {
+				newMap[k+delta] = v
+			} else {
+				newMap[k] = v
+			}
+		}
+		m.pairsStructureMaps = newMap
+	}
+
+	// Shift loadingFiles
+	if len(m.loadingFiles) > 0 {
+		newMap := make(map[int]time.Time, len(m.loadingFiles))
+		for k, v := range m.loadingFiles {
+			if k >= fromIdx {
+				newMap[k+delta] = v
+			} else {
+				newMap[k] = v
+			}
+		}
+		m.loadingFiles = newMap
+	}
+
+	// Shift comments
+	if len(m.comments) > 0 {
+		newMap := make(map[commentKey]string, len(m.comments))
+		for k, v := range m.comments {
+			if k.fileIndex >= fromIdx {
+				newMap[commentKey{fileIndex: k.fileIndex + delta, newLineNum: k.newLineNum}] = v
+			} else {
+				newMap[k] = v
+			}
+		}
+		m.comments = newMap
+	}
+	if len(m.persistedCommentIDs) > 0 {
+		newMap := make(map[commentKey]string, len(m.persistedCommentIDs))
+		for k, v := range m.persistedCommentIDs {
+			if k.fileIndex >= fromIdx {
+				newMap[commentKey{fileIndex: k.fileIndex + delta, newLineNum: k.newLineNum}] = v
+			} else {
+				newMap[k] = v
+			}
+		}
+		m.persistedCommentIDs = newMap
+	}
+
+	// Clear inlineDiffCache — it uses fileIndex in keys; clearing is safe since it's
+	// just a performance cache that will be repopulated on next render.
+	if len(m.inlineDiffCache) > 0 {
+		m.inlineDiffCache = make(map[inlineDiffKey]inlineDiffResult)
+	}
+}
+
 // shiftFileIndexMaps shifts all file-indexed map keys by the given offset.
 // This is needed when files are prepended, changing all existing file indices.
 func (m *Model) shiftFileIndexMaps(offset int) {

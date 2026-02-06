@@ -4418,6 +4418,162 @@ func TestHandleSnapshot_NoInitialSnapshotShowsStatus(t *testing.T) {
 	assert.NotNil(t, cmd, "should return clear-status command")
 }
 
+func TestLoadCommitDiff_ShiftsHighlightMaps(t *testing.T) {
+	// When loadCommitDiff produces a different file count than the skeleton,
+	// file indices shift for subsequent commits. Highlight and structure maps
+	// keyed by file index must be shifted to match.
+
+	// C0: skeleton with 1 file, FilesLoaded false (will be loaded with 2 files → delta +1)
+	c0 := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc1111"},
+		Files:       []sidebyside.FilePair{sidebyside.SkeletonFilePairNoStats("alpha.go")},
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: false,
+	}
+
+	// C1: already loaded, 1 file with content and highlight data
+	c1 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{SHA: "def2222"},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath: "a/beta.go", NewPath: "b/beta.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "package beta", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package beta", Type: sidebyside.Context},
+					},
+				},
+				OldContent: []string{"package beta"},
+				NewContent: []string{"package beta", "func Hello() {}"},
+				FoldLevel:  sidebyside.FoldExpanded,
+			},
+		},
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+
+	// MockGit returns a diff with 2 files (skeleton had 1 → delta +1)
+	diffOutput := "diff --git a/alpha.go b/alpha.go\n--- a/alpha.go\n+++ b/alpha.go\n@@ -1,3 +1,3 @@\n-old line\n+new line\ndiff --git a/gamma.go b/gamma.go\nnew file mode 100644\n--- /dev/null\n+++ b/gamma.go\n@@ -0,0 +1 @@\n+package gamma\n"
+	mock := &git.MockGit{ShowOutput: diffOutput}
+
+	m := NewWithCommits([]sidebyside.CommitSet{c0, c1}, WithGit(mock))
+	m.width = 80
+	m.height = 40
+
+	// Verify initial layout: C0 files at [0], C1 files at [1]
+	require.Equal(t, 2, len(m.files))
+	require.Equal(t, 0, m.commitFileStarts[0])
+	require.Equal(t, 1, m.commitFileStarts[1])
+
+	// Pre-store highlight data for C1's file at index 1
+	sentinelSpan := highlight.Span{Start: 0, End: 12, Category: highlight.CategoryKeyword}
+	m.highlightSpans[1] = &FileHighlight{
+		OldSpans: []highlight.Span{sentinelSpan},
+		NewSpans: []highlight.Span{sentinelSpan},
+	}
+	m.pairsHighlightSpans[1] = &PairsFileHighlight{
+		OldSpans:      []highlight.Span{sentinelSpan},
+		OldLineStarts: map[int]int{1: 0},
+		OldLineLens:   map[int]int{1: 12},
+	}
+	m.structureMaps[1] = &FileStructure{
+		NewStructure: structure.NewMap([]structure.Entry{{StartLine: 1, EndLine: 2, Name: "Hello", Kind: "function"}}),
+	}
+	now := time.Now()
+	m.loadingFiles[1] = now
+
+	// Also store a comment for C1's file
+	m.comments[commentKey{fileIndex: 1, newLineNum: 1}] = "test comment"
+
+	// --- Act: load C0's diff (2 files replace 1 skeleton → delta +1) ---
+	m.loadCommitDiff(0)
+
+	// --- Assert: file layout shifted ---
+	require.Equal(t, 3, len(m.files), "should have 3 files total (2 for C0, 1 for C1)")
+	require.Equal(t, 2, m.commitFileStarts[1], "C1 file start should shift from 1 to 2")
+
+	// C1's file is now at index 2. Highlight data must follow.
+	assert.NotNil(t, m.highlightSpans[2], "highlightSpans for C1 should shift to index 2")
+	assert.Nil(t, m.highlightSpans[1], "index 1 is now C0's second file, should have no highlight data")
+
+	assert.NotNil(t, m.pairsHighlightSpans[2], "pairsHighlightSpans for C1 should shift to index 2")
+	assert.Nil(t, m.pairsHighlightSpans[1], "pairsHighlightSpans at index 1 should be cleared")
+
+	assert.NotNil(t, m.structureMaps[2], "structureMaps for C1 should shift to index 2")
+	assert.Nil(t, m.structureMaps[1], "structureMaps at index 1 should be cleared")
+
+	assert.Equal(t, now, m.loadingFiles[2], "loadingFiles for C1 should shift to index 2")
+	_, hasOldLoading := m.loadingFiles[1]
+	assert.False(t, hasOldLoading, "loadingFiles at index 1 should be cleared")
+
+	// Comment should also shift
+	assert.Equal(t, "test comment", m.comments[commentKey{fileIndex: 2, newLineNum: 1}],
+		"comment for C1 should shift to fileIndex 2")
+	_, hasOldComment := m.comments[commentKey{fileIndex: 1, newLineNum: 1}]
+	assert.False(t, hasOldComment, "comment at old fileIndex 1 should be cleared")
+}
+
+func TestLoadCommitDiff_NegativeDelta_ShiftsCorrectly(t *testing.T) {
+	// Skeleton has 3 files, actual diff has 1 → delta -2.
+	// This commonly happens with merge commits where --name-only lists more
+	// files than the combined diff actually shows.
+
+	c0 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{SHA: "merge111"},
+		Files: []sidebyside.FilePair{
+			sidebyside.SkeletonFilePairNoStats("a.go"),
+			sidebyside.SkeletonFilePairNoStats("b.go"),
+			sidebyside.SkeletonFilePairNoStats("c.go"),
+		},
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: false,
+	}
+
+	c1 := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{SHA: "next222"},
+		Files: []sidebyside.FilePair{
+			{
+				OldPath: "a/delta.go", NewPath: "b/delta.go",
+				Pairs: []sidebyside.LinePair{
+					{
+						Old: sidebyside.Line{Num: 1, Content: "package delta", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "package delta", Type: sidebyside.Context},
+					},
+				},
+				FoldLevel: sidebyside.FoldExpanded,
+			},
+		},
+		FoldLevel:   sidebyside.CommitNormal,
+		FilesLoaded: true,
+	}
+
+	// Diff has only 1 file (delta = 1 - 3 = -2)
+	diffOutput := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-old\n+new\n"
+	mock := &git.MockGit{ShowOutput: diffOutput}
+
+	m := NewWithCommits([]sidebyside.CommitSet{c0, c1}, WithGit(mock))
+	m.width = 80
+	m.height = 40
+
+	// C1's file is at index 3
+	require.Equal(t, 3, m.commitFileStarts[1])
+
+	// Store highlight data for C1's file at index 3
+	m.highlightSpans[3] = &FileHighlight{
+		OldSpans: []highlight.Span{{Start: 0, End: 5, Category: highlight.CategoryKeyword}},
+	}
+
+	m.loadCommitDiff(0)
+
+	// C1's file should now be at index 1 (3 + delta(-2) = 1)
+	require.Equal(t, 1, m.commitFileStarts[1])
+	require.Equal(t, 2, len(m.files))
+
+	assert.NotNil(t, m.highlightSpans[1], "highlightSpans should shift from index 3 to 1")
+	_, hasOld := m.highlightSpans[3]
+	assert.False(t, hasOld, "old index 3 should no longer have highlight data")
+}
+
 func TestHandleSnapshot_NilGitReturnsNil(t *testing.T) {
 	m := makeTestModel(10)
 	m.snapshotsEnabled = true
