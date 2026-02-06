@@ -1,12 +1,15 @@
 .PHONY: build install test check fmt lint clean update-golden fetch-queries bootstrap
 
-# Build the binary
+# Build the binary (set VERSION to inject a version string)
+VERSION ?=
+LDFLAGS := $(if $(VERSION),-ldflags "-X main.version=$(VERSION)",)
+
 build:
-	go build -o dfd ./cmd/dfd/
+	go build $(LDFLAGS) -o dfd ./cmd/dfd/
 
 # Install to GOPATH/bin
 install:
-	go install ./cmd/dfd/
+	go install $(LDFLAGS) ./cmd/dfd/
 
 # Run all tests
 test:

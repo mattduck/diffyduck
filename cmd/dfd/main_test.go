@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -469,6 +471,125 @@ func TestFilterFiles(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// Help and version tests
+
+func TestParseArgs_HelpFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		helpCmd string
+	}{
+		{"--help bare", []string{"--help"}, ""},
+		{"-h bare", []string{"-h"}, ""},
+		{"diff --help", []string{"diff", "--help"}, "diff"},
+		{"diff -h", []string{"diff", "-h"}, "diff"},
+		{"show --help", []string{"show", "--help"}, "show"},
+		{"log -h", []string{"log", "-h"}, "log"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseArgs(tt.args)
+			require.NoError(t, err)
+			assert.True(t, result.showHelp)
+			assert.Equal(t, tt.helpCmd, result.helpCmd)
+		})
+	}
+}
+
+func TestParseArgs_HelpSubcommand(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		helpCmd string
+	}{
+		{"help bare", []string{"help"}, ""},
+		{"help diff", []string{"help", "diff"}, "diff"},
+		{"help show", []string{"help", "show"}, "show"},
+		{"help log", []string{"help", "log"}, "log"},
+		{"help pager", []string{"help", "pager"}, "pager"},
+		{"help clean", []string{"help", "clean"}, "clean"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseArgs(tt.args)
+			require.NoError(t, err)
+			assert.True(t, result.showHelp)
+			assert.Equal(t, tt.helpCmd, result.helpCmd)
+		})
+	}
+}
+
+func TestParseArgs_VersionFlag(t *testing.T) {
+	result, err := parseArgs([]string{"--version"})
+	require.NoError(t, err)
+	assert.True(t, result.showVersion)
+}
+
+func TestParseArgs_HelpSkipsValidation(t *testing.T) {
+	// --help should not fail even with otherwise invalid flag combos
+	result, err := parseArgs([]string{"diff", "--cached", "--unstaged", "--help"})
+	require.NoError(t, err)
+	assert.True(t, result.showHelp)
+}
+
+func TestPrintUsage_General(t *testing.T) {
+	output := captureStdout(func() {
+		printUsage("")
+	})
+	assert.Contains(t, output, "dfd - terminal side-by-side diff viewer")
+	assert.Contains(t, output, "Commands:")
+	assert.Contains(t, output, "diff")
+	assert.Contains(t, output, "show")
+	assert.Contains(t, output, "log")
+	assert.Contains(t, output, "pager")
+	assert.Contains(t, output, "clean")
+	assert.Contains(t, output, "--help")
+	assert.Contains(t, output, "--version")
+}
+
+func TestPrintUsage_Subcommands(t *testing.T) {
+	tests := []struct {
+		cmd      string
+		contains []string
+	}{
+		{"diff", []string{"dfd diff", "--cached", "--exclude", "Examples:"}},
+		{"show", []string{"dfd show", "Defaults to HEAD", "Examples:"}},
+		{"log", []string{"dfd log", "-n <count>", "Examples:"}},
+		{"pager", []string{"dfd pager", "stdin"}},
+		{"clean", []string{"dfd clean", "snapshot"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.cmd, func(t *testing.T) {
+			output := captureStdout(func() {
+				printUsage(tt.cmd)
+			})
+			for _, s := range tt.contains {
+				assert.Contains(t, output, s)
+			}
+		})
+	}
+}
+
+func TestPrintUsage_UnknownCmdFallsToGeneral(t *testing.T) {
+	output := captureStdout(func() {
+		printUsage("nonexistent")
+	})
+	assert.Contains(t, output, "dfd - terminal side-by-side diff viewer")
+}
+
+// captureStdout captures stdout output from a function call.
+func captureStdout(fn func()) string {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	fn()
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	return buf.String()
 }
 
 // Combined flags tests

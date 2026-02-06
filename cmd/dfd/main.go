@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -19,6 +20,57 @@ import (
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"golang.org/x/term"
 )
+
+// version is set at build time via -ldflags "-X main.version=...".
+// When not set, versionString() enriches it with VCS info from debug.BuildInfo.
+var version = "dev"
+
+// versionString returns the version string for display.
+// If version was set via ldflags, returns it as-is.
+// Otherwise, appends VCS revision and date from Go's embedded build info.
+func versionString() string {
+	if version != "dev" {
+		return version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
+	}
+
+	// If installed via "go install module@version", use the module version.
+	// Skip pseudo-versions (v0.0.0-...) and (devel).
+	if v := info.Main.Version; v != "" && v != "(devel)" && !strings.HasPrefix(v, "v0.0.0-") {
+		return v
+	}
+
+	// Fall back to VCS info embedded by go build
+	var rev, date string
+	var dirty bool
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.time":
+			date = s.Value
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	if rev == "" {
+		return version
+	}
+	if len(rev) > 7 {
+		rev = rev[:7]
+	}
+	// Trim time to just the date
+	if i := strings.Index(date, "T"); i > 0 {
+		date = date[:i]
+	}
+	if dirty {
+		return fmt.Sprintf("dev (%s, %s, dirty)", rev, date)
+	}
+	return fmt.Sprintf("dev (%s, %s)", rev, date)
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -50,6 +102,11 @@ type parsedArgs struct {
 	debug      bool
 	cpuProfile string
 
+	// help/version
+	showHelp    bool
+	showVersion bool
+	helpCmd     string // subcommand for targeted help (e.g. "diff")
+
 	// Derived (set by deriveMode after parsing)
 	mode content.Mode
 	ref1 string
@@ -67,7 +124,16 @@ func parseArgs(args []string) (parsedArgs, error) {
 		switch remaining[0] {
 		case "diff", "show", "log", "pager", "clean", "branches":
 			result.cmd = remaining[0]
+			result.helpCmd = remaining[0] // target for --help flag
 			remaining = remaining[1:]
+		case "help":
+			result.showHelp = true
+			remaining = remaining[1:]
+			// Optional target command: "help diff", "help show", etc.
+			if len(remaining) > 0 {
+				result.helpCmd = remaining[0]
+			}
+			return result, nil
 		}
 	}
 
@@ -100,6 +166,11 @@ func parseArgs(args []string) (parsedArgs, error) {
 		result.refs = append(result.refs, arg)
 	}
 
+	// Short-circuit: skip validation for help/version
+	if result.showHelp || result.showVersion {
+		return result, nil
+	}
+
 	// Validate and derive mode
 	if err := result.validate(); err != nil {
 		return parsedArgs{}, err
@@ -113,6 +184,14 @@ func parseArgs(args []string) (parsedArgs, error) {
 // (0 for standalone flags, 1 for flags that take a value).
 func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 	switch {
+	// Help and version
+	case arg == "--help" || arg == "-h":
+		p.showHelp = true
+		return 0, nil
+	case arg == "--version":
+		p.showVersion = true
+		return 0, nil
+
 	// Global flags
 	case arg == "--debug":
 		p.debug = true
@@ -375,10 +454,158 @@ func matchesAnyExclude(file string, excludes []string) bool {
 	return false
 }
 
+// printUsage prints usage information. If cmd is non-empty, prints
+// subcommand-specific help; otherwise prints general usage.
+func printUsage(cmd string) {
+	switch cmd {
+	case "diff":
+		fmt.Print(usageDiff)
+	case "show":
+		fmt.Print(usageShow)
+	case "log":
+		fmt.Print(usageLog)
+	case "pager":
+		fmt.Print(usagePager)
+	case "clean":
+		fmt.Print(usageClean)
+	default:
+		fmt.Print(usageGeneral)
+	}
+}
+
+const usageGeneral = `dfd - terminal side-by-side diff viewer
+
+Usage:
+  dfd [flags] [refs] [-- paths]
+  dfd <command> [flags] [args]
+
+Commands:
+  diff       Compare changes (default)
+  show       Show a commit
+  log        Browse commit history
+  pager      Read diff from stdin
+  clean      Delete persisted snapshots
+
+Global flags:
+  -h, --help       Show help
+      --version    Show version
+
+Diff flags:
+      --cached     Diff staged changes (alias: --staged)
+      --unstaged   Diff unstaged changes only
+  -a, --all        Include untracked files
+      --snapshots  Enable snapshots
+      --no-snapshots
+                   Disable snapshots
+  -e, --exclude <glob>
+                   Exclude files matching glob (repeatable)
+
+Log flags:
+  -n <count>       Limit number of commits
+
+Use "dfd help <command>" for more about a command.
+Press C-h inside dfd for keybinding help.
+`
+
+const usageDiff = `dfd diff - compare changes
+
+Usage:
+  dfd [diff] [flags] [<ref>] [-- <path>...]
+  dfd [diff] [flags] <ref1> <ref2> [-- <path>...]
+
+With no refs, diffs HEAD against the working tree.
+With one ref, diffs that ref against the working tree.
+With two refs, diffs ref1 against ref2.
+
+Flags:
+      --cached     Diff staged changes (alias: --staged)
+      --unstaged   Diff unstaged changes only
+  -a, --all        Include untracked files
+      --snapshots  Enable snapshots
+      --no-snapshots
+                   Disable snapshots
+  -e, --exclude <glob>
+                   Exclude files matching glob (repeatable)
+
+Examples:
+  dfd                        Diff HEAD vs working tree
+  dfd --cached               Diff staged changes
+  dfd HEAD~3                 Diff HEAD~3 vs working tree
+  dfd main feature           Diff main vs feature
+  dfd -e vendor/** -- src/   Only src/, excluding vendor/
+`
+
+const usageShow = `dfd show - show a commit
+
+Usage:
+  dfd show [<ref>] [-- <path>...]
+
+Displays the diff for a single commit. Defaults to HEAD.
+
+Examples:
+  dfd show                   Show HEAD
+  dfd show abc1234           Show specific commit
+  dfd show HEAD~2 -- src/    Show commit, filtered to src/
+`
+
+const usageLog = `dfd log - browse commit history
+
+Usage:
+  dfd log [flags] [<ref-range>] [-- <path>...]
+
+Browse commits interactively. Supports ref ranges (e.g. main..feature).
+
+Flags:
+  -n <count>       Limit number of commits
+  -e, --exclude <glob>
+                   Exclude files matching glob (repeatable)
+
+Examples:
+  dfd log                    Browse recent commits
+  dfd log -n 20              Browse last 20 commits
+  dfd log main..feature      Commits in feature not in main
+  dfd log -- src/            Commits touching src/
+`
+
+const usagePager = `dfd pager - read diff from stdin
+
+Usage:
+  dfd pager
+  <command> | dfd
+
+Reads a unified diff from stdin and displays it. Useful as a git pager:
+
+  git config --global pager.diff "dfd pager"
+  git config --global pager.show "dfd pager"
+  git config --global pager.log "dfd pager"
+
+Or pipe directly:
+
+  git diff | dfd
+`
+
+const usageClean = `dfd clean - delete persisted snapshots
+
+Usage:
+  dfd clean
+
+Removes all persisted snapshot refs (refs/dfd/snapshots/*) from the
+current repository.
+`
+
 func run() error {
 	args, err := parseArgs(os.Args[1:])
 	if err != nil {
-		return err
+		return fmt.Errorf("%w\nRun 'dfd --help' for usage.", err)
+	}
+
+	if args.showVersion {
+		fmt.Printf("dfd %s\n", versionString())
+		return nil
+	}
+	if args.showHelp {
+		printUsage(args.helpCmd)
+		return nil
 	}
 
 	// Start CPU profiling if requested
