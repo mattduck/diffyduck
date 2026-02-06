@@ -14,18 +14,27 @@ type GitQuerier interface {
 	AheadBehind(a, b string) (ahead, behind int, err error)
 }
 
+// UpstreamInfo describes the relationship between a local branch and its remote.
+type UpstreamInfo struct {
+	Name   string // remote tracking branch (e.g. "origin/main")
+	Ahead  int    // commits local is ahead of upstream
+	Behind int    // commits local is behind upstream
+	Gone   bool   // upstream branch was deleted
+}
+
 // BranchNode represents a branch in the dependency tree.
 type BranchNode struct {
-	Name     string
-	SHA      string // short SHA (7 chars)
-	Subject  string
-	Author   string
-	Date     time.Time
-	IsHead   bool
-	Virtual  bool // true for fork point nodes (not a branch)
-	Ahead    int  // commits ahead of parent (0 for roots)
-	Behind   int  // commits behind parent (0 when up-to-date)
-	Children []*BranchNode
+	Name      string
+	SHA       string // short SHA (7 chars)
+	Subject   string
+	Author    string
+	Date      time.Time
+	IsHead    bool
+	Virtual   bool // true for fork point nodes (not a branch)
+	Ahead     int  // commits ahead of parent (0 for roots)
+	Behind    int  // commits behind parent (0 when up-to-date)
+	Upstreams []UpstreamInfo
+	Children  []*BranchNode
 
 	// Internal fields for git operations during tree building.
 	fullSHA string // full commit SHA
@@ -43,9 +52,10 @@ func BuildTree(branches []git.BranchInfo, q GitQuerier) ([]*BranchNode, error) {
 
 	// Group branches that point to the same commit.
 	type group struct {
-		names  []string
-		info   git.BranchInfo
-		isHead bool
+		names     []string
+		info      git.BranchInfo
+		isHead    bool
+		upstreams []UpstreamInfo
 	}
 	shaGroups := make(map[string]*group)
 	for _, b := range branches {
@@ -57,6 +67,14 @@ func BuildTree(branches []git.BranchInfo, q GitQuerier) ([]*BranchNode, error) {
 		g.names = append(g.names, b.Name)
 		if b.IsHead {
 			g.isHead = true
+		}
+		if b.Upstream != "" {
+			g.upstreams = append(g.upstreams, UpstreamInfo{
+				Name:   b.Upstream,
+				Ahead:  b.UpstreamAhead,
+				Behind: b.UpstreamBehind,
+				Gone:   b.UpstreamGone,
+			})
 		}
 	}
 
@@ -71,14 +89,15 @@ func BuildTree(branches []git.BranchInfo, q GitQuerier) ([]*BranchNode, error) {
 		}
 		t, _ := time.Parse(time.RFC3339, g.info.Date)
 		nodes[displayKey] = &BranchNode{
-			Name:    displayKey,
-			SHA:     short,
-			Subject: g.info.Subject,
-			Author:  g.info.Author,
-			Date:    t,
-			IsHead:  g.isHead,
-			fullSHA: sha,
-			ref:     g.names[0],
+			Name:      displayKey,
+			SHA:       short,
+			Subject:   g.info.Subject,
+			Author:    g.info.Author,
+			Date:      t,
+			IsHead:    g.isHead,
+			Upstreams: g.upstreams,
+			fullSHA:   sha,
+			ref:       g.names[0],
 		}
 	}
 

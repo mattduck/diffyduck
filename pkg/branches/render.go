@@ -30,15 +30,18 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 
 	// First pass: collect all lines to compute column widths
 	type line struct {
-		nameCol   string // tree prefix + branch name (plain, for width calc)
-		countsCol string // "+N -M" or "" (plain, for width calc)
-		isHead    bool
-		virtual   bool
-		behind    int
-		sha       string
-		dateStr   string
-		subject   string
-		author    string
+		nameCol        string // tree prefix + branch name (plain, for width calc)
+		countsCol      string // "+N -M" or "" (plain, for width calc)
+		isHead         bool
+		virtual        bool
+		behind         int
+		sha            string
+		dateStr        string
+		subject        string
+		author         string
+		upstreamCol    string // upstream display text (plain, for width calc)
+		upstreamBehind bool   // true if behind or diverged from upstream
+		upstreamGone   bool   // true if upstream was deleted
 	}
 
 	var lines []line
@@ -91,16 +94,43 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			author = ""
 		}
 
+		// Build upstream column
+		var upstreamCol string
+		var upstreamBehind, upstreamGone bool
+		for k, u := range node.Upstreams {
+			if k > 0 {
+				upstreamCol += ", "
+			}
+			upstreamCol += u.Name
+			if u.Gone {
+				upstreamCol += " gone"
+				upstreamGone = true
+			} else if u.Ahead == 0 && u.Behind == 0 {
+				upstreamCol += " ="
+			} else {
+				if u.Ahead > 0 {
+					upstreamCol += fmt.Sprintf(" ↑%d", u.Ahead)
+				}
+				if u.Behind > 0 {
+					upstreamCol += fmt.Sprintf(" ↓%d", u.Behind)
+					upstreamBehind = true
+				}
+			}
+		}
+
 		lines = append(lines, line{
-			nameCol:   nameCol,
-			countsCol: countsCol,
-			isHead:    node.IsHead,
-			virtual:   node.Virtual,
-			behind:    node.Behind,
-			sha:       sha,
-			dateStr:   dateStr,
-			subject:   subject,
-			author:    author,
+			nameCol:        nameCol,
+			countsCol:      countsCol,
+			isHead:         node.IsHead,
+			virtual:        node.Virtual,
+			behind:         node.Behind,
+			sha:            sha,
+			dateStr:        dateStr,
+			subject:        subject,
+			author:         author,
+			upstreamCol:    upstreamCol,
+			upstreamBehind: upstreamBehind,
+			upstreamGone:   upstreamGone,
 		})
 
 		// Recurse into children
@@ -163,8 +193,18 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			countsColor = colorRed
 		}
 
+		// Upstream column: green if synced, red if behind/gone, yellow if ahead only
+		upstreamColor := colorWhite
+		if l.upstreamCol != "" {
+			if l.upstreamGone || l.upstreamBehind {
+				upstreamColor = colorRed
+			} else {
+				upstreamColor = colorGreen
+			}
+		}
+
 		if verbose {
-			fmt.Fprintf(&sb, "%s%-*s%s  %s%-*s%s  %s%s%s  %s%-*s%s  %s  %s%s%s\n",
+			fmt.Fprintf(&sb, "%s%-*s%s  %s%-*s%s  %s%s%s  %s%-*s%s  %s  %s%s%s",
 				nameColor, maxName, l.nameCol, colorReset,
 				countsColor, maxCounts, l.countsCol, colorReset,
 				colorYellow, l.sha, colorReset,
@@ -173,13 +213,17 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 				colorCyan, l.author, colorReset,
 			)
 		} else {
-			fmt.Fprintf(&sb, "%s%-*s%s  %s%-*s%s  %s%s%s  %s%s%s\n",
+			fmt.Fprintf(&sb, "%s%-*s%s  %s%-*s%s  %s%s%s  %s%s%s",
 				nameColor, maxName, l.nameCol, colorReset,
 				countsColor, maxCounts, l.countsCol, colorReset,
 				colorYellow, l.sha, colorReset,
 				colorWhite, l.dateStr, colorReset,
 			)
 		}
+		if l.upstreamCol != "" {
+			fmt.Fprintf(&sb, "  %s%s%s", upstreamColor, l.upstreamCol, colorReset)
+		}
+		sb.WriteByte('\n')
 	}
 
 	return sb.String()

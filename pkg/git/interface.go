@@ -11,12 +11,16 @@ type SnapshotInfo struct {
 
 // BranchInfo contains metadata about a local branch.
 type BranchInfo struct {
-	Name    string // branch name (e.g. "main", "feature/foo")
-	SHA     string // tip commit SHA (full)
-	Subject string // first line of commit message
-	Date    string // author date in ISO 8601 format
-	Author  string // author name
-	IsHead  bool   // true if this is the currently checked-out branch
+	Name           string // branch name (e.g. "main", "feature/foo")
+	SHA            string // tip commit SHA (full)
+	Subject        string // first line of commit message
+	Date           string // author date in ISO 8601 format
+	Author         string // author name
+	IsHead         bool   // true if this is the currently checked-out branch
+	Upstream       string // upstream branch (e.g. "origin/main"), empty if none
+	UpstreamAhead  int    // commits local is ahead of upstream
+	UpstreamBehind int    // commits local is behind upstream
+	UpstreamGone   bool   // true if upstream branch has been deleted
 }
 
 // Git provides an interface for git operations.

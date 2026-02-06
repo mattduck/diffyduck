@@ -1009,6 +1009,30 @@ func TestRealGit_LocalBranches_Integration(t *testing.T) {
 	assert.Equal(t, 1, headCount)
 }
 
+func TestParseUpstreamTrack(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		ahead  int
+		behind int
+		gone   bool
+	}{
+		{"empty", "", 0, 0, false},
+		{"ahead", "[ahead 3]", 3, 0, false},
+		{"behind", "[behind 5]", 0, 5, false},
+		{"ahead and behind", "[ahead 2, behind 7]", 2, 7, false},
+		{"gone", "[gone]", 0, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ahead, behind, gone := parseUpstreamTrack(tt.input)
+			assert.Equal(t, tt.ahead, ahead)
+			assert.Equal(t, tt.behind, behind)
+			assert.Equal(t, tt.gone, gone)
+		})
+	}
+}
+
 func TestRealGit_MergeBase_Integration(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")

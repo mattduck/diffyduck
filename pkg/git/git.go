@@ -992,7 +992,7 @@ func (g *RealGit) ExpireOldSnapshotRefs(maxAgeDays int) (int, error) {
 // LocalBranches returns all local branches with tip commit metadata.
 func (g *RealGit) LocalBranches() ([]BranchInfo, error) {
 	// NUL-delimited fields for reliable parsing
-	format := "%(refname:short)%00%(objectname)%00%(subject)%00%(authordate:iso-strict)%00%(authorname)%00%(HEAD)"
+	format := "%(refname:short)%00%(objectname)%00%(subject)%00%(authordate:iso-strict)%00%(authorname)%00%(HEAD)%00%(upstream:short)%00%(upstream:track)"
 	cmd := g.command("for-each-ref", "--format="+format, "--sort=-authordate", "refs/heads/")
 
 	out, err := cmd.Output()
@@ -1013,21 +1013,136 @@ func (g *RealGit) LocalBranches() ([]BranchInfo, error) {
 
 	var branches []BranchInfo
 	for _, line := range strings.Split(output, "\n") {
-		parts := strings.SplitN(line, "\x00", 6)
+		parts := strings.SplitN(line, "\x00", 8)
 		if len(parts) < 6 {
 			continue
 		}
-		branches = append(branches, BranchInfo{
+		b := BranchInfo{
 			Name:    parts[0],
 			SHA:     parts[1],
 			Subject: parts[2],
 			Date:    parts[3],
 			Author:  parts[4],
 			IsHead:  strings.TrimSpace(parts[5]) == "*",
-		})
+		}
+		if len(parts) >= 8 {
+			b.Upstream = parts[6]
+			b.UpstreamAhead, b.UpstreamBehind, b.UpstreamGone = parseUpstreamTrack(parts[7])
+		}
+		branches = append(branches, b)
 	}
 
+	// For branches without an explicit upstream, infer from matching remote refs.
+	g.inferUpstreams(branches)
+
 	return branches, nil
+}
+
+// inferUpstreams finds remote branches matching local branch names and fills in
+// upstream info for any local branch that doesn't have explicit tracking set up.
+func (g *RealGit) inferUpstreams(branches []BranchInfo) {
+	// Collect branches that need inference.
+	var need []int
+	for i, b := range branches {
+		if b.Upstream == "" {
+			need = append(need, i)
+		}
+	}
+	if len(need) == 0 {
+		return
+	}
+
+	// Fetch remote refs: map "branchName" -> "remote/branchName" (first match wins).
+	remotes := g.remoteBranchMap()
+	if len(remotes) == 0 {
+		return
+	}
+
+	for _, i := range need {
+		b := &branches[i]
+		match, ok := remotes[b.Name]
+		if !ok {
+			continue
+		}
+		b.Upstream = match.name
+		if match.sha == b.SHA {
+			// Same commit — synced.
+			continue
+		}
+		ahead, behind, err := g.AheadBehind(b.Name, match.name)
+		if err == nil {
+			b.UpstreamAhead = ahead
+			b.UpstreamBehind = behind
+		}
+	}
+}
+
+type remoteRef struct {
+	name string // e.g. "origin/main"
+	sha  string
+}
+
+// remoteBranchMap returns a map from bare branch name to the first matching
+// remote ref. For example, "main" -> {name: "origin/main", sha: "abc..."}.
+// Skips symbolic refs like origin/HEAD.
+func (g *RealGit) remoteBranchMap() map[string]remoteRef {
+	format := "%(refname:short)%00%(objectname)%00%(symref)"
+	cmd := g.command("for-each-ref", "--format="+format, "refs/remotes/")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	output := strings.TrimSpace(string(out))
+	if output == "" {
+		return nil
+	}
+
+	result := make(map[string]remoteRef)
+	for _, line := range strings.Split(output, "\n") {
+		parts := strings.SplitN(line, "\x00", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		// Skip symbolic refs (e.g. origin/HEAD).
+		if parts[2] != "" {
+			continue
+		}
+		refName := parts[0] // e.g. "origin/main"
+		sha := parts[1]
+		// Extract bare branch name after the remote prefix.
+		slashIdx := strings.IndexByte(refName, '/')
+		if slashIdx < 0 {
+			continue
+		}
+		branchName := refName[slashIdx+1:]
+		// First match wins (typically origin).
+		if _, exists := result[branchName]; !exists {
+			result[branchName] = remoteRef{name: refName, sha: sha}
+		}
+	}
+	return result
+}
+
+// parseUpstreamTrack parses the %(upstream:track) field from git for-each-ref.
+// Examples: "[ahead 2]", "[behind 3]", "[ahead 2, behind 3]", "[gone]", "".
+func parseUpstreamTrack(track string) (ahead, behind int, gone bool) {
+	track = strings.TrimPrefix(track, "[")
+	track = strings.TrimSuffix(track, "]")
+	if track == "" {
+		return 0, 0, false
+	}
+	if track == "gone" {
+		return 0, 0, true
+	}
+	for _, part := range strings.Split(track, ",") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "ahead ") {
+			fmt.Sscanf(part, "ahead %d", &ahead)
+		} else if strings.HasPrefix(part, "behind ") {
+			fmt.Sscanf(part, "behind %d", &behind)
+		}
+	}
+	return ahead, behind, false
 }
 
 // MergeBase returns the best common ancestor SHA of two refs.

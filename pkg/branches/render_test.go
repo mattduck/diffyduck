@@ -140,3 +140,85 @@ func TestRender_MultipleTrees(t *testing.T) {
 	assert.Contains(t, got, "main")
 	assert.Contains(t, got, "orphan")
 }
+
+func TestRender_UpstreamTracking(t *testing.T) {
+	now := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	roots := []*BranchNode{
+		{
+			Name:      "main",
+			SHA:       "a1b2c3d",
+			Subject:   "init",
+			Date:      now.Add(-2 * time.Hour),
+			Upstreams: []UpstreamInfo{{Name: "origin/main"}},
+			Children: []*BranchNode{
+				{
+					Name:      "feature",
+					SHA:       "e4f5g6h",
+					Subject:   "feat: wip",
+					Date:      now.Add(-30 * time.Minute),
+					Ahead:     3,
+					Upstreams: []UpstreamInfo{{Name: "origin/feature", Ahead: 2}},
+				},
+				{
+					Name:      "stale",
+					SHA:       "i7j8k9l",
+					Subject:   "fix: old",
+					Date:      now.Add(-24 * time.Hour),
+					Ahead:     1,
+					Upstreams: []UpstreamInfo{{Name: "origin/stale", Behind: 5}},
+				},
+				{
+					Name:      "pruned",
+					SHA:       "m0n1o2p",
+					Subject:   "chore: cleanup",
+					Date:      now.Add(-3 * 24 * time.Hour),
+					Ahead:     1,
+					Upstreams: []UpstreamInfo{{Name: "origin/pruned", Gone: true}},
+				},
+				{
+					Name:    "local-only",
+					SHA:     "q3r4s5t",
+					Subject: "feat: local",
+					Date:    now.Add(-1 * time.Hour),
+					Ahead:   2,
+				},
+			},
+		},
+	}
+
+	got := RenderAt(roots, false, now)
+
+	// Synced upstream shows "="
+	assert.Contains(t, got, "origin/main =")
+	// Ahead-only shows arrow up
+	assert.Contains(t, got, "origin/feature ↑2")
+	// Behind shows arrow down
+	assert.Contains(t, got, "origin/stale ↓5")
+	// Gone upstream
+	assert.Contains(t, got, "origin/pruned gone")
+	// No upstream for local-only
+	assert.NotContains(t, got, "local-only =")
+	assert.NotContains(t, got, "origin/local-only")
+}
+
+func TestRender_MultipleUpstreams(t *testing.T) {
+	now := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	// Two branches at same SHA, each with its own upstream
+	roots := []*BranchNode{
+		{
+			Name:    "main, release",
+			SHA:     "a1b2c3d",
+			Subject: "release v1",
+			Date:    now.Add(-1 * time.Hour),
+			Upstreams: []UpstreamInfo{
+				{Name: "origin/main"},
+				{Name: "origin/release", Ahead: 1},
+			},
+		},
+	}
+
+	got := RenderAt(roots, false, now)
+	assert.Contains(t, got, "origin/main =, origin/release ↑1")
+}
