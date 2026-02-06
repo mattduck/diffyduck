@@ -413,7 +413,7 @@ func (m Model) renderHelp() string {
 	titleLine := "  " + title
 
 	// Bottom bar
-	bottomText := helpDimStyle.Render(" q, Esc, C-g or C-h to go back")
+	bottomText := helpDimStyle.Render(" q, Esc, C-c, C-g or C-h to go back")
 	bottomPad := m.width - displayWidth(bottomText)
 	if bottomPad < 0 {
 		bottomPad = 0

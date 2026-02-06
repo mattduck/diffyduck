@@ -147,6 +147,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 		{Name: "Search", Bindings: []Binding{
 			{Keys: km.SearchForward, Desc: "Search forward", Keys2: km.SearchBack, Desc2: "backward"},
 			{Keys: km.NextMatch, Desc: "Next match", Keys2: km.PrevMatch, Desc2: "previous"},
+			{Keys: km.NarrowToggle, Desc: "Toggle narrow mode (no active search)"},
 			{Keys: []string{"Enter"}, Desc: "Execute search"},
 			{Keys: []string{"Esc"}, Desc: "Cancel search"},
 			{Keys: []string{"Backspace"}, Desc: "Delete character"},

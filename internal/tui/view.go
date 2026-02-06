@@ -101,6 +101,9 @@ func ApplyTheme(cfg config.ThemeConfig) {
 	if cfg.Changed != "" {
 		changedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Changed))
 	}
+	if cfg.Context != "" {
+		contextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Context))
+	}
 	if cfg.LineNumber != "" {
 		lineNumStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.LineNumber)).Faint(true)
 	}

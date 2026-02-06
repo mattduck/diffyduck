@@ -73,9 +73,31 @@ Test state transitions, not rendered output - assert `model.scroll == 5`, not pa
 
 **For TUI tests:** Use `MockGit` — no real git operations needed.
 
-## CLI Help
+## Keeping Help & Config in Sync
 
-Always update help output, usage strings, and the C-h help function when adding or changing CLI features.
+When adding or changing features, update all related surfaces. Use these checklists:
+
+**New keybinding:**
+1. `KeyMap` struct + `defaultKeyMap` in `internal/tui/keys.go`
+2. `BindingGroups()` in `keys.go` (in-app C-h help)
+3. `ApplyKeysConfig()` + `DefaultKeysConfig()` in `keys.go`
+4. Config struct (e.g. `NavigationKeys`) in `pkg/config/config.go`
+5. `GenerateExample()` in `pkg/config/example.go`
+
+**New theme field:**
+1. `ThemeConfig` struct in `pkg/config/config.go`
+2. `DefaultTheme` in `pkg/config/example.go`
+3. `ApplyTheme()` in `internal/tui/view.go`
+4. `GenerateExample()` in `pkg/config/example.go`
+
+**New CLI subcommand:**
+1. `usageXxx` const in `cmd/dfd/main.go`
+2. `printUsage()` switch case in `cmd/dfd/main.go`
+3. Entry in `usageGeneral` Commands section
+
+**New CLI flag:**
+1. Relevant `usageXxx` const for the subcommand
+2. `usageGeneral` if it's a global or cross-command flag
 
 ## Commit Conventions
 

@@ -141,7 +141,7 @@ func TestHelp_ViewRendersHelp(t *testing.T) {
 	assert.Contains(t, view, "Navigation")
 	assert.Contains(t, view, "Scroll down")
 	assert.Contains(t, view, "Search")
-	assert.Contains(t, view, "q, Esc, C-g or C-h to go back")
+	assert.Contains(t, view, "q, Esc, C-c, C-g or C-h to go back")
 }
 
 func TestHelp_ViewNotShownWhenOff(t *testing.T) {

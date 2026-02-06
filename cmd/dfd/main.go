@@ -525,6 +525,10 @@ func printUsage(cmd string) {
 		fmt.Print(usageLog)
 	case "clean":
 		fmt.Print(usageClean)
+	case "branches":
+		fmt.Print(usageBranches)
+	case "config":
+		fmt.Print(usageConfig)
 	default:
 		fmt.Print(usageGeneral)
 	}
@@ -543,6 +547,7 @@ Commands:
   clean      Delete persisted snapshots
   branches, b
              Show branch dependency tree
+  config     Manage configuration
 
 Global flags:
   -h, --help       Show help
@@ -632,6 +637,44 @@ Usage:
 
 Removes all persisted snapshot refs (refs/dfd/snapshots/*) from the
 current repository.
+`
+
+const usageBranches = `dfd branches - show branch dependency tree
+
+Usage:
+  dfd branches [flags]
+
+Displays local branches as a tree based on their upstream relationships.
+
+Flags:
+  -v, --verbose    Show commit subject for each branch
+
+Examples:
+  dfd branches             Show branch tree
+  dfd branches -v          Show branch tree with commit subjects
+`
+
+const usageConfig = `dfd config - manage configuration
+
+Usage:
+  dfd config [flags]
+
+With no flags, prints the default configuration to stdout.
+Config file location: ~/.config/dfd/config.toml (or $XDG_CONFIG_HOME/dfd/).
+
+Flags:
+      --init       Write default config file
+      --force      Overwrite existing file (use with --init)
+      --print      Print default config to stdout (default behavior)
+      --path       Print config file path
+      --edit       Open config file in $VISUAL or $EDITOR
+
+Examples:
+  dfd config                   Print default config
+  dfd config --init            Create config file with defaults
+  dfd config --init --force    Overwrite existing config file
+  dfd config --path            Show config file location
+  dfd config --edit            Edit config in your editor
 `
 
 func run() error {

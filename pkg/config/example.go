@@ -171,6 +171,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 	writeColor("added", d.Added, "green — added lines")
 	writeColor("removed", d.Removed, "red — removed lines")
 	writeColor("changed", d.Changed, "blue — modified lines (word diff)")
+	writeColor("context", d.Context, "default — unchanged context lines")
 	writeColor("line_number", d.LineNumber, "gray — gutter line numbers")
 	writeColor("header", d.Header, "bright white — file header text")
 	writeColor("header_dir", d.HeaderDir, "dim white — directory part of path")
