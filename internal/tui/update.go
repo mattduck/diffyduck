@@ -887,6 +887,16 @@ func (m Model) handleFullFileToggle() (tea.Model, tea.Cmd) {
 	// Toggle full-file view
 	m.files[fileIdx].ShowFullFile = !m.files[fileIdx].ShowFullFile
 
+	// When enabling full-file view, also narrow to this file if not already narrowed
+	if m.files[fileIdx].ShowFullFile && !m.w().narrow.Active {
+		m.w().narrow = NarrowScope{
+			Active:    true,
+			CommitIdx: m.commitForFile(fileIdx),
+			FileIdx:   fileIdx,
+			HunkIdx:   -1,
+		}
+	}
+
 	m.calculateTotalLines()
 
 	// Position cursor after layout change

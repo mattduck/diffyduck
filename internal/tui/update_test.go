@@ -2061,6 +2061,167 @@ func TestFullFileToggle_OffFromFullFile_PreservesPosition(t *testing.T) {
 	assert.Equal(t, 3, cursorRow.pair.New.Num, "cursor should stay on line 3 after toggling off")
 }
 
+func TestFullFileToggle_NarrowsWhenNotNarrowed(t *testing.T) {
+	// With multiple files, pressing F should also narrow to the current file
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"line1", "line2"},
+				NewContent: []string{"line1", "line2"},
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"other1"},
+				NewContent: []string{"other1"},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   120,
+		height:  40,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Verify we start without narrow
+	assert.False(t, m.w().narrow.Active)
+
+	// Both files should be visible before F
+	fullRows := m.buildRows()
+	hasSecondFile := false
+	for _, row := range fullRows {
+		if row.fileIndex == 1 {
+			hasSecondFile = true
+			break
+		}
+	}
+	assert.True(t, hasSecondFile, "second file should be visible before F")
+
+	// Press F
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	assert.True(t, m.files[0].ShowFullFile, "ShowFullFile should be true")
+	assert.True(t, m.w().narrow.Active, "narrow mode should be active after F")
+	assert.Equal(t, 0, m.w().narrow.FileIdx, "should be narrowed to file 0")
+
+	// Only file 0 rows should be visible
+	narrowRows := m.buildRows()
+	for i, row := range narrowRows {
+		if row.fileIndex >= 0 {
+			assert.Equal(t, 0, row.fileIndex, "row %d should belong to file 0 in narrowed view", i)
+		}
+	}
+}
+
+func TestFullFileToggle_DoesNotRenarrowWhenAlreadyNarrowed(t *testing.T) {
+	// If already narrowed to a file, F should not change the narrow scope
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"line1"},
+				NewContent: []string{"line1"},
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"other1"},
+				NewContent: []string{"other1"},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   120,
+		height:  40,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Pre-set narrow to file 1 (second file), then move cursor there
+	m.w().narrow = NarrowScope{
+		Active:    true,
+		CommitIdx: -1,
+		FileIdx:   1,
+		HunkIdx:   -1,
+	}
+	m.rebuildRowsCache()
+
+	// Press F — should toggle full-file for file 1 without changing narrow scope
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	assert.True(t, m.files[1].ShowFullFile, "ShowFullFile should be true for file 1")
+	// Narrow scope should be unchanged
+	assert.True(t, m.w().narrow.Active, "narrow should still be active")
+	assert.Equal(t, 1, m.w().narrow.FileIdx, "narrow file scope should be unchanged")
+}
+
+func TestFullFileToggle_OffDoesNotClearNarrow(t *testing.T) {
+	// Toggling F off should leave narrow mode active
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath:   "a/first.go",
+				NewPath:   "b/first.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}},
+				},
+				OldContent: []string{"line1", "line2"},
+				NewContent: []string{"line1", "line2"},
+			},
+			{
+				OldPath:   "a/second.go",
+				NewPath:   "b/second.go",
+				FoldLevel: sidebyside.FoldExpanded,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}},
+				},
+			},
+		},
+		fetcher: content.NewFetcher(nil, content.ModeShow, "abc", ""),
+		width:   120,
+		height:  40,
+		keys:    DefaultKeyMap(),
+	}
+	m.calculateTotalLines()
+
+	// Press F to enable (should also narrow)
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+	assert.True(t, m.w().narrow.Active, "should be narrowed after F on")
+
+	// Press F again to disable full-file view
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	m = result.(Model)
+
+	assert.False(t, m.files[0].ShowFullFile, "ShowFullFile should be off")
+	assert.True(t, m.w().narrow.Active, "narrow should persist after F off")
+	assert.Equal(t, 0, m.w().narrow.FileIdx, "narrow file scope should persist")
+}
+
 // --- Enter on hunk separator: context expansion tests ---
 
 func makeEnterTestModel() Model {
