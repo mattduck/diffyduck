@@ -626,8 +626,8 @@ func run() error {
 	// Build pathspec for git commands
 	pathspec := buildPathspec(args.paths, args.excludes)
 
-	// Determine base ref for the diff (used for snapshot keying)
-	var baseSHA string
+	// Determine base ref and branch for the diff (used for snapshot keying)
+	var baseSHA, branch string
 	if args.cmd == "diff" && !args.unstaged {
 		baseRef := args.ref1
 		if baseRef == "" {
@@ -636,6 +636,9 @@ func run() error {
 		sha, err := g.Show("--format=%H", "-s", baseRef)
 		if err == nil {
 			baseSHA = strings.TrimSpace(sha)
+		}
+		if b, err := g.CurrentBranch(); err == nil {
+			branch = b
 		}
 	}
 
@@ -650,7 +653,7 @@ func run() error {
 	var snapshotInfos []git.SnapshotInfo
 	var persistedSnapshots []string
 	if snapshotsEnabled && baseSHA != "" {
-		infos, err := g.ListSnapshotRefs(baseSHA)
+		infos, err := g.ListSnapshotRefs(branch, baseSHA)
 		if err == nil {
 			snapshotInfos = infos
 			persistedSnapshots = make([]string, len(infos))
@@ -915,6 +918,9 @@ func run() error {
 	if baseSHA != "" {
 		opts = append(opts, tui.WithBaseSHA(baseSHA))
 	}
+	if branch != "" {
+		opts = append(opts, tui.WithBranch(branch))
+	}
 
 	model := tui.NewWithCommits(commits, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
@@ -951,24 +957,12 @@ func runBranches(verbose bool) error {
 func runClean() error {
 	g := git.New()
 
-	// First list refs to see how many we're deleting
-	// Empty string means list all refs across all bases
-	refs, err := g.ListSnapshotRefs("")
-	if err != nil {
-		return fmt.Errorf("list snapshot refs: %w", err)
-	}
-
-	if len(refs) == 0 {
-		fmt.Println("No persisted snapshots to clean")
-		return nil
-	}
-
-	// Delete all refs (empty string means delete all)
-	if err := g.DeleteSnapshotRefs(""); err != nil {
+	// Delete all refs (empty strings means delete all)
+	if err := g.DeleteSnapshotRefs("", ""); err != nil {
 		return fmt.Errorf("delete snapshot refs: %w", err)
 	}
 
-	fmt.Printf("Deleted %d persisted snapshot(s)\n", len(refs))
+	fmt.Println("Deleted persisted snapshots")
 	return nil
 }
 

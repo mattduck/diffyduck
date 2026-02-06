@@ -243,6 +243,7 @@ type Model struct {
 	allMode          bool     // true if --all flag was used (include untracked files in snapshots)
 	continueMode     bool     // true if --continue flag was used (load persisted snapshots)
 	baseSHA          string   // SHA of the base ref we're diffing against (for keying snapshot refs)
+	branch           string   // current branch name (for scoping snapshot refs)
 
 	// Help screen
 	helpMode   bool     // true when help screen is displayed
@@ -470,10 +471,17 @@ func WithContinueMode(enabled bool) Option {
 }
 
 // WithBaseSHA sets the SHA of the base ref we're diffing against.
-// This is used as the key for persisting snapshot refs.
+// This is used as part of the key for persisting snapshot refs.
 func WithBaseSHA(sha string) Option {
 	return func(m *Model) {
 		m.baseSHA = sha
+	}
+}
+
+// WithBranch sets the current branch name for scoping snapshot refs.
+func WithBranch(branch string) Option {
+	return func(m *Model) {
+		m.branch = branch
 	}
 }
 

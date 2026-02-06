@@ -178,7 +178,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Persist the snapshot as a git ref (for automatic continuation)
 		if m.snapshotsEnabled && m.git != nil && m.baseSHA != "" {
-			_ = m.git.UpdateSnapshotRef(m.baseSHA, msg.SHA) // ignore error for initial snapshot
+			_ = m.git.UpdateSnapshotRef(m.branch, m.baseSHA, msg.SHA) // ignore error for initial snapshot
 		}
 
 		// Update the first commit's info if it's a snapshot (the initial diff)
@@ -209,7 +209,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Persist the snapshot as a git ref (for automatic continuation)
 			if m.snapshotsEnabled && m.git != nil && m.baseSHA != "" {
-				if err := m.git.UpdateSnapshotRef(m.baseSHA, msg.SnapshotSHA); err != nil {
+				if err := m.git.UpdateSnapshotRef(m.branch, m.baseSHA, msg.SnapshotSHA); err != nil {
 					// Log error but don't fail - the snapshot is still in memory
 					now := time.Now()
 					m.statusMessage = "Warning: failed to persist snapshot"

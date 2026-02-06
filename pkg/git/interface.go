@@ -92,18 +92,22 @@ type Git interface {
 	// Extra args are appended to the git diff command (e.g. pathspecs).
 	DiffSnapshots(sha1, sha2 string, args ...string) (string, error)
 
-	// UpdateSnapshotRef updates refs/dfd/snapshots/<baseSHA> to point to sha.
-	// Uses a single ref per base, with history traversed via parent chain.
-	UpdateSnapshotRef(baseSHA string, sha string) error
+	// CurrentBranch returns the short name of the current branch (e.g. "main").
+	// Returns "HEAD" if in detached HEAD state.
+	CurrentBranch() (string, error)
 
-	// ListSnapshotRefs returns snapshot info for all snapshots for a base SHA.
-	// Traverses the parent chain from refs/dfd/snapshots/<baseSHA> via git log.
+	// UpdateSnapshotRef updates refs/dfd/snapshots/<branch>/<baseSHA> to point to sha.
+	// Uses a single ref per branch+base, with history traversed via parent chain.
+	UpdateSnapshotRef(branch, baseSHA, sha string) error
+
+	// ListSnapshotRefs returns snapshot info for all snapshots for a branch and base SHA.
+	// Traverses the parent chain from refs/dfd/snapshots/<branch>/<baseSHA> via git log.
 	// Returns oldest first (chronological order).
-	ListSnapshotRefs(baseSHA string) ([]SnapshotInfo, error)
+	ListSnapshotRefs(branch, baseSHA string) ([]SnapshotInfo, error)
 
 	// DeleteSnapshotRefs deletes snapshot refs under refs/dfd/snapshots/.
-	// If baseSHA is non-empty, only deletes that ref; otherwise deletes all.
-	DeleteSnapshotRefs(baseSHA string) error
+	// If branch and baseSHA are non-empty, only deletes that ref; otherwise deletes all.
+	DeleteSnapshotRefs(branch, baseSHA string) error
 
 	// ExpireOldSnapshotRefs deletes snapshot refs older than maxAgeDays.
 	// Returns the number of deleted refs.

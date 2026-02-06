@@ -652,17 +652,22 @@ func TestMockGit_LogPathsOnly(t *testing.T) {
 func TestMockGit_SnapshotRefs(t *testing.T) {
 	mock := &MockGit{}
 
+	// CurrentBranch returns "main"
+	branch, err := mock.CurrentBranch()
+	require.NoError(t, err)
+	assert.Equal(t, "main", branch)
+
 	// UpdateSnapshotRef is a no-op
-	err := mock.UpdateSnapshotRef("base-sha", "abc123")
+	err = mock.UpdateSnapshotRef("main", "base-sha", "abc123")
 	require.NoError(t, err)
 
 	// ListSnapshotRefs returns empty
-	refs, err := mock.ListSnapshotRefs("base-sha")
+	refs, err := mock.ListSnapshotRefs("main", "base-sha")
 	require.NoError(t, err)
 	assert.Nil(t, refs)
 
 	// DeleteSnapshotRefs is a no-op
-	err = mock.DeleteSnapshotRefs("base-sha")
+	err = mock.DeleteSnapshotRefs("main", "base-sha")
 	require.NoError(t, err)
 
 	// ExpireOldSnapshotRefs is a no-op
@@ -743,8 +748,10 @@ func TestRealGit_SnapshotRefs_Integration(t *testing.T) {
 
 	g := NewWithDir(tmpDir)
 
+	branch := "test-branch"
+
 	// Test ListSnapshotRefs when no ref exists
-	refs, err := g.ListSnapshotRefs(baseSHA)
+	refs, err := g.ListSnapshotRefs(branch, baseSHA)
 	require.NoError(t, err)
 	assert.Nil(t, refs, "should have no refs initially")
 
@@ -753,11 +760,11 @@ func TestRealGit_SnapshotRefs_Integration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update the snapshot ref to point to snapshot1
-	err = g.UpdateSnapshotRef(baseSHA, snapshot1)
+	err = g.UpdateSnapshotRef(branch, baseSHA, snapshot1)
 	require.NoError(t, err)
 
 	// Verify ref was created and lists the snapshot
-	refs, err = g.ListSnapshotRefs(baseSHA)
+	refs, err = g.ListSnapshotRefs(branch, baseSHA)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(refs), "should have 1 snapshot")
 	assert.Equal(t, snapshot1, refs[0].SHA)
@@ -768,22 +775,22 @@ func TestRealGit_SnapshotRefs_Integration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update ref to point to latest
-	err = g.UpdateSnapshotRef(baseSHA, snapshot2)
+	err = g.UpdateSnapshotRef(branch, baseSHA, snapshot2)
 	require.NoError(t, err)
 
 	// Should now list both snapshots (oldest first)
-	refs, err = g.ListSnapshotRefs(baseSHA)
+	refs, err = g.ListSnapshotRefs(branch, baseSHA)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(refs), "should have 2 snapshots")
 	assert.Equal(t, snapshot1, refs[0].SHA, "first should be oldest")
 	assert.Equal(t, snapshot2, refs[1].SHA, "second should be newest")
 
 	// Test DeleteSnapshotRefs
-	err = g.DeleteSnapshotRefs(baseSHA)
+	err = g.DeleteSnapshotRefs(branch, baseSHA)
 	require.NoError(t, err)
 
 	// Verify ref deleted (ListSnapshotRefs returns nil when ref doesn't exist)
-	refs, err = g.ListSnapshotRefs(baseSHA)
+	refs, err = g.ListSnapshotRefs(branch, baseSHA)
 	require.NoError(t, err)
 	assert.Nil(t, refs, "should have no refs after delete")
 }
@@ -815,10 +822,10 @@ func TestRealGit_ListSnapshotRefs_SubjectAndDate(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, sha)
 
-	err = g.UpdateSnapshotRef(baseSHA, sha)
+	err = g.UpdateSnapshotRef("test-branch", baseSHA, sha)
 	require.NoError(t, err)
 
-	refs, err := g.ListSnapshotRefs(baseSHA)
+	refs, err := g.ListSnapshotRefs("test-branch", baseSHA)
 	require.NoError(t, err)
 	require.Len(t, refs, 1)
 
@@ -858,10 +865,10 @@ func TestRealGit_ListSnapshotRefs_EmptyMessage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, sha)
 
-	err = g.UpdateSnapshotRef(baseSHA, sha)
+	err = g.UpdateSnapshotRef("test-branch", baseSHA, sha)
 	require.NoError(t, err)
 
-	refs, err := g.ListSnapshotRefs(baseSHA)
+	refs, err := g.ListSnapshotRefs("test-branch", baseSHA)
 	require.NoError(t, err)
 	require.Len(t, refs, 1)
 
@@ -901,12 +908,12 @@ func TestRealGit_ListSnapshotRefs_MultipleWithDistinctSubjects(t *testing.T) {
 	for _, msg := range messages {
 		sha, err := g.CreateSnapshot(false, parentSHA, msg)
 		require.NoError(t, err)
-		err = g.UpdateSnapshotRef(baseSHA, sha)
+		err = g.UpdateSnapshotRef("test-branch", baseSHA, sha)
 		require.NoError(t, err)
 		parentSHA = sha
 	}
 
-	refs, err := g.ListSnapshotRefs(baseSHA)
+	refs, err := g.ListSnapshotRefs("test-branch", baseSHA)
 	require.NoError(t, err)
 	require.Len(t, refs, 3)
 
@@ -937,8 +944,8 @@ func TestRealGit_DeleteSnapshotRefs_WhenEmpty(t *testing.T) {
 	g := NewWithDir(tmpDir)
 
 	// Should not error when there are no refs to delete
-	// Empty string means delete all refs across all bases
-	err := g.DeleteSnapshotRefs("")
+	// Empty strings means delete all refs across all branches/bases
+	err := g.DeleteSnapshotRefs("", "")
 	require.NoError(t, err)
 }
 
@@ -1116,6 +1123,102 @@ func TestRealGit_AheadBehind_Integration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, ahead)
 	assert.Equal(t, 2, behind)
+}
+
+func TestRealGit_CurrentBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}, "commit", "--no-verify", "-m", "initial")
+
+	g := NewWithDir(tmpDir)
+
+	// Should return the default branch name
+	branch, err := g.CurrentBranch()
+	require.NoError(t, err)
+	assert.NotEmpty(t, branch)
+
+	// Create and switch to a new branch
+	runGit(t, tmpDir, "checkout", "-b", "feature/test")
+	branch, err = g.CurrentBranch()
+	require.NoError(t, err)
+	assert.Equal(t, "feature/test", branch)
+
+	// Detached HEAD should return "HEAD"
+	sha := strings.TrimSpace(runGit(t, tmpDir, "rev-parse", "HEAD"))
+	runGit(t, tmpDir, "checkout", sha)
+	branch, err = g.CurrentBranch()
+	require.NoError(t, err)
+	assert.Equal(t, "HEAD", branch)
+}
+
+func TestRealGit_SnapshotRefs_BranchIsolation(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}, "commit", "--no-verify", "-m", "initial")
+	baseSHA := strings.TrimSpace(runGit(t, tmpDir, "rev-parse", "HEAD"))
+
+	g := NewWithDir(tmpDir)
+
+	// Create snapshot on branch-a
+	snap1, err := g.CreateSnapshot(false, baseSHA, "snapshot on branch-a")
+	require.NoError(t, err)
+	err = g.UpdateSnapshotRef("branch-a", baseSHA, snap1)
+	require.NoError(t, err)
+
+	// Create snapshot on branch-b (same baseSHA)
+	snap2, err := g.CreateSnapshot(false, baseSHA, "snapshot on branch-b")
+	require.NoError(t, err)
+	err = g.UpdateSnapshotRef("branch-b", baseSHA, snap2)
+	require.NoError(t, err)
+
+	// branch-a should only see its snapshot
+	refsA, err := g.ListSnapshotRefs("branch-a", baseSHA)
+	require.NoError(t, err)
+	require.Len(t, refsA, 1)
+	assert.Equal(t, snap1, refsA[0].SHA)
+	assert.Equal(t, "snapshot on branch-a", refsA[0].Subject)
+
+	// branch-b should only see its snapshot
+	refsB, err := g.ListSnapshotRefs("branch-b", baseSHA)
+	require.NoError(t, err)
+	require.Len(t, refsB, 1)
+	assert.Equal(t, snap2, refsB[0].SHA)
+	assert.Equal(t, "snapshot on branch-b", refsB[0].Subject)
+
+	// Deleting branch-a's ref should not affect branch-b
+	err = g.DeleteSnapshotRefs("branch-a", baseSHA)
+	require.NoError(t, err)
+
+	refsA, err = g.ListSnapshotRefs("branch-a", baseSHA)
+	require.NoError(t, err)
+	assert.Nil(t, refsA)
+
+	refsB, err = g.ListSnapshotRefs("branch-b", baseSHA)
+	require.NoError(t, err)
+	require.Len(t, refsB, 1)
+	assert.Equal(t, snap2, refsB[0].SHA)
 }
 
 // Helper functions for integration tests

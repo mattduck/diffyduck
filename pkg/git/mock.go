@@ -150,18 +150,23 @@ func (m *MockGit) DiffSnapshots(sha1, sha2 string, args ...string) (string, erro
 	return m.DiffOutput, m.DiffError
 }
 
+// CurrentBranch returns "main" for the mock.
+func (m *MockGit) CurrentBranch() (string, error) {
+	return "main", nil
+}
+
 // UpdateSnapshotRef is a no-op for the mock (doesn't persist refs).
-func (m *MockGit) UpdateSnapshotRef(baseSHA string, sha string) error {
+func (m *MockGit) UpdateSnapshotRef(branch, baseSHA, sha string) error {
 	return nil
 }
 
 // ListSnapshotRefs returns an empty list (mock doesn't persist refs).
-func (m *MockGit) ListSnapshotRefs(baseSHA string) ([]SnapshotInfo, error) {
+func (m *MockGit) ListSnapshotRefs(branch, baseSHA string) ([]SnapshotInfo, error) {
 	return nil, nil
 }
 
 // DeleteSnapshotRefs is a no-op for the mock (nothing to delete).
-func (m *MockGit) DeleteSnapshotRefs(baseSHA string) error {
+func (m *MockGit) DeleteSnapshotRefs(branch, baseSHA string) error {
 	return nil
 }
 

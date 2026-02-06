@@ -791,9 +791,27 @@ func (g *RealGit) DiffSnapshots(sha1, sha2 string, args ...string) (string, erro
 // snapshotRefPrefix is the prefix for persisted snapshot refs.
 const snapshotRefPrefix = "refs/dfd/snapshots/"
 
-// UpdateSnapshotRef updates refs/dfd/snapshots/<baseSHA> to point to sha.
-func (g *RealGit) UpdateSnapshotRef(baseSHA string, sha string) error {
-	refName := fmt.Sprintf("%s%s", snapshotRefPrefix, baseSHA)
+// snapshotRefName returns the full ref name for a branch and base SHA.
+// Format: refs/dfd/snapshots/<branch>/<baseSHA>
+func snapshotRefName(branch, baseSHA string) string {
+	return fmt.Sprintf("%s%s/%s", snapshotRefPrefix, branch, baseSHA)
+}
+
+// CurrentBranch returns the short name of the current branch (e.g. "main").
+// Returns "HEAD" if in detached HEAD state.
+func (g *RealGit) CurrentBranch() (string, error) {
+	cmd := g.command("symbolic-ref", "--short", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		// Detached HEAD — symbolic-ref fails
+		return "HEAD", nil
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// UpdateSnapshotRef updates refs/dfd/snapshots/<branch>/<baseSHA> to point to sha.
+func (g *RealGit) UpdateSnapshotRef(branch, baseSHA, sha string) error {
+	refName := snapshotRefName(branch, baseSHA)
 	cmd := g.command("update-ref", refName, sha)
 
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -802,11 +820,11 @@ func (g *RealGit) UpdateSnapshotRef(baseSHA string, sha string) error {
 	return nil
 }
 
-// ListSnapshotRefs returns snapshot info for all snapshots for a base SHA.
-// Uses git log to traverse the parent chain from refs/dfd/snapshots/<baseSHA>.
+// ListSnapshotRefs returns snapshot info for all snapshots for a branch and base SHA.
+// Uses git log to traverse the parent chain from refs/dfd/snapshots/<branch>/<baseSHA>.
 // Returns oldest first (chronological order).
-func (g *RealGit) ListSnapshotRefs(baseSHA string) ([]SnapshotInfo, error) {
-	refName := fmt.Sprintf("%s%s", snapshotRefPrefix, baseSHA)
+func (g *RealGit) ListSnapshotRefs(branch, baseSHA string) ([]SnapshotInfo, error) {
+	refName := snapshotRefName(branch, baseSHA)
 
 	// Check if the ref exists first
 	checkCmd := g.command("rev-parse", "--verify", refName)
@@ -867,11 +885,11 @@ func (g *RealGit) ListSnapshotRefs(baseSHA string) ([]SnapshotInfo, error) {
 }
 
 // DeleteSnapshotRefs deletes snapshot refs under refs/dfd/snapshots/.
-// If baseSHA is non-empty, only deletes that specific ref; otherwise deletes all.
-func (g *RealGit) DeleteSnapshotRefs(baseSHA string) error {
-	if baseSHA != "" {
-		// Delete single ref for this base
-		refName := fmt.Sprintf("%s%s", snapshotRefPrefix, baseSHA)
+// If branch and baseSHA are non-empty, only deletes that specific ref; otherwise deletes all.
+func (g *RealGit) DeleteSnapshotRefs(branch, baseSHA string) error {
+	if branch != "" && baseSHA != "" {
+		// Delete single ref for this branch+base
+		refName := snapshotRefName(branch, baseSHA)
 		cmd := g.command("update-ref", "-d", refName)
 		// Ignore error if ref doesn't exist
 		_ = cmd.Run()
