@@ -30,9 +30,10 @@ type BranchNode struct {
 	Author    string
 	Date      time.Time
 	IsHead    bool
-	Virtual   bool // true for fork point nodes (not a branch)
-	Ahead     int  // commits ahead of parent (0 for roots)
-	Behind    int  // commits behind parent (0 when up-to-date)
+	HeadRef   string // specific branch name that is HEAD (empty if none)
+	Virtual   bool   // true for fork point nodes (not a branch)
+	Ahead     int    // commits ahead of parent (0 for roots)
+	Behind    int    // commits behind parent (0 when up-to-date)
 	Upstreams []UpstreamInfo
 	Children  []*BranchNode
 
@@ -55,6 +56,7 @@ func BuildTree(branches []git.BranchInfo, q GitQuerier) ([]*BranchNode, error) {
 		names     []string
 		info      git.BranchInfo
 		isHead    bool
+		headRef   string
 		upstreams []UpstreamInfo
 	}
 	shaGroups := make(map[string]*group)
@@ -67,6 +69,7 @@ func BuildTree(branches []git.BranchInfo, q GitQuerier) ([]*BranchNode, error) {
 		g.names = append(g.names, b.Name)
 		if b.IsHead {
 			g.isHead = true
+			g.headRef = b.Name
 		}
 		if b.Upstream != "" {
 			g.upstreams = append(g.upstreams, UpstreamInfo{
@@ -95,6 +98,7 @@ func BuildTree(branches []git.BranchInfo, q GitQuerier) ([]*BranchNode, error) {
 			Author:    g.info.Author,
 			Date:      t,
 			IsHead:    g.isHead,
+			HeadRef:   g.headRef,
 			Upstreams: g.upstreams,
 			fullSHA:   sha,
 			ref:       g.names[0],

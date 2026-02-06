@@ -14,6 +14,9 @@ const (
 	colorYellow = "\033[33m" // fg=3
 	colorCyan   = "\033[36m" // fg=6
 	colorWhite  = "\033[37m" // fg=7
+
+	underlineOn  = "\033[4m"
+	underlineOff = "\033[24m"
 )
 
 // Render formats a forest of BranchNodes as a tree-view string.
@@ -42,6 +45,8 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 		upstreamCol    string // upstream display text (plain, for width calc)
 		upstreamBehind bool   // true if behind or diverged from upstream
 		upstreamGone   bool   // true if upstream was deleted
+		headRef        string // specific HEAD branch name to underline
+		headUpstream   string // upstream name matching HEAD branch to underline
 	}
 
 	var lines []line
@@ -57,7 +62,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 
 		if isRoot {
 			if node.IsHead {
-				nameCol = "* " + displayName
+				nameCol = "*" + displayName
 			} else {
 				nameCol = displayName
 			}
@@ -67,7 +72,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 				connector = "┌─ "
 			}
 			if node.IsHead {
-				nameCol = prefix + connector + "* " + displayName
+				nameCol = prefix + connector + "*" + displayName
 			} else {
 				nameCol = prefix + connector + displayName
 			}
@@ -131,6 +136,17 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			walk(child, childPrefix, i == 0, false)
 		}
 
+		// Find matching upstream for HEAD branch (by name: remote/headRef)
+		var headUpstream string
+		if node.HeadRef != "" {
+			for _, u := range node.Upstreams {
+				if strings.HasSuffix(u.Name, "/"+node.HeadRef) {
+					headUpstream = u.Name
+					break
+				}
+			}
+		}
+
 		lines = append(lines, line{
 			nameCol:        nameCol,
 			countsCol:      countsCol,
@@ -144,6 +160,8 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			upstreamCol:    upstreamCol,
 			upstreamBehind: upstreamBehind,
 			upstreamGone:   upstreamGone,
+			headRef:        node.HeadRef,
+			headUpstream:   headUpstream,
 		})
 	}
 
@@ -203,9 +221,16 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			}
 		}
 
+		// Apply underline to HEAD branch name within the name column
+		styledName := l.nameCol
+		if l.headRef != "" {
+			styledName = underlineInString(styledName, l.headRef)
+		}
+		namePad := maxName - len(l.nameCol)
+
 		if verbose {
-			fmt.Fprintf(&sb, "%s%-*s%s  %s%-*s%s  %s%s%s  %s%-*s%s  %s  %s%s%s",
-				nameColor, maxName, l.nameCol, colorReset,
+			fmt.Fprintf(&sb, "%s%s%*s%s  %s%-*s%s  %s%s%s  %s%-*s%s  %s  %s%s%s",
+				nameColor, styledName, namePad, "", colorReset,
 				countsColor, maxCounts, l.countsCol, colorReset,
 				colorYellow, l.sha, colorReset,
 				colorWhite, maxDate, l.dateStr, colorReset,
@@ -213,15 +238,19 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 				colorCyan, l.author, colorReset,
 			)
 		} else {
-			fmt.Fprintf(&sb, "%s%-*s%s  %s%-*s%s  %s%s%s  %s%s%s",
-				nameColor, maxName, l.nameCol, colorReset,
+			fmt.Fprintf(&sb, "%s%s%*s%s  %s%-*s%s  %s%s%s  %s%s%s",
+				nameColor, styledName, namePad, "", colorReset,
 				countsColor, maxCounts, l.countsCol, colorReset,
 				colorYellow, l.sha, colorReset,
 				colorWhite, l.dateStr, colorReset,
 			)
 		}
 		if l.upstreamCol != "" {
-			fmt.Fprintf(&sb, "  %s%s%s", upstreamColor, l.upstreamCol, colorReset)
+			styledUpstream := l.upstreamCol
+			if l.headUpstream != "" {
+				styledUpstream = underlineInString(styledUpstream, l.headUpstream)
+			}
+			fmt.Fprintf(&sb, "  %s%s%s", upstreamColor, styledUpstream, colorReset)
 		}
 		sb.WriteByte('\n')
 	}
@@ -256,4 +285,17 @@ func relativeTime(t time.Time, now time.Time) string {
 	default:
 		return fmt.Sprintf("%dy ago", int(d.Hours()/(24*365)))
 	}
+}
+
+// underlineInString inserts underline ANSI codes around the first
+// occurrence of name in s.
+func underlineInString(s, name string) string {
+	if name == "" {
+		return s
+	}
+	idx := strings.Index(s, name)
+	if idx < 0 {
+		return s
+	}
+	return s[:idx] + underlineOn + name + underlineOff + s[idx+len(name):]
 }

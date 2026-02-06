@@ -77,7 +77,7 @@ func TestRender_LinearChain(t *testing.T) {
 	assert.Contains(t, got, "main")
 	assert.Contains(t, got, "┌─")
 	assert.Contains(t, got, "├─")
-	assert.Contains(t, got, "* fourth")
+	assert.Contains(t, got, "*fourth")
 	assert.Contains(t, got, "+3 -2")
 	assert.Contains(t, got, "+1")
 	assert.Contains(t, got, "+2")
@@ -222,4 +222,32 @@ func TestRender_MultipleUpstreams(t *testing.T) {
 
 	got := RenderAt(roots, false, now)
 	assert.Contains(t, got, "origin/main =, origin/release ↑1")
+}
+
+func TestRender_HeadRefUnderline(t *testing.T) {
+	now := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	roots := []*BranchNode{
+		{
+			Name:    "main, second, third",
+			SHA:     "a1b2c3d",
+			Subject: "init",
+			Date:    now.Add(-1 * time.Hour),
+			IsHead:  true,
+			HeadRef: "second",
+			Upstreams: []UpstreamInfo{
+				{Name: "origin/main"},
+				{Name: "origin/second"},
+			},
+		},
+	}
+
+	got := RenderAt(roots, false, now)
+	// HEAD branch name should be underlined, others should not
+	assert.Contains(t, got, "\033[4msecond\033[24m")
+	assert.NotContains(t, got, "\033[4mmain\033[24m")
+	assert.NotContains(t, got, "\033[4mthird\033[24m")
+	// Matching upstream should be underlined
+	assert.Contains(t, got, "\033[4morigin/second\033[24m")
+	assert.NotContains(t, got, "\033[4morigin/main\033[24m")
 }
