@@ -626,6 +626,15 @@ func buildCommentRows(fileIndex int, lineNum int, comment string, contentWidth i
 	return rows
 }
 
+// commitHeaderSearchText builds the searchable text for a commit header row.
+func commitHeaderSearchText(commit sidebyside.CommitSet) string {
+	s := commit.Info.ShortSHA() + " " + commit.Info.Author + " " + commit.Info.Subject
+	for _, ref := range commit.Info.Refs {
+		s += " " + ref.Name
+	}
+	return s
+}
+
 // buildRows creates all displayable rows from the model data.
 func (m Model) buildRows() []displayRow {
 	var rows []displayRow
@@ -735,7 +744,7 @@ func (m Model) buildRows() []displayRow {
 			if tw > maxCommitTimeWidth {
 				maxCommitTimeWidth = tw
 			}
-			sw := displayWidth(commit.Info.Subject)
+			sw := displayWidth(commit.Info.Subject) + commit.Info.RefsDisplayWidth()
 			if sw > 120 {
 				sw = 120
 			}
@@ -789,21 +798,20 @@ func (m Model) buildRows() []displayRow {
 			if authorWidth > 15 {
 				authorWidth = 15
 			}
-			subjectWidth := displayWidth(commit.Info.Subject)
-			if subjectWidth > 120 {
-				subjectWidth = 120
+			subjectPlusRefsWidth := displayWidth(commit.Info.Subject) + commit.Info.RefsDisplayWidth()
+			if subjectPlusRefsWidth > 120 {
+				subjectPlusRefsWidth = 120
 			}
 			// Total: prefix(1) + icon(1) + space(1) + sha(7) + space(1) + added + space(1)
-			//        + removed + space(1) + files + space(1) + time + space(1) + author + space(1) + subject
-			commitHeaderWidth := 1 + 1 + 1 + 7 + 1 + filesWidth + 1 + addedWidth + 1 + removedWidth + 1 + timeWidth + 1 + authorWidth + 1 + subjectWidth
+			//        + removed + space(1) + files + space(1) + time + space(1) + author + space(1) + subject+refs
+			commitHeaderWidth := 1 + 1 + 1 + 7 + 1 + filesWidth + 1 + addedWidth + 1 + removedWidth + 1 + timeWidth + 1 + authorWidth + 1 + subjectPlusRefsWidth
 
 			// When unfolded, keep shared column widths for alignment but use
 			// per-commit subject width so the border hugs actual content
 			useHeaderBoxWidth := commitHeaderWidth
 			if !commitFolded {
-				// Cap subject to what the render will actually display
-				// (render truncates to maxCommitSubjectWidth)
-				renderSubjWidth := subjectWidth
+				// Cap subject+refs to what the render will actually display
+				renderSubjWidth := subjectPlusRefsWidth
 				if renderSubjWidth > maxCommitSubjectWidth {
 					renderSubjWidth = maxCommitSubjectWidth
 				}
@@ -822,7 +830,7 @@ func (m Model) buildRows() []displayRow {
 				maxCommitRemWidth:      maxCommitRemWidth,
 				maxCommitTimeWidth:     maxCommitTimeWidth,
 				maxCommitSubjectWidth:  maxCommitSubjectWidth,
-				commitHeaderSearchText: commit.Info.ShortSHA() + " " + commit.Info.Author + " " + commit.Info.Subject,
+				commitHeaderSearchText: commitHeaderSearchText(commit),
 				headerMode:             commitHeaderMode,
 				headerBoxWidth:         useHeaderBoxWidth,
 			})

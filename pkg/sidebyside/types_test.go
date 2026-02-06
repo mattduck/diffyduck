@@ -136,3 +136,56 @@ func TestFormattedDateParts_OrdinalSuffixes(t *testing.T) {
 		assert.Contains(t, parts.Date, tt.want, "day %d", tt.day)
 	}
 }
+
+func TestParseRefs(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []Ref
+	}{
+		{"empty", "", nil},
+		{"HEAD only", "HEAD", nil},
+		{"HEAD -> main", "HEAD -> main", []Ref{{Name: "main", Kind: RefLocal, IsHead: true}}},
+		{"remote only", "origin/main", []Ref{{Name: "origin/main", Kind: RefRemote}}},
+		{"tag skipped", "tag: v1.0", nil},
+		{"local branch", "feature-x", []Ref{{Name: "feature-x", Kind: RefLocal}}},
+		{"mixed", "HEAD -> main, origin/main, origin/HEAD, feature-x", []Ref{
+			{Name: "main", Kind: RefLocal, IsHead: true},
+			{Name: "origin/main", Kind: RefRemote},
+			{Name: "origin/HEAD", Kind: RefRemote},
+			{Name: "feature-x", Kind: RefLocal},
+		}},
+		{"tag mixed in", "HEAD -> main, tag: v1.0, origin/main", []Ref{
+			{Name: "main", Kind: RefLocal, IsHead: true},
+			{Name: "origin/main", Kind: RefRemote},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseRefs(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestRefsDisplayWidth(t *testing.T) {
+	tests := []struct {
+		name string
+		refs []Ref
+		want int
+	}{
+		{"no refs", nil, 0},
+		{"one local", []Ref{{Name: "main", Kind: RefLocal}}, 7},           // " [main]" = 7
+		{"one remote", []Ref{{Name: "origin/main", Kind: RefRemote}}, 14}, // " {origin/main}" = 14
+		{"mixed", []Ref{
+			{Name: "main", Kind: RefLocal},
+			{Name: "origin/main", Kind: RefRemote},
+		}, 21}, // " [main]" (7) + " {origin/main}" (14) = 21
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := CommitInfo{Refs: tt.refs}
+			assert.Equal(t, tt.want, info.RefsDisplayWidth())
+		})
+	}
+}

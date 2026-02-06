@@ -75,6 +75,7 @@ type CommitMeta struct {
 	Date    string // author date in ISO 8601 format
 	Subject string // first line of commit message
 	Body    string // rest of commit message
+	Refs    string // raw ref decorations from %D (e.g., "HEAD -> main, origin/main")
 }
 
 // Delimiters used in custom format output for reliable parsing.
@@ -87,6 +88,7 @@ const (
 	metaSubject     = "DIFFYDUCK_SUBJECT:"
 	metaBodyStart   = "DIFFYDUCK_BODY_START"
 	metaBodyEnd     = "DIFFYDUCK_BODY_END"
+	metaRefs        = "DIFFYDUCK_REFS:"
 )
 
 // showMetaFormat is the git format string for extracting commit metadata.
@@ -99,6 +101,7 @@ var showMetaFormat = strings.Join([]string{
 	metaBodyStart,
 	"%b",
 	metaBodyEnd,
+	metaRefs + "%D",
 }, "%n") + "%n"
 
 // logMetaFormat is the git format string for log with commit boundary markers.
@@ -112,6 +115,7 @@ var logMetaFormat = strings.Join([]string{
 	metaBodyStart,
 	"%b",
 	metaBodyEnd,
+	metaRefs + "%D",
 }, "%n") + "%n"
 
 // Show returns the diff output for a given commit reference.
@@ -348,6 +352,8 @@ func parsePathsOnlyOutput(output string) (*CommitMeta, []FilePath) {
 			inBody = true
 		case line == metaBodyEnd:
 			inBody = false
+		case strings.HasPrefix(line, metaRefs):
+			meta.Refs = strings.TrimPrefix(line, metaRefs)
 		case inBody:
 			bodyLines = append(bodyLines, line)
 		default:
@@ -412,6 +418,8 @@ func parseMetaOnlyOutput(output string) (*CommitMeta, []FileStats) {
 			inBody = true
 		case line == metaBodyEnd:
 			inBody = false
+		case strings.HasPrefix(line, metaRefs):
+			meta.Refs = strings.TrimPrefix(line, metaRefs)
 		case inBody:
 			bodyLines = append(bodyLines, line)
 		default:
@@ -542,6 +550,8 @@ func parseShowOutput(output string) (*CommitMeta, string) {
 			inBody = true
 		case line == metaBodyEnd:
 			inBody = false
+		case strings.HasPrefix(line, metaRefs):
+			meta.Refs = strings.TrimPrefix(line, metaRefs)
 		case inBody:
 			bodyLines = append(bodyLines, line)
 		}

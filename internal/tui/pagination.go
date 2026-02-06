@@ -132,6 +132,7 @@ func convertToCommitSets(commits []git.CommitWithPaths) []sidebyside.CommitSet {
 				Date:    c.Meta.Date,
 				Subject: c.Meta.Subject,
 				Body:    c.Meta.Body,
+				Refs:    sidebyside.ParseRefs(c.Meta.Refs),
 			},
 			Files:       files,
 			FoldLevel:   sidebyside.CommitFolded, // Start folded

@@ -389,37 +389,60 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 			styledAuthor
 	}
 
-	// Subject: truncate to subjectDisplayWidth with Unicode-aware width
+	// Build styled ref decorations
+	localRefStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	remoteRefStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	var refsStyled string
+	refsWidth := commitInfo.RefsDisplayWidth()
+	for _, ref := range commitInfo.Refs {
+		style := localRefStyle
+		if ref.Kind == sidebyside.RefRemote {
+			style = remoteRefStyle
+		}
+		if ref.IsHead {
+			style = style.Bold(true)
+		}
+		switch ref.Kind {
+		case sidebyside.RefLocal:
+			refsStyled += " " + style.Render("["+ref.Name+"]")
+		case sidebyside.RefRemote:
+			refsStyled += " " + style.Render("{"+ref.Name+"}")
+		}
+	}
+
+	// Subject: truncate to subjectDisplayWidth with Unicode-aware width,
+	// reserving space for ref decorations
 	subject := commitInfo.Subject
 	subjectDisplayWidth := row.maxCommitSubjectWidth
+	availableSubjectWidth := subjectDisplayWidth - refsWidth
+	if availableSubjectWidth < 0 {
+		availableSubjectWidth = 0
+	}
 	subjectWidth := displayWidth(subject)
 
-	// Truncate if needed (capped at 120 display columns, then to subjectDisplayWidth)
+	// Truncate if needed (capped at 120 display columns, then to available width)
 	if subjectWidth > 120 {
 		subject = runewidth.Truncate(subject, 120, "...")
 		subjectWidth = displayWidth(subject)
 	}
-	if subjectWidth > subjectDisplayWidth {
-		if subjectDisplayWidth > 3 {
-			subject = runewidth.Truncate(subject, subjectDisplayWidth, "...")
-		} else if subjectDisplayWidth > 0 {
-			subject = runewidth.Truncate(subject, subjectDisplayWidth, "")
+	if subjectWidth > availableSubjectWidth {
+		if availableSubjectWidth > 3 {
+			subject = runewidth.Truncate(subject, availableSubjectWidth, "...")
+		} else if availableSubjectWidth > 0 {
+			subject = runewidth.Truncate(subject, availableSubjectWidth, "")
 		} else {
 			subject = ""
 		}
 		subjectWidth = displayWidth(subject)
 	}
 
-	// No subject padding — ellipsis/border hugs content at all fold levels
-	subjectPadding := ""
-
 	// Apply search highlighting to the subject
 	subject = m.highlightSearchInVisible(subject, isCursorRow, m.currentMatchIdx(), 0, m.currentMatchSide())
 
-	// Build the dynamic part with padding
+	// Build the dynamic part: subject + ref decorations
 	var dynamicPart string
 	if subjectDisplayWidth > 0 {
-		dynamicPart = " " + subject + subjectPadding
+		dynamicPart = " " + subject + refsStyled
 	}
 
 	result := fixedPart + dynamicPart

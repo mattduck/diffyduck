@@ -1387,7 +1387,7 @@ func (m *Model) updateColumnWidths() {
 		if tw > m.cachedCommitTimeWidth {
 			m.cachedCommitTimeWidth = tw
 		}
-		sw := displayWidth(commit.Info.Subject)
+		sw := displayWidth(commit.Info.Subject) + commit.Info.RefsDisplayWidth()
 		if sw > 120 {
 			sw = 120
 		}

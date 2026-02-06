@@ -221,6 +221,44 @@ DIFFYDUCK_BODY_END
 	assert.Equal(t, "", diff)
 }
 
+func TestParseShowOutput_WithRefs(t *testing.T) {
+	input := `DIFFYDUCK_SHA:abc123
+DIFFYDUCK_AUTHOR:John
+DIFFYDUCK_EMAIL:john@example.com
+DIFFYDUCK_DATE:2024-01-15
+DIFFYDUCK_SUBJECT:Fix parser
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+DIFFYDUCK_REFS:HEAD -> main, origin/main, origin/HEAD
+diff --git a/foo.go b/foo.go
+`
+
+	meta, diff := parseShowOutput(input)
+
+	assert.Equal(t, "abc123", meta.SHA)
+	assert.Equal(t, "Fix parser", meta.Subject)
+	assert.Equal(t, "HEAD -> main, origin/main, origin/HEAD", meta.Refs)
+	assert.Contains(t, diff, "diff --git")
+}
+
+func TestParseShowOutput_EmptyRefs(t *testing.T) {
+	input := `DIFFYDUCK_SHA:abc123
+DIFFYDUCK_AUTHOR:John
+DIFFYDUCK_EMAIL:john@example.com
+DIFFYDUCK_DATE:2024-01-15
+DIFFYDUCK_SUBJECT:Old commit
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+DIFFYDUCK_REFS:
+diff --git a/foo.go b/foo.go
+`
+
+	meta, _ := parseShowOutput(input)
+
+	assert.Equal(t, "abc123", meta.SHA)
+	assert.Equal(t, "", meta.Refs)
+}
+
 // =============================================================================
 // parseLogOutput Tests (Multi-Commit Parsing)
 // =============================================================================

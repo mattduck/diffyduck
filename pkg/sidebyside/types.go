@@ -3,6 +3,7 @@ package sidebyside
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -149,6 +150,59 @@ func (c CommitFoldLevel) String() string {
 	}
 }
 
+// RefKind indicates whether a ref is a local or remote branch.
+type RefKind int
+
+const (
+	RefLocal  RefKind = iota // local branch
+	RefRemote                // remote-tracking branch
+)
+
+// Ref represents a single branch ref decoration on a commit.
+type Ref struct {
+	Name   string  // display name (e.g., "main" or "origin/main")
+	Kind   RefKind // local or remote
+	IsHead bool    // true if HEAD points to this branch
+}
+
+// ParseRefs classifies a raw git %D decoration string into typed refs.
+// Input format: "HEAD -> main, origin/main, origin/HEAD, feature-branch"
+func ParseRefs(raw string) []Ref {
+	if raw == "" {
+		return nil
+	}
+
+	var refs []Ref
+	for _, part := range strings.Split(raw, ", ") {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "HEAD" {
+			continue
+		}
+
+		// "HEAD -> branch" → local ref (current branch)
+		if strings.HasPrefix(part, "HEAD -> ") {
+			refs = append(refs, Ref{Name: strings.TrimPrefix(part, "HEAD -> "), Kind: RefLocal, IsHead: true})
+			continue
+		}
+
+		// Skip tags
+		if strings.HasPrefix(part, "tag: ") {
+			continue
+		}
+
+		// "remote/branch" → remote ref
+		if strings.Contains(part, "/") {
+			refs = append(refs, Ref{Name: part, Kind: RefRemote})
+			continue
+		}
+
+		// Plain branch name → local ref
+		refs = append(refs, Ref{Name: part, Kind: RefLocal})
+	}
+
+	return refs
+}
+
 // CommitInfo contains metadata about a commit.
 // All fields are optional - for plain diffs without commit context,
 // this will be empty.
@@ -159,6 +213,7 @@ type CommitInfo struct {
 	Date    string // commit date as string (format varies)
 	Subject string // first line of commit message
 	Body    string // rest of commit message (may be empty)
+	Refs    []Ref  // branch refs pointing to this commit
 }
 
 // ShortSHA returns the first 7 characters of the SHA, or empty if no SHA.
@@ -172,6 +227,16 @@ func (c CommitInfo) ShortSHA() string {
 // HasMetadata returns true if any commit metadata is present.
 func (c CommitInfo) HasMetadata() bool {
 	return c.SHA != "" || c.Author != "" || c.Subject != ""
+}
+
+// RefsDisplayWidth returns the total display width of all ref decorations.
+// Each ref: space + bracket/brace + name + bracket/brace.
+func (c CommitInfo) RefsDisplayWidth() int {
+	w := 0
+	for _, ref := range c.Refs {
+		w += 1 + 1 + len(ref.Name) + 1 // " [name]" or " {name}"
+	}
+	return w
 }
 
 // DateParts holds the segments of a formatted commit date for styled rendering.
