@@ -508,7 +508,6 @@ func TestParseArgs_HelpSubcommand(t *testing.T) {
 		{"help diff", []string{"help", "diff"}, "diff"},
 		{"help show", []string{"help", "show"}, "show"},
 		{"help log", []string{"help", "log"}, "log"},
-		{"help pager", []string{"help", "pager"}, "pager"},
 		{"help clean", []string{"help", "clean"}, "clean"},
 	}
 	for _, tt := range tests {
@@ -543,7 +542,6 @@ func TestPrintUsage_General(t *testing.T) {
 	assert.Contains(t, output, "diff")
 	assert.Contains(t, output, "show")
 	assert.Contains(t, output, "log")
-	assert.Contains(t, output, "pager")
 	assert.Contains(t, output, "clean")
 	assert.Contains(t, output, "--help")
 	assert.Contains(t, output, "--version")
@@ -557,7 +555,6 @@ func TestPrintUsage_Subcommands(t *testing.T) {
 		{"diff", []string{"dfd diff", "--cached", "--exclude", "Examples:"}},
 		{"show", []string{"dfd show", "Defaults to HEAD", "Examples:"}},
 		{"log", []string{"dfd log", "-n <count>", "Examples:"}},
-		{"pager", []string{"dfd pager", "stdin"}},
 		{"clean", []string{"dfd clean", "snapshot"}},
 	}
 	for _, tt := range tests {

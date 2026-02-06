@@ -122,7 +122,7 @@ func parseArgs(args []string) (parsedArgs, error) {
 	remaining := args
 	if len(remaining) > 0 {
 		switch remaining[0] {
-		case "diff", "show", "log", "pager", "clean", "branches":
+		case "diff", "show", "log", "clean", "branches":
 			result.cmd = remaining[0]
 			result.helpCmd = remaining[0] // target for --help flag
 			remaining = remaining[1:]
@@ -313,7 +313,7 @@ func (p *parsedArgs) validate() error {
 		if p.verbose {
 			return fmt.Errorf("-v is only valid for branches command")
 		}
-	case "pager", "clean":
+	case "clean":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("%s does not accept arguments", p.cmd)
 		}
@@ -464,8 +464,6 @@ func printUsage(cmd string) {
 		fmt.Print(usageShow)
 	case "log":
 		fmt.Print(usageLog)
-	case "pager":
-		fmt.Print(usagePager)
 	case "clean":
 		fmt.Print(usageClean)
 	default:
@@ -483,7 +481,6 @@ Commands:
   diff       Compare changes (default)
   show       Show a commit
   log        Browse commit history
-  pager      Read diff from stdin
   clean      Delete persisted snapshots
 
 Global flags:
@@ -567,23 +564,6 @@ Examples:
   dfd log -- src/            Commits touching src/
 `
 
-const usagePager = `dfd pager - read diff from stdin
-
-Usage:
-  dfd pager
-  <command> | dfd
-
-Reads a unified diff from stdin and displays it. Useful as a git pager:
-
-  git config --global pager.diff "dfd pager"
-  git config --global pager.show "dfd pager"
-  git config --global pager.log "dfd pager"
-
-Or pipe directly:
-
-  git diff | dfd
-`
-
 const usageClean = `dfd clean - delete persisted snapshots
 
 Usage:
@@ -629,11 +609,6 @@ func run() error {
 	// Handle branches command - show branch dependency tree
 	if args.cmd == "branches" {
 		return runBranches(args.verbose)
-	}
-
-	// Check for pager mode: explicit "pager" command or piped stdin
-	if args.cmd == "pager" || pager.IsStdinPipe() {
-		return runPagerMode(args.debug)
 	}
 
 	// Handle log command separately
