@@ -326,6 +326,79 @@ func TestStoreClear(t *testing.T) {
 	}
 }
 
+func TestStoreReadCommentsBatch(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	now := time.Now()
+	c1 := &Comment{Text: "first", File: "foo.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "a"}}
+	c2 := &Comment{Text: "second", File: "foo.go", Line: 2, Created: now, Updated: now, Context: LineContext{Line: "b"}}
+	c3 := &Comment{Text: "third", File: "bar.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "c"}}
+
+	id1, _ := store.WriteComment(c1)
+	id2, _ := store.WriteComment(c2)
+	id3, _ := store.WriteComment(c3)
+
+	// Batch read all three
+	results, err := store.ReadCommentsBatch([]string{id1, id2, id3})
+	if err != nil {
+		t.Fatalf("ReadCommentsBatch failed: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("expected 3 comments, got %d", len(results))
+	}
+
+	texts := map[string]bool{}
+	for _, c := range results {
+		texts[c.Text] = true
+	}
+	if !texts["first"] || !texts["second"] || !texts["third"] {
+		t.Errorf("missing comments in batch result: %v", texts)
+	}
+}
+
+func TestStoreReadCommentsBatchPartialMissing(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	now := time.Now()
+	c1 := &Comment{Text: "exists", File: "foo.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "a"}}
+	id1, _ := store.WriteComment(c1)
+
+	// Batch read with one valid and one nonexistent ID
+	results, err := store.ReadCommentsBatch([]string{id1, "nonexistent-id"})
+	if err != nil {
+		t.Fatalf("ReadCommentsBatch failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(results))
+	}
+	if results[0].Text != "exists" {
+		t.Errorf("wrong text: %q", results[0].Text)
+	}
+}
+
+func TestStoreReadCommentsBatchEmpty(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	results, err := store.ReadCommentsBatch(nil)
+	if err != nil {
+		t.Fatalf("ReadCommentsBatch failed: %v", err)
+	}
+	if results != nil {
+		t.Errorf("expected nil, got %v", results)
+	}
+
+	results, err = store.ReadCommentsBatch([]string{})
+	if err != nil {
+		t.Fatalf("ReadCommentsBatch failed: %v", err)
+	}
+	if results != nil {
+		t.Errorf("expected nil, got %v", results)
+	}
+}
+
 func TestStoreUpdateComment(t *testing.T) {
 	dir := setupTestRepo(t)
 

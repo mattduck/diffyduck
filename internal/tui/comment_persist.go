@@ -21,66 +21,124 @@ func cleanFilePath(path string) string {
 	return path
 }
 
-// loadPersistedComments loads comments from the git store and matches them
-// to current file positions. Returns the number of comments loaded.
-func (m *Model) loadPersistedComments() int {
-	if m.commentStore == nil {
-		return 0
+// loadCommentIndex loads the comment index from the git store.
+// The index is cheap (one git cat-file call for a small text blob) and maps
+// file paths to comment IDs. It's loaded once and kept in memory.
+func (m *Model) loadCommentIndex() {
+	if m.commentStore == nil || m.commentIndex != nil {
+		return
 	}
-
-	loaded := 0
-
-	// Build a map of file path -> file index for quick lookup
-	// Use clean paths (without a/ or b/ prefix) for portability
-	filePathToIndex := make(map[string]int)
-	for i, f := range m.files {
-		filePathToIndex[cleanFilePath(f.NewPath)] = i
-		// Also map old path in case file was renamed
-		if f.OldPath != "" && f.OldPath != f.NewPath {
-			filePathToIndex[cleanFilePath(f.OldPath)] = i
-		}
-	}
-
-	// Load all comments from store
-	allComments, err := m.commentStore.AllComments()
+	idx, err := m.commentStore.ReadIndex()
 	if err != nil {
-		// Silently fail - comments are non-critical
+		return
+	}
+	m.commentIndex = idx
+}
+
+// matchCommentsForFiles batch-fetches and matches persisted comments for the
+// given file range. Files with no Pairs (skeletons) are silently skipped.
+// Uses the cached index to determine which comments are relevant, and
+// loadedCommentIDs to avoid re-fetching on fold/unfold cycles.
+// Returns the number of newly matched comments.
+func (m *Model) matchCommentsForFiles(startIdx, endIdx int) int {
+	if m.commentStore == nil || m.commentIndex == nil {
 		return 0
 	}
 
-	for _, c := range allComments {
-		// Find the file index
-		fileIdx, ok := filePathToIndex[c.File]
-		if !ok {
-			// File not in current diff - comment is orphaned for this view
+	// Collect comment IDs we need, grouped by file index
+	type fileMapping struct {
+		fileIdx int
+		ids     []string
+	}
+	var mappings []fileMapping
+	var idsToFetch []string
+
+	for i := startIdx; i < endIdx && i < len(m.files); i++ {
+		f := m.files[i]
+		if len(f.Pairs) == 0 {
 			continue
 		}
 
-		// Get the file content to match against
-		file := m.files[fileIdx]
+		// Check both new and old paths against the index
+		paths := []string{cleanFilePath(f.NewPath)}
+		if f.OldPath != "" && f.OldPath != f.NewPath {
+			paths = append(paths, cleanFilePath(f.OldPath))
+		}
+
+		var relevantIDs []string
+		seen := make(map[string]bool)
+		for _, path := range paths {
+			for _, id := range m.commentIndex.Get(path) {
+				if !seen[id] && !m.loadedCommentIDs[id] {
+					seen[id] = true
+					relevantIDs = append(relevantIDs, id)
+				}
+			}
+		}
+
+		if len(relevantIDs) > 0 {
+			idsToFetch = append(idsToFetch, relevantIDs...)
+			mappings = append(mappings, fileMapping{fileIdx: i, ids: relevantIDs})
+		}
+	}
+
+	if len(idsToFetch) == 0 {
+		return 0
+	}
+
+	// Batch-fetch all needed comments in one git call
+	fetched, err := m.commentStore.ReadCommentsBatch(idsToFetch)
+	if err != nil {
+		return 0
+	}
+
+	// Build lookup by ID and mark all as loaded
+	commentByID := make(map[string]*comments.Comment, len(fetched))
+	for _, c := range fetched {
+		commentByID[c.ID] = c
+	}
+	for _, id := range idsToFetch {
+		m.loadedCommentIDs[id] = true
+	}
+
+	// Match comments to file positions
+	loaded := 0
+	for _, mapping := range mappings {
+		file := m.files[mapping.fileIdx]
 		fileLines := getFileLinesForMatching(file)
 		if len(fileLines) == 0 {
 			continue
 		}
 
-		// Find where the comment should appear
-		result := comments.FindCommentPosition(c, fileLines)
-		if !result.Found {
-			// Comment's anchor doesn't match current content - orphaned
-			continue
-		}
+		for _, id := range mapping.ids {
+			c, ok := commentByID[id]
+			if !ok {
+				continue
+			}
 
-		// Add to in-memory comments
-		key := commentKey{
-			fileIndex:  fileIdx,
-			newLineNum: result.Line,
+			result := comments.FindCommentPosition(c, fileLines)
+			if !result.Found {
+				continue
+			}
+
+			key := commentKey{
+				fileIndex:  mapping.fileIdx,
+				newLineNum: result.Line,
+			}
+			m.comments[key] = c.Text
+			m.persistedCommentIDs[key] = c.ID
+			loaded++
 		}
-		m.comments[key] = c.Text
-		m.persistedCommentIDs[key] = c.ID
-		loaded++
 	}
 
 	return loaded
+}
+
+// loadPersistedComments loads the index and matches all comments.
+// This is the all-at-once path used in tests and single-commit mode.
+func (m *Model) loadPersistedComments() int {
+	m.loadCommentIndex()
+	return m.matchCommentsForFiles(0, len(m.files))
 }
 
 // getFileLinesForMatching extracts file lines suitable for comment matching.
@@ -172,6 +230,12 @@ func (m *Model) persistComment(key commentKey, text string) string {
 		return ""
 	}
 
+	// Keep in-memory index in sync so the comment can be matched
+	// against other commits' versions of the same file.
+	if m.commentIndex != nil {
+		m.commentIndex.Add(c.File, id)
+	}
+
 	return id
 }
 
@@ -189,4 +253,10 @@ func (m *Model) deletePersistedComment(key commentKey) {
 	// Delete from store (ignore errors - best effort)
 	_ = m.commentStore.DeleteComment(id)
 	delete(m.persistedCommentIDs, key)
+
+	// Keep in-memory index in sync
+	if m.commentIndex != nil && key.fileIndex >= 0 && key.fileIndex < len(m.files) {
+		file := m.files[key.fileIndex]
+		m.commentIndex.Remove(cleanFilePath(file.NewPath), id)
+	}
 }

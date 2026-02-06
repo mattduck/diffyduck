@@ -1932,6 +1932,16 @@ func (m *Model) loadCommitDiff(commitIdx int) {
 		commit.TotalRemoved += f.TotalRemoved
 	}
 
+	// Match persisted comments for the newly loaded files
+	if m.commentIndex != nil {
+		// Recompute endIdx since file count may have changed
+		newEndIdx := len(m.files)
+		if commitIdx+1 < len(m.commits) {
+			newEndIdx = m.commitFileStarts[commitIdx+1]
+		}
+		m.matchCommentsForFiles(startIdx, newEndIdx)
+	}
+
 	// Invalidate caches
 	m.w().rowsCacheValid = false
 }

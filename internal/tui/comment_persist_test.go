@@ -388,6 +388,161 @@ func TestCommentPersistenceWithPrefixedPaths(t *testing.T) {
 	}
 }
 
+func TestMatchCommentsSkipsSkeletonFiles(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := comments.NewStore(dir)
+
+	// Write a comment to the store for a file
+	c := &comments.Comment{
+		Text:    "should not match",
+		File:    "test.go",
+		Line:    1,
+		Context: comments.LineContext{Line: "line 1"},
+	}
+	c.Anchor = c.Context.ComputeAnchor()
+	store.WriteComment(c)
+
+	// Create model with a skeleton file (no Pairs)
+	skeleton := sidebyside.SkeletonFilePairNoStats("test.go")
+	m := New([]sidebyside.FilePair{skeleton}, WithCommentStore(store))
+	m.width = 80
+	m.height = 30
+
+	// Load index then try to match — should skip skeleton (no Pairs)
+	m.loadCommentIndex()
+	loaded := m.matchCommentsForFiles(0, len(m.files))
+	if loaded != 0 {
+		t.Errorf("expected 0 comments matched for skeleton file, got %d", loaded)
+	}
+}
+
+func TestMatchCommentsDeduplicatesIDs(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := comments.NewStore(dir)
+
+	pairs := []sidebyside.LinePair{
+		{
+			Old: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+		},
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+	}, WithCommentStore(store))
+	m.width = 80
+	m.height = 30
+
+	// Add and persist a comment
+	key := commentKey{fileIndex: 0, newLineNum: 1}
+	m.comments[key] = "Test comment"
+	id := m.persistComment(key, "Test comment")
+	m.persistedCommentIDs[key] = id
+
+	// Clear in-memory state and force-reload index (it was loaded empty at construction
+	// time before the comment was persisted)
+	m.comments = make(map[commentKey]string)
+	m.persistedCommentIDs = make(map[commentKey]string)
+	m.commentIndex = nil
+	m.loadCommentIndex()
+
+	// First match should load the comment
+	loaded := m.matchCommentsForFiles(0, len(m.files))
+	if loaded != 1 {
+		t.Errorf("expected 1 comment on first match, got %d", loaded)
+	}
+
+	// Clear in-memory again but keep loadedCommentIDs
+	m.comments = make(map[commentKey]string)
+	m.persistedCommentIDs = make(map[commentKey]string)
+
+	// Second match should not re-fetch (ID already in loadedCommentIDs)
+	loaded = m.matchCommentsForFiles(0, len(m.files))
+	if loaded != 0 {
+		t.Errorf("expected 0 comments on second match (dedup), got %d", loaded)
+	}
+}
+
+func TestPersistCommentUpdatesIndex(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := comments.NewStore(dir)
+
+	pairs := []sidebyside.LinePair{
+		{
+			Old: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+		},
+	}
+
+	// Two copies of the same file (simulates same file in two commits)
+	m := NewWithCommits([]sidebyside.CommitSet{
+		{Files: []sidebyside.FilePair{
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		}, FilesLoaded: true, FoldLevel: sidebyside.CommitNormal},
+		{Files: []sidebyside.FilePair{
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		}, FilesLoaded: true, FoldLevel: sidebyside.CommitNormal},
+	}, WithCommentStore(store))
+	m.width = 80
+	m.height = 30
+
+	// Persist a comment on file 0 (commit A's copy)
+	key := commentKey{fileIndex: 0, newLineNum: 1}
+	m.comments[key] = "cross-commit comment"
+	id := m.persistComment(key, "cross-commit comment")
+	m.persistedCommentIDs[key] = id
+
+	// matchCommentsForFiles on file 1 (commit B's copy) should find it
+	// via the updated in-memory index
+	loaded := m.matchCommentsForFiles(1, 2)
+	if loaded != 1 {
+		t.Errorf("expected comment to match on second commit's file, got %d", loaded)
+	}
+
+	key2 := commentKey{fileIndex: 1, newLineNum: 1}
+	if m.comments[key2] != "cross-commit comment" {
+		t.Errorf("comment text mismatch on second file: %q", m.comments[key2])
+	}
+}
+
+func TestDeleteCommentUpdatesIndex(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := comments.NewStore(dir)
+
+	pairs := []sidebyside.LinePair{
+		{
+			Old: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+		},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{
+		{Files: []sidebyside.FilePair{
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		}, FilesLoaded: true, FoldLevel: sidebyside.CommitNormal},
+		{Files: []sidebyside.FilePair{
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		}, FilesLoaded: true, FoldLevel: sidebyside.CommitNormal},
+	}, WithCommentStore(store))
+	m.width = 80
+	m.height = 30
+
+	// Persist then delete
+	key := commentKey{fileIndex: 0, newLineNum: 1}
+	m.comments[key] = "will be deleted"
+	id := m.persistComment(key, "will be deleted")
+	m.persistedCommentIDs[key] = id
+
+	delete(m.comments, key)
+	m.deletePersistedComment(key)
+
+	// Index should be empty — matchCommentsForFiles on the second file should find nothing
+	loaded := m.matchCommentsForFiles(1, 2)
+	if loaded != 0 {
+		t.Errorf("expected 0 after delete, got %d", loaded)
+	}
+}
+
 func TestCommentPersistenceNoStore(t *testing.T) {
 	// Model without store should work without errors
 	pairs := []sidebyside.LinePair{

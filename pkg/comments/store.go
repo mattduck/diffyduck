@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -62,6 +63,79 @@ func (s *Store) ReadComments(ids []string) ([]*Comment, error) {
 		comments = append(comments, c)
 	}
 	return comments, nil
+}
+
+// ReadCommentsBatch reads multiple comments in a single git cat-file --batch call.
+// Missing or unparseable blobs are silently skipped.
+func (s *Store) ReadCommentsBatch(ids []string) ([]*Comment, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	// Build input: one ref per line
+	var input strings.Builder
+	for _, id := range ids {
+		fmt.Fprintf(&input, "%s:data/%s\n", RefPath, id)
+	}
+
+	cmd := s.gitCmd("cat-file", "--batch")
+	cmd.Stdin = strings.NewReader(input.String())
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("batch read: %w", err)
+	}
+
+	// Parse batch output. Each object is either:
+	//   <sha> blob <size>\n<content>\n
+	// or for missing objects:
+	//   <ref> missing\n
+	result := make([]*Comment, 0, len(ids))
+	data := out
+	idIdx := 0
+
+	for len(data) > 0 && idIdx < len(ids) {
+		// Read header line
+		nl := bytes.IndexByte(data, '\n')
+		if nl == -1 {
+			break
+		}
+		header := string(data[:nl])
+		data = data[nl+1:]
+
+		if strings.HasSuffix(header, " missing") {
+			idIdx++
+			continue
+		}
+
+		// Parse "<sha> blob <size>"
+		parts := strings.Fields(header)
+		if len(parts) < 3 || parts[1] != "blob" {
+			idIdx++
+			continue
+		}
+		size, err := strconv.Atoi(parts[2])
+		if err != nil {
+			idIdx++
+			continue
+		}
+
+		if len(data) < size+1 { // +1 for trailing newline
+			break
+		}
+		content := string(data[:size])
+		data = data[size+1:] // skip content + trailing newline
+
+		c, err := ParseComment(ids[idIdx], content)
+		if err != nil {
+			idIdx++
+			continue
+		}
+		result = append(result, c)
+		idIdx++
+	}
+
+	return result, nil
 }
 
 // WriteComment writes a comment to the git ref.

@@ -222,6 +222,8 @@ type Model struct {
 	comments            map[commentKey]string // stored comments (text only, for display)
 	commentStore        *comments.Store       // git-backed persistent storage
 	persistedCommentIDs map[commentKey]string // maps in-memory comment to persisted comment ID
+	commentIndex        *comments.Index       // full index loaded once at startup
+	loadedCommentIDs    map[string]bool       // tracks fetched comment IDs to avoid re-reads
 
 	// Status message (echo area)
 	statusMessage     string    // message to display in status bar
@@ -528,6 +530,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		clipboard:           &SystemClipboard{},
 		comments:            make(map[commentKey]string),
 		persistedCommentIDs: make(map[commentKey]string),
+		loadedCommentIDs:    make(map[string]bool),
 		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
 		maxLineNumSeen:      9999, // default gives 4-digit gutter; recalculated on 'r' refresh
 		// Column width defaults - recalculated on 'r' refresh
@@ -550,6 +553,11 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 	for _, opt := range opts {
 		opt(&m)
 	}
+
+	// Load comment index early (before Init, which has a value receiver).
+	// The index is a pointer field, so it must be set here on the real model.
+	m.loadCommentIndex()
+
 	m.calculateTotalLines()
 
 	// Synchronously highlight the first file so initial render has highlighting.
@@ -639,8 +647,11 @@ func (m *Model) updateMaxLessWidth() {
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
-	// Load persisted comments from git store
-	m.loadPersistedComments()
+	// Match comments for any files that already have content (single-commit mode).
+	// In log mode, files are skeletons here — comments match later in loadCommitDiff.
+	// Note: commentIndex is loaded in NewWithCommits (Init has a value receiver,
+	// so pointer field assignments here would be lost).
+	m.matchCommentsForFiles(0, len(m.files))
 
 	// Fetch total commit count for pagination (if pagination is enabled)
 	if m.git != nil && m.loadedCommitCount > 0 {
@@ -2038,6 +2049,11 @@ func (m *Model) insertSnapshotCommit(commit sidebyside.CommitSet) {
 	// Shift file-indexed maps to account for prepended files
 	m.shiftFileIndexMaps(newFileCount)
 
+	// Match persisted comments for the new snapshot files
+	if m.commentIndex != nil {
+		m.matchCommentsForFiles(0, newFileCount)
+	}
+
 	// Invalidate caches for all windows
 	m.invalidateAllRowCaches()
 	m.calculateTotalLines()
@@ -2094,6 +2110,22 @@ func (m *Model) shiftFileIndexMaps(offset int) {
 			newMap[k+offset] = v
 		}
 		m.loadingFiles = newMap
+	}
+
+	// Shift comments and persistedCommentIDs (commentKey includes fileIndex)
+	if len(m.comments) > 0 {
+		newMap := make(map[commentKey]string, len(m.comments))
+		for k, v := range m.comments {
+			newMap[commentKey{fileIndex: k.fileIndex + offset, newLineNum: k.newLineNum}] = v
+		}
+		m.comments = newMap
+	}
+	if len(m.persistedCommentIDs) > 0 {
+		newMap := make(map[commentKey]string, len(m.persistedCommentIDs))
+		for k, v := range m.persistedCommentIDs {
+			newMap[commentKey{fileIndex: k.fileIndex + offset, newLineNum: k.newLineNum}] = v
+		}
+		m.persistedCommentIDs = newMap
 	}
 
 	// Clear inlineDiffCache - it uses fileIndex in its keys and shifting
