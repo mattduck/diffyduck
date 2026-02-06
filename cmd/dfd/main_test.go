@@ -28,6 +28,7 @@ func TestParseArgs_SubcommandDetection(t *testing.T) {
 		{"show", []string{"show"}, "show"},
 		{"log", []string{"log"}, "log"},
 		{"clean", []string{"clean"}, "clean"},
+		{"branches", []string{"branches"}, "branches"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -327,6 +328,42 @@ func TestParseArgs_CleanWithArgs(t *testing.T) {
 	_, err := parseArgs([]string{"clean", "foo"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "does not accept arguments")
+}
+
+func TestParseArgs_BranchesWithArgs(t *testing.T) {
+	_, err := parseArgs([]string{"branches", "main"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "does not accept arguments")
+}
+
+func TestParseArgs_BranchesWithFlags(t *testing.T) {
+	_, err := parseArgs([]string{"branches", "--cached"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only accepts -v")
+}
+
+func TestParseArgs_BranchesVerbose(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"-v", []string{"branches", "-v"}},
+		{"--verbose", []string{"branches", "--verbose"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseArgs(tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, "branches", result.cmd)
+			assert.True(t, result.verbose)
+		})
+	}
+}
+
+func TestParseArgs_VerboseOnDiff(t *testing.T) {
+	_, err := parseArgs([]string{"diff", "-v"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid for branches")
 }
 
 func TestParseArgs_MissingExcludeValue(t *testing.T) {

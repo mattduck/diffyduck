@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/internal/tui"
+	"github.com/user/diffyduck/pkg/branches"
 	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/diff"
@@ -42,6 +43,9 @@ type parsedArgs struct {
 	// log-specific
 	count int // -n <count>, 0 = unlimited
 
+	// branches-specific
+	verbose bool // -v/--verbose
+
 	// global
 	debug      bool
 	cpuProfile string
@@ -61,7 +65,7 @@ func parseArgs(args []string) (parsedArgs, error) {
 	remaining := args
 	if len(remaining) > 0 {
 		switch remaining[0] {
-		case "diff", "show", "log", "clean":
+		case "diff", "show", "log", "pager", "clean", "branches":
 			result.cmd = remaining[0]
 			remaining = remaining[1:]
 		}
@@ -120,6 +124,10 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		}
 		p.cpuProfile = args[i+1]
 		return 1, nil
+
+	// branches flags
+	case arg == "-v" || arg == "--verbose":
+		p.verbose = true
 
 	// diff flags
 	case arg == "--cached" || arg == "--staged":
@@ -194,6 +202,9 @@ func (p *parsedArgs) validate() error {
 		if p.count > 0 {
 			return fmt.Errorf("-n is only valid for log command")
 		}
+		if p.verbose {
+			return fmt.Errorf("-v is only valid for branches command")
+		}
 	case "show":
 		if len(p.refs) > 1 {
 			return fmt.Errorf("show accepts at most 1 ref, got %d", len(p.refs))
@@ -207,6 +218,9 @@ func (p *parsedArgs) validate() error {
 		if p.count > 0 {
 			return fmt.Errorf("-n is only valid for log command")
 		}
+		if p.verbose {
+			return fmt.Errorf("-v is only valid for branches command")
+		}
 	case "log":
 		if len(p.refs) > 1 {
 			return fmt.Errorf("log accepts at most 1 ref range, got %d", len(p.refs))
@@ -217,12 +231,22 @@ func (p *parsedArgs) validate() error {
 		if p.snapshots != nil {
 			return fmt.Errorf("--snapshots/--no-snapshots are only valid for diff command")
 		}
-	case "clean":
+		if p.verbose {
+			return fmt.Errorf("-v is only valid for branches command")
+		}
+	case "pager", "clean":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("%s does not accept arguments", p.cmd)
 		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 {
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose {
 			return fmt.Errorf("%s does not accept flags", p.cmd)
+		}
+	case "branches":
+		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
+			return fmt.Errorf("branches does not accept arguments")
+		}
+		if p.cached || p.unstaged || p.allMode || p.count > 0 {
+			return fmt.Errorf("branches only accepts -v/--verbose")
 		}
 	}
 	return nil
@@ -373,6 +397,16 @@ func run() error {
 	// Handle clean command - deletes all persisted snapshot refs
 	if args.cmd == "clean" {
 		return runClean()
+	}
+
+	// Handle branches command - show branch dependency tree
+	if args.cmd == "branches" {
+		return runBranches(args.verbose)
+	}
+
+	// Check for pager mode: explicit "pager" command or piped stdin
+	if args.cmd == "pager" || pager.IsStdinPipe() {
+		return runPagerMode(args.debug)
 	}
 
 	// Handle log command separately
@@ -689,6 +723,25 @@ func run() error {
 	}
 	printExitComments(finalModel)
 
+	return nil
+}
+
+// runBranches prints a tree view of local branch dependencies.
+func runBranches(verbose bool) error {
+	g := git.New()
+	branchList, err := g.LocalBranches()
+	if err != nil {
+		return fmt.Errorf("list branches: %w", err)
+	}
+	if len(branchList) == 0 {
+		fmt.Println("No local branches")
+		return nil
+	}
+	roots, err := branches.BuildTree(branchList, g)
+	if err != nil {
+		return fmt.Errorf("build branch tree: %w", err)
+	}
+	fmt.Print(branches.Render(roots, verbose))
 	return nil
 }
 

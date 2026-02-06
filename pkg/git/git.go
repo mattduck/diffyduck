@@ -971,6 +971,93 @@ func (g *RealGit) ExpireOldSnapshotRefs(maxAgeDays int) (int, error) {
 	return deleted, nil
 }
 
+// LocalBranches returns all local branches with tip commit metadata.
+func (g *RealGit) LocalBranches() ([]BranchInfo, error) {
+	// NUL-delimited fields for reliable parsing
+	format := "%(refname:short)%00%(objectname)%00%(subject)%00%(authordate:iso-strict)%00%(authorname)%00%(HEAD)"
+	cmd := g.command("for-each-ref", "--format="+format, "--sort=-authordate", "refs/heads/")
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git for-each-ref",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+
+	output := strings.TrimSpace(string(out))
+	if output == "" {
+		return nil, nil
+	}
+
+	var branches []BranchInfo
+	for _, line := range strings.Split(output, "\n") {
+		parts := strings.SplitN(line, "\x00", 6)
+		if len(parts) < 6 {
+			continue
+		}
+		branches = append(branches, BranchInfo{
+			Name:    parts[0],
+			SHA:     parts[1],
+			Subject: parts[2],
+			Date:    parts[3],
+			Author:  parts[4],
+			IsHead:  strings.TrimSpace(parts[5]) == "*",
+		})
+	}
+
+	return branches, nil
+}
+
+// MergeBase returns the best common ancestor SHA of two refs.
+// Returns empty string and no error if there is no common ancestor.
+func (g *RealGit) MergeBase(a, b string) (string, error) {
+	cmd := g.command("merge-base", a, b)
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// Exit code 1 means no common ancestor
+			if exitErr.ExitCode() == 1 {
+				return "", nil
+			}
+			return "", &GitError{
+				Command: "git merge-base",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return "", err
+	}
+
+	return strings.TrimSpace(string(out)), nil
+}
+
+// AheadBehind returns how many commits a is ahead of and behind b.
+func (g *RealGit) AheadBehind(a, b string) (ahead, behind int, err error) {
+	cmd := g.command("rev-list", "--left-right", "--count", a+"..."+b)
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return 0, 0, &GitError{
+				Command: "git rev-list --left-right --count",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return 0, 0, err
+	}
+
+	_, scanErr := fmt.Sscanf(strings.TrimSpace(string(out)), "%d\t%d", &ahead, &behind)
+	if scanErr != nil {
+		return 0, 0, fmt.Errorf("parse rev-list output: %w", scanErr)
+	}
+
+	return ahead, behind, nil
+}
+
 // GitError represents an error from a git command.
 type GitError struct {
 	Command string

@@ -942,6 +942,182 @@ func TestRealGit_DeleteSnapshotRefs_WhenEmpty(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// =============================================================================
+// Integration Tests for Branch Methods
+// =============================================================================
+
+func TestRealGit_LocalBranches_Integration(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+
+	env := []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}
+
+	// Create initial commit on main
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, env, "commit", "--no-verify", "-m", "initial")
+
+	// Rename default branch to "main" for consistency
+	runGit(t, tmpDir, "branch", "-M", "main")
+
+	// Create a second branch with a commit
+	runGit(t, tmpDir, "checkout", "-b", "feature")
+	writeFile(t, tmpDir, "feature.txt", "feature work")
+	runGit(t, tmpDir, "add", "feature.txt")
+	runGitWithEnv(t, tmpDir, env, "commit", "--no-verify", "-m", "add feature")
+
+	g := NewWithDir(tmpDir)
+	branches, err := g.LocalBranches()
+	require.NoError(t, err)
+	require.Len(t, branches, 2)
+
+	// Check that we got both branches
+	names := map[string]bool{}
+	for _, b := range branches {
+		names[b.Name] = true
+		assert.NotEmpty(t, b.SHA)
+		assert.NotEmpty(t, b.Subject)
+		assert.NotEmpty(t, b.Date)
+	}
+	assert.True(t, names["main"])
+	assert.True(t, names["feature"])
+
+	// Current branch (feature) should be marked as HEAD
+	var headCount int
+	for _, b := range branches {
+		if b.IsHead {
+			headCount++
+			assert.Equal(t, "feature", b.Name)
+		}
+	}
+	assert.Equal(t, 1, headCount)
+}
+
+func TestRealGit_MergeBase_Integration(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+
+	env := []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}
+
+	// Create initial commit
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, env, "commit", "--no-verify", "-m", "initial")
+	runGit(t, tmpDir, "branch", "-M", "main")
+	baseSHA := strings.TrimSpace(runGit(t, tmpDir, "rev-parse", "HEAD"))
+
+	// Create feature branch with a commit
+	runGit(t, tmpDir, "checkout", "-b", "feature")
+	writeFile(t, tmpDir, "feature.txt", "feature")
+	runGit(t, tmpDir, "add", "feature.txt")
+	runGitWithEnv(t, tmpDir, env, "commit", "--no-verify", "-m", "add feature")
+
+	g := NewWithDir(tmpDir)
+
+	// merge-base of main and feature should be the initial commit
+	mb, err := g.MergeBase("main", "feature")
+	require.NoError(t, err)
+	assert.Equal(t, baseSHA, mb)
+}
+
+func TestRealGit_MergeBase_NoCommonAncestor(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+
+	env := []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}
+
+	// Create initial commit on main
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, env, "commit", "--no-verify", "-m", "initial")
+	runGit(t, tmpDir, "branch", "-M", "main")
+
+	// Create orphan branch
+	runGit(t, tmpDir, "checkout", "--orphan", "orphan")
+	runGit(t, tmpDir, "rm", "-rf", ".")
+	writeFile(t, tmpDir, "orphan.txt", "orphan")
+	runGit(t, tmpDir, "add", "orphan.txt")
+	runGitWithEnv(t, tmpDir, env, "commit", "--no-verify", "-m", "orphan initial")
+
+	g := NewWithDir(tmpDir)
+
+	mb, err := g.MergeBase("main", "orphan")
+	require.NoError(t, err)
+	assert.Equal(t, "", mb)
+}
+
+func TestRealGit_AheadBehind_Integration(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+
+	env := []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}
+
+	// Create initial commit on main
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, env, "commit", "--no-verify", "-m", "initial")
+	runGit(t, tmpDir, "branch", "-M", "main")
+
+	// Create feature branch with 2 commits
+	runGit(t, tmpDir, "checkout", "-b", "feature")
+	writeFile(t, tmpDir, "f1.txt", "f1")
+	runGit(t, tmpDir, "add", "f1.txt")
+	runGitWithEnv(t, tmpDir, env, "commit", "--no-verify", "-m", "feat 1")
+	writeFile(t, tmpDir, "f2.txt", "f2")
+	runGit(t, tmpDir, "add", "f2.txt")
+	runGitWithEnv(t, tmpDir, env, "commit", "--no-verify", "-m", "feat 2")
+
+	g := NewWithDir(tmpDir)
+
+	// feature is 2 ahead of main, 0 behind
+	ahead, behind, err := g.AheadBehind("feature", "main")
+	require.NoError(t, err)
+	assert.Equal(t, 2, ahead)
+	assert.Equal(t, 0, behind)
+
+	// main is 0 ahead of feature, 2 behind
+	ahead, behind, err = g.AheadBehind("main", "feature")
+	require.NoError(t, err)
+	assert.Equal(t, 0, ahead)
+	assert.Equal(t, 2, behind)
+}
+
 // Helper functions for integration tests
 
 func runGit(t *testing.T, dir string, args ...string) string {

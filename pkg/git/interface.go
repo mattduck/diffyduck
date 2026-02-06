@@ -9,6 +9,16 @@ type SnapshotInfo struct {
 	Date    string // commit date in "Jan 2 15:04" format
 }
 
+// BranchInfo contains metadata about a local branch.
+type BranchInfo struct {
+	Name    string // branch name (e.g. "main", "feature/foo")
+	SHA     string // tip commit SHA (full)
+	Subject string // first line of commit message
+	Date    string // author date in ISO 8601 format
+	Author  string // author name
+	IsHead  bool   // true if this is the currently checked-out branch
+}
+
 // Git provides an interface for git operations.
 // This allows mocking in tests.
 type Git interface {
@@ -102,4 +112,14 @@ type Git interface {
 	// HasConflicts returns true if the repo is in a merge, rebase, or
 	// cherry-pick state (i.e. sentinel files like MERGE_HEAD exist).
 	HasConflicts() bool
+
+	// LocalBranches returns all local branches with tip commit metadata.
+	LocalBranches() ([]BranchInfo, error)
+
+	// MergeBase returns the best common ancestor SHA of two refs.
+	// Returns empty string and no error if there is no common ancestor.
+	MergeBase(a, b string) (string, error)
+
+	// AheadBehind returns how many commits a is ahead of and behind b.
+	AheadBehind(a, b string) (ahead, behind int, err error)
 }

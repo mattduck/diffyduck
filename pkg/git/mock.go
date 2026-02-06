@@ -21,6 +21,11 @@ type MockGit struct {
 	// Use empty ref for index, e.g., ":foo.go" for staged content.
 	FileContents    map[string]string
 	HasConflictsVal bool // return value for HasConflicts
+
+	// Branch-related mock data
+	Branches     []BranchInfo
+	MergeBases   map[string]string // key: "a\x00b" (sorted), value: SHA
+	AheadBehinds map[string][2]int // key: "a\x00b", value: [ahead, behind]
 }
 
 // Show returns the preconfigured output or error.
@@ -168,4 +173,35 @@ func (m *MockGit) ExpireOldSnapshotRefs(maxAgeDays int) (int, error) {
 // HasConflicts returns the preconfigured value.
 func (m *MockGit) HasConflicts() bool {
 	return m.HasConflictsVal
+}
+
+// LocalBranches returns the preconfigured branch list.
+func (m *MockGit) LocalBranches() ([]BranchInfo, error) {
+	return m.Branches, nil
+}
+
+// MergeBase returns the preconfigured merge base for two refs.
+func (m *MockGit) MergeBase(a, b string) (string, error) {
+	if m.MergeBases == nil {
+		return "", nil
+	}
+	// Try both orderings
+	if sha, ok := m.MergeBases[a+"\x00"+b]; ok {
+		return sha, nil
+	}
+	if sha, ok := m.MergeBases[b+"\x00"+a]; ok {
+		return sha, nil
+	}
+	return "", nil
+}
+
+// AheadBehind returns the preconfigured ahead/behind counts.
+func (m *MockGit) AheadBehind(a, b string) (int, int, error) {
+	if m.AheadBehinds == nil {
+		return 0, 0, nil
+	}
+	if counts, ok := m.AheadBehinds[a+"\x00"+b]; ok {
+		return counts[0], counts[1], nil
+	}
+	return 0, 0, nil
 }
