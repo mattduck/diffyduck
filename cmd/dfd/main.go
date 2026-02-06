@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/internal/tui"
+	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/git"
@@ -508,8 +509,11 @@ func run() error {
 	// Create content fetcher for lazy file loading
 	fetcher := content.NewFetcher(g, args.mode, args.ref1, args.ref2)
 
+	// Create comment store for persistence
+	commentStore := comments.NewStore("")
+
 	// Create and run the TUI
-	opts := []tui.Option{tui.WithFetcher(fetcher), tui.WithGit(g)}
+	opts := []tui.Option{tui.WithFetcher(fetcher), tui.WithGit(g), tui.WithCommentStore(commentStore)}
 	if debugMode {
 		opts = append(opts, tui.WithDebugMode())
 	}
@@ -648,10 +652,14 @@ func runLogMode(debugMode bool) error {
 		commitSets = append(commitSets, commitSet)
 	}
 
+	// Create comment store for persistence
+	commentStore := comments.NewStore("")
+
 	// Pass git object for on-demand content fetching and pagination
 	opts := []tui.Option{
 		tui.WithGit(g),
 		tui.WithPagination(len(commitSets), initialBatch),
+		tui.WithCommentStore(commentStore),
 	}
 	if debugMode {
 		opts = append(opts, tui.WithDebugMode())

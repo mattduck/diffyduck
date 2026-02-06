@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/git"
 	"github.com/user/diffyduck/pkg/highlight"
@@ -218,7 +219,9 @@ type Model struct {
 	clipboard Clipboard // clipboard interface for copy/paste
 
 	// Comment data - shared across windows (the actual stored comments)
-	comments map[commentKey]string // stored comments
+	comments            map[commentKey]string // stored comments (text only, for display)
+	commentStore        *comments.Store       // git-backed persistent storage
+	persistedCommentIDs map[commentKey]string // maps in-memory comment to persisted comment ID
 
 	// Status message (echo area)
 	statusMessage     string    // message to display in status bar
@@ -467,6 +470,13 @@ func WithPersistedSnapshots(snapshots []string) Option {
 	}
 }
 
+// WithCommentStore sets the git-backed comment store for persistence.
+func WithCommentStore(store *comments.Store) Option {
+	return func(m *Model) {
+		m.commentStore = store
+	}
+}
+
 // New creates a new Model with the given file pairs.
 // This wraps files in a single CommitSet for backward compatibility.
 func New(files []sidebyside.FilePair, opts ...Option) Model {
@@ -508,6 +518,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		focusColour:         false,
 		clipboard:           &SystemClipboard{},
 		comments:            make(map[commentKey]string),
+		persistedCommentIDs: make(map[commentKey]string),
 		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
 		maxLineNumSeen:      9999, // default gives 4-digit gutter; recalculated on 'r' refresh
 		// Column width defaults - recalculated on 'r' refresh
@@ -618,6 +629,9 @@ func (m *Model) updateMaxLessWidth() {
 // Also triggers async stats loading if any commits don't have stats loaded.
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
+
+	// Load persisted comments from git store
+	m.loadPersistedComments()
 
 	// Fetch total commit count for pagination (if pagination is enabled)
 	if m.git != nil && m.loadedCommitCount > 0 {

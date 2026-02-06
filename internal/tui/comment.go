@@ -171,11 +171,18 @@ func (m *Model) startComment() bool {
 // submitComment saves the comment (or deletes if empty) and exits comment mode.
 func (m *Model) submitComment() {
 	text := strings.TrimSpace(m.w().commentInput)
+	key := m.w().commentKey
+
 	if text == "" {
 		// Empty comment = delete
-		delete(m.comments, m.w().commentKey)
+		delete(m.comments, key)
+		m.deletePersistedComment(key)
 	} else {
-		m.comments[m.w().commentKey] = text
+		m.comments[key] = text
+		// Persist to git store
+		if id := m.persistComment(key, text); id != "" {
+			m.persistedCommentIDs[key] = id
+		}
 	}
 
 	m.w().commentMode = false
