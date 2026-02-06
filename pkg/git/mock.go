@@ -40,7 +40,7 @@ func (m *MockGit) ShowWithMeta(args ...string) (*CommitMeta, string, error) {
 }
 
 // LogWithMeta returns the preconfigured log output.
-func (m *MockGit) LogWithMeta(n int) ([]CommitWithDiff, error) {
+func (m *MockGit) LogWithMeta(n int, args ...string) ([]CommitWithDiff, error) {
 	if m.LogError != nil {
 		return nil, m.LogError
 	}
@@ -52,12 +52,12 @@ func (m *MockGit) LogWithMeta(n int) ([]CommitWithDiff, error) {
 }
 
 // LogMetaOnly returns the preconfigured log stats output.
-func (m *MockGit) LogMetaOnly(n int) ([]CommitWithStats, error) {
+func (m *MockGit) LogMetaOnly(n int, args ...string) ([]CommitWithStats, error) {
 	return m.LogMetaOnlyRange(0, n)
 }
 
 // LogMetaOnlyRange returns a range of the preconfigured log stats output.
-func (m *MockGit) LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error) {
+func (m *MockGit) LogMetaOnlyRange(skip, limit int, args ...string) ([]CommitWithStats, error) {
 	if m.LogError != nil {
 		return nil, m.LogError
 	}
@@ -72,12 +72,12 @@ func (m *MockGit) LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error) {
 }
 
 // LogPathsOnly returns the preconfigured log paths output.
-func (m *MockGit) LogPathsOnly(n int) ([]CommitWithPaths, error) {
+func (m *MockGit) LogPathsOnly(n int, args ...string) ([]CommitWithPaths, error) {
 	return m.LogPathsOnlyRange(0, n)
 }
 
 // LogPathsOnlyRange returns a range of the preconfigured log paths output.
-func (m *MockGit) LogPathsOnlyRange(skip, limit int) ([]CommitWithPaths, error) {
+func (m *MockGit) LogPathsOnlyRange(skip, limit int, args ...string) ([]CommitWithPaths, error) {
 	if m.LogError != nil {
 		return nil, m.LogError
 	}
@@ -140,7 +140,7 @@ func (m *MockGit) CreateSnapshot(allMode bool, parentSHA string, message string)
 }
 
 // DiffSnapshots returns the preconfigured diff output (mock treats all diffs the same).
-func (m *MockGit) DiffSnapshots(sha1, sha2 string) (string, error) {
+func (m *MockGit) DiffSnapshots(sha1, sha2 string, args ...string) (string, error) {
 	return m.DiffOutput, m.DiffError
 }
 

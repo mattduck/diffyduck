@@ -159,13 +159,14 @@ func (g *RealGit) ShowWithMeta(args ...string) (*CommitMeta, string, error) {
 // LogWithMeta returns commit metadata and diff output for multiple commits.
 // The n parameter limits the number of commits returned.
 // Returns a slice of (CommitMeta, diff string) pairs.
-func (g *RealGit) LogWithMeta(n int) ([]CommitWithDiff, error) {
+func (g *RealGit) LogWithMeta(n int, args ...string) ([]CommitWithDiff, error) {
 	gitArgs := []string{
 		"log",
 		"-p", // include patches
 		fmt.Sprintf("-n%d", n),
 		"--format=" + logMetaFormat,
 	}
+	gitArgs = append(gitArgs, args...)
 	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
@@ -184,13 +185,13 @@ func (g *RealGit) LogWithMeta(n int) ([]CommitWithDiff, error) {
 
 // LogMetaOnly returns commit metadata with per-file stats (no patches).
 // Much faster than LogWithMeta for large histories since it doesn't fetch diff content.
-func (g *RealGit) LogMetaOnly(n int) ([]CommitWithStats, error) {
-	return g.LogMetaOnlyRange(0, n)
+func (g *RealGit) LogMetaOnly(n int, args ...string) ([]CommitWithStats, error) {
+	return g.LogMetaOnlyRange(0, n, args...)
 }
 
 // LogMetaOnlyRange returns commit metadata with per-file stats for a range of commits.
 // skip is the number of commits to skip from the start, limit is the max number to return.
-func (g *RealGit) LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error) {
+func (g *RealGit) LogMetaOnlyRange(skip, limit int, args ...string) ([]CommitWithStats, error) {
 	gitArgs := []string{
 		"log",
 		"--numstat", // gives "added<tab>removed<tab>path" per file
@@ -200,6 +201,7 @@ func (g *RealGit) LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error) {
 	if skip > 0 {
 		gitArgs = append(gitArgs, fmt.Sprintf("--skip=%d", skip))
 	}
+	gitArgs = append(gitArgs, args...)
 	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
@@ -219,13 +221,14 @@ func (g *RealGit) LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error) {
 // LogPathsOnly returns commit metadata with file paths only (no stats or patches).
 // This is the fastest option for large histories since git only needs to list files.
 // Use LogMetaOnly or fetch stats separately when per-file stats are needed.
-func (g *RealGit) LogPathsOnly(n int) ([]CommitWithPaths, error) {
+func (g *RealGit) LogPathsOnly(n int, args ...string) ([]CommitWithPaths, error) {
 	gitArgs := []string{
 		"log",
 		"--name-only", // gives just file paths, no stats
 		fmt.Sprintf("-n%d", n),
 		"--format=" + logMetaFormat,
 	}
+	gitArgs = append(gitArgs, args...)
 	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
@@ -244,7 +247,7 @@ func (g *RealGit) LogPathsOnly(n int) ([]CommitWithPaths, error) {
 
 // LogPathsOnlyRange returns commit metadata with file paths for a range of commits.
 // skip is the number of commits to skip from the start, limit is the max number to return.
-func (g *RealGit) LogPathsOnlyRange(skip, limit int) ([]CommitWithPaths, error) {
+func (g *RealGit) LogPathsOnlyRange(skip, limit int, args ...string) ([]CommitWithPaths, error) {
 	gitArgs := []string{
 		"log",
 		"--name-only",
@@ -254,6 +257,7 @@ func (g *RealGit) LogPathsOnlyRange(skip, limit int) ([]CommitWithPaths, error) 
 	if skip > 0 {
 		gitArgs = append(gitArgs, fmt.Sprintf("--skip=%d", skip))
 	}
+	gitArgs = append(gitArgs, args...)
 	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
@@ -748,8 +752,10 @@ func (g *RealGit) CreateSnapshot(allMode bool, parentSHA string, message string)
 }
 
 // DiffSnapshots returns the diff between two snapshot commits.
-func (g *RealGit) DiffSnapshots(sha1, sha2 string) (string, error) {
-	return g.Diff(sha1, sha2)
+func (g *RealGit) DiffSnapshots(sha1, sha2 string, args ...string) (string, error) {
+	allArgs := []string{sha1, sha2}
+	allArgs = append(allArgs, args...)
+	return g.Diff(allArgs...)
 }
 
 // snapshotRefPrefix is the prefix for persisted snapshot refs.

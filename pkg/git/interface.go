@@ -22,23 +22,28 @@ type Git interface {
 
 	// LogWithMeta returns commit metadata and diff output for multiple commits.
 	// The n parameter limits the number of commits returned.
-	LogWithMeta(n int) ([]CommitWithDiff, error)
+	// Extra args are appended to the git log command (e.g. ref ranges, pathspecs).
+	LogWithMeta(n int, args ...string) ([]CommitWithDiff, error)
 
 	// LogMetaOnly returns commit metadata with per-file stats (no patches).
 	// Much faster than LogWithMeta for large histories.
-	LogMetaOnly(n int) ([]CommitWithStats, error)
+	// Extra args are appended to the git log command (e.g. ref ranges, pathspecs).
+	LogMetaOnly(n int, args ...string) ([]CommitWithStats, error)
 
 	// LogMetaOnlyRange returns commit metadata with per-file stats for a range.
 	// skip is commits to skip, limit is max commits to return.
-	LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error)
+	// Extra args are appended to the git log command (e.g. ref ranges, pathspecs).
+	LogMetaOnlyRange(skip, limit int, args ...string) ([]CommitWithStats, error)
 
 	// LogPathsOnly returns commit metadata with file paths only (no stats or patches).
 	// This is the fastest option for large histories.
-	LogPathsOnly(n int) ([]CommitWithPaths, error)
+	// Extra args are appended to the git log command (e.g. ref ranges, pathspecs).
+	LogPathsOnly(n int, args ...string) ([]CommitWithPaths, error)
 
 	// LogPathsOnlyRange returns commit metadata with file paths for a range.
 	// skip is commits to skip, limit is max commits to return.
-	LogPathsOnlyRange(skip, limit int) ([]CommitWithPaths, error)
+	// Extra args are appended to the git log command (e.g. ref ranges, pathspecs).
+	LogPathsOnlyRange(skip, limit int, args ...string) ([]CommitWithPaths, error)
 
 	// CommitCount returns the total number of commits in the repository.
 	// Returns -1 if count cannot be determined.
@@ -74,7 +79,8 @@ type Git interface {
 	CreateSnapshot(allMode bool, parentSHA string, message string) (string, error)
 
 	// DiffSnapshots returns the diff between two snapshot commits.
-	DiffSnapshots(sha1, sha2 string) (string, error)
+	// Extra args are appended to the git diff command (e.g. pathspecs).
+	DiffSnapshots(sha1, sha2 string, args ...string) (string, error)
 
 	// UpdateSnapshotRef updates refs/dfd/snapshots/<baseSHA> to point to sha.
 	// Uses a single ref per base, with history traversed via parent chain.

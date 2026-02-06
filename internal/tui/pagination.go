@@ -63,9 +63,10 @@ func (m *Model) fetchMoreCommits() tea.Cmd {
 		limit = DefaultCommitBatchSize
 	}
 	gitClient := m.git
+	logArgs := m.logArgs
 
 	fetchCmd := func() tea.Msg {
-		commits, err := gitClient.LogPathsOnlyRange(skip, limit)
+		commits, err := gitClient.LogPathsOnlyRange(skip, limit, logArgs...)
 		if err != nil {
 			return MoreCommitsLoadedMsg{Err: err}
 		}

@@ -228,10 +228,11 @@ type Model struct {
 	statusMessageTime time.Time // when the message was set (for auto-clear)
 
 	// Pagination state (log mode only)
-	loadedCommitCount  int  // number of commits currently loaded
-	totalCommitCount   int  // total commits in repo (0=unknown, -1=error)
-	commitBatchSize    int  // commits per batch (default 100)
-	loadingMoreCommits bool // true when fetching next batch
+	loadedCommitCount  int      // number of commits currently loaded
+	totalCommitCount   int      // total commits in repo (0=unknown, -1=error)
+	commitBatchSize    int      // commits per batch (default 100)
+	loadingMoreCommits bool     // true when fetching next batch
+	logArgs            []string // extra args for git log (ref ranges, pathspecs)
 
 	// Snapshot state (diff mode only)
 	snapshotsEnabled bool     // true when snapshots are available (working tree is involved in diff)
@@ -408,6 +409,14 @@ func WithPagination(loaded, batchSize int) Option {
 	return func(m *Model) {
 		m.loadedCommitCount = loaded
 		m.commitBatchSize = batchSize
+	}
+}
+
+// WithLogArgs sets extra arguments for git log commands (ref ranges, pathspecs).
+// These are passed through to LogPathsOnlyRange and LogMetaOnlyRange for pagination.
+func WithLogArgs(args []string) Option {
+	return func(m *Model) {
+		m.logArgs = args
 	}
 }
 
@@ -719,12 +728,13 @@ func (m Model) fetchCommitStats() tea.Cmd {
 
 	// Capture git interface for closure
 	gitClient := m.git
+	logArgs := m.logArgs
 	totalCommits := len(m.commits)
 
 	return func() tea.Msg {
 		// Fetch stats for remaining commits
 		remaining := totalCommits - startOffset
-		commits, err := gitClient.LogMetaOnlyRange(startOffset, remaining)
+		commits, err := gitClient.LogMetaOnlyRange(startOffset, remaining, logArgs...)
 		if err != nil {
 			return CommitStatsLoadedMsg{Stats: nil}
 		}

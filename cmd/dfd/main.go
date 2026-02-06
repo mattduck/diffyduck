@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
-	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,197 +29,338 @@ func main() {
 
 // parsedArgs contains parsed command line arguments.
 type parsedArgs struct {
-	cmd     string   // "diff", "show", or "log"
-	gitArgs []string // args to pass to git
-	mode    content.Mode
-	ref1    string // commit for show, or first ref for diff
-	ref2    string // second ref for diff (if comparing refs)
+	cmd      string   // "diff", "show", "log", "pager", "clean"
+	refs     []string // 0-2 refs for diff, 0-1 for show/log (before --)
+	paths    []string // file paths (after --)
+	excludes []string // --exclude/-e glob patterns
+
+	// diff-specific
+	cached    bool  // --cached/--staged
+	allMode   bool  // --all/-a
+	unstaged  bool  // --unstaged
+	snapshots *bool // nil=default, true=--snapshots, false=--no-snapshots
+
+	// log-specific
+	count int // -n <count>, 0 = unlimited
+
+	// global
+	debug      bool
+	cpuProfile string
+
+	// Derived (set by deriveMode after parsing)
+	mode content.Mode
+	ref1 string
+	ref2 string
 }
 
-// parseArgs extracts the subcommand and remaining args from command line args.
-func parseArgs(args []string) parsedArgs {
-	result := parsedArgs{
-		cmd:     "diff",
-		gitArgs: args,
-		mode:    content.ModeDiffUnstaged,
-	}
+// parseArgs parses command line arguments into structured fields.
+// Unknown flags produce an error. No arguments are passed through to git verbatim.
+func parseArgs(args []string) (parsedArgs, error) {
+	result := parsedArgs{cmd: "diff"}
 
-	if len(args) > 0 {
-		switch args[0] {
-		case "diff":
-			result.cmd = "diff"
-			result.gitArgs = args[1:]
-		case "show":
-			result.cmd = "show"
-			result.gitArgs = args[1:]
-		case "log":
-			result.cmd = "log"
-			result.gitArgs = args[1:]
-		case "pager":
-			result.cmd = "pager"
-			result.gitArgs = args[1:]
-		case "clean":
-			result.cmd = "clean"
-			result.gitArgs = args[1:]
+	// Consume subcommand if present
+	remaining := args
+	if len(remaining) > 0 {
+		switch remaining[0] {
+		case "diff", "show", "log", "pager", "clean":
+			result.cmd = remaining[0]
+			remaining = remaining[1:]
 		}
 	}
 
-	// Determine mode and refs based on command and args
-	if result.cmd == "show" || result.cmd == "log" {
-		result.mode = content.ModeShow
-		// First non-flag arg is the commit ref (for show; log ignores this for now)
-		for _, arg := range result.gitArgs {
-			if !isFlag(arg) {
-				result.ref1 = arg
-				break
+	// Single-pass parse of remaining args
+	afterSeparator := false
+	for i := 0; i < len(remaining); i++ {
+		arg := remaining[i]
+
+		// Everything after -- is a path
+		if arg == "--" {
+			afterSeparator = true
+			continue
+		}
+		if afterSeparator {
+			result.paths = append(result.paths, arg)
+			continue
+		}
+
+		// Flags
+		if len(arg) > 0 && arg[0] == '-' {
+			consumed, err := result.parseFlag(arg, remaining, i)
+			if err != nil {
+				return parsedArgs{}, err
 			}
+			i += consumed // skip consumed value args
+			continue
 		}
-		if result.ref1 == "" {
-			result.ref1 = "HEAD"
-		}
-	} else {
-		// diff command - determine mode
-		result.mode = content.ModeDiffUnstaged
-		for _, arg := range result.gitArgs {
-			if arg == "--cached" || arg == "--staged" {
-				result.mode = content.ModeDiffCached
-				break
-			}
-		}
-		// Check for ref arguments (non-flag args that look like refs)
-		var refs []string
-		for _, arg := range result.gitArgs {
-			if !isFlag(arg) && !isPath(arg) {
-				refs = append(refs, arg)
-			}
-		}
-		if len(refs) >= 2 {
-			result.mode = content.ModeDiffRefs
-			result.ref1 = refs[0]
-			result.ref2 = refs[1]
-		} else if len(refs) == 1 {
-			// Single ref means diff against working tree
-			result.mode = content.ModeDiffRefs
-			result.ref1 = refs[0]
-			result.ref2 = "" // Will compare to working tree
-		}
+
+		// Non-flag, non-path: it's a ref
+		result.refs = append(result.refs, arg)
 	}
 
-	return result
+	// Validate and derive mode
+	if err := result.validate(); err != nil {
+		return parsedArgs{}, err
+	}
+	result.deriveMode()
+
+	return result, nil
 }
 
-// isFlag returns true if the argument looks like a flag.
-func isFlag(arg string) bool {
-	return len(arg) > 0 && arg[0] == '-'
+// parseFlag handles a single flag argument. Returns the number of extra args consumed
+// (0 for standalone flags, 1 for flags that take a value).
+func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
+	switch {
+	// Global flags
+	case arg == "--debug":
+		p.debug = true
+	case strings.HasPrefix(arg, "--cpuprofile="):
+		p.cpuProfile = strings.TrimPrefix(arg, "--cpuprofile=")
+	case arg == "--cpuprofile":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--cpuprofile requires a path argument")
+		}
+		p.cpuProfile = args[i+1]
+		return 1, nil
+
+	// diff flags
+	case arg == "--cached" || arg == "--staged":
+		p.cached = true
+	case arg == "--all" || arg == "-a":
+		p.allMode = true
+	case arg == "--unstaged":
+		p.unstaged = true
+	case arg == "--snapshots":
+		t := true
+		p.snapshots = &t
+	case arg == "--no-snapshots":
+		f := false
+		p.snapshots = &f
+
+	// Exclude: --exclude=<glob>, --exclude <glob>, -e<glob>, -e <glob>
+	case strings.HasPrefix(arg, "--exclude="):
+		p.excludes = append(p.excludes, strings.TrimPrefix(arg, "--exclude="))
+	case arg == "--exclude":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--exclude requires a glob pattern argument")
+		}
+		p.excludes = append(p.excludes, args[i+1])
+		return 1, nil
+	case arg == "-e":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("-e requires a glob pattern argument")
+		}
+		p.excludes = append(p.excludes, args[i+1])
+		return 1, nil
+	case strings.HasPrefix(arg, "-e"):
+		p.excludes = append(p.excludes, strings.TrimPrefix(arg, "-e"))
+
+	// Count: -n <count>, -n<count>
+	case arg == "-n":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("-n requires a count argument")
+		}
+		n, err := strconv.Atoi(args[i+1])
+		if err != nil || n <= 0 {
+			return 0, fmt.Errorf("-n requires a positive integer, got %q", args[i+1])
+		}
+		p.count = n
+		return 1, nil
+	case strings.HasPrefix(arg, "-n"):
+		nStr := strings.TrimPrefix(arg, "-n")
+		n, err := strconv.Atoi(nStr)
+		if err != nil || n <= 0 {
+			return 0, fmt.Errorf("-n requires a positive integer, got %q", nStr)
+		}
+		p.count = n
+
+	default:
+		return 0, fmt.Errorf("unknown flag: %s", arg)
+	}
+	return 0, nil
 }
 
-// isPath returns true if the argument looks like a file path.
-// This is a heuristic - contains / or . extension.
-func isPath(arg string) bool {
-	for _, c := range arg {
-		if c == '/' || c == '\\' {
-			return true
+// validate checks for invalid flag combinations and ref count limits.
+func (p *parsedArgs) validate() error {
+	switch p.cmd {
+	case "diff":
+		if len(p.refs) > 2 {
+			return fmt.Errorf("diff accepts at most 2 refs, got %d", len(p.refs))
+		}
+		if p.cached && p.unstaged {
+			return fmt.Errorf("--cached and --unstaged cannot be used together")
+		}
+		if p.cached && len(p.refs) > 0 {
+			return fmt.Errorf("--cached cannot be used with ref arguments")
+		}
+		if p.count > 0 {
+			return fmt.Errorf("-n is only valid for log command")
+		}
+	case "show":
+		if len(p.refs) > 1 {
+			return fmt.Errorf("show accepts at most 1 ref, got %d", len(p.refs))
+		}
+		if p.cached || p.unstaged || p.allMode {
+			return fmt.Errorf("--cached, --unstaged, and --all are only valid for diff command")
+		}
+		if p.snapshots != nil {
+			return fmt.Errorf("--snapshots/--no-snapshots are only valid for diff command")
+		}
+		if p.count > 0 {
+			return fmt.Errorf("-n is only valid for log command")
+		}
+	case "log":
+		if len(p.refs) > 1 {
+			return fmt.Errorf("log accepts at most 1 ref range, got %d", len(p.refs))
+		}
+		if p.cached || p.unstaged || p.allMode {
+			return fmt.Errorf("--cached, --unstaged, and --all are only valid for diff command")
+		}
+		if p.snapshots != nil {
+			return fmt.Errorf("--snapshots/--no-snapshots are only valid for diff command")
+		}
+	case "pager", "clean":
+		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
+			return fmt.Errorf("%s does not accept arguments", p.cmd)
+		}
+		if p.cached || p.unstaged || p.allMode || p.count > 0 {
+			return fmt.Errorf("%s does not accept flags", p.cmd)
 		}
 	}
-	// Check for file extension
-	for i := len(arg) - 1; i >= 0; i-- {
-		if arg[i] == '.' {
-			return i > 0 && i < len(arg)-1
+	return nil
+}
+
+// deriveMode sets the mode, ref1, and ref2 fields based on parsed args.
+func (p *parsedArgs) deriveMode() {
+	switch p.cmd {
+	case "show", "log":
+		p.mode = content.ModeShow
+		if len(p.refs) > 0 {
+			p.ref1 = p.refs[0]
+		} else {
+			p.ref1 = "HEAD"
+		}
+	case "diff":
+		if p.cached {
+			p.mode = content.ModeDiffCached
+		} else if len(p.refs) >= 2 {
+			p.mode = content.ModeDiffRefs
+			p.ref1 = p.refs[0]
+			p.ref2 = p.refs[1]
+		} else if len(p.refs) == 1 {
+			p.mode = content.ModeDiffRefs
+			p.ref1 = p.refs[0]
+			p.ref2 = "" // compare to working tree
+		} else {
+			p.mode = content.ModeDiffUnstaged
 		}
 	}
-	return false
 }
 
 // workingTreeInvolved returns true if the diff involves the current working tree.
-// This is used to determine if snapshots should be available.
-// Returns true for: unstaged diff, cached diff, or single-ref diff (ref vs working tree).
-// Returns false for: two-ref diff (comparing two fixed commits).
 func workingTreeInvolved(args parsedArgs) bool {
 	switch args.mode {
 	case content.ModeDiffUnstaged:
-		// git diff - compares index to working tree
 		return true
 	case content.ModeDiffCached:
-		// git diff --cached - compares HEAD to index (index can still change)
 		return true
 	case content.ModeDiffRefs:
-		// Check if ref2 is empty (meaning working tree is the target)
 		return args.ref2 == ""
 	default:
 		return false
 	}
 }
 
-// extractDebugFlag removes --debug from args and returns (remaining args, debugMode).
-func extractDebugFlag(args []string) ([]string, bool) {
-	idx := slices.Index(args, "--debug")
-	if idx == -1 {
-		return args, false
+// buildPathspec constructs git pathspec arguments from paths and excludes.
+// Returns nil if there are no paths or excludes.
+func buildPathspec(paths, excludes []string) []string {
+	if len(paths) == 0 && len(excludes) == 0 {
+		return nil
 	}
-	return slices.Delete(slices.Clone(args), idx, idx+1), true
+	result := []string{"--"}
+	result = append(result, paths...)
+	for _, e := range excludes {
+		result = append(result, ":!"+e)
+	}
+	return result
 }
 
-// extractAllFlag removes --all/-a from args and returns (remaining args, allMode).
-// --all mode shows all changes including untracked files.
-func extractAllFlag(args []string) ([]string, bool) {
-	for _, flag := range []string{"--all", "-a"} {
-		idx := slices.Index(args, flag)
-		if idx != -1 {
-			return slices.Delete(slices.Clone(args), idx, idx+1), true
+// filterFiles filters a file list by include paths and exclude patterns.
+// If paths is empty, all files are included. Excludes remove matching files.
+// Used to filter untracked file lists in --all mode.
+func filterFiles(files []string, paths, excludes []string) []string {
+	if len(paths) == 0 && len(excludes) == 0 {
+		return files
+	}
+	var result []string
+	for _, f := range files {
+		if len(paths) > 0 && !matchesAnyPath(f, paths) {
+			continue
+		}
+		if matchesAnyExclude(f, excludes) {
+			continue
+		}
+		result = append(result, f)
+	}
+	return result
+}
+
+// matchesAnyPath returns true if the file matches any of the include paths.
+// Supports directory prefixes (e.g. "src/") and glob patterns (e.g. "*.go").
+func matchesAnyPath(file string, paths []string) bool {
+	for _, p := range paths {
+		// Directory prefix: "src/" matches "src/foo.go"
+		if strings.HasSuffix(p, "/") && strings.HasPrefix(file, p) {
+			return true
+		}
+		// Exact match
+		if file == p {
+			return true
+		}
+		// Glob match on the basename
+		if matched, _ := filepath.Match(p, filepath.Base(file)); matched {
+			return true
+		}
+		// Glob match on the full path
+		if matched, _ := filepath.Match(p, file); matched {
+			return true
 		}
 	}
-	return args, false
+	return false
 }
 
-// extractCPUProfileFlag removes --cpuprofile=<path> from args and returns (remaining args, profilePath).
-func extractCPUProfileFlag(args []string) ([]string, string) {
-	for i, arg := range args {
-		if strings.HasPrefix(arg, "--cpuprofile=") {
-			path := strings.TrimPrefix(arg, "--cpuprofile=")
-			return slices.Delete(slices.Clone(args), i, i+1), path
+// matchesAnyExclude returns true if the file matches any exclude pattern.
+// Supports glob patterns and ** prefix matching (e.g. "vendor/**" matches "vendor/foo/bar.go").
+func matchesAnyExclude(file string, excludes []string) bool {
+	for _, e := range excludes {
+		// Handle ** patterns as prefix match: "vendor/**" → prefix "vendor/"
+		if strings.HasSuffix(e, "/**") {
+			prefix := strings.TrimSuffix(e, "/**") + "/"
+			if strings.HasPrefix(file, prefix) {
+				return true
+			}
+			continue
+		}
+		// Glob match on basename
+		if matched, _ := filepath.Match(e, filepath.Base(file)); matched {
+			return true
+		}
+		// Glob match on full path
+		if matched, _ := filepath.Match(e, file); matched {
+			return true
 		}
 	}
-	return args, ""
-}
-
-// extractUnstagedFlag removes --unstaged from args and returns (remaining args, unstagedMode).
-// Unstaged mode diffs index vs working tree (the old default behavior).
-func extractUnstagedFlag(args []string) ([]string, bool) {
-	idx := slices.Index(args, "--unstaged")
-	if idx != -1 {
-		return slices.Delete(slices.Clone(args), idx, idx+1), true
-	}
-	return args, false
-}
-
-// extractSnapshotsFlag removes --snapshots/--no-snapshots from args.
-// Returns (remaining args, snapshotsExplicitlyDisabled).
-// Default is snapshots enabled (returns false).
-func extractSnapshotsFlag(args []string) ([]string, bool) {
-	// Check for --no-snapshots first
-	idx := slices.Index(args, "--no-snapshots")
-	if idx != -1 {
-		return slices.Delete(slices.Clone(args), idx, idx+1), true
-	}
-	// Check for --snapshots (explicit enable, which is already the default)
-	idx = slices.Index(args, "--snapshots")
-	if idx != -1 {
-		return slices.Delete(slices.Clone(args), idx, idx+1), false
-	}
-	return args, false
+	return false
 }
 
 func run() error {
-	rawArgs, debugMode := extractDebugFlag(os.Args[1:])
-	rawArgs, allMode := extractAllFlag(rawArgs)
-	rawArgs, cpuProfile := extractCPUProfileFlag(rawArgs)
-	rawArgs, unstagedMode := extractUnstagedFlag(rawArgs)
-	rawArgs, snapshotsDisabled := extractSnapshotsFlag(rawArgs)
-	args := parseArgs(rawArgs)
+	args, err := parseArgs(os.Args[1:])
+	if err != nil {
+		return err
+	}
 
 	// Start CPU profiling if requested
-	if cpuProfile != "" {
-		f, err := os.Create(cpuProfile)
+	if args.cpuProfile != "" {
+		f, err := os.Create(args.cpuProfile)
 		if err != nil {
 			return fmt.Errorf("create cpu profile: %w", err)
 		}
@@ -236,35 +378,31 @@ func run() error {
 
 	// Check for pager mode: explicit "pager" command or piped stdin
 	if args.cmd == "pager" || pager.IsStdinPipe() {
-		return runPagerMode(debugMode)
+		return runPagerMode(args.debug)
 	}
 
 	// Handle log command separately
 	if args.cmd == "log" {
-		return runLogMode(debugMode)
+		return runLogMode(args)
 	}
 
 	g := git.New()
 
 	// Run async expiry of old snapshot refs (doesn't block startup)
 	go func() {
-		// Expire snapshot refs older than 14 days
 		_, _ = g.ExpireOldSnapshotRefs(14)
 	}()
 
+	// Build pathspec for git commands
+	pathspec := buildPathspec(args.paths, args.excludes)
+
 	// Determine base ref for the diff (used for snapshot keying)
-	// Default behavior: diff HEAD vs working tree (instead of index vs working tree)
-	// --unstaged: diff index vs working tree (old default)
-	// --cached: diff HEAD vs index
-	// <ref>: diff <ref> vs working tree
 	var baseSHA string
-	if args.cmd == "diff" && !unstagedMode {
-		// Resolve the base ref to a SHA for snapshot keying
+	if args.cmd == "diff" && !args.unstaged {
 		baseRef := args.ref1
 		if baseRef == "" {
-			baseRef = "HEAD" // default to HEAD
+			baseRef = "HEAD"
 		}
-		// Resolve ref to SHA
 		sha, err := g.Show("--format=%H", "-s", baseRef)
 		if err == nil {
 			baseSHA = strings.TrimSpace(sha)
@@ -272,15 +410,15 @@ func run() error {
 	}
 
 	// Determine if snapshots should be enabled
-	// Disabled for: --no-snapshots, --unstaged, show command, two-ref diffs
+	snapshotsDisabled := args.snapshots != nil && !*args.snapshots
 	snapshotsEnabled := args.cmd == "diff" &&
 		!snapshotsDisabled &&
-		!unstagedMode &&
+		!args.unstaged &&
 		workingTreeInvolved(args)
 
 	// Auto-continue: check for existing snapshots at this base SHA
-	var snapshotInfos []git.SnapshotInfo // full info (SHA, Subject, Date)
-	var persistedSnapshots []string      // just SHAs for TUI
+	var snapshotInfos []git.SnapshotInfo
+	var persistedSnapshots []string
 	if snapshotsEnabled && baseSHA != "" {
 		infos, err := g.ListSnapshotRefs(baseSHA)
 		if err == nil {
@@ -296,67 +434,67 @@ func run() error {
 	// Get diff from git, with optional commit metadata
 	var output string
 	var commitInfo sidebyside.CommitInfo
-	var err error
 
 	switch args.cmd {
 	case "diff":
-		// In continue mode with persisted snapshots, diff from last snapshot
 		if continueMode && len(persistedSnapshots) > 0 {
 			lastSnapshot := persistedSnapshots[len(persistedSnapshots)-1]
-			if allMode {
-				// --all mode with continue: diff last snapshot to current working tree
-				// Note: untracked files appear as new files from the snapshot's perspective
-				output, err = getDiffAll(g, append([]string{lastSnapshot}, args.gitArgs...))
+			if args.allMode {
+				output, err = getDiffAll(g, lastSnapshot, args.paths, args.excludes)
 			} else {
-				output, err = g.Diff(append([]string{lastSnapshot}, args.gitArgs...)...)
+				diffArgs := []string{lastSnapshot}
+				diffArgs = append(diffArgs, pathspec...)
+				output, err = g.Diff(diffArgs...)
 			}
 			if err != nil {
 				return fmt.Errorf("git diff from snapshot: %w", err)
 			}
-			// Set refs for content fetching
 			args.mode = content.ModeDiffRefs
 			args.ref1 = lastSnapshot
-			args.ref2 = "" // working tree
-		} else if allMode {
-			// --all mode: diff HEAD (staged + unstaged) and include untracked files
-			output, err = getDiffAll(g, args.gitArgs)
+			args.ref2 = ""
+		} else if args.allMode {
+			output, err = getDiffAll(g, "HEAD", args.paths, args.excludes)
 			if err != nil {
 				return err
 			}
-			// Override mode for content fetching: compare HEAD to working tree
 			args.mode = content.ModeDiffRefs
 			args.ref1 = "HEAD"
 			args.ref2 = ""
-		} else if unstagedMode {
-			// --unstaged mode: diff index vs working tree (old default behavior)
-			output, err = g.Diff(args.gitArgs...)
+		} else if args.unstaged {
+			diffArgs := append([]string{}, pathspec...)
+			output, err = g.Diff(diffArgs...)
 			if err != nil {
 				return fmt.Errorf("git diff: %w", err)
 			}
 		} else {
-			// Default: diff HEAD vs working tree
-			// Unless explicit refs are provided in args
-			if args.ref1 == "" && args.mode == content.ModeDiffUnstaged {
-				// No ref specified, use HEAD as default
-				output, err = g.Diff(append([]string{"HEAD"}, args.gitArgs...)...)
+			if args.cached {
+				diffArgs := []string{"--cached"}
+				diffArgs = append(diffArgs, pathspec...)
+				output, err = g.Diff(diffArgs...)
+			} else if args.ref1 == "" && args.mode == content.ModeDiffUnstaged {
+				diffArgs := []string{"HEAD"}
+				diffArgs = append(diffArgs, pathspec...)
+				output, err = g.Diff(diffArgs...)
 				args.mode = content.ModeDiffRefs
 				args.ref1 = "HEAD"
-				args.ref2 = "" // working tree
+				args.ref2 = ""
 			} else {
-				output, err = g.Diff(args.gitArgs...)
+				diffArgs := append([]string{}, args.refs...)
+				diffArgs = append(diffArgs, pathspec...)
+				output, err = g.Diff(diffArgs...)
 			}
 			if err != nil {
 				return fmt.Errorf("git diff: %w", err)
 			}
 		}
-		// diff command has no commit metadata
 	case "show":
+		showArgs := []string{args.ref1}
+		showArgs = append(showArgs, pathspec...)
 		var meta *git.CommitMeta
-		meta, output, err = g.ShowWithMeta(args.gitArgs...)
+		meta, output, err = g.ShowWithMeta(showArgs...)
 		if err != nil {
 			return fmt.Errorf("git show: %w", err)
 		}
-		// Convert git metadata to sidebyside format
 		if meta != nil {
 			commitInfo = sidebyside.CommitInfo{
 				SHA:     meta.SHA,
@@ -378,20 +516,17 @@ func run() error {
 	// Build commit sets - in continue mode with history, we show historical diffs too
 	var commits []sidebyside.CommitSet
 
-	// In continue mode, reconstruct historical diffs (newest first, like log view)
 	if continueMode && len(snapshotInfos) > 0 {
-		// Build historical diffs in reverse order (newest first)
-		// S(n-1)→S(n), S(n-2)→S(n-1), ..., S0→S1, base→S0
 		for i := len(snapshotInfos) - 1; i >= 1; i-- {
 			oldRef := snapshotInfos[i-1].SHA
 			newRef := snapshotInfos[i].SHA
 
-			histDiff, err := g.DiffSnapshots(oldRef, newRef)
+			histDiff, err := g.DiffSnapshots(oldRef, newRef, pathspec...)
 			if err != nil {
-				continue // skip if we can't get the diff
+				continue
 			}
 			if histDiff == "" {
-				continue // skip empty diffs
+				continue
 			}
 
 			histParsed, err := diff.Parse(histDiff)
@@ -399,7 +534,6 @@ func run() error {
 				continue
 			}
 
-			// Use info from git log (single source of truth)
 			info := snapshotInfos[i]
 			snapshotShort := info.SHA
 			if len(snapshotShort) > 7 {
@@ -414,14 +548,13 @@ func run() error {
 					Subject: info.Subject,
 				},
 				Files:          histFiles,
-				FoldLevel:      sidebyside.CommitFolded, // Start folded so user can expand
+				FoldLevel:      sidebyside.CommitFolded,
 				FilesLoaded:    true,
 				StatsLoaded:    true,
 				IsSnapshot:     true,
 				SnapshotOldRef: oldRef,
 				SnapshotNewRef: newRef,
 			}
-			// Calculate stats
 			for _, f := range histFiles {
 				added, removed := countFilePairStats(f)
 				histCommit.TotalAdded += added
@@ -430,9 +563,9 @@ func run() error {
 			commits = append(commits, histCommit)
 		}
 
-		// Finally, add the initial diff: base→S0 (oldest, so last in list)
+		// Initial diff: base→S0
 		firstInfo := snapshotInfos[0]
-		histDiff, err := g.DiffSnapshots(baseSHA, firstInfo.SHA)
+		histDiff, err := g.DiffSnapshots(baseSHA, firstInfo.SHA, pathspec...)
 		if err == nil && histDiff != "" {
 			histParsed, err := diff.Parse(histDiff)
 			if err == nil {
@@ -466,8 +599,6 @@ func run() error {
 		}
 	}
 
-	// Add the current working tree diff (or the main diff for non-continue mode)
-	// In continue mode, prepend at top (newest first); otherwise append
 	if len(d.Files) > 0 {
 		files, truncatedFileCount := sidebyside.TransformDiff(d)
 
@@ -488,7 +619,7 @@ func run() error {
 			now := time.Now()
 			dateStr := now.Format("Jan 2 15:04")
 			commit.Info.Date = dateStr
-			commit.Info.SHA = "" // No snapshot SHA yet (created in background)
+			commit.Info.SHA = ""
 			commit.Info.Subject = fmt.Sprintf("dfd: %s @ %s", baseShort, dateStr)
 			if continueMode && len(persistedSnapshots) > 0 {
 				commit.SnapshotOldRef = persistedSnapshots[len(persistedSnapshots)-1]
@@ -496,7 +627,6 @@ func run() error {
 		}
 
 		if continueMode {
-			// Prepend current diff at top (newest first)
 			commits = append([]sidebyside.CommitSet{commit}, commits...)
 		} else {
 			commits = append(commits, commit)
@@ -514,10 +644,10 @@ func run() error {
 
 	// Create and run the TUI
 	opts := []tui.Option{tui.WithFetcher(fetcher), tui.WithGit(g), tui.WithCommentStore(commentStore)}
-	if debugMode {
+	if args.debug {
 		opts = append(opts, tui.WithDebugMode())
 	}
-	if allMode {
+	if args.allMode {
 		opts = append(opts, tui.WithAllMode(true))
 	}
 	if snapshotsEnabled {
@@ -571,13 +701,23 @@ func runClean() error {
 }
 
 // runLogMode handles log mode showing multiple commits.
-func runLogMode(debugMode bool) error {
+func runLogMode(args parsedArgs) error {
 	g := git.New()
 
-	// Fast startup: fetch only first batch of commits (pagination loads more on demand)
-	// Stats are loaded asynchronously after the UI renders
+	// Build extra args for git log (ref range + pathspec)
+	var logArgs []string
+	if len(args.refs) > 0 {
+		logArgs = append(logArgs, args.refs[0])
+	}
+	logArgs = append(logArgs, buildPathspec(args.paths, args.excludes)...)
+
+	// Use -n count if specified, otherwise default batching
 	initialBatch := tui.DefaultCommitBatchSize
-	commits, err := g.LogPathsOnly(initialBatch)
+	if args.count > 0 {
+		initialBatch = args.count
+	}
+
+	commits, err := g.LogPathsOnly(initialBatch, logArgs...)
 	if err != nil {
 		return fmt.Errorf("git log: %w", err)
 	}
@@ -588,9 +728,7 @@ func runLogMode(debugMode bool) error {
 	}
 
 	// Fetch stats for the first page of commits synchronously so they're visible immediately
-	// The rest will load asynchronously after the UI starts
-	// Use terminal height to determine how many commits are initially visible
-	initialStatsCount := 30 // fallback if we can't get terminal size
+	initialStatsCount := 30
 	if _, height, err := term.GetSize(int(os.Stdout.Fd())); err == nil && height > 0 {
 		initialStatsCount = height
 	}
@@ -598,24 +736,20 @@ func runLogMode(debugMode bool) error {
 	if initialLimit > len(commits) {
 		initialLimit = len(commits)
 	}
-	initialStats, _ := g.LogMetaOnlyRange(0, initialLimit) // ignore error, stats are optional
+	initialStats, _ := g.LogMetaOnlyRange(0, initialLimit, logArgs...)
 
-	// Build a map of SHA -> stats for quick lookup
 	statsMap := make(map[string]*git.CommitWithStats)
 	for i := range initialStats {
 		statsMap[initialStats[i].Meta.SHA] = &initialStats[i]
 	}
 
-	// Convert to CommitSets with skeleton files (stats and diffs loaded on demand)
 	var commitSets []sidebyside.CommitSet
 	for i, c := range commits {
-		// Check if we have stats for this commit
 		var files []sidebyside.FilePair
 		var totalAdded, totalRemoved int
 		statsLoaded := false
 
 		if stats, ok := statsMap[c.Meta.SHA]; ok && i < initialLimit {
-			// We have stats - create files with stats
 			for _, f := range stats.Files {
 				files = append(files, sidebyside.SkeletonFilePair(f.Path, f.Added, f.Removed))
 				if f.Added > 0 {
@@ -627,7 +761,6 @@ func runLogMode(debugMode bool) error {
 			}
 			statsLoaded = true
 		} else {
-			// No stats yet - create skeleton files without stats
 			for _, f := range c.Files {
 				files = append(files, sidebyside.SkeletonFilePairNoStats(f.Path))
 			}
@@ -643,8 +776,8 @@ func runLogMode(debugMode bool) error {
 				Body:    c.Meta.Body,
 			},
 			Files:        files,
-			FoldLevel:    sidebyside.CommitFolded, // Start folded
-			FilesLoaded:  false,                   // Diff content loaded on demand when unfolded
+			FoldLevel:    sidebyside.CommitFolded,
+			FilesLoaded:  false,
 			StatsLoaded:  statsLoaded,
 			TotalAdded:   totalAdded,
 			TotalRemoved: totalRemoved,
@@ -652,17 +785,18 @@ func runLogMode(debugMode bool) error {
 		commitSets = append(commitSets, commitSet)
 	}
 
-	// Create comment store for persistence
 	commentStore := comments.NewStore("")
 
-	// Pass git object for on-demand content fetching and pagination
 	opts := []tui.Option{
 		tui.WithGit(g),
 		tui.WithPagination(len(commitSets), initialBatch),
 		tui.WithCommentStore(commentStore),
 	}
-	if debugMode {
+	if args.debug {
 		opts = append(opts, tui.WithDebugMode())
+	}
+	if len(logArgs) > 0 {
+		opts = append(opts, tui.WithLogArgs(logArgs))
 	}
 
 	model := tui.NewWithCommits(commitSets, opts...)
@@ -691,17 +825,15 @@ func countFilePairStats(fp sidebyside.FilePair) (added, removed int) {
 }
 
 // getDiffAll generates a diff that includes all changes: staged, unstaged, and untracked files.
-// This combines `git diff HEAD` (tracked changes) with diffs for untracked files.
-//
-// TODO: Instead of passing all flags through to git, we should implement our own
-// whitelisted flags. Currently path filters don't apply to untracked file listing,
-// and some git flags may not make sense in this context.
-func getDiffAll(g *git.RealGit, extraArgs []string) (string, error) {
-	// Start with git diff HEAD to get all tracked changes
-	diffArgs := append([]string{"HEAD"}, extraArgs...)
+// This combines `git diff <baseRef>` (tracked changes) with diffs for untracked files.
+// Paths and excludes filter both the tracked diff and the untracked file list.
+func getDiffAll(g *git.RealGit, baseRef string, paths, excludes []string) (string, error) {
+	// Start with git diff <baseRef> to get all tracked changes
+	diffArgs := []string{baseRef}
+	diffArgs = append(diffArgs, buildPathspec(paths, excludes)...)
 	output, err := g.Diff(diffArgs...)
 	if err != nil {
-		return "", fmt.Errorf("git diff HEAD: %w", err)
+		return "", fmt.Errorf("git diff %s: %w", baseRef, err)
 	}
 
 	// Get list of untracked files
@@ -710,11 +842,13 @@ func getDiffAll(g *git.RealGit, extraArgs []string) (string, error) {
 		return "", fmt.Errorf("list untracked files: %w", err)
 	}
 
+	// Filter untracked files by paths and excludes
+	untrackedFiles = filterFiles(untrackedFiles, paths, excludes)
+
 	// Generate diffs for each untracked file and append
 	for _, file := range untrackedFiles {
 		newFileDiff, err := g.DiffNewFile(file)
 		if err != nil {
-			// Skip files that fail (e.g., binary files, permission issues)
 			continue
 		}
 		if newFileDiff != "" {
