@@ -63,6 +63,16 @@ Tests are layered:
 
 Test state transitions, not rendered output - assert `model.scroll == 5`, not parsed screen content.
 
+### Git Isolation in Tests
+
+**CRITICAL: Tests must NEVER run raw `exec.Command("git", ...)` calls.** Inherited environment variables like `GIT_DIR` (set by pre-commit hooks) will redirect git commands to the project repo, creating commits, modifying refs, or corrupting state in the real working tree.
+
+**In production code (`pkg/git/git.go`):** Always use `g.command(...)` or `g.commandWithEnv(...)` instead of `exec.Command("git", ...)`. These methods strip `GIT_DIR`, `GIT_WORK_TREE`, and `GIT_INDEX_FILE` when `Dir` is set, making `NewWithDir(tmpDir)` inherently safe.
+
+**In test helpers:** Use `cleanGitEnv(os.Environ())` to build a sanitised environment. See `runGit()` / `runGitWithEnv()` in `pkg/git/git_test.go` and `cleanGitEnv()` in `pkg/comments/store_test.go` for the pattern. Always use `t.TempDir()` for test repos and `NewWithDir(tmpDir)` for `RealGit` instances.
+
+**For TUI tests:** Use `MockGit` — no real git operations needed.
+
 ## Commit Conventions
 
 Use commitlint keywords: `feat`, `fix`, `refactor`, `test`, `docs`, `style`, `build`, `chore`, `ci`, `perf`

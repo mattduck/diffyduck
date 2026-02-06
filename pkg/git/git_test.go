@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -749,6 +750,144 @@ func TestRealGit_SnapshotRefs_Integration(t *testing.T) {
 	assert.Nil(t, refs, "should have no refs after delete")
 }
 
+func TestRealGit_ListSnapshotRefs_SubjectAndDate(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+
+	// Create initial commit (base)
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}, "commit", "--no-verify", "-m", "initial")
+	baseSHA := strings.TrimSpace(runGit(t, tmpDir, "rev-parse", "HEAD"))
+
+	g := NewWithDir(tmpDir)
+
+	// Create snapshot with a known message
+	msg := "dfd: abc1234 @ Feb 5 09:15"
+	sha, err := g.CreateSnapshot(false, baseSHA, msg)
+	require.NoError(t, err)
+	require.NotEmpty(t, sha)
+
+	err = g.UpdateSnapshotRef(baseSHA, sha)
+	require.NoError(t, err)
+
+	refs, err := g.ListSnapshotRefs(baseSHA)
+	require.NoError(t, err)
+	require.Len(t, refs, 1)
+
+	// Subject should match the commit message exactly
+	assert.Equal(t, msg, refs[0].Subject)
+	// SHA should be the full commit SHA
+	assert.Equal(t, sha, refs[0].SHA)
+	// Date should be reformatted to "Jan 2 15:04" (from git's ci format)
+	assert.NotEmpty(t, refs[0].Date)
+	// Verify the date parses back (it's in "Jan 2 15:04" format)
+	_, parseErr := time.Parse("Jan 2 15:04", refs[0].Date)
+	assert.NoError(t, parseErr, "Date %q should be in 'Jan 2 15:04' format", refs[0].Date)
+}
+
+func TestRealGit_ListSnapshotRefs_EmptyMessage(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}, "commit", "--no-verify", "-m", "initial")
+	baseSHA := strings.TrimSpace(runGit(t, tmpDir, "rev-parse", "HEAD"))
+
+	g := NewWithDir(tmpDir)
+
+	// Create snapshot with empty message
+	sha, err := g.CreateSnapshot(false, baseSHA, "")
+	require.NoError(t, err)
+	require.NotEmpty(t, sha)
+
+	err = g.UpdateSnapshotRef(baseSHA, sha)
+	require.NoError(t, err)
+
+	refs, err := g.ListSnapshotRefs(baseSHA)
+	require.NoError(t, err)
+	require.Len(t, refs, 1)
+
+	assert.Equal(t, sha, refs[0].SHA)
+	assert.Empty(t, refs[0].Subject)
+	assert.NotEmpty(t, refs[0].Date)
+}
+
+func TestRealGit_ListSnapshotRefs_MultipleWithDistinctSubjects(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}, "commit", "--no-verify", "-m", "initial")
+	baseSHA := strings.TrimSpace(runGit(t, tmpDir, "rev-parse", "HEAD"))
+
+	g := NewWithDir(tmpDir)
+
+	// Create 3 snapshots with distinct messages to verify ordering and parsing
+	messages := []string{
+		"dfd: abc1234 @ Feb 3 08:00",
+		"dfd: abc1234 @ Feb 4 09:30",
+		"dfd: abc1234 @ Feb 5 11:45",
+	}
+
+	parentSHA := baseSHA
+	for _, msg := range messages {
+		sha, err := g.CreateSnapshot(false, parentSHA, msg)
+		require.NoError(t, err)
+		err = g.UpdateSnapshotRef(baseSHA, sha)
+		require.NoError(t, err)
+		parentSHA = sha
+	}
+
+	refs, err := g.ListSnapshotRefs(baseSHA)
+	require.NoError(t, err)
+	require.Len(t, refs, 3)
+
+	// Should be oldest first
+	assert.Equal(t, messages[0], refs[0].Subject)
+	assert.Equal(t, messages[1], refs[1].Subject)
+	assert.Equal(t, messages[2], refs[2].Subject)
+
+	// Each should have a distinct SHA
+	assert.NotEqual(t, refs[0].SHA, refs[1].SHA)
+	assert.NotEqual(t, refs[1].SHA, refs[2].SHA)
+
+	// All dates should be valid "Jan 2 15:04" format
+	for i, ref := range refs {
+		_, parseErr := time.Parse("Jan 2 15:04", ref.Date)
+		assert.NoError(t, parseErr, "refs[%d].Date %q should parse", i, ref.Date)
+	}
+}
+
 func TestRealGit_DeleteSnapshotRefs_WhenEmpty(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -771,6 +910,7 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = cleanGitEnv(os.Environ())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, out)
@@ -782,7 +922,7 @@ func runGitWithEnv(t *testing.T, dir string, env []string, args ...string) strin
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(cleanGitEnv(os.Environ()), env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, out)

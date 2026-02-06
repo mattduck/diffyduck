@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/content"
+	"github.com/user/diffyduck/pkg/git"
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"github.com/user/diffyduck/pkg/structure"
@@ -4294,4 +4295,140 @@ func TestSnapshotDiffReadyMsg_StoresSnapshotRefs(t *testing.T) {
 	assert.True(t, resultModel.commits[0].IsSnapshot)
 	assert.Equal(t, "abc123", resultModel.commits[0].SnapshotOldRef)
 	assert.Equal(t, "def456", resultModel.commits[0].SnapshotNewRef)
+}
+
+// =============================================================================
+// SnapshotCreatedMsg handler tests
+// =============================================================================
+
+func TestSnapshotCreatedMsg_Success(t *testing.T) {
+	m := NewWithCommits([]sidebyside.CommitSet{
+		{
+			Info:       sidebyside.CommitInfo{Subject: "initial diff"},
+			IsSnapshot: true,
+			// SHA empty — simulates the initial snapshot before background completes
+		},
+	}, WithSnapshotsEnabled(true), WithBaseSHA("baseabc1234567"), WithGit(&git.MockGit{}))
+
+	msg := SnapshotCreatedMsg{
+		SHA:     "deadbeef1234567890abcdef1234567890abcdef",
+		Subject: "dfd: baseabc @ Feb 5 09:15",
+		Date:    "Feb 5 09:15",
+	}
+
+	newModel, _ := m.Update(msg)
+	result := newModel.(Model)
+
+	// Should append SHA to snapshots list
+	require.Len(t, result.snapshots, 1)
+	assert.Equal(t, "deadbeef1234567890abcdef1234567890abcdef", result.snapshots[0])
+
+	// Should update the first commit's info (SHA truncated to 7 chars)
+	assert.Equal(t, "deadbee", result.commits[0].Info.SHA)
+	assert.Equal(t, "dfd: baseabc @ Feb 5 09:15", result.commits[0].Info.Subject)
+	assert.Equal(t, "Feb 5 09:15", result.commits[0].Info.Date)
+}
+
+func TestSnapshotCreatedMsg_Error(t *testing.T) {
+	m := NewWithCommits([]sidebyside.CommitSet{
+		{Info: sidebyside.CommitInfo{Subject: "diff"}, IsSnapshot: true},
+	}, WithSnapshotsEnabled(true))
+
+	msg := SnapshotCreatedMsg{
+		Err: fmt.Errorf("git error"),
+	}
+
+	newModel, _ := m.Update(msg)
+	result := newModel.(Model)
+
+	// Should disable snapshots
+	assert.False(t, result.snapshotsEnabled)
+	// Should not append anything to snapshots list
+	assert.Empty(t, result.snapshots)
+}
+
+func TestSnapshotCreatedMsg_ShortSHA(t *testing.T) {
+	m := NewWithCommits([]sidebyside.CommitSet{
+		{Info: sidebyside.CommitInfo{}, IsSnapshot: true},
+	}, WithSnapshotsEnabled(true), WithGit(&git.MockGit{}))
+
+	msg := SnapshotCreatedMsg{
+		SHA:     "abc12", // shorter than 7 chars
+		Subject: "short",
+		Date:    "Feb 5 09:15",
+	}
+
+	newModel, _ := m.Update(msg)
+	result := newModel.(Model)
+
+	// SHA should be used as-is (no panic on short string)
+	assert.Equal(t, "abc12", result.commits[0].Info.SHA)
+}
+
+func TestSnapshotCreatedMsg_SkipsUpdateWhenSHAAlreadySet(t *testing.T) {
+	m := NewWithCommits([]sidebyside.CommitSet{
+		{
+			Info:       sidebyside.CommitInfo{SHA: "existing", Subject: "original subject"},
+			IsSnapshot: true,
+		},
+	}, WithSnapshotsEnabled(true), WithGit(&git.MockGit{}))
+
+	msg := SnapshotCreatedMsg{
+		SHA:     "newsha1234567890",
+		Subject: "new subject",
+		Date:    "Feb 6 10:00",
+	}
+
+	newModel, _ := m.Update(msg)
+	result := newModel.(Model)
+
+	// SHA was already set, so the commit info should not be updated
+	assert.Equal(t, "existing", result.commits[0].Info.SHA)
+	assert.Equal(t, "original subject", result.commits[0].Info.Subject)
+	// But the snapshot list should still grow
+	require.Len(t, result.snapshots, 1)
+}
+
+// =============================================================================
+// handleSnapshot (R key) tests
+// =============================================================================
+
+func TestHandleSnapshot_DisabledShowsStatus(t *testing.T) {
+	m := makeTestModel(10)
+	m.snapshotsEnabled = false
+	m.keys = DefaultKeyMap()
+
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	result := newModel.(Model)
+
+	assert.Equal(t, "Snapshots not available (no working tree changes)", result.statusMessage)
+	assert.NotNil(t, cmd, "should return clear-status command")
+}
+
+func TestHandleSnapshot_NoInitialSnapshotShowsStatus(t *testing.T) {
+	m := makeTestModel(10)
+	m.snapshotsEnabled = true
+	m.snapshots = nil // no initial snapshot yet
+	m.keys = DefaultKeyMap()
+
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	result := newModel.(Model)
+
+	assert.Equal(t, "Initial snapshot not ready yet", result.statusMessage)
+	assert.NotNil(t, cmd, "should return clear-status command")
+}
+
+func TestHandleSnapshot_NilGitReturnsNil(t *testing.T) {
+	m := makeTestModel(10)
+	m.snapshotsEnabled = true
+	m.snapshots = []string{"abc123"} // has initial snapshot
+	m.git = nil
+	m.keys = DefaultKeyMap()
+
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	result := newModel.(Model)
+
+	// No status message, no command — just a no-op
+	assert.Empty(t, result.statusMessage)
+	assert.Nil(t, cmd)
 }

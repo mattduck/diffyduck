@@ -31,6 +31,42 @@ func NewWithDir(dir string) *RealGit {
 	return &RealGit{Dir: dir}
 }
 
+// command creates an exec.Cmd for a git invocation, configured for this
+// RealGit's Dir. When Dir is set, the environment is sanitised to remove
+// GIT_DIR, GIT_WORK_TREE, and GIT_INDEX_FILE so that inherited contexts
+// (e.g. pre-commit hooks) cannot redirect commands to a different repo.
+func (g *RealGit) command(args ...string) *exec.Cmd {
+	cmd := exec.Command("git", args...)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+		cmd.Env = cleanGitEnv(os.Environ())
+	}
+	return cmd
+}
+
+// commandWithEnv is like command but merges extra env vars on top.
+// Used by CreateSnapshot which needs GIT_INDEX_FILE set.
+func (g *RealGit) commandWithEnv(env []string, args ...string) *exec.Cmd {
+	cmd := g.command(args...)
+	cmd.Env = append(cmd.Env, env...)
+	return cmd
+}
+
+// cleanGitEnv strips GIT_DIR, GIT_WORK_TREE, and GIT_INDEX_FILE from
+// an environment slice so that commands target the intended repo.
+func cleanGitEnv(environ []string) []string {
+	clean := make([]string, 0, len(environ))
+	for _, e := range environ {
+		if strings.HasPrefix(e, "GIT_DIR=") ||
+			strings.HasPrefix(e, "GIT_WORK_TREE=") ||
+			strings.HasPrefix(e, "GIT_INDEX_FILE=") {
+			continue
+		}
+		clean = append(clean, e)
+	}
+	return clean
+}
+
 // CommitMeta contains metadata about a git commit.
 type CommitMeta struct {
 	SHA     string // full commit hash
@@ -82,10 +118,7 @@ var logMetaFormat = strings.Join([]string{
 // Args are passed through to git show (e.g., ref, paths).
 func (g *RealGit) Show(args ...string) (string, error) {
 	gitArgs := append([]string{"show", "--format="}, prependContextFlag(args)...)
-	cmd := exec.Command("git", gitArgs...)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -106,10 +139,7 @@ func (g *RealGit) Show(args ...string) (string, error) {
 // The second return value is the diff output (starting from "diff --git").
 func (g *RealGit) ShowWithMeta(args ...string) (*CommitMeta, string, error) {
 	gitArgs := append([]string{"show", "--format=" + showMetaFormat}, prependContextFlag(args)...)
-	cmd := exec.Command("git", gitArgs...)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -136,10 +166,7 @@ func (g *RealGit) LogWithMeta(n int) ([]CommitWithDiff, error) {
 		fmt.Sprintf("-n%d", n),
 		"--format=" + logMetaFormat,
 	}
-	cmd := exec.Command("git", gitArgs...)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -173,10 +200,7 @@ func (g *RealGit) LogMetaOnlyRange(skip, limit int) ([]CommitWithStats, error) {
 	if skip > 0 {
 		gitArgs = append(gitArgs, fmt.Sprintf("--skip=%d", skip))
 	}
-	cmd := exec.Command("git", gitArgs...)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -202,10 +226,7 @@ func (g *RealGit) LogPathsOnly(n int) ([]CommitWithPaths, error) {
 		fmt.Sprintf("-n%d", n),
 		"--format=" + logMetaFormat,
 	}
-	cmd := exec.Command("git", gitArgs...)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -233,10 +254,7 @@ func (g *RealGit) LogPathsOnlyRange(skip, limit int) ([]CommitWithPaths, error) 
 	if skip > 0 {
 		gitArgs = append(gitArgs, fmt.Sprintf("--skip=%d", skip))
 	}
-	cmd := exec.Command("git", gitArgs...)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -255,10 +273,7 @@ func (g *RealGit) LogPathsOnlyRange(skip, limit int) ([]CommitWithPaths, error) 
 // CommitCount returns the total number of commits in the repository.
 // Uses git rev-list --count HEAD which is fast even on large repos.
 func (g *RealGit) CommitCount() (int, error) {
-	cmd := exec.Command("git", "rev-list", "--count", "HEAD")
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command("rev-list", "--count", "HEAD")
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -543,10 +558,7 @@ func parseShowOutput(output string) (*CommitMeta, string) {
 // Args are passed through to git diff (e.g., --cached, refs, paths).
 func (g *RealGit) Diff(args ...string) (string, error) {
 	gitArgs := append([]string{"diff"}, prependContextFlag(args)...)
-	cmd := exec.Command("git", gitArgs...)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command(gitArgs...)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -569,10 +581,7 @@ func (g *RealGit) GetFileContent(ref, path string) (string, error) {
 	// Build the ref:path specifier
 	specifier := ref + ":" + path
 
-	cmd := exec.Command("git", "show", specifier)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command("show", specifier)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -594,10 +603,7 @@ func (g *RealGit) GetFileContent(ref, path string) (string, error) {
 func (g *RealGit) GetFileContentReader(ref, path string) (io.ReadCloser, func() error, error) {
 	specifier := ref + ":" + path
 
-	cmd := exec.Command("git", "show", specifier)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command("show", specifier)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -617,10 +623,7 @@ func (g *RealGit) GetFileContentReader(ref, path string) (io.ReadCloser, func() 
 
 // ListUntrackedFiles returns a list of untracked files (excluding ignored files).
 func (g *RealGit) ListUntrackedFiles() ([]string, error) {
-	cmd := exec.Command("git", "ls-files", "--others", "--exclude-standard")
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command("ls-files", "--others", "--exclude-standard")
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -644,10 +647,7 @@ func (g *RealGit) ListUntrackedFiles() ([]string, error) {
 // DiffNewFile generates a diff showing a file as entirely new.
 // Uses git diff --no-index to compare /dev/null against the file.
 func (g *RealGit) DiffNewFile(path string) (string, error) {
-	cmd := exec.Command("git", "diff", "--no-index", "/dev/null", path)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command("diff", "--no-index", "/dev/null", path)
 
 	out, err := cmd.Output()
 	// git diff --no-index returns exit code 1 when files differ, which is expected
@@ -691,10 +691,7 @@ func (g *RealGit) CreateSnapshot(allMode bool, parentSHA string, message string)
 
 	// Copy the current index to the temp file so we start from the current staged state
 	// First, get the git dir to find the real index
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command("rev-parse", "--git-dir")
 	gitDirOut, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("get git dir: %w", err)
@@ -717,21 +714,13 @@ func (g *RealGit) CreateSnapshot(allMode bool, parentSHA string, message string)
 	if allMode {
 		addFlag = "-A" // include untracked
 	}
-	cmd = exec.Command("git", "add", addFlag)
-	cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+tmpIndex)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd = g.commandWithEnv([]string{"GIT_INDEX_FILE=" + tmpIndex}, "add", addFlag)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git add %s: %s", addFlag, strings.TrimSpace(string(out)))
 	}
 
 	// Write the tree
-	cmd = exec.Command("git", "write-tree")
-	cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+tmpIndex)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd = g.commandWithEnv([]string{"GIT_INDEX_FILE=" + tmpIndex}, "write-tree")
 	treeOut, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -746,10 +735,7 @@ func (g *RealGit) CreateSnapshot(allMode bool, parentSHA string, message string)
 	if parentSHA != "" {
 		args = []string{"commit-tree", treeSHA, "-p", parentSHA, "-m", message}
 	}
-	cmd = exec.Command("git", args...)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd = g.command(args...)
 	commitOut, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -772,10 +758,7 @@ const snapshotRefPrefix = "refs/dfd/snapshots/"
 // UpdateSnapshotRef updates refs/dfd/snapshots/<baseSHA> to point to sha.
 func (g *RealGit) UpdateSnapshotRef(baseSHA string, sha string) error {
 	refName := fmt.Sprintf("%s%s", snapshotRefPrefix, baseSHA)
-	cmd := exec.Command("git", "update-ref", refName, sha)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command("update-ref", refName, sha)
 
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git update-ref %s: %s", refName, strings.TrimSpace(string(out)))
@@ -790,10 +773,7 @@ func (g *RealGit) ListSnapshotRefs(baseSHA string) ([]SnapshotInfo, error) {
 	refName := fmt.Sprintf("%s%s", snapshotRefPrefix, baseSHA)
 
 	// Check if the ref exists first
-	checkCmd := exec.Command("git", "rev-parse", "--verify", refName)
-	if g.Dir != "" {
-		checkCmd.Dir = g.Dir
-	}
+	checkCmd := g.command("rev-parse", "--verify", refName)
 	if err := checkCmd.Run(); err != nil {
 		// Ref doesn't exist - no snapshots
 		return nil, nil
@@ -802,10 +782,7 @@ func (g *RealGit) ListSnapshotRefs(baseSHA string) ([]SnapshotInfo, error) {
 	// Use git log to traverse parent chain, stopping at baseSHA
 	// --ancestry-path ensures we only follow the direct line
 	// Format: SHA<NUL>subject<NUL>date, one record per line
-	cmd := exec.Command("git", "log", "--format=%H%x00%s%x00%ci", "--ancestry-path", baseSHA+".."+refName)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command("log", "--format=%H%x00%s%x00%ci", "--ancestry-path", baseSHA+".."+refName)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -859,20 +836,14 @@ func (g *RealGit) DeleteSnapshotRefs(baseSHA string) error {
 	if baseSHA != "" {
 		// Delete single ref for this base
 		refName := fmt.Sprintf("%s%s", snapshotRefPrefix, baseSHA)
-		cmd := exec.Command("git", "update-ref", "-d", refName)
-		if g.Dir != "" {
-			cmd.Dir = g.Dir
-		}
+		cmd := g.command("update-ref", "-d", refName)
 		// Ignore error if ref doesn't exist
 		_ = cmd.Run()
 		return nil
 	}
 
 	// Delete all refs under the prefix
-	cmd := exec.Command("git", "for-each-ref", "--format=%(refname)", snapshotRefPrefix)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
+	cmd := g.command("for-each-ref", "--format=%(refname)", snapshotRefPrefix)
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -896,10 +867,7 @@ func (g *RealGit) DeleteSnapshotRefs(baseSHA string) error {
 		if ref == "" {
 			continue
 		}
-		delCmd := exec.Command("git", "update-ref", "-d", ref)
-		if g.Dir != "" {
-			delCmd.Dir = g.Dir
-		}
+		delCmd := g.command("update-ref", "-d", ref)
 		if out, err := delCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git update-ref -d %s: %s", ref, strings.TrimSpace(string(out)))
 		}
@@ -912,12 +880,9 @@ func (g *RealGit) DeleteSnapshotRefs(baseSHA string) error {
 // Returns the number of deleted refs.
 func (g *RealGit) ExpireOldSnapshotRefs(maxAgeDays int) (int, error) {
 	// Get refs with commit dates using for-each-ref
-	cmd := exec.Command("git", "for-each-ref",
+	cmd := g.command("for-each-ref",
 		"--format=%(refname):%(committerdate:unix)",
 		snapshotRefPrefix)
-	if g.Dir != "" {
-		cmd.Dir = g.Dir
-	}
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -961,10 +926,7 @@ func (g *RealGit) ExpireOldSnapshotRefs(maxAgeDays int) (int, error) {
 	// Delete old refs
 	deleted := 0
 	for _, ref := range refsToDelete {
-		cmd := exec.Command("git", "update-ref", "-d", ref)
-		if g.Dir != "" {
-			cmd.Dir = g.Dir
-		}
+		cmd := g.command("update-ref", "-d", ref)
 		if _, err := cmd.CombinedOutput(); err == nil {
 			deleted++
 		}
