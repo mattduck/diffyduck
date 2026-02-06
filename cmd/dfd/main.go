@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
@@ -14,6 +15,7 @@ import (
 	"github.com/user/diffyduck/internal/tui"
 	"github.com/user/diffyduck/pkg/branches"
 	"github.com/user/diffyduck/pkg/comments"
+	"github.com/user/diffyduck/pkg/config"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/git"
@@ -81,7 +83,7 @@ func main() {
 
 // parsedArgs contains parsed command line arguments.
 type parsedArgs struct {
-	cmd      string   // "diff", "show", "log", "clean"
+	cmd      string   // "diff", "show", "log", "clean", "branches", "config"
 	refs     []string // 0-2 refs for diff, 0-1 for show/log (before --)
 	paths    []string // file paths (after --)
 	excludes []string // --exclude/-e glob patterns
@@ -97,6 +99,13 @@ type parsedArgs struct {
 
 	// branches-specific
 	verbose bool // -v/--verbose
+
+	// config-specific
+	configInit  bool // --init
+	configForce bool // --force
+	configPrint bool // --print
+	configPath  bool // --path
+	configEdit  bool // --edit
 
 	// global
 	debug      bool
@@ -136,7 +145,7 @@ func parseArgs(args []string) (parsedArgs, error) {
 	remaining := args
 	if len(remaining) > 0 {
 		switch remaining[0] {
-		case "diff", "d", "show", "log", "l", "clean", "branches", "b":
+		case "diff", "d", "show", "log", "l", "clean", "branches", "b", "config":
 			result.cmd = expandAlias(remaining[0])
 			result.helpCmd = result.cmd // target for --help flag
 			remaining = remaining[1:]
@@ -273,6 +282,18 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		}
 		p.count = n
 
+	// config flags
+	case arg == "--init":
+		p.configInit = true
+	case arg == "--force":
+		p.configForce = true
+	case arg == "--print":
+		p.configPrint = true
+	case arg == "--path":
+		p.configPath = true
+	case arg == "--edit":
+		p.configEdit = true
+
 	default:
 		return 0, fmt.Errorf("unknown flag: %s", arg)
 	}
@@ -341,6 +362,30 @@ func (p *parsedArgs) validate() error {
 		if p.cached || p.unstaged || p.allMode || p.count > 0 {
 			return fmt.Errorf("branches only accepts -v/--verbose")
 		}
+	case "config":
+		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
+			return fmt.Errorf("config does not accept arguments")
+		}
+		if p.cached || p.unstaged || p.allMode || p.count > 0 {
+			return fmt.Errorf("config does not accept diff/log flags")
+		}
+		if p.configForce && !p.configInit {
+			return fmt.Errorf("--force can only be used with --init")
+		}
+		if p.configInit && p.configPath {
+			return fmt.Errorf("--init and --path cannot be used together")
+		}
+		if p.configPrint && p.configPath {
+			return fmt.Errorf("--print and --path cannot be used together")
+		}
+		if p.configEdit && (p.configInit || p.configPrint || p.configPath) {
+			return fmt.Errorf("--edit cannot be combined with --init, --print, or --path")
+		}
+	}
+
+	// Config-specific flags are only valid for the config command
+	if p.cmd != "config" && (p.configInit || p.configForce || p.configPrint || p.configPath || p.configEdit) {
+		return fmt.Errorf("--init, --force, --print, --path, --edit are only valid for config command")
 	}
 	return nil
 }
@@ -604,6 +649,12 @@ func run() error {
 		return nil
 	}
 
+	// Load user config (missing file is fine — returns zero config)
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
 	// Start CPU profiling if requested
 	if args.cpuProfile != "" {
 		f, err := os.Create(args.cpuProfile)
@@ -627,9 +678,14 @@ func run() error {
 		return runBranches(args.verbose)
 	}
 
+	// Handle config command
+	if args.cmd == "config" {
+		return runConfig(args)
+	}
+
 	// Handle log command separately
 	if args.cmd == "log" {
-		return runLogMode(args)
+		return runLogMode(cfg, args)
 	}
 
 	g := git.New()
@@ -658,8 +714,12 @@ func run() error {
 		}
 	}
 
-	// Determine if snapshots should be enabled
+	// Determine if snapshots should be enabled.
+	// CLI flags (--snapshots/--no-snapshots) take precedence over config.
 	snapshotsDisabled := args.snapshots != nil && !*args.snapshots
+	if !snapshotsDisabled && args.snapshots == nil && cfg.Features.Snapshots != nil && !*cfg.Features.Snapshots {
+		snapshotsDisabled = true
+	}
 	snapshotsEnabled := args.cmd == "diff" &&
 		!snapshotsDisabled &&
 		!args.unstaged &&
@@ -911,8 +971,8 @@ func run() error {
 	// Create comment store for persistence
 	commentStore := comments.NewStore("")
 
-	// Create and run the TUI
-	opts := []tui.Option{tui.WithFetcher(fetcher), tui.WithGit(g), tui.WithCommentStore(commentStore)}
+	// Create and run the TUI (WithConfig first so CLI flags in later Options win)
+	opts := []tui.Option{tui.WithConfig(cfg), tui.WithFetcher(fetcher), tui.WithGit(g), tui.WithCommentStore(commentStore)}
 	if args.debug {
 		opts = append(opts, tui.WithDebugMode())
 	}
@@ -969,6 +1029,84 @@ func runBranches(verbose bool) error {
 	return nil
 }
 
+// runConfig handles the config subcommand: --init, --print, --path, --edit.
+func runConfig(args parsedArgs) error {
+	if args.configPath {
+		fmt.Println(config.Path())
+		return nil
+	}
+
+	if args.configEdit {
+		return runConfigEdit()
+	}
+
+	example := config.GenerateExample(tui.DefaultKeysConfig())
+
+	if args.configInit {
+		path := config.Path()
+
+		// Check if file exists (unless --force)
+		if !args.configForce {
+			if _, err := os.Stat(path); err == nil {
+				return fmt.Errorf("config file already exists at %s (use --force to overwrite)", path)
+			}
+		}
+
+		// Create parent directory
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fmt.Errorf("create config directory: %w", err)
+		}
+
+		if err := os.WriteFile(path, []byte(example), 0o644); err != nil {
+			return fmt.Errorf("write config file: %w", err)
+		}
+
+		fmt.Printf("Wrote default config to %s\n", path)
+		return nil
+	}
+
+	// Default (no flags or --print): print to stdout
+	fmt.Print(example)
+	return nil
+}
+
+// editorCmd returns the user's preferred editor from $VISUAL or $EDITOR,
+// or an empty string if neither is set.
+func editorCmd() string {
+	if e := os.Getenv("VISUAL"); e != "" {
+		return e
+	}
+	return os.Getenv("EDITOR")
+}
+
+// runConfigEdit opens the config file in the user's editor.
+// Creates the file with defaults if it doesn't exist yet.
+func runConfigEdit() error {
+	editor := editorCmd()
+	if editor == "" {
+		return fmt.Errorf("$VISUAL or $EDITOR must be set")
+	}
+
+	path := config.Path()
+
+	// Create with defaults if file doesn't exist
+	if _, err := os.Stat(path); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fmt.Errorf("create config directory: %w", err)
+		}
+		example := config.GenerateExample(tui.DefaultKeysConfig())
+		if err := os.WriteFile(path, []byte(example), 0o644); err != nil {
+			return fmt.Errorf("write config file: %w", err)
+		}
+	}
+
+	cmd := exec.Command("sh", "-c", editor+` "$@"`, "--", path)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // runClean deletes all persisted snapshot refs.
 func runClean() error {
 	g := git.New()
@@ -983,7 +1121,7 @@ func runClean() error {
 }
 
 // runLogMode handles log mode showing multiple commits.
-func runLogMode(args parsedArgs) error {
+func runLogMode(cfg config.Config, args parsedArgs) error {
 	g := git.New()
 
 	// Build extra args for git log (ref range + pathspec)
@@ -1071,6 +1209,7 @@ func runLogMode(args parsedArgs) error {
 	commentStore := comments.NewStore("")
 
 	opts := []tui.Option{
+		tui.WithConfig(cfg),
 		tui.WithGit(g),
 		tui.WithPagination(len(commitSets), initialBatch),
 		tui.WithCommentStore(commentStore),

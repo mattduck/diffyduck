@@ -48,9 +48,9 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case matchesKey(msg, keys.Top):
 		m.helpScroll = 0
 
-	case msg.String() == "g":
-		// Support gg to go to top
-		m.pendingKey = "g"
+	case m.keys.prefixSet[msg.String()]:
+		// Support sequences (e.g. gg to go to top)
+		m.pendingKey = msg.String()
 		return m, nil
 	}
 
@@ -343,7 +343,18 @@ func formatBindingKeys(keys []string) string {
 }
 
 // formatKeyForDisplay converts an internal key name to a human-readable form.
+// For sequences (space-separated tokens like "g g"), each token is formatted
+// individually and rejoined without spaces (e.g. "g g" → "gg", "ctrl+w %" → "C-w%").
 func formatKeyForDisplay(key string) string {
+	// Handle sequences (2+ tokens separated by spaces)
+	if parts := strings.Fields(key); len(parts) > 1 {
+		formatted := make([]string, len(parts))
+		for i, p := range parts {
+			formatted[i] = formatKeyForDisplay(p)
+		}
+		return strings.Join(formatted, "")
+	}
+
 	switch key {
 	case "up":
 		return "↑"

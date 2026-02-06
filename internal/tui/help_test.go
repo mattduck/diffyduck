@@ -228,15 +228,15 @@ func TestAllBindingGroups_GSequencesInNavigation(t *testing.T) {
 	assert.Contains(t, descs, "Go to top")    // gg
 	assert.Contains(t, descs, "Next heading") // gj (gk is paired as Desc2)
 
-	// Check gj has gk as its pair
+	// Check gj has gk as its pair (keys stored as sequences, not display format)
 	for _, b := range navGroup.Bindings {
 		if b.Desc == "Next heading" {
-			assert.Equal(t, []string{"gj"}, b.Keys)
-			assert.Equal(t, []string{"gk"}, b.Keys2)
+			assert.Equal(t, []string{"g j"}, b.Keys)
+			assert.Equal(t, []string{"g k"}, b.Keys2)
 			assert.Equal(t, "previous", b.Desc2)
 		}
 		if b.Desc == "Go to top" {
-			assert.Equal(t, []string{"gg"}, b.Keys)
+			assert.Equal(t, []string{"g g"}, b.Keys)
 		}
 	}
 }

@@ -390,8 +390,6 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	}
 
 	// Build styled ref decorations
-	localRefStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	remoteRefStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	var refsStyled string
 	refsWidth := commitInfo.RefsDisplayWidth()
 	for _, ref := range commitInfo.Refs {

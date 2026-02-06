@@ -7,6 +7,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/user/diffyduck/pkg/config"
+	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"github.com/user/diffyduck/pkg/structure"
 )
@@ -75,7 +77,166 @@ var (
 
 	// Conflict marker styles (bold yellow for merge/rebase conflict markers)
 	conflictMarkerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
+
+	// Ref decoration styles (commit header)
+	localRefStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	remoteRefStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
+
+// ApplyTheme updates package-level style variables based on user theme config.
+// Must be called before the first render. Empty string values are ignored (keep defaults).
+func ApplyTheme(cfg config.ThemeConfig) {
+	if cfg.Added != "" {
+		c := lipgloss.Color(cfg.Added)
+		addedStyle = lipgloss.NewStyle().Foreground(c)
+		inlineAddedStyle = lipgloss.NewStyle().Underline(true).Bold(true).Foreground(c)
+		inlineAddedWhitespaceStyle = lipgloss.NewStyle().Background(c)
+	}
+	if cfg.Removed != "" {
+		c := lipgloss.Color(cfg.Removed)
+		removedStyle = lipgloss.NewStyle().Foreground(c)
+		inlineRemovedStyle = lipgloss.NewStyle().Underline(true).Bold(true).Foreground(c)
+		inlineRemovedWhitespaceStyle = lipgloss.NewStyle().Background(c)
+	}
+	if cfg.Changed != "" {
+		changedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Changed))
+	}
+	if cfg.LineNumber != "" {
+		lineNumStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.LineNumber)).Faint(true)
+	}
+	if cfg.Header != "" {
+		c := lipgloss.Color(cfg.Header)
+		headerStyle = lipgloss.NewStyle().Bold(true).Foreground(c)
+		headerBasenameStyle = lipgloss.NewStyle().Foreground(c)
+	}
+	if cfg.HeaderDir != "" {
+		headerDirStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.HeaderDir))
+	}
+	if cfg.HeaderLine != "" {
+		headerLineStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.HeaderLine))
+	}
+	if cfg.HunkSeparator != "" {
+		hunkSeparatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.HunkSeparator))
+	}
+	if cfg.SearchMatchFg != "" || cfg.SearchMatchBg != "" {
+		s := searchMatchStyle
+		if cfg.SearchMatchFg != "" {
+			s = s.Foreground(lipgloss.Color(cfg.SearchMatchFg))
+		}
+		if cfg.SearchMatchBg != "" {
+			s = s.Background(lipgloss.Color(cfg.SearchMatchBg))
+		}
+		searchMatchStyle = s
+	}
+	if cfg.SearchCurrentFg != "" || cfg.SearchCurrentBg != "" {
+		s := searchCurrentMatchStyle
+		if cfg.SearchCurrentFg != "" {
+			s = s.Foreground(lipgloss.Color(cfg.SearchCurrentFg))
+		}
+		if cfg.SearchCurrentBg != "" {
+			s = s.Background(lipgloss.Color(cfg.SearchCurrentBg))
+		}
+		searchCurrentMatchStyle = s
+	}
+	if cfg.CursorFg != "" || cfg.CursorBg != "" {
+		s := cursorStyle
+		if cfg.CursorFg != "" {
+			s = s.Foreground(lipgloss.Color(cfg.CursorFg))
+		}
+		if cfg.CursorBg != "" {
+			s = s.Background(lipgloss.Color(cfg.CursorBg))
+		}
+		cursorStyle = s
+		visualSelectionStyle = s
+	}
+	if cfg.CursorArrow != "" {
+		cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.CursorArrow))
+	}
+	if cfg.StatusFg != "" || cfg.StatusBg != "" {
+		s := statusStyle
+		if cfg.StatusFg != "" {
+			s = s.Foreground(lipgloss.Color(cfg.StatusFg))
+		}
+		if cfg.StatusBg != "" {
+			s = s.Background(lipgloss.Color(cfg.StatusBg))
+		}
+		statusStyle = s
+	}
+	if cfg.CommitTree != "" {
+		commitTreeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.CommitTree))
+	}
+	if cfg.SnapshotTree != "" {
+		snapshotTreeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.SnapshotTree))
+	}
+	if cfg.LocalRef != "" {
+		localRefStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.LocalRef))
+	}
+	if cfg.RemoteRef != "" {
+		remoteRefStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.RemoteRef))
+	}
+	if cfg.ConflictMarker != "" {
+		conflictMarkerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.ConflictMarker)).Bold(true)
+	}
+}
+
+// buildHighlightTheme returns a highlight.Theme with syntax config overrides applied.
+// Returns DefaultTheme if cfg is nil.
+func buildHighlightTheme(cfg *config.SyntaxConfig) highlight.Theme {
+	theme := highlight.DefaultTheme()
+	if cfg == nil {
+		return theme
+	}
+
+	set := func(cat highlight.Category, color string) {
+		theme.Colors[cat] = lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+	}
+	setBold := func(cat highlight.Category, color string) {
+		theme.Colors[cat] = lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true)
+	}
+
+	if cfg.Keyword != "" {
+		set(highlight.CategoryKeyword, cfg.Keyword)
+	}
+	if cfg.String != "" {
+		set(highlight.CategoryString, cfg.String)
+	}
+	if cfg.Number != "" {
+		setBold(highlight.CategoryNumber, cfg.Number)
+		setBold(highlight.CategoryBoolean, cfg.Number)
+		setBold(highlight.CategoryNil, cfg.Number)
+		setBold(highlight.CategoryConstant, cfg.Number)
+	}
+	if cfg.Comment != "" {
+		set(highlight.CategoryComment, cfg.Comment)
+		set(highlight.CategoryDocComment, cfg.Comment)
+	}
+	if cfg.Function != "" {
+		set(highlight.CategoryFunction, cfg.Function)
+		set(highlight.CategoryFunctionCall, cfg.Function)
+	}
+	if cfg.Type != "" {
+		set(highlight.CategoryType, cfg.Type)
+	}
+	if cfg.Field != "" {
+		set(highlight.CategoryField, cfg.Field)
+	}
+	if cfg.Operator != "" {
+		set(highlight.CategoryOperator, cfg.Operator)
+		set(highlight.CategoryPunctuation, cfg.Operator)
+	}
+	if cfg.Tag != "" {
+		set(highlight.CategoryTag, cfg.Tag)
+		set(highlight.CategoryAttribute, cfg.Tag)
+	}
+	if cfg.Namespace != "" {
+		set(highlight.CategoryNamespace, cfg.Namespace)
+	}
+	if cfg.Variable != "" {
+		set(highlight.CategoryVariable, cfg.Variable)
+		set(highlight.CategoryParameter, cfg.Variable)
+	}
+	return theme
+}
 
 // determineFileHeaderMode computes the HeaderMode for a file node based on its fold state.
 //

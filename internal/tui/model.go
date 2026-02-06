@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/comments"
+	"github.com/user/diffyduck/pkg/config"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/git"
 	"github.com/user/diffyduck/pkg/highlight"
@@ -498,6 +499,28 @@ func WithPersistedSnapshots(snapshots []string) Option {
 func WithCommentStore(store *comments.Store) Option {
 	return func(m *Model) {
 		m.commentStore = store
+	}
+}
+
+// WithConfig applies user configuration. It should be placed before other
+// Options so that CLI flags (applied via later Options) take precedence.
+func WithConfig(cfg config.Config) Option {
+	return func(m *Model) {
+		m.keys = ApplyKeysConfig(cfg.Keys)
+		if err := ValidateBindings(m.keys); err != nil {
+			m.statusMessage = "config: " + err.Error()
+			m.statusMessageTime = time.Now()
+		}
+		ApplyTheme(cfg.Theme)
+		if cfg.Theme.Syntax != nil {
+			m.highlighter = highlight.NewWithTheme(buildHighlightTheme(cfg.Theme.Syntax))
+		}
+		if cfg.Features.HScrollStep != nil {
+			m.hscrollStep = *cfg.Features.HScrollStep
+		}
+		if cfg.Features.CommitBatchSize != nil {
+			m.commitBatchSize = *cfg.Features.CommitBatchSize
+		}
 	}
 }
 

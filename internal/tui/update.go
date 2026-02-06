@@ -336,16 +336,13 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Handle multi-key sequences first (before mode checks, since prefix
-	// could have been set in any mode that supports g-prefix)
-	if m.pendingKey == "g" {
-		return m.handlePendingG(msg)
-	}
-	if m.pendingKey == "ctrl+w" {
-		return m.handlePendingCtrlW(msg)
+	// could have been set in any mode that supports sequences)
+	if m.pendingKey != "" {
+		return m.handlePendingKey(msg)
 	}
 
-	// Toggle help screen (C-h) — available except in text-editing modes
-	if msg.String() == "ctrl+h" {
+	// Toggle help screen — available except in text-editing modes
+	if matchesKey(msg, m.keys.Help) {
 		m.helpMode = !m.helpMode
 		m.helpScroll = 0
 		if m.helpMode {
@@ -359,9 +356,9 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleHelpKey(msg)
 	}
 
-	// Handle visual mode - exit on ESC or C-g, otherwise delegate to normal keys
+	// Handle visual mode - exit keys, otherwise delegate to normal keys
 	if m.w().visualSelection.Active {
-		if msg.String() == "esc" || msg.String() == "ctrl+g" {
+		if matchesKey(msg, m.keys.VisualExit) {
 			m.w().visualSelection.Active = false
 			return m, nil
 		}
@@ -369,12 +366,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Check for prefix keys that start multi-key sequences
-	if msg.String() == "g" {
-		m.pendingKey = "g"
-		return m, nil
-	}
-	if msg.String() == "ctrl+w" {
-		m.pendingKey = "ctrl+w"
+	if m.keys.prefixSet[msg.String()] {
+		m.pendingKey = msg.String()
 		return m, nil
 	}
 
@@ -1248,84 +1241,94 @@ func (m Model) handleSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handlePendingG handles the second key after 'g' is pressed.
-func (m Model) handlePendingG(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// handlePendingKey handles the second key of a multi-key sequence.
+// This replaces the per-prefix handlers (handlePendingG, handlePendingCtrlW)
+// with a single generic handler that uses matchesSequence.
+func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	prefix := m.pendingKey
 	m.pendingKey = "" // Always clear pending state
 
-	// In help mode, only gg is meaningful
+	keys := m.keys
+
+	// In help mode, only GoToTop (gg) is meaningful
 	if m.helpMode {
-		if msg.String() == "g" {
+		if matchesSequence(prefix, msg, keys.GoToTop) {
 			m.helpScroll = 0
 		}
 		return m, nil
 	}
 
-	switch msg.String() {
-	case "g":
-		// gg: go to top
+	// Help toggle (supports sequence bindings like "g h")
+	if matchesSequence(prefix, msg, keys.Help) {
+		m.helpMode = !m.helpMode
+		m.helpScroll = 0
+		if m.helpMode {
+			m.helpLines = m.buildHelpLines()
+		}
+		return m, nil
+	}
+
+	// Navigation sequences
+	if matchesSequence(prefix, msg, keys.GoToTop) {
 		m.w().scroll = m.minScroll()
 		m.resetSearchMatchForRow()
-	case "j":
-		// gj: next node (commit header, file header, or hunk separator)
+		return m, nil
+	}
+	if matchesSequence(prefix, msg, keys.NextHeading) {
 		m.goToNextHeading()
 		m.resetSearchMatchForRow()
-	case "k":
-		// gk: previous node (commit header, file header, or hunk separator)
+		return m, nil
+	}
+	if matchesSequence(prefix, msg, keys.PrevHeading) {
 		m.goToPrevHeading()
 		m.resetSearchMatchForRow()
+		return m, nil
 	}
-	// Any other key just cancels the pending state without action
 
-	return m, nil
-}
-
-// handlePendingCtrlW handles the second key after Ctrl+W prefix.
-// Ctrl+W %: create vertical split (side-by-side)
-// Ctrl+W ": create horizontal split (stacked top/bottom)
-// Ctrl+W x: close current window
-// Vertical split navigation/resize:
-//
-//	Ctrl+W h/l: focus left/right window
-//	Ctrl+W Ctrl+H/L: resize left/right
-//
-// Horizontal split navigation/resize:
-//
-//	Ctrl+W j/k: focus down/up window
-//	Ctrl+W Ctrl+J/K: resize down/up
-func (m Model) handlePendingCtrlW(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	m.pendingKey = "" // Always clear pending state
-
-	switch msg.String() {
-	case "%":
-		// Create vertical split (side-by-side)
+	// Window management sequences
+	if matchesSequence(prefix, msg, keys.WinSplitV) {
 		return m.windowSplitVertical()
-	case "\"":
-		// Create horizontal split (stacked top/bottom)
+	}
+	if matchesSequence(prefix, msg, keys.WinSplitH) {
 		return m.windowSplitHorizontal()
-	case "x":
-		// Close current window
+	}
+	if matchesSequence(prefix, msg, keys.WinClose) {
 		return m.windowClose()
-	// Vertical split: h/l for navigation, Ctrl+H/L for resize
-	case "h":
+	}
+	if matchesSequence(prefix, msg, keys.WinFocusLeft) {
 		return m.windowFocusLeft()
-	case "l":
+	}
+	if matchesSequence(prefix, msg, keys.WinFocusRight) {
 		return m.windowFocusRight()
-	case "ctrl+h":
-		return m.windowResizeLeft()
-	case "ctrl+l":
-		return m.windowResizeRight()
-	// Horizontal split: j/k for navigation, Ctrl+J/K for resize
-	case "j":
-		return m.windowFocusDown()
-	case "k":
+	}
+	if matchesSequence(prefix, msg, keys.WinFocusUp) {
 		return m.windowFocusUp()
-	case "ctrl+j":
-		return m.windowResizeDown()
-	case "ctrl+k":
+	}
+	if matchesSequence(prefix, msg, keys.WinFocusDown) {
+		return m.windowFocusDown()
+	}
+	if matchesSequence(prefix, msg, keys.WinResizeLeft) {
+		return m.windowResizeLeft()
+	}
+	if matchesSequence(prefix, msg, keys.WinResizeRight) {
+		return m.windowResizeRight()
+	}
+	if matchesSequence(prefix, msg, keys.WinResizeUp) {
 		return m.windowResizeUp()
 	}
-	// Any other key just cancels the pending state without action
+	if matchesSequence(prefix, msg, keys.WinResizeDown) {
+		return m.windowResizeDown()
+	}
 
+	// Visual exit (supports sequence bindings)
+	if matchesSequence(prefix, msg, keys.VisualExit) {
+		if m.w().visualSelection.Active {
+			m.w().visualSelection.Active = false
+		}
+		return m, nil
+	}
+
+	// Any other key just cancels the pending state without action
 	return m, nil
 }
 

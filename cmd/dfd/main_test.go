@@ -616,3 +616,126 @@ func TestParseArgs_CombinedFlags(t *testing.T) {
 	assert.Equal(t, []string{"vendor/**", "*.md"}, result.excludes)
 	assert.Equal(t, []string{"src/"}, result.paths)
 }
+
+func TestParseArgs_Config(t *testing.T) {
+	result, err := parseArgs([]string{"config"})
+	require.NoError(t, err)
+	assert.Equal(t, "config", result.cmd)
+	assert.False(t, result.configInit)
+	assert.False(t, result.configPrint)
+	assert.False(t, result.configPath)
+}
+
+func TestParseArgs_ConfigInit(t *testing.T) {
+	result, err := parseArgs([]string{"config", "--init"})
+	require.NoError(t, err)
+	assert.True(t, result.configInit)
+	assert.False(t, result.configForce)
+}
+
+func TestParseArgs_ConfigInitForce(t *testing.T) {
+	result, err := parseArgs([]string{"config", "--init", "--force"})
+	require.NoError(t, err)
+	assert.True(t, result.configInit)
+	assert.True(t, result.configForce)
+}
+
+func TestParseArgs_ConfigPrint(t *testing.T) {
+	result, err := parseArgs([]string{"config", "--print"})
+	require.NoError(t, err)
+	assert.True(t, result.configPrint)
+}
+
+func TestParseArgs_ConfigPath(t *testing.T) {
+	result, err := parseArgs([]string{"config", "--path"})
+	require.NoError(t, err)
+	assert.True(t, result.configPath)
+}
+
+func TestParseArgs_ConfigForceWithoutInit(t *testing.T) {
+	_, err := parseArgs([]string{"config", "--force"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--force can only be used with --init")
+}
+
+func TestParseArgs_ConfigInitAndPath(t *testing.T) {
+	_, err := parseArgs([]string{"config", "--init", "--path"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--init and --path cannot be used together")
+}
+
+func TestParseArgs_ConfigPrintAndPath(t *testing.T) {
+	_, err := parseArgs([]string{"config", "--print", "--path"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--print and --path cannot be used together")
+}
+
+func TestParseArgs_ConfigEdit(t *testing.T) {
+	result, err := parseArgs([]string{"config", "--edit"})
+	require.NoError(t, err)
+	assert.True(t, result.configEdit)
+}
+
+func TestParseArgs_ConfigEditConflicts(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"edit+init", []string{"config", "--edit", "--init"}},
+		{"edit+print", []string{"config", "--edit", "--print"}},
+		{"edit+path", []string{"config", "--edit", "--path"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseArgs(tt.args)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "--edit cannot be combined")
+		})
+	}
+}
+
+func TestParseArgs_ConfigFlagsOnDiff(t *testing.T) {
+	_, err := parseArgs([]string{"diff", "--init"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid for config command")
+}
+
+func TestParseArgs_ConfigEditOnDiff(t *testing.T) {
+	_, err := parseArgs([]string{"diff", "--edit"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid for config command")
+}
+
+func TestParseArgs_ConfigWithArgs(t *testing.T) {
+	_, err := parseArgs([]string{"config", "foo"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "does not accept arguments")
+}
+
+func TestEditorCmd(t *testing.T) {
+	// Save and restore env
+	origVisual := os.Getenv("VISUAL")
+	origEditor := os.Getenv("EDITOR")
+	t.Cleanup(func() {
+		os.Setenv("VISUAL", origVisual)
+		os.Setenv("EDITOR", origEditor)
+	})
+
+	t.Run("VISUAL takes precedence", func(t *testing.T) {
+		os.Setenv("VISUAL", "code")
+		os.Setenv("EDITOR", "vim")
+		assert.Equal(t, "code", editorCmd())
+	})
+
+	t.Run("EDITOR fallback", func(t *testing.T) {
+		os.Unsetenv("VISUAL")
+		os.Setenv("EDITOR", "vim")
+		assert.Equal(t, "vim", editorCmd())
+	})
+
+	t.Run("empty when neither set", func(t *testing.T) {
+		os.Unsetenv("VISUAL")
+		os.Unsetenv("EDITOR")
+		assert.Equal(t, "", editorCmd())
+	})
+}
