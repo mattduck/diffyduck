@@ -26,11 +26,14 @@ func TestParseArgs_SubcommandDetection(t *testing.T) {
 		wantCmd string
 	}{
 		{"diff explicit", []string{"diff"}, "diff"},
+		{"diff alias", []string{"d"}, "diff"},
 		{"diff default", []string{"HEAD"}, "diff"},
 		{"show", []string{"show"}, "show"},
 		{"log", []string{"log"}, "log"},
+		{"log alias", []string{"l"}, "log"},
 		{"clean", []string{"clean"}, "clean"},
 		{"branches", []string{"branches"}, "branches"},
+		{"branches alias", []string{"b"}, "branches"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -485,8 +488,11 @@ func TestParseArgs_HelpFlag(t *testing.T) {
 		{"-h bare", []string{"-h"}, ""},
 		{"diff --help", []string{"diff", "--help"}, "diff"},
 		{"diff -h", []string{"diff", "-h"}, "diff"},
+		{"d --help", []string{"d", "--help"}, "diff"},
 		{"show --help", []string{"show", "--help"}, "show"},
 		{"log -h", []string{"log", "-h"}, "log"},
+		{"l -h", []string{"l", "-h"}, "log"},
+		{"b --help", []string{"b", "--help"}, "branches"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -506,9 +512,13 @@ func TestParseArgs_HelpSubcommand(t *testing.T) {
 	}{
 		{"help bare", []string{"help"}, ""},
 		{"help diff", []string{"help", "diff"}, "diff"},
+		{"help d", []string{"help", "d"}, "diff"},
 		{"help show", []string{"help", "show"}, "show"},
 		{"help log", []string{"help", "log"}, "log"},
+		{"help l", []string{"help", "l"}, "log"},
 		{"help clean", []string{"help", "clean"}, "clean"},
+		{"help branches", []string{"help", "branches"}, "branches"},
+		{"help b", []string{"help", "b"}, "branches"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -539,10 +549,10 @@ func TestPrintUsage_General(t *testing.T) {
 	})
 	assert.Contains(t, output, "dfd - terminal side-by-side diff viewer")
 	assert.Contains(t, output, "Commands:")
-	assert.Contains(t, output, "diff")
+	assert.Contains(t, output, "diff, d")
 	assert.Contains(t, output, "show")
-	assert.Contains(t, output, "log")
-	assert.Contains(t, output, "clean")
+	assert.Contains(t, output, "log, l")
+	assert.Contains(t, output, "branches, b")
 	assert.Contains(t, output, "--help")
 	assert.Contains(t, output, "--version")
 }

@@ -73,6 +73,10 @@ Test state transitions, not rendered output - assert `model.scroll == 5`, not pa
 
 **For TUI tests:** Use `MockGit` — no real git operations needed.
 
+## CLI Help
+
+Always update help output, usage strings, and the C-h help function when adding or changing CLI features.
+
 ## Commit Conventions
 
 Use commitlint keywords: `feat`, `fix`, `refactor`, `test`, `docs`, `style`, `build`, `chore`, `ci`, `perf`

@@ -113,6 +113,20 @@ type parsedArgs struct {
 	ref2 string
 }
 
+// expandAlias maps single-letter subcommand aliases to their canonical names.
+func expandAlias(s string) string {
+	switch s {
+	case "d":
+		return "diff"
+	case "l":
+		return "log"
+	case "b":
+		return "branches"
+	default:
+		return s
+	}
+}
+
 // parseArgs parses command line arguments into structured fields.
 // Unknown flags produce an error. No arguments are passed through to git verbatim.
 func parseArgs(args []string) (parsedArgs, error) {
@@ -122,16 +136,16 @@ func parseArgs(args []string) (parsedArgs, error) {
 	remaining := args
 	if len(remaining) > 0 {
 		switch remaining[0] {
-		case "diff", "show", "log", "clean", "branches":
-			result.cmd = remaining[0]
-			result.helpCmd = remaining[0] // target for --help flag
+		case "diff", "d", "show", "log", "l", "clean", "branches", "b":
+			result.cmd = expandAlias(remaining[0])
+			result.helpCmd = result.cmd // target for --help flag
 			remaining = remaining[1:]
 		case "help":
 			result.showHelp = true
 			remaining = remaining[1:]
-			// Optional target command: "help diff", "help show", etc.
+			// Optional target command: "help diff", "help d", etc.
 			if len(remaining) > 0 {
-				result.helpCmd = remaining[0]
+				result.helpCmd = expandAlias(remaining[0])
 			}
 			return result, nil
 		}
@@ -478,10 +492,12 @@ Usage:
   dfd <command> [flags] [args]
 
 Commands:
-  diff       Compare changes (default)
+  diff, d    Compare changes (default)
   show       Show a commit
-  log        Browse commit history
+  log, l     Browse commit history
   clean      Delete persisted snapshots
+  branches, b
+             Show branch dependency tree
 
 Global flags:
   -h, --help       Show help
