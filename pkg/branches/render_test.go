@@ -75,8 +75,8 @@ func TestRender_LinearChain(t *testing.T) {
 
 	// Non-verbose: should have tree structure, counts, SHA, date — but not subject
 	assert.Contains(t, got, "main")
+	assert.Contains(t, got, "┌─")
 	assert.Contains(t, got, "├─")
-	assert.Contains(t, got, "└─")
 	assert.Contains(t, got, "* fourth")
 	assert.Contains(t, got, "+3 -2")
 	assert.Contains(t, got, "+1")
@@ -113,6 +113,7 @@ func TestRender_SingleBranch(t *testing.T) {
 	assert.Contains(t, got, "a1b2c3d")
 	assert.Contains(t, got, "1h ago")
 	// No tree connectors for single root
+	assert.NotContains(t, got, "┌─")
 	assert.NotContains(t, got, "├─")
 	assert.NotContains(t, got, "└─")
 }

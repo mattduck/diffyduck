@@ -46,8 +46,8 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 
 	var lines []line
 
-	var walk func(node *BranchNode, prefix string, isLast bool, isRoot bool)
-	walk = func(node *BranchNode, prefix string, isLast bool, isRoot bool) {
+	var walk func(node *BranchNode, prefix string, isFirst bool, isRoot bool)
+	walk = func(node *BranchNode, prefix string, isFirst bool, isRoot bool) {
 		// Build name column (plain text for width calculation)
 		var nameCol string
 		displayName := node.Name
@@ -63,8 +63,8 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			}
 		} else {
 			connector := "├─ "
-			if isLast {
-				connector = "└─ "
+			if isFirst {
+				connector = "┌─ "
 			}
 			if node.IsHead {
 				nameCol = prefix + connector + "* " + displayName
@@ -118,6 +118,19 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			}
 		}
 
+		// Recurse into children first (bottom-up: children appear above parent)
+		childPrefix := prefix
+		if !isRoot {
+			if isFirst {
+				childPrefix = prefix + "   "
+			} else {
+				childPrefix = prefix + "│  "
+			}
+		}
+		for i, child := range node.Children {
+			walk(child, childPrefix, i == 0, false)
+		}
+
 		lines = append(lines, line{
 			nameCol:        nameCol,
 			countsCol:      countsCol,
@@ -132,19 +145,6 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			upstreamBehind: upstreamBehind,
 			upstreamGone:   upstreamGone,
 		})
-
-		// Recurse into children
-		childPrefix := prefix
-		if !isRoot {
-			if isLast {
-				childPrefix = prefix + "   "
-			} else {
-				childPrefix = prefix + "│  "
-			}
-		}
-		for i, child := range node.Children {
-			walk(child, childPrefix, i == len(node.Children)-1, false)
-		}
 	}
 
 	for i, root := range roots {
