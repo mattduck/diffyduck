@@ -1,4 +1,4 @@
-.PHONY: build install test check fmt lint clean update-golden fetch-queries
+.PHONY: build install test check fmt lint clean update-golden fetch-queries bootstrap
 
 # Build the binary
 build:
@@ -62,5 +62,10 @@ cover:
 #   2. Reorder patterns if needed (general before specific for "last match wins")
 #   3. Re-apply any LOCAL MODIFICATION sections
 # See pkg/highlight/queries/fetch_queries.sh for details.
+# Download generated parser files that are too large to commit (e.g. SQL ~38MB).
+# Run this once after cloning before building.
+bootstrap:
+	go generate ./pkg/highlight/grammars/...
+
 fetch-queries:
 	./pkg/highlight/queries/fetch_queries.sh
