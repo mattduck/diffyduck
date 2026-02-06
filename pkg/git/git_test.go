@@ -2,6 +2,9 @@ package git
 
 import (
 	"errors"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -603,6 +606,32 @@ func TestMockGit_LogPathsOnly(t *testing.T) {
 	assert.Equal(t, 1, len(commits[1].Files))
 }
 
+// =============================================================================
+// Snapshot Ref Tests
+// =============================================================================
+
+func TestMockGit_SnapshotRefs(t *testing.T) {
+	mock := &MockGit{}
+
+	// UpdateSnapshotRef is a no-op
+	err := mock.UpdateSnapshotRef("base-sha", "abc123")
+	require.NoError(t, err)
+
+	// ListSnapshotRefs returns empty
+	refs, err := mock.ListSnapshotRefs("base-sha")
+	require.NoError(t, err)
+	assert.Nil(t, refs)
+
+	// DeleteSnapshotRefs is a no-op
+	err = mock.DeleteSnapshotRefs("base-sha")
+	require.NoError(t, err)
+
+	// ExpireOldSnapshotRefs is a no-op
+	deleted, err := mock.ExpireOldSnapshotRefs(14)
+	require.NoError(t, err)
+	assert.Equal(t, 0, deleted)
+}
+
 func TestPrependContextFlag(t *testing.T) {
 	tests := []struct {
 		name string
@@ -641,5 +670,130 @@ func TestPrependContextFlag(t *testing.T) {
 			got := prependContextFlag(tt.args)
 			assert.Equal(t, tt.want, got)
 		})
+	}
+}
+
+// =============================================================================
+// Integration Tests for Snapshot Refs (requires real git repo)
+// =============================================================================
+
+func TestRealGit_SnapshotRefs_Integration(t *testing.T) {
+	// Skip if no git available
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	// Create a temp directory with a git repo
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	runGit(t, tmpDir, "init")
+
+	// Create initial commit (this is our base)
+	// Use --no-verify to skip inherited pre-commit hooks
+	// Use environment variables for author/committer to avoid touching any git config
+	writeFile(t, tmpDir, "test.txt", "hello")
+	runGit(t, tmpDir, "add", "test.txt")
+	runGitWithEnv(t, tmpDir, []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}, "commit", "--no-verify", "-m", "initial")
+	baseSHA := strings.TrimSpace(runGit(t, tmpDir, "rev-parse", "HEAD"))
+
+	g := NewWithDir(tmpDir)
+
+	// Test ListSnapshotRefs when no ref exists
+	refs, err := g.ListSnapshotRefs(baseSHA)
+	require.NoError(t, err)
+	assert.Nil(t, refs, "should have no refs initially")
+
+	// Create a snapshot commit with baseSHA as parent
+	snapshot1, err := g.CreateSnapshot(false, baseSHA, "dfd: test @ now")
+	require.NoError(t, err)
+
+	// Update the snapshot ref to point to snapshot1
+	err = g.UpdateSnapshotRef(baseSHA, snapshot1)
+	require.NoError(t, err)
+
+	// Verify ref was created and lists the snapshot
+	refs, err = g.ListSnapshotRefs(baseSHA)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(refs), "should have 1 snapshot")
+	assert.Equal(t, snapshot1, refs[0].SHA)
+	assert.Equal(t, "dfd: test @ now", refs[0].Subject)
+
+	// Create another snapshot with snapshot1 as parent
+	snapshot2, err := g.CreateSnapshot(false, snapshot1, "dfd: test @ now")
+	require.NoError(t, err)
+
+	// Update ref to point to latest
+	err = g.UpdateSnapshotRef(baseSHA, snapshot2)
+	require.NoError(t, err)
+
+	// Should now list both snapshots (oldest first)
+	refs, err = g.ListSnapshotRefs(baseSHA)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(refs), "should have 2 snapshots")
+	assert.Equal(t, snapshot1, refs[0].SHA, "first should be oldest")
+	assert.Equal(t, snapshot2, refs[1].SHA, "second should be newest")
+
+	// Test DeleteSnapshotRefs
+	err = g.DeleteSnapshotRefs(baseSHA)
+	require.NoError(t, err)
+
+	// Verify ref deleted (ListSnapshotRefs returns nil when ref doesn't exist)
+	refs, err = g.ListSnapshotRefs(baseSHA)
+	require.NoError(t, err)
+	assert.Nil(t, refs, "should have no refs after delete")
+}
+
+func TestRealGit_DeleteSnapshotRefs_WhenEmpty(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+
+	g := NewWithDir(tmpDir)
+
+	// Should not error when there are no refs to delete
+	// Empty string means delete all refs across all bases
+	err := g.DeleteSnapshotRefs("")
+	require.NoError(t, err)
+}
+
+// Helper functions for integration tests
+
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+	return string(out)
+}
+
+func runGitWithEnv(t *testing.T, dir string, env []string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+	return string(out)
+}
+
+func writeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := dir + "/" + name
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write file %s: %v", path, err)
 	}
 }

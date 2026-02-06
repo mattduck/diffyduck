@@ -135,11 +135,31 @@ func (m *MockGit) DiffNewFile(path string) (string, error) {
 }
 
 // CreateSnapshot returns a fake SHA for testing (mock doesn't actually create commits).
-func (m *MockGit) CreateSnapshot(allMode bool) (string, error) {
+func (m *MockGit) CreateSnapshot(allMode bool, parentSHA string, message string) (string, error) {
 	return "mock-snapshot-sha", nil
 }
 
 // DiffSnapshots returns the preconfigured diff output (mock treats all diffs the same).
 func (m *MockGit) DiffSnapshots(sha1, sha2 string) (string, error) {
 	return m.DiffOutput, m.DiffError
+}
+
+// UpdateSnapshotRef is a no-op for the mock (doesn't persist refs).
+func (m *MockGit) UpdateSnapshotRef(baseSHA string, sha string) error {
+	return nil
+}
+
+// ListSnapshotRefs returns an empty list (mock doesn't persist refs).
+func (m *MockGit) ListSnapshotRefs(baseSHA string) ([]SnapshotInfo, error) {
+	return nil, nil
+}
+
+// DeleteSnapshotRefs is a no-op for the mock (nothing to delete).
+func (m *MockGit) DeleteSnapshotRefs(baseSHA string) error {
+	return nil
+}
+
+// ExpireOldSnapshotRefs is a no-op for the mock (nothing to expire).
+func (m *MockGit) ExpireOldSnapshotRefs(maxAgeDays int) (int, error) {
+	return 0, nil
 }

@@ -211,10 +211,11 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	authorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 
-	// Tree style: snapshots use magenta (color 5), commits use yellow (color 3)
+	// Tree style and SHA style: snapshots use magenta (color 5), commits use yellow (color 3)
 	treeStyle := commitTreeStyle
 	if commit.IsSnapshot {
 		treeStyle = snapshotTreeStyle
+		shaStyle = snapshotTreeStyle
 	}
 
 	// Fold icon colour matches tree style, fg=15 when cursor is on row

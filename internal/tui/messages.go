@@ -110,8 +110,10 @@ type TotalCommitCountMsg struct {
 
 // SnapshotCreatedMsg is sent when a snapshot has been created.
 type SnapshotCreatedMsg struct {
-	SHA string // commit SHA of the snapshot
-	Err error  // error if snapshot creation failed
+	SHA     string // commit SHA of the snapshot
+	Subject string // commit message (for display)
+	Date    string // formatted date (for display)
+	Err     error  // error if snapshot creation failed
 }
 
 // SnapshotDiffReadyMsg is sent when a snapshot diff has been computed.

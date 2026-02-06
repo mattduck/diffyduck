@@ -235,6 +235,8 @@ type Model struct {
 	snapshots        []string // list of snapshot commit SHAs (index 0 is initial snapshot)
 	snapshotCount    int      // counter for "Diff N" naming
 	allMode          bool     // true if --all flag was used (include untracked files in snapshots)
+	continueMode     bool     // true if --continue flag was used (load persisted snapshots)
+	baseSHA          string   // SHA of the base ref we're diffing against (for keying snapshot refs)
 }
 
 // DefaultHScrollStep is the default number of columns to scroll horizontally.
@@ -440,6 +442,31 @@ func WithSnapshotsEnabled(enabled bool) Option {
 	}
 }
 
+// WithContinueMode enables continue mode, which loads persisted snapshots
+// from a previous session.
+func WithContinueMode(enabled bool) Option {
+	return func(m *Model) {
+		m.continueMode = enabled
+	}
+}
+
+// WithBaseSHA sets the SHA of the base ref we're diffing against.
+// This is used as the key for persisting snapshot refs.
+func WithBaseSHA(sha string) Option {
+	return func(m *Model) {
+		m.baseSHA = sha
+	}
+}
+
+// WithPersistedSnapshots sets the initial snapshots loaded from persistence.
+// This is used with continue mode to resume from a previous session.
+func WithPersistedSnapshots(snapshots []string) Option {
+	return func(m *Model) {
+		m.snapshots = snapshots
+		m.snapshotCount = len(snapshots)
+	}
+}
+
 // New creates a new Model with the given file pairs.
 // This wraps files in a single CommitSet for backward compatibility.
 func New(files []sidebyside.FilePair, opts ...Option) Model {
@@ -616,6 +643,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 // createSnapshot returns a command that creates a snapshot of the working tree.
+// Parent is the last snapshot if any exist, otherwise baseSHA.
 func (m Model) createSnapshot() tea.Cmd {
 	if m.git == nil {
 		return nil
@@ -623,10 +651,25 @@ func (m Model) createSnapshot() tea.Cmd {
 
 	gitClient := m.git
 	allMode := m.allMode
+	baseSHA := m.baseSHA
+
+	// Parent is last snapshot if any exist, otherwise baseSHA
+	parentSHA := baseSHA
+	if len(m.snapshots) > 0 {
+		parentSHA = m.snapshots[len(m.snapshots)-1]
+	}
+
+	// Format commit message: "dfd: <sha> @ <datetime>"
+	baseShort := baseSHA
+	if len(baseShort) > 7 {
+		baseShort = baseShort[:7]
+	}
+	dateStr := time.Now().Format("Jan 2 15:04")
+	message := fmt.Sprintf("dfd: %s @ %s", baseShort, dateStr)
 
 	return func() tea.Msg {
-		sha, err := gitClient.CreateSnapshot(allMode)
-		return SnapshotCreatedMsg{SHA: sha, Err: err}
+		sha, err := gitClient.CreateSnapshot(allMode, parentSHA, message)
+		return SnapshotCreatedMsg{SHA: sha, Subject: message, Date: dateStr, Err: err}
 	}
 }
 

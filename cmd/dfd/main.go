@@ -56,6 +56,9 @@ func parseArgs(args []string) parsedArgs {
 		case "pager":
 			result.cmd = "pager"
 			result.gitArgs = args[1:]
+		case "clean":
+			result.cmd = "clean"
+			result.gitArgs = args[1:]
 		}
 	}
 
@@ -177,10 +180,39 @@ func extractCPUProfileFlag(args []string) ([]string, string) {
 	return args, ""
 }
 
+// extractUnstagedFlag removes --unstaged from args and returns (remaining args, unstagedMode).
+// Unstaged mode diffs index vs working tree (the old default behavior).
+func extractUnstagedFlag(args []string) ([]string, bool) {
+	idx := slices.Index(args, "--unstaged")
+	if idx != -1 {
+		return slices.Delete(slices.Clone(args), idx, idx+1), true
+	}
+	return args, false
+}
+
+// extractSnapshotsFlag removes --snapshots/--no-snapshots from args.
+// Returns (remaining args, snapshotsExplicitlyDisabled).
+// Default is snapshots enabled (returns false).
+func extractSnapshotsFlag(args []string) ([]string, bool) {
+	// Check for --no-snapshots first
+	idx := slices.Index(args, "--no-snapshots")
+	if idx != -1 {
+		return slices.Delete(slices.Clone(args), idx, idx+1), true
+	}
+	// Check for --snapshots (explicit enable, which is already the default)
+	idx = slices.Index(args, "--snapshots")
+	if idx != -1 {
+		return slices.Delete(slices.Clone(args), idx, idx+1), false
+	}
+	return args, false
+}
+
 func run() error {
 	rawArgs, debugMode := extractDebugFlag(os.Args[1:])
 	rawArgs, allMode := extractAllFlag(rawArgs)
 	rawArgs, cpuProfile := extractCPUProfileFlag(rawArgs)
+	rawArgs, unstagedMode := extractUnstagedFlag(rawArgs)
+	rawArgs, snapshotsDisabled := extractSnapshotsFlag(rawArgs)
 	args := parseArgs(rawArgs)
 
 	// Start CPU profiling if requested
@@ -196,6 +228,11 @@ func run() error {
 		defer pprof.StopCPUProfile()
 	}
 
+	// Handle clean command - deletes all persisted snapshot refs
+	if args.cmd == "clean" {
+		return runClean()
+	}
+
 	// Check for pager mode: explicit "pager" command or piped stdin
 	if args.cmd == "pager" || pager.IsStdinPipe() {
 		return runPagerMode(debugMode)
@@ -208,6 +245,53 @@ func run() error {
 
 	g := git.New()
 
+	// Run async expiry of old snapshot refs (doesn't block startup)
+	go func() {
+		// Expire snapshot refs older than 14 days
+		_, _ = g.ExpireOldSnapshotRefs(14)
+	}()
+
+	// Determine base ref for the diff (used for snapshot keying)
+	// Default behavior: diff HEAD vs working tree (instead of index vs working tree)
+	// --unstaged: diff index vs working tree (old default)
+	// --cached: diff HEAD vs index
+	// <ref>: diff <ref> vs working tree
+	var baseSHA string
+	if args.cmd == "diff" && !unstagedMode {
+		// Resolve the base ref to a SHA for snapshot keying
+		baseRef := args.ref1
+		if baseRef == "" {
+			baseRef = "HEAD" // default to HEAD
+		}
+		// Resolve ref to SHA
+		sha, err := g.Show("--format=%H", "-s", baseRef)
+		if err == nil {
+			baseSHA = strings.TrimSpace(sha)
+		}
+	}
+
+	// Determine if snapshots should be enabled
+	// Disabled for: --no-snapshots, --unstaged, show command, two-ref diffs
+	snapshotsEnabled := args.cmd == "diff" &&
+		!snapshotsDisabled &&
+		!unstagedMode &&
+		workingTreeInvolved(args)
+
+	// Auto-continue: check for existing snapshots at this base SHA
+	var snapshotInfos []git.SnapshotInfo // full info (SHA, Subject, Date)
+	var persistedSnapshots []string      // just SHAs for TUI
+	if snapshotsEnabled && baseSHA != "" {
+		infos, err := g.ListSnapshotRefs(baseSHA)
+		if err == nil {
+			snapshotInfos = infos
+			persistedSnapshots = make([]string, len(infos))
+			for i, info := range infos {
+				persistedSnapshots[i] = info.SHA
+			}
+		}
+	}
+	continueMode := len(persistedSnapshots) > 0
+
 	// Get diff from git, with optional commit metadata
 	var output string
 	var commitInfo sidebyside.CommitInfo
@@ -215,7 +299,24 @@ func run() error {
 
 	switch args.cmd {
 	case "diff":
-		if allMode {
+		// In continue mode with persisted snapshots, diff from last snapshot
+		if continueMode && len(persistedSnapshots) > 0 {
+			lastSnapshot := persistedSnapshots[len(persistedSnapshots)-1]
+			if allMode {
+				// --all mode with continue: diff last snapshot to current working tree
+				// Note: untracked files appear as new files from the snapshot's perspective
+				output, err = getDiffAll(g, append([]string{lastSnapshot}, args.gitArgs...))
+			} else {
+				output, err = g.Diff(append([]string{lastSnapshot}, args.gitArgs...)...)
+			}
+			if err != nil {
+				return fmt.Errorf("git diff from snapshot: %w", err)
+			}
+			// Set refs for content fetching
+			args.mode = content.ModeDiffRefs
+			args.ref1 = lastSnapshot
+			args.ref2 = "" // working tree
+		} else if allMode {
 			// --all mode: diff HEAD (staged + unstaged) and include untracked files
 			output, err = getDiffAll(g, args.gitArgs)
 			if err != nil {
@@ -225,8 +326,24 @@ func run() error {
 			args.mode = content.ModeDiffRefs
 			args.ref1 = "HEAD"
 			args.ref2 = ""
-		} else {
+		} else if unstagedMode {
+			// --unstaged mode: diff index vs working tree (old default behavior)
 			output, err = g.Diff(args.gitArgs...)
+			if err != nil {
+				return fmt.Errorf("git diff: %w", err)
+			}
+		} else {
+			// Default: diff HEAD vs working tree
+			// Unless explicit refs are provided in args
+			if args.ref1 == "" && args.mode == content.ModeDiffUnstaged {
+				// No ref specified, use HEAD as default
+				output, err = g.Diff(append([]string{"HEAD"}, args.gitArgs...)...)
+				args.mode = content.ModeDiffRefs
+				args.ref1 = "HEAD"
+				args.ref2 = "" // working tree
+			} else {
+				output, err = g.Diff(args.gitArgs...)
+			}
 			if err != nil {
 				return fmt.Errorf("git diff: %w", err)
 			}
@@ -257,36 +374,139 @@ func run() error {
 		return fmt.Errorf("parse diff: %w", err)
 	}
 
-	if len(d.Files) == 0 {
+	// Build commit sets - in continue mode with history, we show historical diffs too
+	var commits []sidebyside.CommitSet
+
+	// In continue mode, reconstruct historical diffs (newest first, like log view)
+	if continueMode && len(snapshotInfos) > 0 {
+		// Build historical diffs in reverse order (newest first)
+		// S(n-1)→S(n), S(n-2)→S(n-1), ..., S0→S1, base→S0
+		for i := len(snapshotInfos) - 1; i >= 1; i-- {
+			oldRef := snapshotInfos[i-1].SHA
+			newRef := snapshotInfos[i].SHA
+
+			histDiff, err := g.DiffSnapshots(oldRef, newRef)
+			if err != nil {
+				continue // skip if we can't get the diff
+			}
+			if histDiff == "" {
+				continue // skip empty diffs
+			}
+
+			histParsed, err := diff.Parse(histDiff)
+			if err != nil {
+				continue
+			}
+
+			// Use info from git log (single source of truth)
+			info := snapshotInfos[i]
+			snapshotShort := info.SHA
+			if len(snapshotShort) > 7 {
+				snapshotShort = snapshotShort[:7]
+			}
+
+			histFiles, _ := sidebyside.TransformDiff(histParsed)
+			histCommit := sidebyside.CommitSet{
+				Info: sidebyside.CommitInfo{
+					SHA:     snapshotShort,
+					Date:    info.Date,
+					Subject: info.Subject,
+				},
+				Files:          histFiles,
+				FoldLevel:      sidebyside.CommitFolded, // Start folded so user can expand
+				FilesLoaded:    true,
+				StatsLoaded:    true,
+				IsSnapshot:     true,
+				SnapshotOldRef: oldRef,
+				SnapshotNewRef: newRef,
+			}
+			// Calculate stats
+			for _, f := range histFiles {
+				added, removed := countFilePairStats(f)
+				histCommit.TotalAdded += added
+				histCommit.TotalRemoved += removed
+			}
+			commits = append(commits, histCommit)
+		}
+
+		// Finally, add the initial diff: base→S0 (oldest, so last in list)
+		firstInfo := snapshotInfos[0]
+		histDiff, err := g.DiffSnapshots(baseSHA, firstInfo.SHA)
+		if err == nil && histDiff != "" {
+			histParsed, err := diff.Parse(histDiff)
+			if err == nil {
+				snapshotShort := firstInfo.SHA
+				if len(snapshotShort) > 7 {
+					snapshotShort = snapshotShort[:7]
+				}
+
+				histFiles, _ := sidebyside.TransformDiff(histParsed)
+				histCommit := sidebyside.CommitSet{
+					Info: sidebyside.CommitInfo{
+						SHA:     snapshotShort,
+						Date:    firstInfo.Date,
+						Subject: firstInfo.Subject,
+					},
+					Files:          histFiles,
+					FoldLevel:      sidebyside.CommitFolded,
+					FilesLoaded:    true,
+					StatsLoaded:    true,
+					IsSnapshot:     true,
+					SnapshotOldRef: baseSHA,
+					SnapshotNewRef: firstInfo.SHA,
+				}
+				for _, f := range histFiles {
+					added, removed := countFilePairStats(f)
+					histCommit.TotalAdded += added
+					histCommit.TotalRemoved += removed
+				}
+				commits = append(commits, histCommit)
+			}
+		}
+	}
+
+	// Add the current working tree diff (or the main diff for non-continue mode)
+	// In continue mode, prepend at top (newest first); otherwise append
+	if len(d.Files) > 0 {
+		files, truncatedFileCount := sidebyside.TransformDiff(d)
+
+		commit := sidebyside.CommitSet{
+			Info:               commitInfo,
+			Files:              files,
+			FoldLevel:          sidebyside.CommitNormal,
+			FilesLoaded:        true,
+			TruncatedFileCount: truncatedFileCount,
+			IsSnapshot:         snapshotsEnabled,
+		}
+
+		if snapshotsEnabled && baseSHA != "" {
+			baseShort := baseSHA
+			if len(baseShort) > 7 {
+				baseShort = baseShort[:7]
+			}
+			now := time.Now()
+			dateStr := now.Format("Jan 2 15:04")
+			commit.Info.Date = dateStr
+			commit.Info.SHA = "" // No snapshot SHA yet (created in background)
+			commit.Info.Subject = fmt.Sprintf("dfd: %s @ %s", baseShort, dateStr)
+			if continueMode && len(persistedSnapshots) > 0 {
+				commit.SnapshotOldRef = persistedSnapshots[len(persistedSnapshots)-1]
+			}
+		}
+
+		if continueMode {
+			// Prepend current diff at top (newest first)
+			commits = append([]sidebyside.CommitSet{commit}, commits...)
+		} else {
+			commits = append(commits, commit)
+		}
+	} else if len(commits) == 0 {
 		fmt.Println("No changes")
 		return nil
 	}
 
-	// Transform to side-by-side format
-	files, truncatedFileCount := sidebyside.TransformDiff(d)
-
 	// Create content fetcher for lazy file loading
 	fetcher := content.NewFetcher(g, args.mode, args.ref1, args.ref2)
-
-	// Enable snapshots when the working tree is involved in the diff
-	// (not for show command or when comparing two fixed refs)
-	snapshotsEnabled := args.cmd == "diff" && workingTreeInvolved(args)
-
-	// Build commit set with files and optional metadata
-	commit := sidebyside.CommitSet{
-		Info:               commitInfo,
-		Files:              files,
-		FoldLevel:          sidebyside.CommitNormal,
-		FilesLoaded:        true,
-		TruncatedFileCount: truncatedFileCount,
-		IsSnapshot:         snapshotsEnabled,
-	}
-
-	// For snapshot mode, set the current time and a subject so the header shows
-	if snapshotsEnabled {
-		commit.Info.Date = time.Now().Format(time.RFC3339)
-		commit.Info.Subject = "Working tree"
-	}
 
 	// Create and run the TUI
 	opts := []tui.Option{tui.WithFetcher(fetcher), tui.WithGit(g)}
@@ -299,8 +519,17 @@ func run() error {
 	if snapshotsEnabled {
 		opts = append(opts, tui.WithSnapshotsEnabled(true))
 	}
+	if continueMode {
+		opts = append(opts, tui.WithContinueMode(true))
+		if len(persistedSnapshots) > 0 {
+			opts = append(opts, tui.WithPersistedSnapshots(persistedSnapshots))
+		}
+	}
+	if baseSHA != "" {
+		opts = append(opts, tui.WithBaseSHA(baseSHA))
+	}
 
-	model := tui.NewWithCommits([]sidebyside.CommitSet{commit}, opts...)
+	model := tui.NewWithCommits(commits, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
 
 	finalModel, err := p.Run()
@@ -309,6 +538,31 @@ func run() error {
 	}
 	printExitComments(finalModel)
 
+	return nil
+}
+
+// runClean deletes all persisted snapshot refs.
+func runClean() error {
+	g := git.New()
+
+	// First list refs to see how many we're deleting
+	// Empty string means list all refs across all bases
+	refs, err := g.ListSnapshotRefs("")
+	if err != nil {
+		return fmt.Errorf("list snapshot refs: %w", err)
+	}
+
+	if len(refs) == 0 {
+		fmt.Println("No persisted snapshots to clean")
+		return nil
+	}
+
+	// Delete all refs (empty string means delete all)
+	if err := g.DeleteSnapshotRefs(""); err != nil {
+		return fmt.Errorf("delete snapshot refs: %w", err)
+	}
+
+	fmt.Printf("Deleted %d persisted snapshot(s)\n", len(refs))
 	return nil
 }
 
@@ -413,6 +667,19 @@ func runLogMode(debugMode bool) error {
 	printExitComments(finalModel)
 
 	return nil
+}
+
+// countFilePairStats counts added and removed lines in a file pair.
+func countFilePairStats(fp sidebyside.FilePair) (added, removed int) {
+	for _, lp := range fp.Pairs {
+		if lp.New.Type == sidebyside.Added {
+			added++
+		}
+		if lp.Old.Type == sidebyside.Removed {
+			removed++
+		}
+	}
+	return added, removed
 }
 
 // getDiffAll generates a diff that includes all changes: staged, unstaged, and untracked files.

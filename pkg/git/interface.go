@@ -2,6 +2,13 @@ package git
 
 import "io"
 
+// SnapshotInfo contains metadata about a snapshot commit.
+type SnapshotInfo struct {
+	SHA     string // full commit SHA
+	Subject string // commit message (first line)
+	Date    string // commit date in "Jan 2 15:04" format
+}
+
 // Git provides an interface for git operations.
 // This allows mocking in tests.
 type Git interface {
@@ -59,11 +66,30 @@ type Git interface {
 	// This is used for untracked files that have no previous version.
 	DiffNewFile(path string) (string, error)
 
-	// CreateSnapshot creates a dangling commit representing the current working tree state.
+	// CreateSnapshot creates a commit representing the current working tree state.
 	// If allMode is true, includes untracked files; otherwise only tracked files.
+	// If parentSHA is non-empty, the commit will have that as its parent, forming a chain.
+	// The message is used as the commit message.
 	// Returns the commit SHA. The commit is not attached to any ref.
-	CreateSnapshot(allMode bool) (string, error)
+	CreateSnapshot(allMode bool, parentSHA string, message string) (string, error)
 
 	// DiffSnapshots returns the diff between two snapshot commits.
 	DiffSnapshots(sha1, sha2 string) (string, error)
+
+	// UpdateSnapshotRef updates refs/dfd/snapshots/<baseSHA> to point to sha.
+	// Uses a single ref per base, with history traversed via parent chain.
+	UpdateSnapshotRef(baseSHA string, sha string) error
+
+	// ListSnapshotRefs returns snapshot info for all snapshots for a base SHA.
+	// Traverses the parent chain from refs/dfd/snapshots/<baseSHA> via git log.
+	// Returns oldest first (chronological order).
+	ListSnapshotRefs(baseSHA string) ([]SnapshotInfo, error)
+
+	// DeleteSnapshotRefs deletes snapshot refs under refs/dfd/snapshots/.
+	// If baseSHA is non-empty, only deletes that ref; otherwise deletes all.
+	DeleteSnapshotRefs(baseSHA string) error
+
+	// ExpireOldSnapshotRefs deletes snapshot refs older than maxAgeDays.
+	// Returns the number of deleted refs.
+	ExpireOldSnapshotRefs(maxAgeDays int) (int, error)
 }

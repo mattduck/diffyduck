@@ -170,10 +170,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Store the initial snapshot SHA
 		m.snapshots = append(m.snapshots, msg.SHA)
 
-		// Update the first commit's SHA if it's a snapshot (the initial diff)
-		// This shows the SHA in the header once the background snapshot completes
+		// Persist the snapshot as a git ref (for automatic continuation)
+		if m.snapshotsEnabled && m.git != nil && m.baseSHA != "" {
+			_ = m.git.UpdateSnapshotRef(m.baseSHA, msg.SHA) // ignore error for initial snapshot
+		}
+
+		// Update the first commit's info if it's a snapshot (the initial diff)
+		// This shows the snapshot SHA/Subject/Date once the background snapshot completes
 		if len(m.commits) > 0 && m.commits[0].IsSnapshot && m.commits[0].Info.SHA == "" {
-			m.commits[0].Info.SHA = msg.SHA[:8] // abbreviated SHA for display
+			if len(msg.SHA) > 7 {
+				m.commits[0].Info.SHA = msg.SHA[:7]
+			} else {
+				m.commits[0].Info.SHA = msg.SHA
+			}
+			m.commits[0].Info.Subject = msg.Subject
+			m.commits[0].Info.Date = msg.Date
 			m.invalidateAllRowCaches()
 		}
 		return m, nil
@@ -189,6 +200,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Store the new snapshot SHA (even if no changes, so next diff starts from this point)
 		if msg.SnapshotSHA != "" {
 			m.snapshots = append(m.snapshots, msg.SnapshotSHA)
+
+			// Persist the snapshot as a git ref (for automatic continuation)
+			if m.snapshotsEnabled && m.git != nil && m.baseSHA != "" {
+				if err := m.git.UpdateSnapshotRef(m.baseSHA, msg.SnapshotSHA); err != nil {
+					// Log error but don't fail - the snapshot is still in memory
+					now := time.Now()
+					m.statusMessage = "Warning: failed to persist snapshot"
+					m.statusMessageTime = now
+				}
+			}
 		}
 
 		// Check for "no changes" case
@@ -1979,12 +2000,20 @@ func (m *Model) handleSnapshot() tea.Cmd {
 	// Capture values for closure
 	gitClient := m.git
 	allMode := m.allMode
+	baseSHA := m.baseSHA
 	prevSnapshot := m.snapshots[len(m.snapshots)-1]
-	snapshotNum := m.snapshotCount + 1
+
+	// Format commit message: "dfd: <sha> @ <datetime>"
+	baseShort := baseSHA
+	if len(baseShort) > 7 {
+		baseShort = baseShort[:7]
+	}
+	dateStr := time.Now().Format("Jan 2 15:04")
+	message := fmt.Sprintf("dfd: %s @ %s", baseShort, dateStr)
 
 	return func() tea.Msg {
-		// Create new snapshot
-		newSnapshot, err := gitClient.CreateSnapshot(allMode)
+		// Create new snapshot with parent chain (parent = previous snapshot)
+		newSnapshot, err := gitClient.CreateSnapshot(allMode, prevSnapshot, message)
 		if err != nil {
 			return SnapshotDiffReadyMsg{Err: err}
 		}
@@ -2017,11 +2046,11 @@ func (m *Model) handleSnapshot() tea.Cmd {
 		// Transform to side-by-side format
 		files, _ := sidebyside.TransformDiff(d)
 
-		// Create the commit set with "Diff N" subject
+		// Create the commit set using the commit message (single source of truth)
 		commitSet := sidebyside.CommitSet{
 			Info: sidebyside.CommitInfo{
-				Subject: fmt.Sprintf("Diff %d", snapshotNum),
-				Date:    time.Now().Format(time.RFC3339),
+				Subject: message,
+				Date:    dateStr,
 			},
 			Files:          files,
 			FoldLevel:      sidebyside.CommitNormal,

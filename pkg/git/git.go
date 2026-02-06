@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // DefaultContext is the number of context lines to include around changes.
@@ -677,10 +678,12 @@ func prependContextFlag(args []string) []string {
 	return append([]string{fmt.Sprintf("-U%d", DefaultContext)}, args...)
 }
 
-// CreateSnapshot creates a dangling commit representing the current working tree state.
+// CreateSnapshot creates a commit representing the current working tree state.
 // Uses a temporary index file to avoid affecting the real index.
 // If allMode is true, includes untracked files (-A); otherwise only tracked files (-u).
-func (g *RealGit) CreateSnapshot(allMode bool) (string, error) {
+// If parentSHA is non-empty, the commit will have that as its parent, forming a chain.
+// The message is used as the commit message.
+func (g *RealGit) CreateSnapshot(allMode bool, parentSHA string, message string) (string, error) {
 	// Create a temporary index file
 	tmpDir := os.TempDir()
 	tmpIndex := filepath.Join(tmpDir, fmt.Sprintf("dfd-snapshot-%d", os.Getpid()))
@@ -738,8 +741,12 @@ func (g *RealGit) CreateSnapshot(allMode bool) (string, error) {
 	}
 	treeSHA := strings.TrimSpace(string(treeOut))
 
-	// Create the commit (dangling, no parent needed for our purposes)
-	cmd = exec.Command("git", "commit-tree", treeSHA, "-m", "dfd snapshot")
+	// Create the commit, optionally with a parent
+	args := []string{"commit-tree", treeSHA, "-m", message}
+	if parentSHA != "" {
+		args = []string{"commit-tree", treeSHA, "-p", parentSHA, "-m", message}
+	}
+	cmd = exec.Command("git", args...)
 	if g.Dir != "" {
 		cmd.Dir = g.Dir
 	}
@@ -757,6 +764,213 @@ func (g *RealGit) CreateSnapshot(allMode bool) (string, error) {
 // DiffSnapshots returns the diff between two snapshot commits.
 func (g *RealGit) DiffSnapshots(sha1, sha2 string) (string, error) {
 	return g.Diff(sha1, sha2)
+}
+
+// snapshotRefPrefix is the prefix for persisted snapshot refs.
+const snapshotRefPrefix = "refs/dfd/snapshots/"
+
+// UpdateSnapshotRef updates refs/dfd/snapshots/<baseSHA> to point to sha.
+func (g *RealGit) UpdateSnapshotRef(baseSHA string, sha string) error {
+	refName := fmt.Sprintf("%s%s", snapshotRefPrefix, baseSHA)
+	cmd := exec.Command("git", "update-ref", refName, sha)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git update-ref %s: %s", refName, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// ListSnapshotRefs returns snapshot info for all snapshots for a base SHA.
+// Uses git log to traverse the parent chain from refs/dfd/snapshots/<baseSHA>.
+// Returns oldest first (chronological order).
+func (g *RealGit) ListSnapshotRefs(baseSHA string) ([]SnapshotInfo, error) {
+	refName := fmt.Sprintf("%s%s", snapshotRefPrefix, baseSHA)
+
+	// Check if the ref exists first
+	checkCmd := exec.Command("git", "rev-parse", "--verify", refName)
+	if g.Dir != "" {
+		checkCmd.Dir = g.Dir
+	}
+	if err := checkCmd.Run(); err != nil {
+		// Ref doesn't exist - no snapshots
+		return nil, nil
+	}
+
+	// Use git log to traverse parent chain, stopping at baseSHA
+	// --ancestry-path ensures we only follow the direct line
+	// Format: SHA<NUL>subject<NUL>date, one record per line
+	cmd := exec.Command("git", "log", "--format=%H%x00%s%x00%ci", "--ancestry-path", baseSHA+".."+refName)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git log",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+
+	output := strings.TrimSpace(string(out))
+	if output == "" {
+		return nil, nil
+	}
+
+	// Split into lines - git log returns newest first
+	lines := strings.Split(output, "\n")
+
+	// Parse each line and reverse to get oldest first
+	result := make([]SnapshotInfo, len(lines))
+	for i, line := range lines {
+		parts := strings.SplitN(line, "\x00", 3)
+		info := SnapshotInfo{}
+		if len(parts) >= 1 {
+			info.SHA = parts[0]
+		}
+		if len(parts) >= 2 {
+			info.Subject = parts[1]
+		}
+		if len(parts) >= 3 {
+			// Parse and reformat date to compact form
+			dateStr := parts[2]
+			if t, err := time.Parse("2006-01-02 15:04:05 -0700", dateStr); err == nil {
+				info.Date = t.Format("Jan 2 15:04")
+			} else {
+				info.Date = dateStr
+			}
+		}
+		// Reverse order: oldest first
+		result[len(lines)-1-i] = info
+	}
+
+	return result, nil
+}
+
+// DeleteSnapshotRefs deletes snapshot refs under refs/dfd/snapshots/.
+// If baseSHA is non-empty, only deletes that specific ref; otherwise deletes all.
+func (g *RealGit) DeleteSnapshotRefs(baseSHA string) error {
+	if baseSHA != "" {
+		// Delete single ref for this base
+		refName := fmt.Sprintf("%s%s", snapshotRefPrefix, baseSHA)
+		cmd := exec.Command("git", "update-ref", "-d", refName)
+		if g.Dir != "" {
+			cmd.Dir = g.Dir
+		}
+		// Ignore error if ref doesn't exist
+		_ = cmd.Run()
+		return nil
+	}
+
+	// Delete all refs under the prefix
+	cmd := exec.Command("git", "for-each-ref", "--format=%(refname)", snapshotRefPrefix)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return &GitError{
+				Command: "git for-each-ref",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return err
+	}
+
+	output := strings.TrimSpace(string(out))
+	if output == "" {
+		return nil // nothing to delete
+	}
+
+	// Delete each ref
+	refs := strings.Split(output, "\n")
+	for _, ref := range refs {
+		if ref == "" {
+			continue
+		}
+		delCmd := exec.Command("git", "update-ref", "-d", ref)
+		if g.Dir != "" {
+			delCmd.Dir = g.Dir
+		}
+		if out, err := delCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git update-ref -d %s: %s", ref, strings.TrimSpace(string(out)))
+		}
+	}
+
+	return nil
+}
+
+// ExpireOldSnapshotRefs deletes snapshot refs older than maxAgeDays.
+// Returns the number of deleted refs.
+func (g *RealGit) ExpireOldSnapshotRefs(maxAgeDays int) (int, error) {
+	// Get refs with commit dates using for-each-ref
+	cmd := exec.Command("git", "for-each-ref",
+		"--format=%(refname):%(committerdate:unix)",
+		snapshotRefPrefix)
+	if g.Dir != "" {
+		cmd.Dir = g.Dir
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return 0, &GitError{
+				Command: "git for-each-ref",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return 0, err
+	}
+
+	output := strings.TrimSpace(string(out))
+	if output == "" {
+		return 0, nil // no refs to expire
+	}
+
+	// Calculate cutoff time
+	cutoff := time.Now().AddDate(0, 0, -maxAgeDays).Unix()
+
+	// Parse output and collect refs to delete
+	var refsToDelete []string
+	lines := strings.Split(output, "\n")
+
+	for _, line := range lines {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		refName := parts[0]
+		var timestamp int64
+		if _, err := fmt.Sscanf(parts[1], "%d", &timestamp); err != nil {
+			continue
+		}
+
+		if timestamp < cutoff {
+			refsToDelete = append(refsToDelete, refName)
+		}
+	}
+
+	// Delete old refs
+	deleted := 0
+	for _, ref := range refsToDelete {
+		cmd := exec.Command("git", "update-ref", "-d", ref)
+		if g.Dir != "" {
+			cmd.Dir = g.Dir
+		}
+		if _, err := cmd.CombinedOutput(); err == nil {
+			deleted++
+		}
+	}
+
+	return deleted, nil
 }
 
 // GitError represents an error from a git command.
