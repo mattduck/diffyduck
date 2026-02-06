@@ -225,6 +225,9 @@ type Model struct {
 	commentIndex        *comments.Index       // full index loaded once at startup
 	loadedCommentIDs    map[string]bool       // tracks fetched comment IDs to avoid re-reads
 
+	// Conflict state
+	hasConflicts bool // true when repo is in a merge/rebase/cherry-pick conflict state
+
 	// Status message (echo area)
 	statusMessage     string    // message to display in status bar
 	statusMessageTime time.Time // when the message was set (for auto-clear)
@@ -399,6 +402,14 @@ func WithGit(g git.Git) Option {
 func WithPagerMode() Option {
 	return func(m *Model) {
 		m.pagerMode = true
+	}
+}
+
+// WithConflicts marks the model as being in a merge/rebase conflict state,
+// enabling conflict marker highlighting in the view.
+func WithConflicts() Option {
+	return func(m *Model) {
+		m.hasConflicts = true
 	}
 }
 

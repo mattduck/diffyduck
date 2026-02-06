@@ -98,4 +98,8 @@ type Git interface {
 	// ExpireOldSnapshotRefs deletes snapshot refs older than maxAgeDays.
 	// Returns the number of deleted refs.
 	ExpireOldSnapshotRefs(maxAgeDays int) (int, error)
+
+	// HasConflicts returns true if the repo is in a merge, rebase, or
+	// cherry-pick state (i.e. sentinel files like MERGE_HEAD exist).
+	HasConflicts() bool
 }

@@ -937,3 +937,90 @@ func writeFile(t *testing.T, dir, name, content string) {
 		t.Fatalf("write file %s: %v", path, err)
 	}
 }
+
+func TestHasConflicts_CleanRepo(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	writeFile(t, dir, "file.txt", "hello\n")
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "initial")
+
+	g := NewWithDir(dir)
+	assert.False(t, g.HasConflicts())
+}
+
+func TestHasConflicts_MergeConflict(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	// Create a base commit
+	writeFile(t, dir, "file.txt", "base\n")
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "base")
+
+	// Create a branch with a conflicting change
+	runGit(t, dir, "checkout", "-b", "feature")
+	writeFile(t, dir, "file.txt", "feature change\n")
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "feature")
+
+	// Go back to main and make a conflicting change
+	runGit(t, dir, "checkout", "master")
+	writeFile(t, dir, "file.txt", "master change\n")
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "master")
+
+	// Attempt merge — should conflict
+	cmd := exec.Command("git", "merge", "feature")
+	cmd.Dir = dir
+	cmd.Env = cleanGitEnv(os.Environ())
+	_ = cmd.Run() // ignore error (expected: merge conflict)
+
+	g := NewWithDir(dir)
+	assert.True(t, g.HasConflicts())
+}
+
+func TestHasConflicts_RebaseConflict(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+
+	// Create a base commit
+	writeFile(t, dir, "file.txt", "base\n")
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "base")
+
+	// Create a branch with a conflicting change
+	runGit(t, dir, "checkout", "-b", "feature")
+	writeFile(t, dir, "file.txt", "feature change\n")
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "feature")
+
+	// Go back to main and make a conflicting change
+	runGit(t, dir, "checkout", "master")
+	writeFile(t, dir, "file.txt", "master change\n")
+	runGit(t, dir, "add", "file.txt")
+	runGit(t, dir, "commit", "-m", "master")
+
+	// Attempt rebase — should conflict
+	cmd := exec.Command("git", "rebase", "feature")
+	cmd.Dir = dir
+	cmd.Env = cleanGitEnv(os.Environ())
+	_ = cmd.Run() // ignore error (expected: rebase conflict)
+
+	g := NewWithDir(dir)
+	assert.True(t, g.HasConflicts())
+}
+
+func TestMockGit_HasConflicts(t *testing.T) {
+	mock := &MockGit{}
+	assert.False(t, mock.HasConflicts())
+
+	mock.HasConflictsVal = true
+	assert.True(t, mock.HasConflicts())
+}

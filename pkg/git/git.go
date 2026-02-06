@@ -578,6 +578,26 @@ func (g *RealGit) Diff(args ...string) (string, error) {
 	return string(out), nil
 }
 
+// HasConflicts returns true if the repo is in a merge, rebase, or cherry-pick
+// state by checking for sentinel files in the git directory.
+func (g *RealGit) HasConflicts() bool {
+	out, err := g.command("rev-parse", "--git-dir").Output()
+	if err != nil {
+		return false
+	}
+	gitDir := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(gitDir) && g.Dir != "" {
+		gitDir = filepath.Join(g.Dir, gitDir)
+	}
+	sentinels := []string{"MERGE_HEAD", "CHERRY_PICK_HEAD", "rebase-merge", "rebase-apply"}
+	for _, s := range sentinels {
+		if _, err := os.Stat(filepath.Join(gitDir, s)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // GetFileContent returns the content of a file at a given ref.
 // Uses git show <ref>:<path> to retrieve the content.
 // If ref is empty, retrieves from the index (staged content).

@@ -431,6 +431,10 @@ func run() error {
 	}
 	continueMode := len(persistedSnapshots) > 0
 
+	// Detect merge/rebase conflict state (used to adjust diff commands and enable
+	// conflict marker highlighting in the TUI).
+	hasConflicts := g.HasConflicts()
+
 	// Get diff from git, with optional commit metadata
 	var output string
 	var commitInfo sidebyside.CommitInfo
@@ -461,10 +465,25 @@ func run() error {
 			args.ref1 = "HEAD"
 			args.ref2 = ""
 		} else if args.unstaged {
-			diffArgs := append([]string{}, pathspec...)
-			output, err = g.Diff(diffArgs...)
-			if err != nil {
-				return fmt.Errorf("git diff: %w", err)
+			// During merge/rebase conflicts, bare "git diff" produces combined
+			// diff format for unmerged files which the parser can't handle.
+			// Fall back to "git diff HEAD" which gives standard unified diff.
+			if hasConflicts {
+				diffArgs := []string{"HEAD"}
+				diffArgs = append(diffArgs, pathspec...)
+				output, err = g.Diff(diffArgs...)
+				if err != nil {
+					return fmt.Errorf("git diff: %w", err)
+				}
+				args.mode = content.ModeDiffRefs
+				args.ref1 = "HEAD"
+				args.ref2 = ""
+			} else {
+				diffArgs := append([]string{}, pathspec...)
+				output, err = g.Diff(diffArgs...)
+				if err != nil {
+					return fmt.Errorf("git diff: %w", err)
+				}
 			}
 		} else {
 			if args.cached {
@@ -646,6 +665,9 @@ func run() error {
 	opts := []tui.Option{tui.WithFetcher(fetcher), tui.WithGit(g), tui.WithCommentStore(commentStore)}
 	if args.debug {
 		opts = append(opts, tui.WithDebugMode())
+	}
+	if hasConflicts {
+		opts = append(opts, tui.WithConflicts())
 	}
 	if args.allMode {
 		opts = append(opts, tui.WithAllMode(true))

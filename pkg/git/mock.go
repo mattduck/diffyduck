@@ -19,7 +19,8 @@ type MockGit struct {
 	LogError   error
 	// FileContents maps "ref:path" to file content for GetFileContent.
 	// Use empty ref for index, e.g., ":foo.go" for staged content.
-	FileContents map[string]string
+	FileContents    map[string]string
+	HasConflictsVal bool // return value for HasConflicts
 }
 
 // Show returns the preconfigured output or error.
@@ -162,4 +163,9 @@ func (m *MockGit) DeleteSnapshotRefs(baseSHA string) error {
 // ExpireOldSnapshotRefs is a no-op for the mock (nothing to expire).
 func (m *MockGit) ExpireOldSnapshotRefs(maxAgeDays int) (int, error) {
 	return 0, nil
+}
+
+// HasConflicts returns the preconfigured value.
+func (m *MockGit) HasConflicts() bool {
+	return m.HasConflictsVal
 }

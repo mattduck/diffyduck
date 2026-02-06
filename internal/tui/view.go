@@ -72,6 +72,9 @@ var (
 	// Tree hierarchy styles
 	commitTreeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow for commit level
 	snapshotTreeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5")) // magenta for snapshots
+
+	// Conflict marker styles (bold yellow for merge/rebase conflict markers)
+	conflictMarkerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
 )
 
 // determineFileHeaderMode computes the HeaderMode for a file node based on its fold state.
@@ -469,6 +472,16 @@ const (
 	RowKindPaginationIndicator      // ellipsis row indicating more commits can be loaded
 )
 
+// conflictZone identifies which part of a <<<<<<< ... >>>>>>> conflict block a line is in.
+type conflictZone int
+
+const (
+	conflictNone      conflictZone = iota // not inside a conflict block
+	conflictOurs                          // between <<<<<<< and ======= (ours side)
+	conflictSeparator                     // the ======= line itself
+	conflictTheirs                        // between ======= and >>>>>>> (theirs side)
+)
+
 // displayRow represents one row in the view (header, line pair, hunk separator, or blank)
 type displayRow struct {
 	kind      RowKind // type of row - use this for identity matching
@@ -543,6 +556,8 @@ type displayRow struct {
 	commentRowIndex  int    // index within the comment box (0=top border, 1..n-2=content, n-1=bottom border)
 	commentRowCount  int    // total rows in this comment box
 	commentLineIndex int    // which line of comment content this is (for content rows, -1 for borders)
+	// Conflict block fields
+	conflictZone conflictZone // which part of a conflict block this row is in (zero = not in conflict)
 	// Structural diff fields (for RowKindStructuralDiff rows)
 	isStructuralDiff          bool                 // true if this is a structural diff row
 	structuralDiffLine        string               // the formatted line (e.g., "  func FuncA(...)")
@@ -1209,7 +1224,8 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 	}
 
 	var prevLeft, prevRight int
-	var lastChunkStartLine int // tracks previous separator's chunkStartLine for repeat detection
+	var lastChunkStartLine int  // tracks previous separator's chunkStartLine for repeat detection
+	var conflictZn conflictZone // tracks which part of a conflict block we're in
 	contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 	for i, pair := range fp.Pairs {
 		if i == 0 && (pair.Old.Num > 1 || pair.New.Num > 1) {
@@ -1227,7 +1243,17 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 			lastChunkStartLine = chunkStartLine
 		}
 
-		row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair, isLastFileInCommit: isLastFile, treePath: contentTreePath}
+		// Track conflict block zone (<<<<<<< opens, ======= transitions, >>>>>>> closes)
+		if m.hasConflicts {
+			content := pair.New.Content
+			if strings.HasPrefix(content, "<<<<<<<") {
+				conflictZn = conflictOurs
+			} else if conflictZn == conflictOurs && content == "=======" {
+				conflictZn = conflictSeparator
+			}
+		}
+
+		row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair, isLastFileInCommit: isLastFile, treePath: contentTreePath, conflictZone: conflictZn}
 		if i == 0 {
 			row.isFirstLine = true
 		}
@@ -1235,6 +1261,17 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 			row.isLastLine = true
 		}
 		rows = append(rows, row)
+
+		if m.hasConflicts {
+			switch conflictZn {
+			case conflictSeparator:
+				conflictZn = conflictTheirs
+			case conflictTheirs:
+				if strings.HasPrefix(pair.New.Content, ">>>>>>>") {
+					conflictZn = conflictNone
+				}
+			}
+		}
 
 		// Add comment rows if this line has a comment
 		if pair.New.Num > 0 {
@@ -1284,6 +1321,7 @@ func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, conten
 	contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 
 	expandedRows := m.buildExpandedRows(fp)
+	markConflictBlocks(expandedRows, m.hasConflicts)
 	for i := range expandedRows {
 		expandedRows[i].fileIndex = fileIdx
 		expandedRows[i].isLastFileInCommit = isLastFile
@@ -1531,6 +1569,35 @@ func (m Model) buildPairRow(pair sidebyside.LinePair, fp sidebyside.FilePair) di
 	return displayRow{pair: sidebyside.LinePair{Old: old, New: new}}
 }
 
+// markConflictBlocks scans content rows and sets conflictZone to indicate which
+// part of a <<<<<<< ... >>>>>>> conflict block each row is in.
+func markConflictBlocks(rows []displayRow, hasConflicts bool) {
+	if !hasConflicts {
+		return
+	}
+	zone := conflictNone
+	for i := range rows {
+		if rows[i].kind != RowKindContent {
+			continue
+		}
+		content := rows[i].pair.New.Content
+		if strings.HasPrefix(content, "<<<<<<<") {
+			zone = conflictOurs
+		} else if zone == conflictOurs && content == "=======" {
+			zone = conflictSeparator
+		}
+		rows[i].conflictZone = zone
+		switch zone {
+		case conflictSeparator:
+			zone = conflictTheirs // lines after ======= are theirs
+		case conflictTheirs:
+			if strings.HasPrefix(content, ">>>>>>>") {
+				zone = conflictNone
+			}
+		}
+	}
+}
+
 // getVisibleRows returns the rendered rows visible in the current viewport.
 func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	var visible []string
@@ -1680,7 +1747,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		} else if row.kind == RowKindComment {
 			rendered = m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow)
 		} else {
-			rendered = m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.treePath)
+			rendered = m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.treePath, row.conflictZone)
 		}
 
 		// Apply visual selection highlighting (overrides all other styles)

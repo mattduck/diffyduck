@@ -286,7 +286,7 @@ func wrapComment(line string, maxWidth int) []string {
 	return strings.Split(wrapped, "\n")
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool, treePath TreePath) string {
+func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool, treePath TreePath, cZone conflictZone) string {
 	// Tree prefix using tight spacing for compact content indentation
 	// Cursor arrow replaces the left margin space in the tree prefix
 	treeContinuation := renderTreePrefixTightWithCursor(treePath, isCursorRow, m.focused)
@@ -315,14 +315,18 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 	hasWordDiff := len(oldSpans) > 0
 
 	// Render: New on left (side 0), Old on right (side 1)
-	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, 0, isCursorRow, hasWordDiff, false)
-	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, 1, isCursorRow, hasWordDiff, hideRightTrailingGutter)
+	// Conflict block indicator only on the new (left) side
+	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, 0, isCursorRow, hasWordDiff, false, cZone)
+	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, 1, isCursorRow, hasWordDiff, hideRightTrailingGutter, conflictNone)
 
 	separator := centerDividerStyle.Render(separatorChar)
 	return treeContinuation + left + " " + separator + " " + right
 }
 
-func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool) string {
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool, cZone conflictZone) string {
+	// Check for conflict marker lines (<<<<<<, =======, >>>>>>) for text styling
+	isConflictMarker := cZone != conflictNone && isConflictMarkerLine(line)
+
 	// Diff indicator (+/-/~/space) before line number
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
 	// Cursor arrow is shown in the tree gutter (first column), not here
@@ -397,7 +401,10 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	// Old side (1): only searchable for removed lines (- and ~ lines)
 	shouldSearch := side == 0 || line.Type == sidebyside.Removed
 
-	if isOldSideContext {
+	if isConflictMarker {
+		// Conflict markers get bold yellow styling, skip syntax/inline highlighting
+		styledContent = conflictMarkerStyle.Render(visible)
+	} else if isOldSideContext {
 		// Dim context lines on the old side - they're duplicates of the new side
 		// Don't search these (shouldSearch will be false for old side context)
 		styledContent = contextDimStyle.Render(visible)
@@ -425,7 +432,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 	// Wrap added/removed lines with gutter indicators
 	// Use blue for changed lines (hasWordDiff), otherwise green/red
-	styledContent = m.applyColumnIndicators(styledContent, line.Type, hasWordDiff, hideTrailingGutter)
+	styledContent = m.applyColumnIndicators(styledContent, line.Type, hasWordDiff, hideTrailingGutter, cZone)
 
 	// Style truncation indicator with fg=13 if present
 	if strings.Contains(visible, diff.LineTruncationText) {
@@ -808,8 +815,17 @@ func expandTabs(s string) string {
 	return result.String()
 }
 
-func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.LineType, hasWordDiff bool, hideTrailingGutter bool) string {
+func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.LineType, hasWordDiff bool, hideTrailingGutter bool, cZone conflictZone) string {
 	isAddedOrRemoved := lineType == sidebyside.Added || lineType == sidebyside.Removed
+
+	// In a conflict block, replace the start gutter with a continuous vertical bar
+	if cZone != conflictNone {
+		startIndicator := conflictMarkerStyle.Render("┃")
+		if hideTrailingGutter {
+			return startIndicator + " " + styledContent
+		}
+		return startIndicator + " " + styledContent + "  "
+	}
 
 	// For context/empty lines, just wrap with spaces to align with added/removed
 	if !isAddedOrRemoved {
@@ -874,4 +890,16 @@ func (m Model) getInlineDiff(fileIndex int, pair sidebyside.LinePair) ([]inlined
 	}
 
 	return oldSpans, newSpans
+}
+
+// isConflictMarkerLine returns true if the line content is a merge/rebase
+// conflict marker (<<<<<<, =======, >>>>>>).
+func isConflictMarkerLine(line sidebyside.Line) bool {
+	if line.Type != sidebyside.Added {
+		return false
+	}
+	c := line.Content
+	return strings.HasPrefix(c, "<<<<<<<") ||
+		strings.HasPrefix(c, ">>>>>>>") ||
+		c == "=======" // exact match — separator has no trailing text
 }
