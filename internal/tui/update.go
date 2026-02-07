@@ -391,11 +391,14 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleHelpKey(msg)
 	}
 
-	// Handle visual mode - exit keys, otherwise delegate to normal keys
+	// Handle visual mode - exit keys, yank, otherwise delegate to normal keys
 	if m.w().visualSelection.Active {
 		if matchesKey(msg, m.keys.VisualExit) {
 			m.w().visualSelection.Active = false
 			return m, nil
+		}
+		if matchesKey(msg, m.keys.Yank) {
+			return m.handleVisualYank()
 		}
 		// Fall through to normal key handling for movement, quit, etc.
 	}

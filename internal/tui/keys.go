@@ -181,6 +181,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 		}},
 		{Name: "Visual Mode", Bindings: []Binding{
 			{Keys: km.VisualMode, Desc: "Enter visual line mode"},
+			{Keys: km.Yank, Desc: "Yank selection"},
 			{Keys: km.VisualExit, Desc: "Exit visual mode"},
 		}},
 		{Name: "Comment Editing", Bindings: []Binding{

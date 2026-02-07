@@ -1877,50 +1877,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 		row := rows[i]
 		isCursorRow := len(visible) == cursorViewportRow
 
-		var rendered string
-		if row.isCommitHeader {
-			rendered = m.renderCommitHeaderRow(row, isCursorRow)
-		} else if row.isCommitHeaderTopBorder {
-			rendered = m.renderCommitHeaderTopBorder(row, isCursorRow)
-		} else if row.isCommitHeaderBottomBorder {
-			rendered = m.renderCommitHeaderBottomBorder(row, isCursorRow)
-		} else if row.isCommitBody {
-			rendered = m.renderCommitBodyRow(row, isCursorRow)
-		} else if row.isCommitInfoHeader {
-			rendered = m.renderCommitInfoHeader(row, isCursorRow)
-		} else if row.isCommitInfoTopBorder {
-			rendered = m.renderCommitInfoTopBorder(row, isCursorRow)
-		} else if row.isCommitInfoBottomBorder {
-			rendered = m.renderCommitInfoBottomBorder(row, isCursorRow)
-		} else if row.isCommitInfoBody {
-			rendered = m.renderCommitInfoBody(row, isCursorRow)
-		} else if row.isStructuralDiff {
-			rendered = m.renderStructuralDiffRow(row, isCursorRow)
-		} else if row.isHeaderTopBorder {
-			rendered = m.renderHeaderTopBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
-		} else if row.isHeaderSpacer {
-			rendered = m.renderHeaderBottomBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
-		} else if row.isBlank {
-			rendered = renderEmptyTreeRow(row.treePath, isCursorRow, m.focused, row.treeTerminator)
-		} else if row.isHeader {
-			rendered = m.renderHeader(row.header, row.foldLevel, row.headerMode, row.status, row.added, row.removed, row.headerBoxWidth, row.fileIndex, i, isCursorRow, row.treePath)
-		} else if row.isSeparatorTop {
-			rendered = m.renderHunkSeparatorTop(row, leftHalfWidth, rightHalfWidth, isCursorRow)
-		} else if row.isSeparator {
-			rendered = m.renderHunkSeparator(row, leftHalfWidth, rightHalfWidth, isCursorRow)
-		} else if row.isSeparatorBottom {
-			rendered = m.renderHunkSeparatorTop(row, leftHalfWidth, rightHalfWidth, isCursorRow) // same as top
-		} else if row.isTruncationIndicator {
-			rendered = m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew)
-		} else if row.isBinaryIndicator {
-			rendered = m.renderBinaryIndicator(row.binaryMessage, isCursorRow, row.binaryOld, row.binaryNew)
-		} else if row.kind == RowKindPaginationIndicator {
-			rendered = m.renderPaginationIndicator(isCursorRow)
-		} else if row.kind == RowKindComment {
-			rendered = m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow)
-		} else {
-			rendered = m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.treePath, row.conflictZone)
-		}
+		rendered := m.renderDisplayRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, i, isCursorRow, hideRightTrailingGutter)
 
 		// Apply visual selection highlighting (overrides all other styles)
 		if selectionStart >= 0 && i >= selectionStart && i <= selectionEnd {
@@ -1937,6 +1894,54 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 	}
 
 	return visible
+}
+
+// renderDisplayRow renders a single displayRow into a styled string.
+// This is the shared dispatch for all row types, used by both getVisibleRows
+// and visual-yank.
+func (m Model) renderDisplayRow(row displayRow, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIndex int, isCursorRow, hideRightTrailingGutter bool) string {
+	if row.isCommitHeader {
+		return m.renderCommitHeaderRow(row, isCursorRow)
+	} else if row.isCommitHeaderTopBorder {
+		return m.renderCommitHeaderTopBorder(row, isCursorRow)
+	} else if row.isCommitHeaderBottomBorder {
+		return m.renderCommitHeaderBottomBorder(row, isCursorRow)
+	} else if row.isCommitBody {
+		return m.renderCommitBodyRow(row, isCursorRow)
+	} else if row.isCommitInfoHeader {
+		return m.renderCommitInfoHeader(row, isCursorRow)
+	} else if row.isCommitInfoTopBorder {
+		return m.renderCommitInfoTopBorder(row, isCursorRow)
+	} else if row.isCommitInfoBottomBorder {
+		return m.renderCommitInfoBottomBorder(row, isCursorRow)
+	} else if row.isCommitInfoBody {
+		return m.renderCommitInfoBody(row, isCursorRow)
+	} else if row.isStructuralDiff {
+		return m.renderStructuralDiffRow(row, isCursorRow)
+	} else if row.isHeaderTopBorder {
+		return m.renderHeaderTopBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
+	} else if row.isHeaderSpacer {
+		return m.renderHeaderBottomBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
+	} else if row.isBlank {
+		return renderEmptyTreeRow(row.treePath, isCursorRow, m.focused, row.treeTerminator)
+	} else if row.isHeader {
+		return m.renderHeader(row.header, row.foldLevel, row.headerMode, row.status, row.added, row.removed, row.headerBoxWidth, row.fileIndex, rowIndex, isCursorRow, row.treePath)
+	} else if row.isSeparatorTop {
+		return m.renderHunkSeparatorTop(row, leftHalfWidth, rightHalfWidth, isCursorRow)
+	} else if row.isSeparator {
+		return m.renderHunkSeparator(row, leftHalfWidth, rightHalfWidth, isCursorRow)
+	} else if row.isSeparatorBottom {
+		return m.renderHunkSeparatorTop(row, leftHalfWidth, rightHalfWidth, isCursorRow) // same as top
+	} else if row.isTruncationIndicator {
+		return m.renderTruncationIndicator(row.truncationMessage, isCursorRow, row.truncateOld, row.truncateNew)
+	} else if row.isBinaryIndicator {
+		return m.renderBinaryIndicator(row.binaryMessage, isCursorRow, row.binaryOld, row.binaryNew)
+	} else if row.kind == RowKindPaginationIndicator {
+		return m.renderPaginationIndicator(isCursorRow)
+	} else if row.kind == RowKindComment {
+		return m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow)
+	}
+	return m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIndex, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.treePath, row.conflictZone)
 }
 
 // renderHunkSeparator renders a separator line between hunks.

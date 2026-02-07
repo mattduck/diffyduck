@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -232,6 +233,93 @@ func TestVisualMode_SelectionRangeCalculation(t *testing.T) {
 			assert.Equal(t, tt.expectedEnd, end, "selection end")
 		})
 	}
+}
+
+func TestVisualYank_CopiesSelectedLines(t *testing.T) {
+	m := makeTestModel(20)
+	clip := &MemoryClipboard{}
+	m.clipboard = clip
+
+	// Enter visual mode at row 5
+	m.w().scroll = 5
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("V")})
+	model := newM.(Model)
+
+	// Move down 2 rows
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model = newM.(Model)
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model = newM.(Model)
+
+	assert.True(t, model.w().visualSelection.Active)
+	assert.Equal(t, 5, model.w().visualSelection.AnchorRow)
+	assert.Equal(t, 7, model.w().scroll)
+
+	// Press y to yank
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	model = newM.(Model)
+
+	// Visual mode should be exited
+	assert.False(t, model.w().visualSelection.Active, "should exit visual mode after yank")
+
+	// Clipboard should have content (3 lines for rows 5-7)
+	assert.NotEmpty(t, clip.Content, "clipboard should have content")
+	lines := strings.Split(clip.Content, "\n")
+	assert.Equal(t, 3, len(lines), "should have 3 lines (rows 5-7)")
+
+	// Status message should indicate copied lines
+	assert.Contains(t, model.statusMessage, "3 lines")
+}
+
+func TestVisualYank_SingleLine(t *testing.T) {
+	m := makeTestModel(20)
+	clip := &MemoryClipboard{}
+	m.clipboard = clip
+
+	// Enter visual mode without moving (single line)
+	m.w().scroll = 5
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("V")})
+	model := newM.(Model)
+
+	// Yank immediately (no movement)
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	model = newM.(Model)
+
+	assert.False(t, model.w().visualSelection.Active, "should exit visual mode")
+	assert.NotEmpty(t, clip.Content, "clipboard should have content")
+	// Single line: no newline splits
+	lines := strings.Split(clip.Content, "\n")
+	assert.Equal(t, 1, len(lines), "should have 1 line")
+	assert.Contains(t, model.statusMessage, "1 lines")
+}
+
+func TestVisualYank_ReverseSelection(t *testing.T) {
+	m := makeTestModel(20)
+	clip := &MemoryClipboard{}
+	m.clipboard = clip
+
+	// Enter visual mode at row 10
+	m.w().scroll = 10
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("V")})
+	model := newM.(Model)
+
+	// Move UP 3 rows (reverse selection: anchor=10, current=7)
+	for i := 0; i < 3; i++ {
+		newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+		model = newM.(Model)
+	}
+
+	assert.Equal(t, 10, model.w().visualSelection.AnchorRow)
+	assert.Equal(t, 7, model.w().scroll)
+
+	// Yank
+	newM, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	model = newM.(Model)
+
+	assert.False(t, model.w().visualSelection.Active, "should exit visual mode")
+	lines := strings.Split(clip.Content, "\n")
+	assert.Equal(t, 4, len(lines), "should have 4 lines (rows 7-10)")
+	assert.Contains(t, model.statusMessage, "4 lines")
 }
 
 func TestVisualMode_DoesNotInterfereWithSearchMode(t *testing.T) {

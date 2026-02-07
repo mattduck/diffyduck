@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -47,6 +48,84 @@ func (m Model) handleYank() (tea.Model, tea.Cmd) {
 	}
 
 	m.statusMessage = fmt.Sprintf("Copied comment for %s", fileName)
+	m.statusMessageTime = now
+	return m, m.clearStatusAfter(now)
+}
+
+// handleVisualYank copies the rendered content of the visual selection to the clipboard.
+// The output is the ANSI-stripped rendered text of each selected row, joined by newlines.
+func (m Model) handleVisualYank() (tea.Model, tea.Cmd) {
+	if !m.w().visualSelection.Active {
+		return m, nil
+	}
+
+	// Compute selection range
+	anchor := m.w().visualSelection.AnchorRow
+	current := m.w().scroll
+	selStart, selEnd := anchor, current
+	if anchor > current {
+		selStart, selEnd = current, anchor
+	}
+
+	// Get rows and clamp range
+	rows := m.getRows()
+	if selStart < 0 {
+		selStart = 0
+	}
+	if selEnd >= len(rows) {
+		selEnd = len(rows) - 1
+	}
+	if selStart > selEnd {
+		return m, nil
+	}
+
+	// Compute layout widths (same formula as getVisibleRows)
+	lineNumWidth := m.lineNumWidth()
+	gutterOverhead := 1 + 1 + lineNumWidth + 1 + 4
+	minRightWidth := 1 + 1 + lineNumWidth + 1 + 2
+	targetLeftContent := 90
+	if m.maxNewContentWidth < targetLeftContent {
+		targetLeftContent = m.maxNewContentWidth
+	}
+	defaultHalf := (m.width - 3) / 2
+	leftContentAt50 := defaultHalf - gutterOverhead
+	var leftHalfWidth int
+	if leftContentAt50 >= targetLeftContent {
+		leftHalfWidth = defaultHalf
+	} else {
+		targetLeftWidth := gutterOverhead + targetLeftContent
+		maxLeftWidth := m.width - 3 - minRightWidth
+		leftHalfWidth = targetLeftWidth
+		if leftHalfWidth > maxLeftWidth {
+			leftHalfWidth = maxLeftWidth
+		}
+	}
+	rightHalfWidth := m.width - 3 - leftHalfWidth
+	rightContentArea := rightHalfWidth - lineNumWidth - 3 - 4
+	hideRightTrailingGutter := rightContentArea <= 0
+
+	// Render each selected row and strip ANSI
+	lines := make([]string, 0, selEnd-selStart+1)
+	for i := selStart; i <= selEnd; i++ {
+		rendered := m.renderDisplayRow(rows[i], leftHalfWidth, rightHalfWidth, lineNumWidth, i, false, hideRightTrailingGutter)
+		lines = append(lines, ansi.Strip(rendered))
+	}
+
+	content := strings.Join(lines, "\n")
+
+	// Exit visual mode
+	m.w().visualSelection.Active = false
+
+	// Copy to clipboard
+	now := time.Now()
+	if err := m.clipboard.Copy(content); err != nil {
+		m.statusMessage = fmt.Sprintf("Error: %v", err)
+		m.statusMessageTime = now
+		return m, m.clearStatusAfter(now)
+	}
+
+	lineCount := selEnd - selStart + 1
+	m.statusMessage = fmt.Sprintf("Copied %d lines", lineCount)
 	m.statusMessageTime = now
 	return m, m.clearStatusAfter(now)
 }
