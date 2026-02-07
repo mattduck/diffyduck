@@ -2174,6 +2174,19 @@ func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
 		w.cachedRows = nil
 	}
 
+	// Re-apply auto-fold logic (same as initial WindowSizeMsg handler)
+	if len(m.files) > 0 && m.width > 0 {
+		if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
+			for i := range m.files {
+				m.setFileFoldLevel(i, sidebyside.FoldExpanded)
+			}
+		} else {
+			for i := range m.files {
+				m.setFileFoldLevel(i, sidebyside.FoldFolded)
+			}
+		}
+	}
+
 	m.calculateTotalLines()
 
 	// Re-match persisted comments for the new file set
