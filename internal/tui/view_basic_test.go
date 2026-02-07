@@ -1586,14 +1586,13 @@ func TestView_StructuralDiffChildrenSortedByLinesChanged(t *testing.T) {
 }
 
 // TestView_StructuralDiffTruncationCountsChildRows tests that the top-10 limit
-// counts each displayed row (parent + children) rather than just top-level nodes.
-// A class with many methods should consume multiple slots.
+// ranks items flat by lines changed, then groups children under parents visually.
+// A class with high-impact methods keeps them all when they individually rank
+// in the top N; small standalones below the cutoff get truncated.
 func TestView_StructuralDiffTruncationCountsChildRows(t *testing.T) {
-	// Create a class with 8 methods (= 9 rows: 1 parent + 8 children).
-	// Then add 3 standalone functions.
-	// Total nodes = 4 (1 class + 3 funcs), but total rows = 9 + 3 = 12.
-	// With a limit of 10, the class (9 rows) + 1 standalone func = 10 rows.
-	// The remaining 2 funcs should be truncated.
+	// BigClass (150 lines) + 8 methods (10 lines each) + 3 standalones (7, 4, 2).
+	// Flat ranking: BigClass(150), 8×method(10), StandaloneA(7), StandaloneB(4), StandaloneC(2).
+	// Top 10: BigClass + 8 methods + StandaloneA. StandaloneB and StandaloneC truncated.
 	classEntry := structure.Entry{StartLine: 1, EndLine: 200, Name: "BigClass", Kind: "class"}
 	var methods []structure.Entry
 	var allChanges []structure.ElementChange
@@ -1669,13 +1668,10 @@ func TestView_StructuralDiffTruncationCountsChildRows(t *testing.T) {
 		}
 	}
 
-	// BigClass (1) + 8 methods = 9 rows. That's under 10 so the class fits.
-	// StandaloneA (1 row) would make 10 total. That fits.
-	// StandaloneB would be 11 — exceeds limit, so it and StandaloneC are truncated.
-	// But wait: nodes are sorted by total lines. BigClass has 150 total (including children).
-	// StandaloneA=7, StandaloneB=4, StandaloneC=2. BigClass is first (150 >> 7).
-	// BigClass takes 9 rows. Next is StandaloneA (1 row) = 10 total. Fits.
-	// StandaloneB would be 11. Doesn't fit. So 2 nodes truncated.
+	// Flat ranking puts BigClass (150) first, then 8 methods (10 each), then
+	// StandaloneA (7). That's 10 items. StandaloneB (4) and StandaloneC (2)
+	// are below the cutoff. After ranking, the 8 methods are grouped under
+	// BigClass via line containment (purely visual nesting).
 
 	// The class and its methods should all appear
 	foundClass := false
@@ -1706,6 +1702,113 @@ func TestView_StructuralDiffTruncationCountsChildRows(t *testing.T) {
 	// Should have a truncation indicator for the remaining 2 nodes
 	require.NotNil(t, truncatedRow, "Should have a truncation row")
 	assert.Contains(t, truncatedRow.structuralDiffLine, "2 more", "Should indicate 2 truncated nodes")
+}
+
+// TestView_StructuralDiffSmallChildrenDontStealSpots tests that small methods
+// inside a class don't push out bigger standalone functions. Each item earns
+// its spot independently by lines changed — nesting is purely visual.
+func TestView_StructuralDiffSmallChildrenDontStealSpots(t *testing.T) {
+	// A class with 8 tiny methods (1 line each) + 8 standalone functions (50 lines each).
+	// Total = 17 items, limit = 10.
+	// Old behavior: class node takes 9 rows (1 parent + 8 children), leaving 1 slot.
+	// New behavior: top 10 by lines changed = 8 standalones (50 each) + class (20) + 1 method (1).
+	// The class appears, but most methods don't (they're below the cutoff).
+	classEntry := structure.Entry{StartLine: 1, EndLine: 200, Name: "BigClass", Kind: "class"}
+	var methods []structure.Entry
+	var allChanges []structure.ElementChange
+
+	allChanges = append(allChanges, structure.ElementChange{
+		Kind: structure.ChangeModified, OldEntry: &classEntry, NewEntry: &classEntry,
+		LinesAdded: 15, LinesRemoved: 5, // 20 total
+	})
+
+	for i := 0; i < 8; i++ {
+		m := structure.Entry{
+			StartLine: 10 + i*20, EndLine: 12 + i*20,
+			Name: fmt.Sprintf("tiny_method_%d", i), Kind: "def",
+		}
+		methods = append(methods, m)
+		allChanges = append(allChanges, structure.ElementChange{
+			Kind: structure.ChangeModified, OldEntry: &methods[i], NewEntry: &methods[i],
+			LinesAdded: 1, LinesRemoved: 0, // 1 total — very small
+		})
+	}
+
+	var standalones []structure.Entry
+	for i := 0; i < 8; i++ {
+		s := structure.Entry{
+			StartLine: 300 + i*100, EndLine: 350 + i*100,
+			Name: fmt.Sprintf("BigFunc_%d", i), Kind: "func",
+		}
+		standalones = append(standalones, s)
+		allChanges = append(allChanges, structure.ElementChange{
+			Kind: structure.ChangeModified, OldEntry: &standalones[i], NewEntry: &standalones[i],
+			LinesAdded: 30, LinesRemoved: 20, // 50 total — big
+		})
+	}
+
+	allEntries := append([]structure.Entry{classEntry}, methods...)
+	allEntries = append(allEntries, standalones...)
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/big.py", NewPath: "b/big.py",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "# big", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "# big", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 40, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap(allEntries),
+				NewStructure:   structure.NewMap(allEntries),
+				StructuralDiff: &structure.StructuralDiff{Changes: allChanges},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	var structLines []string
+	for _, row := range rows {
+		if row.isStructuralDiff && !row.structuralDiffIsTruncated {
+			structLines = append(structLines, row.structuralDiffLine)
+		}
+	}
+
+	// All 8 standalone functions should appear (50 lines each, well above cutoff)
+	bigFuncCount := 0
+	for _, line := range structLines {
+		if strings.Contains(line, "BigFunc_") {
+			bigFuncCount++
+		}
+	}
+	assert.Equal(t, 8, bigFuncCount, "All 8 big standalone functions should appear")
+
+	// BigClass should appear (20 lines, ranks 9th)
+	foundClass := false
+	for _, line := range structLines {
+		if strings.Contains(line, "BigClass") {
+			foundClass = true
+		}
+	}
+	assert.True(t, foundClass, "BigClass should appear (20 lines ranks in top 10)")
+
+	// At most 1 tiny method should appear (the 10th slot)
+	tinyMethodCount := 0
+	for _, line := range structLines {
+		if strings.Contains(line, "tiny_method_") {
+			tinyMethodCount++
+		}
+	}
+	assert.LessOrEqual(t, tinyMethodCount, 1,
+		"At most 1 tiny method should appear (only if it ranks in top 10); got %d", tinyMethodCount)
 }
 
 // TestView_StructuralDiffSignatureMaxWidth tests that signatures are capped at
@@ -1833,4 +1936,126 @@ func TestView_StructuralDiffModifiedChildKeepsOwnKind(t *testing.T) {
 	assert.Equal(t, structure.ChangeModified, kindByName["MyClass"], "Parent should be ChangeModified")
 	assert.Equal(t, structure.ChangeAdded, kindByName["new_method"], "Added child keeps its own ChangeAdded when parent is modified")
 	assert.Equal(t, structure.ChangeModified, kindByName["changed_method"], "Modified child keeps its own ChangeModified when parent is modified")
+}
+
+// TestView_StructuralDiffNoNestingAcrossFileVersions tests that a deleted function
+// and an added function with overlapping line numbers (from different file versions)
+// are NOT nested. Containment should only be checked within the same file version.
+func TestView_StructuralDiffNoNestingAcrossFileVersions(t *testing.T) {
+	// Deleted function (old file lines 10-50) and added function (new file lines 20-40).
+	// Line ranges overlap numerically, but they're from different file versions.
+	deletedFunc := structure.Entry{
+		StartLine: 10, EndLine: 50, Name: "OldFunc", Kind: "func",
+		Params: []string{"t *testing.T"},
+	}
+	addedFunc := structure.Entry{
+		StartLine: 20, EndLine: 40, Name: "NewFunc", Kind: "func",
+		Params: []string{"t *testing.T"},
+	}
+
+	changes := []structure.ElementChange{
+		{Kind: structure.ChangeDeleted, OldEntry: &deletedFunc, LinesRemoved: 40},
+		{Kind: structure.ChangeAdded, NewEntry: &addedFunc, LinesAdded: 20},
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/test.go", NewPath: "b/test.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "// test", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "// test", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 20, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap([]structure.Entry{deletedFunc}),
+				NewStructure:   structure.NewMap([]structure.Entry{addedFunc}),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	var structLines []string
+	for _, row := range rows {
+		if row.isStructuralDiff && !row.structuralDiffIsTruncated {
+			structLines = append(structLines, row.structuralDiffLine)
+		}
+	}
+
+	require.Equal(t, 2, len(structLines), "Should have 2 top-level rows (no nesting)")
+
+	// Neither should be indented — both should be top-level
+	for _, line := range structLines {
+		assert.True(t, strings.HasPrefix(line, "func"),
+			"Line should be top-level (no indent), got: %q", line)
+	}
+}
+
+// TestView_StructuralDiffFuncContainsType tests that a Go type defined inside
+// a function is shown as a child of that function, using generic line-containment
+// nesting (not limited to class/type parents with func/def children).
+func TestView_StructuralDiffFuncContainsType(t *testing.T) {
+	funcEntry := structure.Entry{
+		StartLine: 1, EndLine: 50, Name: "handler", Kind: "func",
+		Params: []string{"w http.ResponseWriter", "r *http.Request"},
+	}
+	typeEntry := structure.Entry{
+		StartLine: 5, EndLine: 15, Name: "request", Kind: "type",
+	}
+
+	changes := []structure.ElementChange{
+		{Kind: structure.ChangeModified, OldEntry: &funcEntry, NewEntry: &funcEntry, LinesAdded: 20, LinesRemoved: 5},
+		{Kind: structure.ChangeAdded, NewEntry: &typeEntry, LinesAdded: 10},
+	}
+
+	m := Model{
+		focused: true,
+		files: []sidebyside.FilePair{
+			{
+				OldPath: "a/handler.go", NewPath: "b/handler.go",
+				FoldLevel: sidebyside.FoldNormal,
+				Pairs: []sidebyside.LinePair{
+					{Old: sidebyside.Line{Num: 1, Content: "// test", Type: sidebyside.Context},
+						New: sidebyside.Line{Num: 1, Content: "// test", Type: sidebyside.Context}},
+				},
+			},
+		},
+		width: 120, height: 20, keys: DefaultKeyMap(),
+		structureMaps: map[int]*FileStructure{
+			0: {
+				OldStructure:   structure.NewMap([]structure.Entry{funcEntry}),
+				NewStructure:   structure.NewMap([]structure.Entry{funcEntry, typeEntry}),
+				StructuralDiff: &structure.StructuralDiff{Changes: changes},
+			},
+		},
+	}
+	m.calculateTotalLines()
+
+	rows := m.buildRows()
+
+	// Collect structural diff lines
+	var structLines []string
+	for _, row := range rows {
+		if row.isStructuralDiff && !row.structuralDiffIsTruncated {
+			structLines = append(structLines, row.structuralDiffLine)
+		}
+	}
+
+	require.GreaterOrEqual(t, len(structLines), 2, "Should have at least 2 structural diff rows (parent + child)")
+
+	// Parent function should be top-level (no indent)
+	assert.True(t, strings.HasPrefix(structLines[0], "func"), "First line should be the parent func, got: %q", structLines[0])
+	assert.Contains(t, structLines[0], "handler", "Parent should be handler")
+
+	// Child type should be indented (2-space prefix)
+	assert.True(t, strings.HasPrefix(structLines[1], "  type"), "Second line should be indented child type, got: %q", structLines[1])
+	assert.Contains(t, structLines[1], "request", "Child should be request type")
 }

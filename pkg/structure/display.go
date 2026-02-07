@@ -19,10 +19,10 @@ func (n DisplayNode) TotalLines() int {
 	return total
 }
 
-// TopChanges groups methods under parent types, sorts by total lines
-// changed (descending), and truncates to maxItems (counting each parent
-// and child as one row). Returns the visible nodes and count of truncated
-// top-level nodes.
+// TopChanges ranks changes flat by lines changed, takes the top maxItems,
+// then groups children under parents using line containment. Each item earns
+// its spot independently — nesting is purely visual grouping. Returns the
+// visible nodes and count of truncated items.
 func TopChanges(diff *StructuralDiff, maxItems int) (nodes []DisplayNode, truncated int) {
 	if diff == nil || !diff.HasChanges() {
 		return nil, 0
@@ -33,47 +33,81 @@ func TopChanges(diff *StructuralDiff, maxItems int) (nodes []DisplayNode, trunca
 		return nil, 0
 	}
 
-	// First pass: find types/classes and their contained methods
-	var topLevel []DisplayNode
-	methodsAssigned := make(map[int]bool)
+	// Rank all changes flat by lines changed, take top N.
+	sort.SliceStable(changes, func(i, j int) bool {
+		totalI := changes[i].LinesAdded + changes[i].LinesRemoved
+		totalJ := changes[j].LinesAdded + changes[j].LinesRemoved
+		return totalI > totalJ
+	})
+	if len(changes) > maxItems {
+		truncated = len(changes) - maxItems
+		changes = changes[:maxItems]
+	}
 
-	for i, c := range changes {
-		entry := c.Entry()
-		if entry == nil {
-			continue
-		}
-		if entry.Kind == "type" || entry.Kind == "class" {
-			node := DisplayNode{Change: c}
-			for j, other := range changes {
-				if i == j {
-					continue
-				}
-				otherEntry := other.Entry()
-				if otherEntry == nil {
-					continue
-				}
-				if otherEntry.Kind == "func" || otherEntry.Kind == "def" {
-					typeStart, typeEnd := entry.StartLine, entry.EndLine
-					otherStart := otherEntry.StartLine
-					if otherStart >= typeStart && otherStart <= typeEnd {
-						node.Children = append(node.Children, other)
-						methodsAssigned[j] = true
-					}
+	// Among the top N, detect containment and group children under parents.
+	// Only compare entries from the same file version (both new or both old)
+	// to avoid false matches between added and deleted items.
+	parentOf := make(map[int]int) // child index -> parent index
+	for i, child := range changes {
+		bestParent := -1
+		bestSpan := 0
+		for j, parent := range changes {
+			if i == j {
+				continue
+			}
+			var childEntry, parentEntry *Entry
+			if child.NewEntry != nil && parent.NewEntry != nil {
+				childEntry, parentEntry = child.NewEntry, parent.NewEntry
+			} else if child.OldEntry != nil && parent.OldEntry != nil {
+				childEntry, parentEntry = child.OldEntry, parent.OldEntry
+			} else {
+				continue
+			}
+			parentSpan := parentEntry.EndLine - parentEntry.StartLine
+			childSpan := childEntry.EndLine - childEntry.StartLine
+			if parentSpan <= childSpan {
+				continue // parent must be strictly larger
+			}
+			if childEntry.StartLine >= parentEntry.StartLine &&
+				childEntry.EndLine <= parentEntry.EndLine {
+				if bestParent == -1 || parentSpan < bestSpan {
+					bestSpan = parentSpan
+					bestParent = j
 				}
 			}
-			topLevel = append(topLevel, node)
-			methodsAssigned[i] = true
+		}
+		if bestParent >= 0 {
+			parentOf[i] = bestParent
 		}
 	}
 
-	// Second pass: remaining items as top-level
+	// Build single-level tree: walk each child up to its top-level ancestor.
+	isChild := make(map[int]bool)
+	for c := range parentOf {
+		isChild[c] = true
+	}
+	childrenOf := make(map[int][]int)
+	for child := range parentOf {
+		top := parentOf[child]
+		for isChild[top] {
+			top = parentOf[top]
+		}
+		childrenOf[top] = append(childrenOf[top], child)
+	}
+
+	var topLevel []DisplayNode
 	for i, c := range changes {
-		if !methodsAssigned[i] {
-			topLevel = append(topLevel, DisplayNode{Change: c})
+		if isChild[i] {
+			continue
 		}
+		node := DisplayNode{Change: c}
+		for _, childIdx := range childrenOf[i] {
+			node.Children = append(node.Children, changes[childIdx])
+		}
+		topLevel = append(topLevel, node)
 	}
 
-	// Sort top-level by total lines changed (descending)
+	// Sort top-level by total lines changed (own + visible children)
 	sort.SliceStable(topLevel, func(i, j int) bool {
 		return topLevel[i].TotalLines() > topLevel[j].TotalLines()
 	})
@@ -85,22 +119,6 @@ func TopChanges(diff *StructuralDiff, maxItems int) (nodes []DisplayNode, trunca
 			cb := topLevel[i].Children[b]
 			return (ca.LinesAdded + ca.LinesRemoved) > (cb.LinesAdded + cb.LinesRemoved)
 		})
-	}
-
-	// Truncate to maxItems displayed rows (parent + children each count as one)
-	rowCount := 0
-	keptCount := 0
-	for _, node := range topLevel {
-		nodeRows := 1 + len(node.Children)
-		if rowCount+nodeRows > maxItems {
-			break
-		}
-		keptCount++
-		rowCount += nodeRows
-	}
-	if keptCount < len(topLevel) {
-		truncated = len(topLevel) - keptCount
-		topLevel = topLevel[:keptCount]
 	}
 
 	return topLevel, truncated
