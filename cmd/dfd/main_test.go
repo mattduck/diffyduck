@@ -11,12 +11,12 @@ import (
 )
 
 func TestParseArgs_Empty(t *testing.T) {
-	result, err := parseArgs([]string{})
+	res, err := parseArgs([]string{})
 	require.NoError(t, err)
-	assert.Equal(t, "diff", result.cmd)
-	assert.Empty(t, result.refs)
-	assert.Empty(t, result.paths)
-	assert.Equal(t, content.ModeDiffUnstaged, result.mode)
+	assert.Equal(t, "diff", res.cmd)
+	assert.Empty(t, res.refs)
+	assert.Empty(t, res.paths)
+	assert.Equal(t, content.ModeDiffUnstaged, res.mode)
 }
 
 func TestParseArgs_SubcommandDetection(t *testing.T) {

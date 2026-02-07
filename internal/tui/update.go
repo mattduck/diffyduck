@@ -180,6 +180,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = m.git.UpdateSnapshotRef(m.branch, m.baseSHA, msg.SHA)
 		}
 
+		// If we're supposed to be in snapshot view but haven't built it yet
+		// (no persisted history existed at startup), build it now that the
+		// initial snapshot exists.
+		if m.showSnapshots && m.snapshotViewCommits == nil {
+			m.logf("SnapshotCreatedMsg: showSnapshots=true but no snapshot view yet, building")
+			if m.normalViewCommits == nil {
+				m.normalViewCommits = make([]sidebyside.CommitSet, len(m.commits))
+				copy(m.normalViewCommits, m.commits)
+			}
+			return m, m.buildSnapshotHistoryCmd()
+		}
+
 		// Update the first commit's info if already in snapshot view
 		if m.showSnapshots && len(m.commits) > 0 && m.commits[0].IsSnapshot && m.commits[0].Info.SHA == "" {
 			if len(msg.SHA) > 7 {

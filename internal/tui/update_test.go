@@ -4358,13 +4358,15 @@ func TestSnapshotDiffReadyMsg_StoresSnapshotRefs(t *testing.T) {
 // =============================================================================
 
 func TestSnapshotCreatedMsg_Success(t *testing.T) {
-	m := NewWithCommits([]sidebyside.CommitSet{
-		{
-			Info:       sidebyside.CommitInfo{Subject: "initial diff"},
-			IsSnapshot: true,
-			// SHA empty — simulates the initial snapshot before background completes
-		},
-	}, WithAutoSnapshots(true), WithShowSnapshots(true), WithBaseSHA("baseabc1234567"), WithGit(&git.MockGit{}))
+	snapshotCommit := sidebyside.CommitSet{
+		Info:       sidebyside.CommitInfo{Subject: "initial diff"},
+		IsSnapshot: true,
+		// SHA empty — simulates the initial snapshot before background completes
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{snapshotCommit},
+		WithAutoSnapshots(true), WithShowSnapshots(true), WithBaseSHA("baseabc1234567"), WithGit(&git.MockGit{}),
+		WithSnapshotViewCommits([]sidebyside.CommitSet{snapshotCommit}),
+	)
 
 	msg := SnapshotCreatedMsg{
 		SHA:     "deadbeef1234567890abcdef1234567890abcdef",
@@ -4404,9 +4406,11 @@ func TestSnapshotCreatedMsg_Error(t *testing.T) {
 }
 
 func TestSnapshotCreatedMsg_ShortSHA(t *testing.T) {
-	m := NewWithCommits([]sidebyside.CommitSet{
-		{Info: sidebyside.CommitInfo{}, IsSnapshot: true},
-	}, WithAutoSnapshots(true), WithShowSnapshots(true), WithGit(&git.MockGit{}))
+	snapshotCommit := sidebyside.CommitSet{Info: sidebyside.CommitInfo{}, IsSnapshot: true}
+	m := NewWithCommits([]sidebyside.CommitSet{snapshotCommit},
+		WithAutoSnapshots(true), WithShowSnapshots(true), WithGit(&git.MockGit{}),
+		WithSnapshotViewCommits([]sidebyside.CommitSet{snapshotCommit}),
+	)
 
 	msg := SnapshotCreatedMsg{
 		SHA:     "abc12", // shorter than 7 chars
