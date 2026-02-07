@@ -18,12 +18,13 @@ const (
 	bold  = "\033[1m"
 
 	// Status indicators (match fileStatusIndicator in view_header.go)
-	fgGreen = "\033[32m"      // fg=2 - added indicator
-	fgRed   = "\033[31m"      // fg=1 - deleted indicator
-	fgBlue  = "\033[38;5;12m" // fg=12 - modified indicator
-	fgCyan  = "\033[36m"      // fg=6 - renamed indicator
-	fgGray  = "\033[38;5;8m"  // fg=8 - keywords, dim text
-	fgWhite = "\033[38;5;7m"  // fg=7 - punctuation, params, names
+	fgGreen       = "\033[32m"      // fg=2 - added indicator
+	fgRed         = "\033[31m"      // fg=1 - deleted indicator
+	fgBlue        = "\033[38;5;12m" // fg=12 - modified indicator
+	fgCyan        = "\033[36m"      // fg=6 - renamed indicator
+	fgGray        = "\033[38;5;8m"  // fg=8 - keywords, dim text
+	fgWhite       = "\033[38;5;7m"  // fg=7 - punctuation, params, names
+	fgBrightWhite = "\033[38;5;15m" // fg=15 - bright white for detail text
 
 	// File-level stats (match addedStyle/removedStyle in view.go: fg=10/fg=9)
 	fgBrightGreen = "\033[38;5;10m" // fg=10 - file +N
@@ -263,9 +264,11 @@ func formatEntrySignature(entry *structure.Entry) string {
 }
 
 // Render produces the full status output string.
+// repoOp/repoDetail come from git.RepoState() — when non-empty, a header is
+// shown after the branch tree (e.g. "Rebasing: 3/5").
 // untrackedExpanded, when non-nil, replaces the plain untracked listing with
 // full file change details (used by --all mode).
-func Render(branchTree string, staged, unstaged []FileChange, untracked []string, untrackedExpanded []FileChange) string {
+func Render(branchTree string, repoOp, repoDetail string, staged, unstaged []FileChange, untracked []string, untrackedExpanded []FileChange) string {
 	var b strings.Builder
 
 	// Branch tree
@@ -277,6 +280,19 @@ func Render(branchTree string, staged, unstaged []FileChange, untracked []string
 	}
 
 	needsGap := branchTree != ""
+
+	// Repo state banner (rebase, merge, cherry-pick, etc.)
+	if repoOp != "" {
+		if needsGap {
+			b.WriteByte('\n')
+		}
+		b.WriteString(fgRed + bold + repoOp + reset)
+		if repoDetail != "" {
+			b.WriteString(fgRed + bold + ": " + reset + fgBrightWhite + repoDetail + reset)
+		}
+		b.WriteByte('\n')
+		needsGap = true
+	}
 
 	// Section bar prefixes: thick vertical line in section color
 	const bar = "┃"

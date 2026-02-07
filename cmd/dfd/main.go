@@ -1149,8 +1149,11 @@ func runStatus(untrackedMode string, maxSymbols int) error {
 		}
 	}
 
+	// 5. Repo state (rebase, merge, etc.)
+	repoOp, repoDetail := g.RepoState()
+
 	// Render and print
-	fmt.Print(status.Render(branchTree, stagedChanges, unstagedChanges, untracked, untrackedChanges))
+	fmt.Print(status.Render(branchTree, repoOp, repoDetail, stagedChanges, unstagedChanges, untracked, untrackedChanges))
 	return nil
 }
 

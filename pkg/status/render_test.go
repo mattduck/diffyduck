@@ -16,13 +16,13 @@ func stripANSI(s string) string {
 }
 
 func TestRender_EmptyStatus(t *testing.T) {
-	out := Render("", nil, nil, nil, nil)
+	out := Render("", "", "", nil, nil, nil, nil)
 	stripped := stripANSI(out)
 	assert.Contains(t, stripped, "Nothing to commit, working tree clean")
 }
 
 func TestRender_BranchTreeOnly(t *testing.T) {
-	out := Render("  main\n  └─ feature (HEAD)\n", nil, nil, nil, nil)
+	out := Render("  main\n  └─ feature (HEAD)\n", "", "", nil, nil, nil, nil)
 	stripped := stripANSI(out)
 	assert.Contains(t, stripped, "main")
 	assert.Contains(t, stripped, "feature (HEAD)")
@@ -35,7 +35,7 @@ func TestRender_StagedSection(t *testing.T) {
 		{Path: "pkg/bar.go", Status: "~", Added: 5, Removed: 3},
 	}
 
-	out := Render("", staged, nil, nil, nil)
+	out := Render("", "", "", staged, nil, nil, nil)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "Staged:")
@@ -50,7 +50,7 @@ func TestRender_UnstagedSection(t *testing.T) {
 		{Path: "main.go", Status: "~", Added: 10, Removed: 2},
 	}
 
-	out := Render("", nil, unstaged, nil, nil)
+	out := Render("", "", "", nil, unstaged, nil, nil)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "Unstaged:")
@@ -61,7 +61,7 @@ func TestRender_UnstagedSection(t *testing.T) {
 func TestRender_UntrackedSection(t *testing.T) {
 	untracked := []string{"new_file.go", "another.go"}
 
-	out := Render("", nil, nil, untracked, nil)
+	out := Render("", "", "", nil, nil, untracked, nil)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "Untracked:")
@@ -74,7 +74,7 @@ func TestRender_AllSections(t *testing.T) {
 	unstaged := []FileChange{{Path: "unstaged.go", Status: "~", Added: 5, Removed: 2}}
 	untracked := []string{"new.go"}
 
-	out := Render("  main\n", staged, unstaged, untracked, nil)
+	out := Render("  main\n", "", "", staged, unstaged, untracked, nil)
 	stripped := stripANSI(out)
 
 	// Verify section order
@@ -95,7 +95,7 @@ func TestRender_FileStatusIndicators(t *testing.T) {
 		{Path: "new.go", OldPath: "old.go", Status: "→"},
 	}
 
-	out := Render("", changes, nil, nil, nil)
+	out := Render("", "", "", changes, nil, nil, nil)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "+ added.go")
@@ -115,7 +115,7 @@ func TestRender_WithSymbols(t *testing.T) {
 		},
 	}
 
-	out := Render("", changes, nil, nil, nil)
+	out := Render("", "", "", changes, nil, nil, nil)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "func Foo(...) +15 -3")
@@ -133,7 +133,7 @@ func TestRender_TruncationMarker(t *testing.T) {
 		},
 	}
 
-	out := Render("", changes, nil, nil, nil)
+	out := Render("", "", "", changes, nil, nil, nil)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "...(3 more)")
@@ -144,7 +144,7 @@ func TestRender_DeletedFileNoStats(t *testing.T) {
 		{Path: "gone.go", Status: "-", Removed: 100},
 	}
 
-	out := Render("", changes, nil, nil, nil)
+	out := Render("", "", "", changes, nil, nil, nil)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "- gone.go -100")
@@ -156,7 +156,7 @@ func TestRender_UntrackedExpanded(t *testing.T) {
 		{Path: "another.go", Status: "+", Added: 15},
 	}
 
-	out := Render("", nil, nil, nil, expanded)
+	out := Render("", "", "", nil, nil, nil, expanded)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "Untracked:")
@@ -171,7 +171,7 @@ func TestRender_UntrackedExpandedOverridesPlain(t *testing.T) {
 	}
 
 	// When both are provided, expanded wins
-	out := Render("", nil, nil, plain, expanded)
+	out := Render("", "", "", nil, nil, plain, expanded)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "Untracked:")
@@ -188,7 +188,7 @@ func TestRender_SummaryLine(t *testing.T) {
 		{Path: "c.go", Status: "~", Added: 2, Removed: 1},
 	}
 
-	out := Render("", staged, unstaged, nil, nil)
+	out := Render("", "", "", staged, unstaged, nil, nil)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "3 files +17 -4")
@@ -199,7 +199,7 @@ func TestRender_SummaryLineNoRemoved(t *testing.T) {
 		{Path: "a.go", Status: "+", Added: 10},
 	}
 
-	out := Render("", staged, nil, nil, nil)
+	out := Render("", "", "", staged, nil, nil, nil)
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "1 files +10")
@@ -208,11 +208,45 @@ func TestRender_SummaryLineNoRemoved(t *testing.T) {
 
 func TestRender_NoSummaryForPlainUntracked(t *testing.T) {
 	// Plain untracked listing (no FileChanges) should not show summary
-	out := Render("", nil, nil, []string{"new.go"}, nil)
+	out := Render("", "", "", nil, nil, []string{"new.go"}, nil)
 	stripped := stripANSI(out)
 
 	assert.NotContains(t, stripped, "files")
 	assert.NotContains(t, stripped, "Nothing to commit")
+}
+
+func TestRender_RepoStateOpOnly(t *testing.T) {
+	out := Render("", "Cherry-picking", "", nil, nil, nil, nil)
+	stripped := stripANSI(out)
+
+	assert.Contains(t, stripped, "Cherry-picking")
+	assert.Contains(t, stripped, "Nothing to commit")
+}
+
+func TestRender_RepoStateWithDetail(t *testing.T) {
+	out := Render("", "Rebasing", "3/5", nil, nil, nil, nil)
+	stripped := stripANSI(out)
+
+	assert.Contains(t, stripped, "Rebasing: 3/5")
+}
+
+func TestRender_RepoStateMergeWithBranch(t *testing.T) {
+	out := Render("  main\n", "Merging", "branch 'foo' into bar", nil, nil, nil, nil)
+	stripped := stripANSI(out)
+
+	assert.Contains(t, stripped, "Merging: branch 'foo' into bar")
+	assert.Contains(t, stripped, "main")
+}
+
+func TestRender_RepoStateBeforeSections(t *testing.T) {
+	staged := []FileChange{{Path: "a.go", Status: "+", Added: 5}}
+	out := Render("", "Rebasing", "2/3", staged, nil, nil, nil)
+	stripped := stripANSI(out)
+
+	rebasingIdx := strings.Index(stripped, "Rebasing")
+	stagedIdx := strings.Index(stripped, "Staged:")
+	assert.Greater(t, rebasingIdx, -1)
+	assert.Greater(t, stagedIdx, rebasingIdx)
 }
 
 func TestFormatStats(t *testing.T) {

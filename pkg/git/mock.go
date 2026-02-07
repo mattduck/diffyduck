@@ -20,7 +20,9 @@ type MockGit struct {
 	// FileContents maps "ref:path" to file content for GetFileContent.
 	// Use empty ref for index, e.g., ":foo.go" for staged content.
 	FileContents    map[string]string
-	HasConflictsVal bool // return value for HasConflicts
+	HasConflictsVal bool   // return value for HasConflicts
+	RepoStateOp     string // operation for RepoState (e.g. "Rebasing")
+	RepoStateDetail string // detail for RepoState (e.g. "3/5")
 
 	// Branch-related mock data
 	Branches     []BranchInfo
@@ -178,6 +180,11 @@ func (m *MockGit) ExpireOldSnapshotRefs(maxAgeDays int) (int, error) {
 // HasConflicts returns the preconfigured value.
 func (m *MockGit) HasConflicts() bool {
 	return m.HasConflictsVal
+}
+
+// RepoState returns the preconfigured operation and detail.
+func (m *MockGit) RepoState() (string, string) {
+	return m.RepoStateOp, m.RepoStateDetail
 }
 
 // LocalBranches returns the preconfigured branch list.

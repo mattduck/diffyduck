@@ -121,6 +121,11 @@ type Git interface {
 	// cherry-pick state (i.e. sentinel files like MERGE_HEAD exist).
 	HasConflicts() bool
 
+	// RepoState returns the current in-progress operation (merge, rebase, etc.)
+	// and any contextual detail (e.g. branch name, step progress).
+	// Returns ("", "") when the working tree is in a normal state.
+	RepoState() (operation, detail string)
+
 	// LocalBranches returns all local branches with tip commit metadata.
 	LocalBranches() ([]BranchInfo, error)
 

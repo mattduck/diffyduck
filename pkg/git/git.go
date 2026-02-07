@@ -591,21 +591,112 @@ func (g *RealGit) Diff(args ...string) (string, error) {
 // HasConflicts returns true if the repo is in a merge, rebase, or cherry-pick
 // state by checking for sentinel files in the git directory.
 func (g *RealGit) HasConflicts() bool {
+	op, _ := g.RepoState()
+	return op != ""
+}
+
+// resolveGitDir returns the absolute path to the .git directory.
+func (g *RealGit) resolveGitDir() string {
 	out, err := g.command("rev-parse", "--git-dir").Output()
 	if err != nil {
-		return false
+		return ""
 	}
 	gitDir := strings.TrimSpace(string(out))
 	if !filepath.IsAbs(gitDir) && g.Dir != "" {
 		gitDir = filepath.Join(g.Dir, gitDir)
 	}
-	sentinels := []string{"MERGE_HEAD", "CHERRY_PICK_HEAD", "rebase-merge", "rebase-apply"}
-	for _, s := range sentinels {
-		if _, err := os.Stat(filepath.Join(gitDir, s)); err == nil {
-			return true
+	return gitDir
+}
+
+// RepoState returns the current in-progress operation and contextual detail.
+// Returns ("", "") when the working tree is in a normal state.
+func (g *RealGit) RepoState() (operation, detail string) {
+	gitDir := g.resolveGitDir()
+	if gitDir == "" {
+		return "", ""
+	}
+
+	// Interactive rebase: .git/rebase-merge/
+	if _, err := os.Stat(filepath.Join(gitDir, "rebase-merge")); err == nil {
+		return "Rebasing", g.rebaseDetail(filepath.Join(gitDir, "rebase-merge"))
+	}
+
+	// Non-interactive rebase: .git/rebase-apply/
+	if _, err := os.Stat(filepath.Join(gitDir, "rebase-apply")); err == nil {
+		return "Rebasing", g.rebaseDetail(filepath.Join(gitDir, "rebase-apply"))
+	}
+
+	// Merge
+	if _, err := os.Stat(filepath.Join(gitDir, "MERGE_HEAD")); err == nil {
+		return "Merging", g.mergeDetail(gitDir)
+	}
+
+	// Cherry-pick
+	if _, err := os.Stat(filepath.Join(gitDir, "CHERRY_PICK_HEAD")); err == nil {
+		return "Cherry-picking", ""
+	}
+
+	// Revert
+	if _, err := os.Stat(filepath.Join(gitDir, "REVERT_HEAD")); err == nil {
+		return "Reverting", ""
+	}
+
+	// Bisect
+	if _, err := os.Stat(filepath.Join(gitDir, "BISECT_LOG")); err == nil {
+		return "Bisecting", ""
+	}
+
+	return "", ""
+}
+
+// rebaseDetail reads step progress and branch names from a rebase state directory.
+// Returns e.g. "feature onto main (3/5)" or "3/5" if branch names aren't available.
+func (g *RealGit) rebaseDetail(dir string) string {
+	var parts []string
+
+	// Branch being rebased: head-name contains e.g. "refs/heads/feature"
+	if data, err := os.ReadFile(filepath.Join(dir, "head-name")); err == nil {
+		name := strings.TrimSpace(string(data))
+		name = strings.TrimPrefix(name, "refs/heads/")
+		if name != "" {
+			parts = append(parts, name)
 		}
 	}
-	return false
+
+	// Target: onto_name contains e.g. "main"
+	if data, err := os.ReadFile(filepath.Join(dir, "onto_name")); err == nil {
+		onto := strings.TrimSpace(string(data))
+		if onto != "" {
+			parts = append(parts, "onto "+onto)
+		}
+	}
+
+	// Step progress: msgnum/end e.g. "3/5"
+	msgnum, err1 := os.ReadFile(filepath.Join(dir, "msgnum"))
+	end, err2 := os.ReadFile(filepath.Join(dir, "end"))
+	if err1 == nil && err2 == nil {
+		step := strings.TrimSpace(string(msgnum))
+		total := strings.TrimSpace(string(end))
+		if step != "" && total != "" {
+			parts = append(parts, "("+step+"/"+total+")")
+		}
+	}
+
+	return strings.Join(parts, " ")
+}
+
+// mergeDetail reads MERGE_MSG to extract the branch being merged.
+func (g *RealGit) mergeDetail(gitDir string) string {
+	data, err := os.ReadFile(filepath.Join(gitDir, "MERGE_MSG"))
+	if err != nil {
+		return ""
+	}
+	// MERGE_MSG first line is typically: "Merge branch 'foo'" or "Merge branch 'foo' into bar"
+	firstLine := strings.SplitN(string(data), "\n", 2)[0]
+	if strings.HasPrefix(firstLine, "Merge ") {
+		return strings.TrimPrefix(firstLine, "Merge ")
+	}
+	return ""
 }
 
 // GetFileContent returns the content of a file at a given ref.
