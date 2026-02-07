@@ -38,14 +38,15 @@ type KeyMap struct {
 	FullFileToggle []string
 
 	// Actions
-	Quit          []string
-	Enter         []string // used for comment mode
-	Yank          []string
-	YankAll       []string
-	RefreshLayout []string // recalculate dynamic column widths
-	Snapshot      []string // create snapshot and show incremental diff
-	VisualMode    []string // enter visual line mode
-	Help          []string // toggle help screen
+	Quit           []string
+	Enter          []string // used for comment mode
+	Yank           []string
+	YankAll        []string
+	RefreshLayout  []string // recalculate dynamic column widths
+	Snapshot       []string // create snapshot and show incremental diff
+	SnapshotToggle []string // toggle snapshot view
+	VisualMode     []string // enter visual line mode
+	Help           []string // toggle help screen
 
 	// Window management (sequences with prefix)
 	WinSplitV      []string // "ctrl+w %"
@@ -98,6 +99,7 @@ func DefaultKeyMap() KeyMap {
 		YankAll:        []string{"Y"},
 		RefreshLayout:  []string{"r"},
 		Snapshot:       []string{"R"},
+		SnapshotToggle: []string{"S"},
 		VisualMode:     []string{"V"},
 		Help:           []string{"ctrl+h"},
 		WinSplitV:      []string{"ctrl+w %"},
@@ -163,6 +165,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.YankAll, Desc: "Copy all visible content"},
 			{Keys: km.RefreshLayout, Desc: "Refresh layout"},
 			{Keys: km.Snapshot, Desc: "Create snapshot"},
+			{Keys: km.SnapshotToggle, Desc: "Toggle snapshot view"},
 			{Keys: km.VisualMode, Desc: "Enter visual line mode"},
 			{Keys: km.Help, Desc: "Toggle this help screen"},
 			{Keys: km.Quit, Desc: "Quit"},
@@ -277,7 +280,7 @@ func allBindings(km KeyMap) [][]string {
 		km.SearchForward, km.SearchBack, km.NextMatch, km.PrevMatch,
 		km.FoldToggle, km.FoldToggleAll, km.FullFileToggle,
 		km.Quit, km.Enter, km.Yank, km.YankAll,
-		km.RefreshLayout, km.Snapshot, km.VisualMode, km.Help,
+		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help,
 		km.WinSplitV, km.WinSplitH, km.WinClose,
 		km.WinFocusLeft, km.WinFocusRight, km.WinFocusUp, km.WinFocusDown,
 		km.WinResizeLeft, km.WinResizeRight, km.WinResizeUp, km.WinResizeDown,
@@ -380,6 +383,9 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		if a.Snapshot != nil {
 			km.Snapshot = a.Snapshot
 		}
+		if a.SnapshotToggle != nil {
+			km.SnapshotToggle = a.SnapshotToggle
+		}
 		if a.Visual != nil {
 			km.VisualMode = a.Visual
 		}
@@ -467,14 +473,15 @@ func DefaultKeysConfig() config.KeysConfig {
 			FullFile: km.FullFileToggle,
 		},
 		Actions: &config.ActionKeys{
-			Quit:     km.Quit,
-			Enter:    km.Enter,
-			Yank:     km.Yank,
-			YankAll:  km.YankAll,
-			Refresh:  km.RefreshLayout,
-			Snapshot: km.Snapshot,
-			Visual:   km.VisualMode,
-			Help:     km.Help,
+			Quit:           km.Quit,
+			Enter:          km.Enter,
+			Yank:           km.Yank,
+			YankAll:        km.YankAll,
+			Refresh:        km.RefreshLayout,
+			Snapshot:       km.Snapshot,
+			SnapshotToggle: km.SnapshotToggle,
+			Visual:         km.VisualMode,
+			Help:           km.Help,
 		},
 		Window: &config.WindowKeys{
 			SplitVertical:   km.WinSplitV,

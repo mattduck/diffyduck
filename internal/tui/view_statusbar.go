@@ -471,14 +471,16 @@ func (m Model) renderStatusBar() string {
 	// Combine: reversed_less_indicator + status_msg + loading + padding + debug_stats
 	content := styledLessIndicator + statusMsg + loadingIndicator
 	contentWidth := displayWidth(" "+lessIndicator) + statusMsgWidth + loadingWidth
+	rightSide := debugStats
+	rightWidth := debugWidth
 
 	// Calculate padding between content and right-side indicators
-	padding := m.width - contentWidth - debugWidth
+	padding := m.width - contentWidth - rightWidth
 	if padding < 0 {
 		padding = 0
 	}
 
-	return content + strings.Repeat(" ", padding) + debugStats
+	return content + strings.Repeat(" ", padding) + rightSide
 }
 
 // formatDebugStats returns formatted memory and goroutine stats for debug mode.

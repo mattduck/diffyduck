@@ -4366,7 +4366,7 @@ func TestSnapshotCreatedMsg_Success(t *testing.T) {
 			IsSnapshot: true,
 			// SHA empty — simulates the initial snapshot before background completes
 		},
-	}, WithSnapshotsEnabled(true), WithBaseSHA("baseabc1234567"), WithGit(&git.MockGit{}))
+	}, WithAutoSnapshots(true), WithShowSnapshots(true), WithBaseSHA("baseabc1234567"), WithGit(&git.MockGit{}))
 
 	msg := SnapshotCreatedMsg{
 		SHA:     "deadbeef1234567890abcdef1234567890abcdef",
@@ -4390,7 +4390,7 @@ func TestSnapshotCreatedMsg_Success(t *testing.T) {
 func TestSnapshotCreatedMsg_Error(t *testing.T) {
 	m := NewWithCommits([]sidebyside.CommitSet{
 		{Info: sidebyside.CommitInfo{Subject: "diff"}, IsSnapshot: true},
-	}, WithSnapshotsEnabled(true))
+	}, WithAutoSnapshots(true), WithShowSnapshots(true))
 
 	msg := SnapshotCreatedMsg{
 		Err: fmt.Errorf("git error"),
@@ -4400,7 +4400,7 @@ func TestSnapshotCreatedMsg_Error(t *testing.T) {
 	result := newModel.(Model)
 
 	// Should disable snapshots
-	assert.False(t, result.snapshotsEnabled)
+	assert.False(t, result.autoSnapshots)
 	// Should not append anything to snapshots list
 	assert.Empty(t, result.snapshots)
 }
@@ -4408,7 +4408,7 @@ func TestSnapshotCreatedMsg_Error(t *testing.T) {
 func TestSnapshotCreatedMsg_ShortSHA(t *testing.T) {
 	m := NewWithCommits([]sidebyside.CommitSet{
 		{Info: sidebyside.CommitInfo{}, IsSnapshot: true},
-	}, WithSnapshotsEnabled(true), WithGit(&git.MockGit{}))
+	}, WithAutoSnapshots(true), WithShowSnapshots(true), WithGit(&git.MockGit{}))
 
 	msg := SnapshotCreatedMsg{
 		SHA:     "abc12", // shorter than 7 chars
@@ -4429,7 +4429,7 @@ func TestSnapshotCreatedMsg_SkipsUpdateWhenSHAAlreadySet(t *testing.T) {
 			Info:       sidebyside.CommitInfo{SHA: "existing", Subject: "original subject"},
 			IsSnapshot: true,
 		},
-	}, WithSnapshotsEnabled(true), WithGit(&git.MockGit{}))
+	}, WithAutoSnapshots(true), WithShowSnapshots(true), WithGit(&git.MockGit{}))
 
 	msg := SnapshotCreatedMsg{
 		SHA:     "newsha1234567890",
@@ -4453,7 +4453,7 @@ func TestSnapshotCreatedMsg_SkipsUpdateWhenSHAAlreadySet(t *testing.T) {
 
 func TestHandleSnapshot_DisabledShowsStatus(t *testing.T) {
 	m := makeTestModel(10)
-	m.snapshotsEnabled = false
+	m.autoSnapshots = false
 	m.keys = DefaultKeyMap()
 
 	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
@@ -4465,7 +4465,7 @@ func TestHandleSnapshot_DisabledShowsStatus(t *testing.T) {
 
 func TestHandleSnapshot_NoInitialSnapshotShowsStatus(t *testing.T) {
 	m := makeTestModel(10)
-	m.snapshotsEnabled = true
+	m.autoSnapshots = true
 	m.snapshots = nil // no initial snapshot yet
 	m.keys = DefaultKeyMap()
 
@@ -4634,7 +4634,7 @@ func TestLoadCommitDiff_NegativeDelta_ShiftsCorrectly(t *testing.T) {
 
 func TestHandleSnapshot_NilGitReturnsNil(t *testing.T) {
 	m := makeTestModel(10)
-	m.snapshotsEnabled = true
+	m.autoSnapshots = true
 	m.snapshots = []string{"abc123"} // has initial snapshot
 	m.git = nil
 	m.keys = DefaultKeyMap()
@@ -4645,4 +4645,387 @@ func TestHandleSnapshot_NilGitReturnsNil(t *testing.T) {
 	// No status message, no command — just a no-op
 	assert.Empty(t, result.statusMessage)
 	assert.Nil(t, cmd)
+}
+
+// =============================================================================
+// SnapshotToggle (S key) tests
+// =============================================================================
+
+func TestSnapshotToggle_DisabledWhenNoAutoSnapshots(t *testing.T) {
+	m := makeTestModel(10)
+	m.autoSnapshots = false
+	m.keys = DefaultKeyMap()
+
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result := newModel.(Model)
+
+	assert.Equal(t, "Snapshots not enabled", result.statusMessage)
+	assert.NotNil(t, cmd, "should return clear-status command")
+	assert.False(t, result.showSnapshots)
+}
+
+func TestSnapshotToggle_BuildsHistoryAsync(t *testing.T) {
+	// First S press (no cached snapshot view) should trigger an async history
+	// build via buildSnapshotHistoryCmd. The normal view is cached so we can
+	// restore it when toggling back.
+	baseCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "base diff"},
+		Files: []sidebyside.FilePair{{NewPath: "base.go"}},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{baseCommit},
+		WithAutoSnapshots(true),
+	)
+	m.keys = DefaultKeyMap()
+
+	assert.False(t, m.showSnapshots)
+
+	// Press S to toggle on
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result := newModel.(Model)
+
+	assert.True(t, result.showSnapshots)
+	// Normal view should be cached for later restoration
+	require.Len(t, result.normalViewCommits, 1)
+	assert.Equal(t, "base diff", result.normalViewCommits[0].Info.Subject)
+	// Original commits are unchanged (async SnapshotHistoryReadyMsg will swap them)
+	assert.False(t, result.commits[0].IsSnapshot)
+}
+
+func TestSnapshotToggle_SwitchesToCachedSnapshotView(t *testing.T) {
+	// When snapshotViewCommits is cached, S should swap to it immediately
+	baseCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "base diff"},
+		Files: []sidebyside.FilePair{{NewPath: "base.go"}},
+	}
+	snapshotCommit := sidebyside.CommitSet{
+		Info:       sidebyside.CommitInfo{Subject: "snapshot diff"},
+		Files:      []sidebyside.FilePair{{NewPath: "snap.go"}},
+		IsSnapshot: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{baseCommit},
+		WithAutoSnapshots(true),
+		WithSnapshotViewCommits([]sidebyside.CommitSet{snapshotCommit}),
+	)
+	m.keys = DefaultKeyMap()
+
+	assert.False(t, m.showSnapshots)
+	assert.Equal(t, "base.go", m.files[0].NewPath)
+
+	// Press S to toggle to snapshot view
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result := newModel.(Model)
+
+	assert.True(t, result.showSnapshots)
+	require.Len(t, result.commits, 1)
+	assert.Equal(t, "snapshot diff", result.commits[0].Info.Subject)
+	assert.Equal(t, "snap.go", result.files[0].NewPath)
+}
+
+func TestSnapshotToggle_SwitchesBack(t *testing.T) {
+	baseCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "base diff"},
+		Files: []sidebyside.FilePair{{NewPath: "base.go"}},
+	}
+	snapshotCommit := sidebyside.CommitSet{
+		Info:       sidebyside.CommitInfo{Subject: "snapshot diff"},
+		Files:      []sidebyside.FilePair{{NewPath: "snap.go"}},
+		IsSnapshot: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{baseCommit},
+		WithAutoSnapshots(true),
+		WithSnapshotViewCommits([]sidebyside.CommitSet{snapshotCommit}),
+	)
+	m.keys = DefaultKeyMap()
+
+	// Toggle on
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result := newModel.(Model)
+	assert.True(t, result.showSnapshots)
+
+	// Toggle off
+	newModel2, _ := result.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result2 := newModel2.(Model)
+	assert.False(t, result2.showSnapshots)
+	require.Len(t, result2.commits, 1)
+	assert.Equal(t, "base diff", result2.commits[0].Info.Subject)
+	assert.Equal(t, "base.go", result2.files[0].NewPath)
+}
+
+func TestSnapshotToggle_StartInSnapshotView(t *testing.T) {
+	// When the model starts with showSnapshots=true (e.g. from config or --snapshots),
+	// toggling OFF should swap to the base→WT view, not stay on snapshot data.
+	baseCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "base diff"},
+		Files: []sidebyside.FilePair{{NewPath: "base.go"}},
+	}
+	snapshotCommit := sidebyside.CommitSet{
+		Info:       sidebyside.CommitInfo{Subject: "snapshot diff"},
+		Files:      []sidebyside.FilePair{{NewPath: "snap.go"}},
+		IsSnapshot: true,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{baseCommit},
+		WithAutoSnapshots(true),
+		WithShowSnapshots(true),
+		WithSnapshotViewCommits([]sidebyside.CommitSet{snapshotCommit}),
+	)
+	m.keys = DefaultKeyMap()
+	// Init should have swapped to snapshot view and cached normal view
+	m.Init()
+
+	assert.True(t, m.showSnapshots)
+	assert.Equal(t, "snap.go", m.files[0].NewPath, "should start in snapshot view")
+	require.NotNil(t, m.normalViewCommits, "normal view should be cached at init")
+	assert.Equal(t, "base diff", m.normalViewCommits[0].Info.Subject)
+
+	// First S press: toggle OFF → should restore base→WT view
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result := newModel.(Model)
+	assert.False(t, result.showSnapshots)
+	assert.Equal(t, "base.go", result.files[0].NewPath, "should swap to normal view")
+
+	// Second S press: toggle ON → should restore snapshot view
+	newModel2, _ := result.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result2 := newModel2.(Model)
+	assert.True(t, result2.showSnapshots)
+	assert.Equal(t, "snap.go", result2.files[0].NewPath, "should swap back to snapshot view")
+}
+
+// =============================================================================
+// End-to-end snapshot toggle test (S key → async build → message → view swap)
+// =============================================================================
+
+func TestSnapshotToggle_EndToEnd_BuildsAndSwapsView(t *testing.T) {
+	// Simulates the real user flow: user runs dfd, snapshots are taken,
+	// user presses S, async command builds snapshot timeline, message arrives,
+	// view swaps to show snapshot commits with different diff content.
+	simpleDiff := "diff --git a/file.go b/file.go\n--- a/file.go\n+++ b/file.go\n@@ -1,3 +1,3 @@\n line1\n-old\n+new\n line3\n"
+
+	baseCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "base diff"},
+		Files: []sidebyside.FilePair{{NewPath: "base.go"}},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{baseCommit},
+		WithAutoSnapshots(true),
+		WithBaseSHA("aaaa"),
+		WithBranch("main"),
+		WithPersistedSnapshots([]string{"bbbb"}),
+	)
+	m.keys = DefaultKeyMap()
+	m.git = &git.MockGit{DiffOutput: simpleDiff}
+
+	// Verify initial state
+	assert.False(t, m.showSnapshots)
+	assert.Equal(t, "base.go", m.files[0].NewPath)
+
+	// Step 1: Press S to toggle on snapshot view
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result := newModel.(Model)
+
+	assert.True(t, result.showSnapshots, "showSnapshots should be set immediately")
+	require.NotNil(t, cmd, "should return async command from buildSnapshotHistoryCmd")
+
+	// Normal view should be cached
+	require.Len(t, result.normalViewCommits, 1)
+	assert.Equal(t, "base diff", result.normalViewCommits[0].Info.Subject)
+
+	// Step 2: Execute the async command (simulates Bubble Tea runtime)
+	msg := cmd()
+	readyMsg, ok := msg.(SnapshotHistoryReadyMsg)
+	require.True(t, ok, "command should return SnapshotHistoryReadyMsg, got %T", msg)
+	assert.NoError(t, readyMsg.Err)
+	assert.NotEmpty(t, readyMsg.Commits, "should have snapshot commits")
+
+	// Step 3: Feed the message back through Update
+	newModel2, _ := result.Update(readyMsg)
+	result2 := newModel2.(Model)
+
+	assert.True(t, result2.showSnapshots, "should still be in snapshot view")
+	assert.NotNil(t, result2.snapshotViewCommits, "should cache snapshot view")
+
+	// The commits should be snapshot commits, not the original base commit
+	for _, c := range result2.commits {
+		assert.True(t, c.IsSnapshot, "all commits in snapshot view should be IsSnapshot")
+	}
+
+	// Files should have changed from the base view
+	assert.NotEqual(t, "base.go", result2.files[0].NewPath,
+		"files should reflect snapshot diff content, not the original base diff")
+}
+
+// =============================================================================
+// SnapshotCreatedSilentMsg tests
+// =============================================================================
+
+func TestSnapshotCreatedSilentMsg_Success(t *testing.T) {
+	m := makeTestModel(10)
+	m.autoSnapshots = true
+	m.baseSHA = "base123"
+	m.git = &git.MockGit{}
+
+	msg := SnapshotCreatedSilentMsg{
+		SHA:     "newsnap1234567890",
+		Subject: "dfd: base12 @ Feb 5 09:15",
+		Date:    "Feb 5 09:15",
+	}
+
+	newModel, cmd := m.Update(msg)
+	result := newModel.(Model)
+
+	require.Len(t, result.snapshots, 1)
+	assert.Equal(t, "newsnap1234567890", result.snapshots[0])
+	assert.Equal(t, "Snapshot taken", result.statusMessage)
+	assert.NotNil(t, cmd)
+	// Snapshot view cache should be invalidated
+	assert.Nil(t, result.snapshotViewCommits)
+}
+
+func TestSnapshotCreatedSilentMsg_Error(t *testing.T) {
+	m := makeTestModel(10)
+	m.autoSnapshots = true
+
+	msg := SnapshotCreatedSilentMsg{
+		Err: fmt.Errorf("snapshot failed"),
+	}
+
+	newModel, _ := m.Update(msg)
+	result := newModel.(Model)
+
+	assert.False(t, result.autoSnapshots, "should disable snapshots on error")
+	assert.Empty(t, result.snapshots)
+}
+
+// =============================================================================
+// swapToView tests
+// =============================================================================
+
+func TestSwapToView_RebuildsState(t *testing.T) {
+	m := makeTestModel(10)
+	m.highlightSpans[0] = &FileHighlight{}
+	m.highlightSpans[1] = &FileHighlight{}
+
+	newCommits := []sidebyside.CommitSet{
+		{
+			Info:  sidebyside.CommitInfo{Subject: "new view"},
+			Files: []sidebyside.FilePair{{NewPath: "new1.go"}, {NewPath: "new2.go"}},
+		},
+	}
+
+	m.swapToView(newCommits)
+
+	require.Len(t, m.commits, 1)
+	assert.Equal(t, "new view", m.commits[0].Info.Subject)
+	require.Len(t, m.files, 2)
+	assert.Equal(t, "new1.go", m.files[0].NewPath)
+	assert.Equal(t, "new2.go", m.files[1].NewPath)
+	require.Len(t, m.commitFileStarts, 1)
+	assert.Equal(t, 0, m.commitFileStarts[0])
+
+	// Old highlight cache should be cleared
+	assert.Empty(t, m.highlightSpans)
+	assert.Empty(t, m.inlineDiffCache)
+}
+
+// =============================================================================
+// buildSnapshotHistoryCmd fallback tests
+// =============================================================================
+
+func TestBuildSnapshotHistoryCmd_FallsBackToInMemorySnapshots(t *testing.T) {
+	// MockGit.ListSnapshotRefs returns nil by default, simulating
+	// a ref that was never persisted. With in-memory snapshots, the
+	// function should fall back to those SHAs.
+	simpleDiff := "diff --git a/file.go b/file.go\n--- a/file.go\n+++ b/file.go\n@@ -1,3 +1,3 @@\n line1\n-old\n+new\n line3\n"
+
+	m := makeTestModel(10)
+	m.autoSnapshots = true
+	m.baseSHA = "aaaa"
+	m.branch = "main"
+	m.snapshots = []string{"bbbb"}
+	m.git = &git.MockGit{DiffOutput: simpleDiff}
+
+	cmd := m.buildSnapshotHistoryCmd()
+	require.NotNil(t, cmd)
+
+	msg := cmd()
+	readyMsg, ok := msg.(SnapshotHistoryReadyMsg)
+	require.True(t, ok)
+	assert.NoError(t, readyMsg.Err)
+	assert.NotEmpty(t, readyMsg.Commits, "should build history from in-memory snapshots")
+}
+
+func TestBuildSnapshotHistoryCmd_EmptyWhenNoSnapshots(t *testing.T) {
+	// Neither ListSnapshotRefs nor in-memory snapshots have entries.
+	m := makeTestModel(10)
+	m.autoSnapshots = true
+	m.baseSHA = "aaaa"
+	m.branch = "main"
+	m.snapshots = nil
+	m.git = &git.MockGit{}
+
+	cmd := m.buildSnapshotHistoryCmd()
+	require.NotNil(t, cmd)
+
+	msg := cmd()
+	readyMsg, ok := msg.(SnapshotHistoryReadyMsg)
+	require.True(t, ok)
+	assert.Empty(t, readyMsg.Commits, "should return empty when no snapshots exist anywhere")
+}
+
+// =============================================================================
+// SnapshotHistoryReadyMsg handler tests
+// =============================================================================
+
+func TestSnapshotHistoryReadyMsg_SwapsView(t *testing.T) {
+	baseCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "base diff"},
+		Files: []sidebyside.FilePair{{NewPath: "base.go"}},
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{baseCommit},
+		WithAutoSnapshots(true),
+	)
+	m.showSnapshots = true // already toggled on, waiting for history
+
+	snapshotCommits := []sidebyside.CommitSet{
+		{
+			Info:       sidebyside.CommitInfo{Subject: "Working tree changes"},
+			Files:      []sidebyside.FilePair{{NewPath: "wt.go"}},
+			IsSnapshot: true,
+		},
+	}
+	newModel, _ := m.Update(SnapshotHistoryReadyMsg{Commits: snapshotCommits})
+	result := newModel.(Model)
+
+	assert.True(t, result.showSnapshots)
+	require.Len(t, result.commits, 1)
+	assert.Equal(t, "Working tree changes", result.commits[0].Info.Subject)
+	assert.Equal(t, "wt.go", result.files[0].NewPath)
+	assert.NotNil(t, result.snapshotViewCommits)
+}
+
+func TestSnapshotHistoryReadyMsg_EmptyResetsToggle(t *testing.T) {
+	m := makeTestModel(10)
+	m.autoSnapshots = true
+	m.showSnapshots = true // was toggled on
+
+	newModel, _ := m.Update(SnapshotHistoryReadyMsg{})
+	result := newModel.(Model)
+
+	assert.False(t, result.showSnapshots, "should reset toggle on empty history")
+	assert.Equal(t, "No snapshot history", result.statusMessage)
+}
+
+func TestSnapshotHistoryReadyMsg_ErrorResetsToggle(t *testing.T) {
+	m := makeTestModel(10)
+	m.autoSnapshots = true
+	m.showSnapshots = true
+
+	newModel, _ := m.Update(SnapshotHistoryReadyMsg{Err: fmt.Errorf("git error")})
+	result := newModel.(Model)
+
+	assert.False(t, result.showSnapshots, "should reset toggle on error")
+	assert.Equal(t, "Failed to load snapshot history", result.statusMessage)
 }

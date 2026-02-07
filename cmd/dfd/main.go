@@ -9,7 +9,6 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/internal/tui"
@@ -638,9 +637,9 @@ Diff flags:
       --cached     Diff staged changes (alias: --staged)
       --unstaged   Diff unstaged changes only
   -a, --all        Include untracked files
-      --snapshots  Enable snapshots
+      --snapshots  Show snapshot history view
       --no-snapshots
-                   Disable snapshots
+                   Disable taking snapshots
   -e, --exclude <glob>
                    Exclude files matching glob (repeatable)
 
@@ -665,9 +664,9 @@ Flags:
       --cached     Diff staged changes (alias: --staged)
       --unstaged   Diff unstaged changes only
   -a, --all        Include untracked files
-      --snapshots  Enable snapshots
+      --snapshots  Show snapshot history view
       --no-snapshots
-                   Disable snapshots
+                   Disable taking snapshots
   -e, --exclude <glob>
                    Exclude files matching glob (repeatable)
 
@@ -875,21 +874,31 @@ func run() error {
 		}
 	}
 
-	// Determine if snapshots should be enabled.
-	// CLI flags (--snapshots/--no-snapshots) take precedence over config.
-	snapshotsDisabled := args.snapshots != nil && !*args.snapshots
-	if !snapshotsDisabled && args.snapshots == nil && cfg.Features.Snapshots != nil && !*cfg.Features.Snapshots {
-		snapshotsDisabled = true
+	// Determine if snapshots should be taken (auto_snapshots).
+	// --no-snapshots disables taking; auto_snapshots config can also disable.
+	autoSnapshotsDisabled := args.snapshots != nil && !*args.snapshots
+	if !autoSnapshotsDisabled && args.snapshots == nil && cfg.Features.AutoSnapshots != nil && !*cfg.Features.AutoSnapshots {
+		autoSnapshotsDisabled = true
 	}
-	snapshotsEnabled := args.cmd == "diff" &&
-		!snapshotsDisabled &&
+	autoSnapshots := args.cmd == "diff" &&
+		!autoSnapshotsDisabled &&
 		!args.unstaged &&
 		workingTreeInvolved(args)
 
-	// Auto-continue: check for existing snapshots at this base SHA
+	// Determine if snapshot view should be shown.
+	// --snapshots flag forces show; show_snapshots config can also enable.
+	showSnapshots := false
+	if args.snapshots != nil && *args.snapshots {
+		showSnapshots = true
+	} else if args.snapshots == nil && cfg.Features.ShowSnapshots != nil && *cfg.Features.ShowSnapshots {
+		showSnapshots = true
+	}
+	showSnapshots = showSnapshots && autoSnapshots
+
+	// Load persisted snapshot SHAs (needed for the SHA chain regardless of view)
 	var snapshotInfos []git.SnapshotInfo
 	var persistedSnapshots []string
-	if snapshotsEnabled && baseSHA != "" {
+	if autoSnapshots && baseSHA != "" {
 		infos, err := g.ListSnapshotRefs(branch, baseSHA)
 		if err == nil {
 			snapshotInfos = infos
@@ -899,7 +908,6 @@ func run() error {
 			}
 		}
 	}
-	continueMode := len(persistedSnapshots) > 0
 
 	// Detect merge/rebase conflict state (used to adjust diff commands and enable
 	// conflict marker highlighting in the TUI).
@@ -911,22 +919,7 @@ func run() error {
 
 	switch args.cmd {
 	case "diff":
-		if continueMode && len(persistedSnapshots) > 0 {
-			lastSnapshot := persistedSnapshots[len(persistedSnapshots)-1]
-			if args.allMode {
-				output, err = getDiffAll(g, lastSnapshot, args.paths, args.excludes)
-			} else {
-				diffArgs := []string{lastSnapshot}
-				diffArgs = append(diffArgs, pathspec...)
-				output, err = g.Diff(diffArgs...)
-			}
-			if err != nil {
-				return fmt.Errorf("git diff from snapshot: %w", err)
-			}
-			args.mode = content.ModeDiffRefs
-			args.ref1 = lastSnapshot
-			args.ref2 = ""
-		} else if args.allMode {
+		if args.allMode {
 			output, err = getDiffAll(g, "HEAD", args.paths, args.excludes)
 			if err != nil {
 				return err
@@ -1003,125 +996,28 @@ func run() error {
 		return fmt.Errorf("parse diff: %w", err)
 	}
 
-	// Build commit sets - in continue mode with history, we show historical diffs too
+	// Build base→WT commit (always shown in normal view)
 	var commits []sidebyside.CommitSet
-
-	if continueMode && len(snapshotInfos) > 0 {
-		for i := len(snapshotInfos) - 1; i >= 1; i-- {
-			oldRef := snapshotInfos[i-1].SHA
-			newRef := snapshotInfos[i].SHA
-
-			histDiff, err := g.DiffSnapshots(oldRef, newRef, pathspec...)
-			if err != nil {
-				continue
-			}
-			if histDiff == "" {
-				continue
-			}
-
-			histParsed, err := diff.Parse(histDiff)
-			if err != nil {
-				continue
-			}
-
-			info := snapshotInfos[i]
-			snapshotShort := info.SHA
-			if len(snapshotShort) > 7 {
-				snapshotShort = snapshotShort[:7]
-			}
-
-			histFiles, _ := sidebyside.TransformDiff(histParsed)
-			histCommit := sidebyside.CommitSet{
-				Info: sidebyside.CommitInfo{
-					SHA:     snapshotShort,
-					Date:    info.Date,
-					Subject: info.Subject,
-				},
-				Files:          histFiles,
-				FoldLevel:      sidebyside.CommitFolded,
-				FilesLoaded:    true,
-				StatsLoaded:    true,
-				IsSnapshot:     true,
-				SnapshotOldRef: oldRef,
-				SnapshotNewRef: newRef,
-			}
-			for _, f := range histFiles {
-				added, removed := countFilePairStats(f)
-				histCommit.TotalAdded += added
-				histCommit.TotalRemoved += removed
-			}
-			commits = append(commits, histCommit)
-		}
-
-		// Initial diff: base→S0
-		firstInfo := snapshotInfos[0]
-		histDiff, err := g.DiffSnapshots(baseSHA, firstInfo.SHA, pathspec...)
-		if err == nil && histDiff != "" {
-			histParsed, err := diff.Parse(histDiff)
-			if err == nil {
-				snapshotShort := firstInfo.SHA
-				if len(snapshotShort) > 7 {
-					snapshotShort = snapshotShort[:7]
-				}
-
-				histFiles, _ := sidebyside.TransformDiff(histParsed)
-				histCommit := sidebyside.CommitSet{
-					Info: sidebyside.CommitInfo{
-						SHA:     snapshotShort,
-						Date:    firstInfo.Date,
-						Subject: firstInfo.Subject,
-					},
-					Files:          histFiles,
-					FoldLevel:      sidebyside.CommitFolded,
-					FilesLoaded:    true,
-					StatsLoaded:    true,
-					IsSnapshot:     true,
-					SnapshotOldRef: baseSHA,
-					SnapshotNewRef: firstInfo.SHA,
-				}
-				for _, f := range histFiles {
-					added, removed := countFilePairStats(f)
-					histCommit.TotalAdded += added
-					histCommit.TotalRemoved += removed
-				}
-				commits = append(commits, histCommit)
-			}
-		}
-	}
 
 	if len(d.Files) > 0 {
 		files, truncatedFileCount := sidebyside.TransformDiff(d)
-
 		commit := sidebyside.CommitSet{
 			Info:               commitInfo,
 			Files:              files,
 			FoldLevel:          sidebyside.CommitNormal,
 			FilesLoaded:        true,
 			TruncatedFileCount: truncatedFileCount,
-			IsSnapshot:         snapshotsEnabled,
 		}
+		commits = append(commits, commit)
+	}
 
-		if snapshotsEnabled && baseSHA != "" {
-			baseShort := baseSHA
-			if len(baseShort) > 7 {
-				baseShort = baseShort[:7]
-			}
-			now := time.Now()
-			dateStr := now.Format("Jan 2 15:04")
-			commit.Info.Date = dateStr
-			commit.Info.SHA = ""
-			commit.Info.Subject = fmt.Sprintf("dfd: %s @ %s", baseShort, dateStr)
-			if continueMode && len(persistedSnapshots) > 0 {
-				commit.SnapshotOldRef = persistedSnapshots[len(persistedSnapshots)-1]
-			}
-		}
+	// Build snapshot view commits (only when showing snapshot view at startup)
+	var snapshotViewCommits []sidebyside.CommitSet
+	if showSnapshots && len(snapshotInfos) > 0 {
+		snapshotViewCommits = buildSnapshotHistory(g, snapshotInfos, baseSHA, persistedSnapshots, pathspec)
+	}
 
-		if continueMode {
-			commits = append([]sidebyside.CommitSet{commit}, commits...)
-		} else {
-			commits = append(commits, commit)
-		}
-	} else if len(commits) == 0 {
+	if len(commits) == 0 && len(snapshotViewCommits) == 0 {
 		fmt.Println("No changes")
 		return nil
 	}
@@ -1143,14 +1039,17 @@ func run() error {
 	if args.allMode {
 		opts = append(opts, tui.WithAllMode(true))
 	}
-	if snapshotsEnabled {
-		opts = append(opts, tui.WithSnapshotsEnabled(true))
-	}
-	if continueMode {
-		opts = append(opts, tui.WithContinueMode(true))
+	if autoSnapshots {
+		opts = append(opts, tui.WithAutoSnapshots(true))
 		if len(persistedSnapshots) > 0 {
 			opts = append(opts, tui.WithPersistedSnapshots(persistedSnapshots))
 		}
+	}
+	if showSnapshots {
+		opts = append(opts, tui.WithShowSnapshots(true))
+	}
+	if len(snapshotViewCommits) > 0 {
+		opts = append(opts, tui.WithSnapshotViewCommits(snapshotViewCommits))
 	}
 	if baseSHA != "" {
 		opts = append(opts, tui.WithBaseSHA(baseSHA))
@@ -1459,6 +1358,127 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 }
 
 // countFilePairStats counts added and removed lines in a file pair.
+// buildSnapshotHistory builds the snapshot timeline CommitSets from persisted snapshot history.
+// Returns commits in display order: [lastSnapshot→WT, S(n-1)→S(n), ..., S0→S1, base→S0].
+func buildSnapshotHistory(g *git.RealGit, snapshotInfos []git.SnapshotInfo, baseSHA string, persistedSnapshots []string, pathspec []string) []sidebyside.CommitSet {
+	var commits []sidebyside.CommitSet
+
+	// Build lastSnapshot→WT diff as the top commit
+	if len(persistedSnapshots) > 0 {
+		lastSnapshot := persistedSnapshots[len(persistedSnapshots)-1]
+		var wtDiffOutput string
+		var err error
+		diffArgs := []string{lastSnapshot}
+		diffArgs = append(diffArgs, pathspec...)
+		wtDiffOutput, err = g.Diff(diffArgs...)
+		if err == nil && wtDiffOutput != "" {
+			if wtParsed, err := diff.Parse(wtDiffOutput); err == nil && len(wtParsed.Files) > 0 {
+				wtFiles, _ := sidebyside.TransformDiff(wtParsed)
+				wtCommit := sidebyside.CommitSet{
+					Info: sidebyside.CommitInfo{
+						Subject: "Working tree changes",
+					},
+					Files:          wtFiles,
+					FoldLevel:      sidebyside.CommitNormal,
+					FilesLoaded:    true,
+					StatsLoaded:    true,
+					IsSnapshot:     true,
+					SnapshotOldRef: lastSnapshot,
+				}
+				for _, f := range wtFiles {
+					added, removed := countFilePairStats(f)
+					wtCommit.TotalAdded += added
+					wtCommit.TotalRemoved += removed
+				}
+				commits = append(commits, wtCommit)
+			}
+		}
+	}
+
+	// Build S(n-1)→S(n) diffs (newest first)
+	for i := len(snapshotInfos) - 1; i >= 1; i-- {
+		oldRef := snapshotInfos[i-1].SHA
+		newRef := snapshotInfos[i].SHA
+
+		histDiff, err := g.DiffSnapshots(oldRef, newRef, pathspec...)
+		if err != nil || histDiff == "" {
+			continue
+		}
+
+		histParsed, err := diff.Parse(histDiff)
+		if err != nil {
+			continue
+		}
+
+		info := snapshotInfos[i]
+		snapshotShort := info.SHA
+		if len(snapshotShort) > 7 {
+			snapshotShort = snapshotShort[:7]
+		}
+
+		histFiles, _ := sidebyside.TransformDiff(histParsed)
+		histCommit := sidebyside.CommitSet{
+			Info: sidebyside.CommitInfo{
+				SHA:     snapshotShort,
+				Date:    info.Date,
+				Subject: info.Subject,
+			},
+			Files:          histFiles,
+			FoldLevel:      sidebyside.CommitFolded,
+			FilesLoaded:    true,
+			StatsLoaded:    true,
+			IsSnapshot:     true,
+			SnapshotOldRef: oldRef,
+			SnapshotNewRef: newRef,
+		}
+		for _, f := range histFiles {
+			added, removed := countFilePairStats(f)
+			histCommit.TotalAdded += added
+			histCommit.TotalRemoved += removed
+		}
+		commits = append(commits, histCommit)
+	}
+
+	// Initial diff: base→S0
+	if len(snapshotInfos) > 0 {
+		firstInfo := snapshotInfos[0]
+		histDiff, err := g.DiffSnapshots(baseSHA, firstInfo.SHA, pathspec...)
+		if err == nil && histDiff != "" {
+			histParsed, err := diff.Parse(histDiff)
+			if err == nil {
+				snapshotShort := firstInfo.SHA
+				if len(snapshotShort) > 7 {
+					snapshotShort = snapshotShort[:7]
+				}
+
+				histFiles, _ := sidebyside.TransformDiff(histParsed)
+				histCommit := sidebyside.CommitSet{
+					Info: sidebyside.CommitInfo{
+						SHA:     snapshotShort,
+						Date:    firstInfo.Date,
+						Subject: firstInfo.Subject,
+					},
+					Files:          histFiles,
+					FoldLevel:      sidebyside.CommitFolded,
+					FilesLoaded:    true,
+					StatsLoaded:    true,
+					IsSnapshot:     true,
+					SnapshotOldRef: baseSHA,
+					SnapshotNewRef: firstInfo.SHA,
+				}
+				for _, f := range histFiles {
+					added, removed := countFilePairStats(f)
+					histCommit.TotalAdded += added
+					histCommit.TotalRemoved += removed
+				}
+				commits = append(commits, histCommit)
+			}
+		}
+	}
+
+	return commits
+}
+
 func countFilePairStats(fp sidebyside.FilePair) (added, removed int) {
 	for _, lp := range fp.Pairs {
 		if lp.New.Type == sidebyside.Added {

@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -9,6 +11,7 @@ import (
 	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/config"
 	"github.com/user/diffyduck/pkg/content"
+	"github.com/user/diffyduck/pkg/diff"
 	"github.com/user/diffyduck/pkg/git"
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/inlinediff"
@@ -143,7 +146,8 @@ type Model struct {
 	truncatedFileCount int              // number of files omitted due to limit
 
 	// Debug mode
-	debugMode bool // true when --debug flag is passed, shows memory/goroutine stats
+	debugMode bool        // true when --debug flag is passed, shows memory/goroutine stats
+	debugLog  *log.Logger // file-based debug logger (nil when not in debug mode)
 
 	// Syntax highlighting
 	highlighter         *highlight.Highlighter
@@ -238,13 +242,17 @@ type Model struct {
 	logArgs            []string // extra args for git log (ref ranges, pathspecs)
 
 	// Snapshot state (diff mode only)
-	snapshotsEnabled bool     // true when snapshots are available (working tree is involved in diff)
-	snapshots        []string // list of snapshot commit SHAs (index 0 is initial snapshot)
-	snapshotCount    int      // counter for "Diff N" naming
-	allMode          bool     // true if --all flag was used (include untracked files in snapshots)
-	continueMode     bool     // true if --continue flag was used (load persisted snapshots)
-	baseSHA          string   // SHA of the base ref we're diffing against (for keying snapshot refs)
-	branch           string   // current branch name (for scoping snapshot refs)
+	autoSnapshots bool     // true when snapshot-taking is enabled
+	showSnapshots bool     // true when snapshot view is currently displayed
+	snapshots     []string // list of snapshot commit SHAs (index 0 is initial snapshot)
+	snapshotCount int      // counter for "Diff N" naming
+	allMode       bool     // true if --all flag was used (include untracked files in snapshots)
+	baseSHA       string   // SHA of the base ref we're diffing against (for keying snapshot refs)
+	branch        string   // current branch name (for scoping snapshot refs)
+
+	// Cached view state for S-key toggle between normal and snapshot views
+	normalViewCommits   []sidebyside.CommitSet // base→WT commit(s)
+	snapshotViewCommits []sidebyside.CommitSet // snapshot view with R-key additions (nil = not yet built)
 
 	// Help screen
 	helpMode   bool     // true when help screen is displayed
@@ -405,10 +413,22 @@ func WithConflicts() Option {
 }
 
 // WithDebugMode enables debug mode, which displays memory and goroutine
-// stats in the status bar.
+// stats in the status bar and writes a debug log to /tmp/dfd-debug.log.
 func WithDebugMode() Option {
 	return func(m *Model) {
 		m.debugMode = true
+		f, err := os.OpenFile("/tmp/dfd-debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		if err == nil {
+			m.debugLog = log.New(f, "dfd: ", log.Ltime|log.Lmicroseconds)
+			m.debugLog.Println("debug logging started")
+		}
+	}
+}
+
+// logf writes to the debug log file if debug mode is enabled. No-op otherwise.
+func (m *Model) logf(format string, args ...interface{}) {
+	if m.debugLog != nil {
+		m.debugLog.Printf(format, args...)
 	}
 }
 
@@ -455,19 +475,27 @@ func WithAllMode(allMode bool) Option {
 	}
 }
 
-// WithSnapshotsEnabled enables or disables snapshot support.
+// WithAutoSnapshots enables or disables automatic snapshot-taking.
 // Snapshots are only available when the diff involves the working tree.
-func WithSnapshotsEnabled(enabled bool) Option {
+func WithAutoSnapshots(enabled bool) Option {
 	return func(m *Model) {
-		m.snapshotsEnabled = enabled
+		m.autoSnapshots = enabled
 	}
 }
 
-// WithContinueMode enables continue mode, which loads persisted snapshots
-// from a previous session.
-func WithContinueMode(enabled bool) Option {
+// WithShowSnapshots sets the initial snapshot view state.
+// When true, the TUI starts in snapshot view showing the snapshot timeline.
+func WithShowSnapshots(enabled bool) Option {
 	return func(m *Model) {
-		m.continueMode = enabled
+		m.showSnapshots = enabled
+	}
+}
+
+// WithSnapshotViewCommits provides pre-built snapshot timeline commits.
+// Used at startup when --snapshots flag or show_snapshots config is set.
+func WithSnapshotViewCommits(commits []sidebyside.CommitSet) Option {
+	return func(m *Model) {
+		m.snapshotViewCommits = commits
 	}
 }
 
@@ -590,6 +618,15 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		opt(&m)
 	}
 
+	// If starting in snapshot view, cache the normal commits and swap to snapshot view.
+	// This must happen here (not Init) because Init has a value receiver.
+	if m.showSnapshots && m.snapshotViewCommits != nil {
+		m.normalViewCommits = make([]sidebyside.CommitSet, len(m.commits))
+		copy(m.normalViewCommits, m.commits)
+		m.commits = m.snapshotViewCommits
+		m.rebuildFilesFromCommits()
+	}
+
 	// Load comment index early (before Init, which has a value receiver).
 	// The index is a pointer field, so it must be set here on the real model.
 	m.loadCommentIndex()
@@ -699,8 +736,9 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, m.fetchCommitStats())
 	}
 
+	// Cache the normal view commits (base→WT diff) for toggle
 	// Take initial snapshot for diff mode if enabled
-	if m.snapshotsEnabled && m.git != nil {
+	if m.autoSnapshots && m.git != nil {
 		cmds = append(cmds, m.createSnapshot())
 	}
 
@@ -2098,6 +2136,263 @@ func (m *Model) insertSnapshotCommit(commit sidebyside.CommitSet) {
 	m.w().scroll = 0
 
 	// Highlight the new files asynchronously (they'll be highlighted via the normal flow)
+}
+
+// rebuildFilesFromCommits rebuilds m.files and m.commitFileStarts from m.commits.
+func (m *Model) rebuildFilesFromCommits() {
+	m.files = nil
+	m.commitFileStarts = make([]int, len(m.commits))
+	m.truncatedFileCount = 0
+	for i, c := range m.commits {
+		m.commitFileStarts[i] = len(m.files)
+		m.files = append(m.files, c.Files...)
+		m.truncatedFileCount += c.TruncatedFileCount
+	}
+}
+
+// swapToView replaces the current view with the given commits.
+// Clears all file-indexed caches and resets window state.
+func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
+	m.commits = commits
+	m.rebuildFilesFromCommits()
+
+	// Clear file-indexed maps (indices have changed completely)
+	m.highlightSpans = make(map[int]*FileHighlight)
+	m.pairsHighlightSpans = make(map[int]*PairsFileHighlight)
+	m.structureMaps = make(map[int]*FileStructure)
+	m.pairsStructureMaps = make(map[int]*FileStructure)
+	m.inlineDiffCache = make(map[inlineDiffKey]inlineDiffResult)
+
+	// Reset all windows
+	for _, w := range m.windows {
+		w.scroll = 0
+		w.hscroll = 0
+		w.narrow = NarrowScope{}
+		w.fileFoldLevels = make(map[int]sidebyside.FoldLevel)
+		w.commitFoldLevels = make(map[int]sidebyside.CommitFoldLevel)
+		w.rowsCacheValid = false
+		w.cachedRows = nil
+	}
+
+	m.calculateTotalLines()
+
+	// Re-match persisted comments for the new file set
+	if m.commentIndex != nil {
+		m.matchCommentsForFiles(0, len(m.files))
+	}
+
+	// Synchronously highlight first file, then async the rest
+	if len(m.files) > 0 {
+		m.highlightPairsSync(0)
+		if len(m.files) > 1 {
+			return m.RequestHighlightFromPairsExcept(map[int]bool{0: true})
+		}
+	}
+	return nil
+}
+
+// handleSnapshotToggle handles the S key to toggle between normal and snapshot view.
+// When toggling ON: builds the snapshot timeline (lastSnapshot→WT + historical diffs)
+// via an async command, replicating the old continueMode behavior. When toggling OFF:
+// caches the snapshot view and restores the normal base→WT view.
+func (m *Model) handleSnapshotToggle() tea.Cmd {
+	if !m.autoSnapshots {
+		now := time.Now()
+		m.statusMessage = "Snapshots not enabled"
+		m.statusMessageTime = now
+		return m.clearStatusAfter(now)
+	}
+
+	m.showSnapshots = !m.showSnapshots
+	m.logf("handleSnapshotToggle: showSnapshots=%v git=%v baseSHA=%q branch=%q snapshots=%d snapshotViewCommits=%v",
+		m.showSnapshots, m.git != nil, m.baseSHA, m.branch, len(m.snapshots), m.snapshotViewCommits != nil)
+
+	if m.showSnapshots {
+		// Switching TO snapshot view — cache current normal view
+		m.normalViewCommits = make([]sidebyside.CommitSet, len(m.commits))
+		copy(m.normalViewCommits, m.commits)
+
+		if m.snapshotViewCommits != nil {
+			m.logf("handleSnapshotToggle: restoring cached snapshot view (%d commits)", len(m.snapshotViewCommits))
+			return m.swapToView(m.snapshotViewCommits)
+		}
+
+		// No cached snapshot view — build the timeline asynchronously.
+		// SnapshotHistoryReadyMsg handler will swap the view when ready.
+		cmd := m.buildSnapshotHistoryCmd()
+		m.logf("handleSnapshotToggle: buildSnapshotHistoryCmd returned cmd=%v", cmd != nil)
+		return cmd
+	}
+
+	// Switching TO normal view — cache current commits (may include R-key snapshots)
+	m.snapshotViewCommits = make([]sidebyside.CommitSet, len(m.commits))
+	copy(m.snapshotViewCommits, m.commits)
+
+	if m.normalViewCommits != nil {
+		m.logf("handleSnapshotToggle: restoring normal view (%d commits)", len(m.normalViewCommits))
+		return m.swapToView(m.normalViewCommits)
+	}
+	return nil
+}
+
+// buildSnapshotHistoryCmd returns an async command that computes snapshot history.
+func (m *Model) buildSnapshotHistoryCmd() tea.Cmd {
+	gitClient := m.git
+	if gitClient == nil {
+		m.logf("buildSnapshotHistoryCmd: git client is nil")
+		return nil
+	}
+
+	baseSHA := m.baseSHA
+	branch := m.branch
+	snapshots := make([]string, len(m.snapshots))
+	copy(snapshots, m.snapshots)
+	debugLog := m.debugLog // capture for closure
+
+	logf := func(format string, args ...interface{}) {
+		if debugLog != nil {
+			debugLog.Printf(format, args...)
+		}
+	}
+
+	return func() tea.Msg {
+		logf("buildSnapshotHistoryCmd: starting (baseSHA=%q branch=%q snapshots=%d)", baseSHA, branch, len(snapshots))
+		infos, err := gitClient.ListSnapshotRefs(branch, baseSHA)
+		if err != nil {
+			logf("buildSnapshotHistoryCmd: ListSnapshotRefs error: %v", err)
+			return SnapshotHistoryReadyMsg{Err: err}
+		}
+		logf("buildSnapshotHistoryCmd: ListSnapshotRefs returned %d infos", len(infos))
+		// Fall back to in-memory snapshots if git refs not found
+		// (handles race with initial snapshot or ref persistence failure)
+		if len(infos) == 0 {
+			if len(snapshots) == 0 {
+				logf("buildSnapshotHistoryCmd: no refs and no in-memory snapshots, returning empty")
+				return SnapshotHistoryReadyMsg{}
+			}
+			logf("buildSnapshotHistoryCmd: falling back to %d in-memory snapshots", len(snapshots))
+			infos = make([]git.SnapshotInfo, len(snapshots))
+			for i, sha := range snapshots {
+				infos[i] = git.SnapshotInfo{SHA: sha}
+			}
+		}
+
+		persistedSHAs := make([]string, len(infos))
+		for i, info := range infos {
+			persistedSHAs[i] = info.SHA
+		}
+
+		var commits []sidebyside.CommitSet
+
+		// Build lastSnapshot→WT diff
+		lastSnapshot := persistedSHAs[len(persistedSHAs)-1]
+		logf("buildSnapshotHistoryCmd: diffing lastSnapshot=%q → WT", lastSnapshot[:min(len(lastSnapshot), 7)])
+		wtDiff, err := gitClient.Diff(lastSnapshot)
+		logf("buildSnapshotHistoryCmd: WT diff err=%v len=%d", err, len(wtDiff))
+		if err == nil && wtDiff != "" {
+			if wtParsed, err := diff.Parse(wtDiff); err == nil && len(wtParsed.Files) > 0 {
+				wtFiles, _ := sidebyside.TransformDiff(wtParsed)
+				wtCommit := sidebyside.CommitSet{
+					Info:           sidebyside.CommitInfo{Subject: "Working tree changes"},
+					Files:          wtFiles,
+					FoldLevel:      sidebyside.CommitNormal,
+					FilesLoaded:    true,
+					StatsLoaded:    true,
+					IsSnapshot:     true,
+					SnapshotOldRef: lastSnapshot,
+				}
+				for _, f := range wtFiles {
+					for _, lp := range f.Pairs {
+						if lp.New.Type == sidebyside.Added {
+							wtCommit.TotalAdded++
+						}
+						if lp.Old.Type == sidebyside.Removed {
+							wtCommit.TotalRemoved++
+						}
+					}
+				}
+				commits = append(commits, wtCommit)
+			}
+		}
+
+		// Build S(n-1)→S(n) diffs (newest first)
+		for i := len(infos) - 1; i >= 1; i-- {
+			oldRef := infos[i-1].SHA
+			newRef := infos[i].SHA
+			histDiff, err := gitClient.DiffSnapshots(oldRef, newRef)
+			if err != nil || histDiff == "" {
+				continue
+			}
+			histParsed, err := diff.Parse(histDiff)
+			if err != nil {
+				continue
+			}
+			info := infos[i]
+			snapshotShort := info.SHA
+			if len(snapshotShort) > 7 {
+				snapshotShort = snapshotShort[:7]
+			}
+			histFiles, _ := sidebyside.TransformDiff(histParsed)
+			histCommit := sidebyside.CommitSet{
+				Info: sidebyside.CommitInfo{
+					SHA: snapshotShort, Date: info.Date, Subject: info.Subject,
+				},
+				Files: histFiles, FoldLevel: sidebyside.CommitFolded,
+				FilesLoaded: true, StatsLoaded: true, IsSnapshot: true,
+				SnapshotOldRef: oldRef, SnapshotNewRef: newRef,
+			}
+			for _, f := range histFiles {
+				for _, lp := range f.Pairs {
+					if lp.New.Type == sidebyside.Added {
+						histCommit.TotalAdded++
+					}
+					if lp.Old.Type == sidebyside.Removed {
+						histCommit.TotalRemoved++
+					}
+				}
+			}
+			commits = append(commits, histCommit)
+		}
+
+		// Build base→S0 diff
+		firstInfo := infos[0]
+		histDiff, err := gitClient.DiffSnapshots(baseSHA, firstInfo.SHA)
+		if err == nil && histDiff != "" {
+			histParsed, err := diff.Parse(histDiff)
+			if err == nil {
+				snapshotShort := firstInfo.SHA
+				if len(snapshotShort) > 7 {
+					snapshotShort = snapshotShort[:7]
+				}
+				histFiles, _ := sidebyside.TransformDiff(histParsed)
+				histCommit := sidebyside.CommitSet{
+					Info: sidebyside.CommitInfo{
+						SHA: snapshotShort, Date: firstInfo.Date, Subject: firstInfo.Subject,
+					},
+					Files: histFiles, FoldLevel: sidebyside.CommitFolded,
+					FilesLoaded: true, StatsLoaded: true, IsSnapshot: true,
+					SnapshotOldRef: baseSHA, SnapshotNewRef: firstInfo.SHA,
+				}
+				for _, f := range histFiles {
+					for _, lp := range f.Pairs {
+						if lp.New.Type == sidebyside.Added {
+							histCommit.TotalAdded++
+						}
+						if lp.Old.Type == sidebyside.Removed {
+							histCommit.TotalRemoved++
+						}
+					}
+				}
+				commits = append(commits, histCommit)
+			}
+		}
+
+		logf("buildSnapshotHistoryCmd: returning %d commits", len(commits))
+		for i, c := range commits {
+			logf("  commit[%d]: subject=%q files=%d isSnapshot=%v", i, c.Info.Subject, len(c.Files), c.IsSnapshot)
+		}
+		return SnapshotHistoryReadyMsg{Commits: commits}
+	}
 }
 
 // shiftFileIndexMapsFrom shifts file-indexed map keys >= fromIdx by delta.

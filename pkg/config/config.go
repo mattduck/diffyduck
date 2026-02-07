@@ -64,14 +64,15 @@ type FoldKeys struct {
 
 // ActionKeys configures action bindings.
 type ActionKeys struct {
-	Quit     []string `toml:"quit"`
-	Enter    []string `toml:"enter"`
-	Yank     []string `toml:"yank"`
-	YankAll  []string `toml:"yank_all"`
-	Refresh  []string `toml:"refresh"`
-	Snapshot []string `toml:"snapshot"`
-	Visual   []string `toml:"visual"`
-	Help     []string `toml:"help"` // default: ["ctrl+h"]
+	Quit           []string `toml:"quit"`
+	Enter          []string `toml:"enter"`
+	Yank           []string `toml:"yank"`
+	YankAll        []string `toml:"yank_all"`
+	Refresh        []string `toml:"refresh"`
+	Snapshot       []string `toml:"snapshot"`
+	SnapshotToggle []string `toml:"snapshot_toggle"`
+	Visual         []string `toml:"visual"`
+	Help           []string `toml:"help"` // default: ["ctrl+h"]
 }
 
 // WindowKeys configures window management bindings.
@@ -148,7 +149,8 @@ type SyntaxConfig struct {
 type FeaturesConfig struct {
 	HScrollStep     *int  `toml:"hscroll_step"`
 	CommitBatchSize *int  `toml:"commit_batch_size"`
-	Snapshots       *bool `toml:"snapshots"`
+	AutoSnapshots   *bool `toml:"auto_snapshots"` // take snapshots automatically (default: true)
+	ShowSnapshots   *bool `toml:"show_snapshots"` // show snapshot view by default (default: false)
 }
 
 // Load reads the config file from the XDG-conventional path.

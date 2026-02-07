@@ -51,7 +51,8 @@ var DefaultSyntaxTheme = SyntaxConfig{
 const (
 	DefaultHScrollStep     = 4
 	DefaultCommitBatchSize = 100
-	DefaultSnapshots       = true
+	DefaultAutoSnapshots   = true
+	DefaultShowSnapshots   = false
 )
 
 // GenerateExample returns a complete, commented TOML config file with all
@@ -129,6 +130,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 		writeKeys("yank_all", "copy all visible content", a.YankAll)
 		writeKeys("refresh", "recalculate layout", a.Refresh)
 		writeKeys("snapshot", "create snapshot", a.Snapshot)
+		writeKeys("snapshot_toggle", "toggle snapshot view", a.SnapshotToggle)
 		writeKeys("visual", "enter visual line mode", a.Visual)
 		writeKeys("help", "toggle help screen", a.Help)
 		b.WriteString("\n")
@@ -215,7 +217,8 @@ func GenerateExample(defaultKeys KeysConfig) string {
 	b.WriteString("# Behavioral settings. CLI flags override these.\n")
 	b.WriteString(fmt.Sprintf("# hscroll_step       = %d    # columns per horizontal scroll keypress\n", DefaultHScrollStep))
 	b.WriteString(fmt.Sprintf("# commit_batch_size  = %d  # commits loaded per batch in log mode\n", DefaultCommitBatchSize))
-	b.WriteString(fmt.Sprintf("# snapshots          = %v  # persist snapshots by default (--no-snapshots overrides)\n", DefaultSnapshots))
+	b.WriteString(fmt.Sprintf("# auto_snapshots     = %v  # take snapshots automatically (--no-snapshots overrides)\n", DefaultAutoSnapshots))
+	b.WriteString(fmt.Sprintf("# show_snapshots     = %v # show snapshot view by default (--snapshots overrides)\n", DefaultShowSnapshots))
 
 	return b.String()
 }

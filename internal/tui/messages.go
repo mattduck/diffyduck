@@ -122,3 +122,17 @@ type SnapshotDiffReadyMsg struct {
 	SnapshotSHA string               // full SHA of the new snapshot (for storing in snapshots list)
 	Err         error                // error if diff failed
 }
+
+// SnapshotCreatedSilentMsg is sent when a snapshot was taken silently (not in snapshot view).
+type SnapshotCreatedSilentMsg struct {
+	SHA     string // commit SHA of the snapshot
+	Subject string // commit message
+	Date    string // formatted date
+	Err     error
+}
+
+// SnapshotHistoryReadyMsg is sent when snapshot history has been computed for the toggle.
+type SnapshotHistoryReadyMsg struct {
+	Commits []sidebyside.CommitSet // full snapshot timeline
+	Err     error
+}

@@ -84,7 +84,8 @@ func TestLoad_PartialConfig_FeaturesOnly(t *testing.T) {
 	content := `
 [features]
 hscroll_step = 8
-snapshots = false
+auto_snapshots = false
+show_snapshots = true
 `
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
@@ -94,8 +95,10 @@ snapshots = false
 
 	require.NotNil(t, cfg.Features.HScrollStep)
 	assert.Equal(t, 8, *cfg.Features.HScrollStep)
-	require.NotNil(t, cfg.Features.Snapshots)
-	assert.Equal(t, false, *cfg.Features.Snapshots)
+	require.NotNil(t, cfg.Features.AutoSnapshots)
+	assert.Equal(t, false, *cfg.Features.AutoSnapshots)
+	require.NotNil(t, cfg.Features.ShowSnapshots)
+	assert.Equal(t, true, *cfg.Features.ShowSnapshots)
 	assert.Nil(t, cfg.Features.CommitBatchSize) // unmentioned
 }
 
@@ -218,7 +221,8 @@ conflict_marker = "3"
 [features]
 hscroll_step = 4
 commit_batch_size = 100
-snapshots = true
+auto_snapshots = true
+show_snapshots = false
 `
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
@@ -241,8 +245,10 @@ snapshots = true
 	assert.Equal(t, "3", cfg.Theme.ConflictMarker)
 	require.NotNil(t, cfg.Features.HScrollStep)
 	assert.Equal(t, 4, *cfg.Features.HScrollStep)
-	require.NotNil(t, cfg.Features.Snapshots)
-	assert.Equal(t, true, *cfg.Features.Snapshots)
+	require.NotNil(t, cfg.Features.AutoSnapshots)
+	assert.Equal(t, true, *cfg.Features.AutoSnapshots)
+	require.NotNil(t, cfg.Features.ShowSnapshots)
+	assert.Equal(t, false, *cfg.Features.ShowSnapshots)
 }
 
 func TestLoad_MalformedTOML(t *testing.T) {

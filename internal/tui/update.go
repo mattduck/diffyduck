@@ -170,20 +170,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SnapshotCreatedMsg:
 		if msg.Err != nil {
 			// Snapshot creation failed - disable snapshots
-			m.snapshotsEnabled = false
+			m.autoSnapshots = false
 			return m, nil
 		}
-		// Store the initial snapshot SHA
 		m.snapshots = append(m.snapshots, msg.SHA)
 
-		// Persist the snapshot as a git ref (for automatic continuation)
-		if m.snapshotsEnabled && m.git != nil && m.baseSHA != "" {
-			_ = m.git.UpdateSnapshotRef(m.branch, m.baseSHA, msg.SHA) // ignore error for initial snapshot
+		// Persist the snapshot as a git ref
+		if m.autoSnapshots && m.git != nil && m.baseSHA != "" {
+			_ = m.git.UpdateSnapshotRef(m.branch, m.baseSHA, msg.SHA)
 		}
 
-		// Update the first commit's info if it's a snapshot (the initial diff)
-		// This shows the snapshot SHA/Subject/Date once the background snapshot completes
-		if len(m.commits) > 0 && m.commits[0].IsSnapshot && m.commits[0].Info.SHA == "" {
+		// Update the first commit's info if already in snapshot view
+		if m.showSnapshots && len(m.commits) > 0 && m.commits[0].IsSnapshot && m.commits[0].Info.SHA == "" {
 			if len(msg.SHA) > 7 {
 				m.commits[0].Info.SHA = msg.SHA[:7]
 			} else {
@@ -208,7 +206,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.snapshots = append(m.snapshots, msg.SnapshotSHA)
 
 			// Persist the snapshot as a git ref (for automatic continuation)
-			if m.snapshotsEnabled && m.git != nil && m.baseSHA != "" {
+			if m.autoSnapshots && m.git != nil && m.baseSHA != "" {
 				if err := m.git.UpdateSnapshotRef(m.branch, m.baseSHA, msg.SnapshotSHA); err != nil {
 					// Log error but don't fail - the snapshot is still in memory
 					now := time.Now()
@@ -250,6 +248,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.RequestHighlightFromPairs(i))
 		}
 		return m, tea.Batch(cmds...)
+
+	case SnapshotCreatedSilentMsg:
+		if msg.Err != nil {
+			m.autoSnapshots = false
+			return m, nil
+		}
+		m.snapshots = append(m.snapshots, msg.SHA)
+		if m.autoSnapshots && m.git != nil && m.baseSHA != "" {
+			_ = m.git.UpdateSnapshotRef(m.branch, m.baseSHA, msg.SHA)
+		}
+		// Invalidate cached snapshot view (new snapshot exists)
+		m.snapshotViewCommits = nil
+		now := time.Now()
+		m.statusMessage = "Snapshot taken"
+		m.statusMessageTime = now
+		return m, m.clearStatusAfter(now)
+
+	case SnapshotHistoryReadyMsg:
+		m.logf("SnapshotHistoryReadyMsg: err=%v commits=%d showSnapshots=%v", msg.Err, len(msg.Commits), m.showSnapshots)
+		if msg.Err != nil {
+			now := time.Now()
+			m.statusMessage = "Failed to load snapshot history"
+			m.statusMessageTime = now
+			m.showSnapshots = false
+			return m, m.clearStatusAfter(now)
+		}
+		if len(msg.Commits) == 0 {
+			now := time.Now()
+			m.statusMessage = "No snapshot history"
+			m.statusMessageTime = now
+			m.showSnapshots = false
+			return m, m.clearStatusAfter(now)
+		}
+		m.snapshotViewCommits = msg.Commits
+		cmd := m.swapToView(msg.Commits)
+		m.logf("SnapshotHistoryReadyMsg: swapped to %d commits, %d files", len(m.commits), len(m.files))
+		return m, cmd
 
 	case spinner.TickMsg:
 		cmd := m.handleSpinnerTick(msg)
@@ -483,6 +518,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case matchesKey(msg, keys.Snapshot):
 		if cmd := m.handleSnapshot(); cmd != nil {
+			return m, cmd
+		}
+
+	case matchesKey(msg, keys.SnapshotToggle):
+		if cmd := m.handleSnapshotToggle(); cmd != nil {
 			return m, cmd
 		}
 
@@ -2018,17 +2058,17 @@ func (m Model) commitVisibilityLevelFor(commitIdx int) int {
 	return 2
 }
 
-// handleSnapshot handles the R key to create a snapshot and show the incremental diff.
+// handleSnapshot handles the R key to create a snapshot.
+// When in snapshot view, also computes and shows the incremental diff.
+// When in normal view, takes the snapshot silently.
 func (m *Model) handleSnapshot() tea.Cmd {
-	// Check if snapshots are enabled
-	if !m.snapshotsEnabled {
+	if !m.autoSnapshots {
 		now := time.Now()
 		m.statusMessage = "Snapshots not available (no working tree changes)"
 		m.statusMessageTime = now
 		return m.clearStatusAfter(now)
 	}
 
-	// Check if we have a previous snapshot
 	if len(m.snapshots) == 0 {
 		now := time.Now()
 		m.statusMessage = "Initial snapshot not ready yet"
@@ -2036,7 +2076,6 @@ func (m *Model) handleSnapshot() tea.Cmd {
 		return m.clearStatusAfter(now)
 	}
 
-	// Check if git is available
 	if m.git == nil {
 		return nil
 	}
@@ -2046,6 +2085,7 @@ func (m *Model) handleSnapshot() tea.Cmd {
 	allMode := m.allMode
 	baseSHA := m.baseSHA
 	prevSnapshot := m.snapshots[len(m.snapshots)-1]
+	showSnapshots := m.showSnapshots
 
 	// Format commit message: "dfd: <sha> @ <datetime>"
 	baseShort := baseSHA
@@ -2056,19 +2096,25 @@ func (m *Model) handleSnapshot() tea.Cmd {
 	message := fmt.Sprintf("dfd: %s @ %s", baseShort, dateStr)
 
 	return func() tea.Msg {
-		// Create new snapshot with parent chain (parent = previous snapshot)
 		newSnapshot, err := gitClient.CreateSnapshot(allMode, prevSnapshot, message)
 		if err != nil {
-			return SnapshotDiffReadyMsg{Err: err}
+			if showSnapshots {
+				return SnapshotDiffReadyMsg{Err: err}
+			}
+			return SnapshotCreatedSilentMsg{Err: err}
 		}
 
-		// Diff between previous and new snapshot
+		// Silent mode: just return the SHA, no diff needed
+		if !showSnapshots {
+			return SnapshotCreatedSilentMsg{SHA: newSnapshot, Subject: message, Date: dateStr}
+		}
+
+		// Visible mode: compute the incremental diff
 		diffOutput, err := gitClient.DiffSnapshots(prevSnapshot, newSnapshot)
 		if err != nil {
 			return SnapshotDiffReadyMsg{Err: err}
 		}
 
-		// Check if there are any changes
 		if diffOutput == "" {
 			return SnapshotDiffReadyMsg{
 				Err:         nil,
@@ -2081,13 +2127,11 @@ func (m *Model) handleSnapshot() tea.Cmd {
 			}
 		}
 
-		// Parse the diff
 		d, err := diff.Parse(diffOutput)
 		if err != nil {
 			return SnapshotDiffReadyMsg{Err: err}
 		}
 
-		// Transform to side-by-side format
 		files, _ := sidebyside.TransformDiff(d)
 
 		// Create the commit set using the commit message (single source of truth)
