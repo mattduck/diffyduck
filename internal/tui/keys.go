@@ -43,7 +43,7 @@ type KeyMap struct {
 	Yank           []string
 	YankAll        []string
 	RefreshLayout  []string // recalculate dynamic column widths
-	Snapshot       []string // create snapshot and show incremental diff
+	Snapshot       []string // take snapshot and switch to snapshot view
 	SnapshotToggle []string // toggle snapshot view
 	VisualMode     []string // enter visual line mode
 	Help           []string // toggle help screen
@@ -98,8 +98,8 @@ func DefaultKeyMap() KeyMap {
 		Yank:           []string{"y"},
 		YankAll:        []string{"Y"},
 		RefreshLayout:  []string{"r"},
-		Snapshot:       []string{"R"},
-		SnapshotToggle: []string{"S"},
+		Snapshot:       []string{"S"},
+		SnapshotToggle: []string{"s"},
 		VisualMode:     []string{"V"},
 		Help:           []string{"ctrl+h"},
 		WinSplitV:      []string{"ctrl+w %"},
@@ -164,8 +164,8 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.Yank, Desc: "Copy item (SHA / path / comment)"},
 			{Keys: km.YankAll, Desc: "Copy all comments"},
 			{Keys: km.RefreshLayout, Desc: "Refresh layout"},
-			{Keys: km.Snapshot, Desc: "Create snapshot"},
 			{Keys: km.SnapshotToggle, Desc: "Toggle snapshot view"},
+			{Keys: km.Snapshot, Desc: "Take snapshot"},
 			{Keys: km.VisualMode, Desc: "Enter visual line mode"},
 			{Keys: km.Help, Desc: "Toggle this help screen"},
 			{Keys: km.Quit, Desc: "Quit"},

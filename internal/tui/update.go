@@ -2078,9 +2078,9 @@ func (m Model) commitVisibilityLevelFor(commitIdx int) int {
 	return 2
 }
 
-// handleSnapshot handles the R key to create a snapshot.
-// When in snapshot view, also computes and shows the incremental diff.
-// When in normal view, takes the snapshot silently.
+// handleSnapshot handles the S key to create a snapshot.
+// Always switches to snapshot view if not already there, then shows the
+// incremental diff (lastSnapshot → newSnapshot).
 func (m *Model) handleSnapshot() tea.Cmd {
 	if !m.autoSnapshots {
 		now := time.Now()
@@ -2100,12 +2100,22 @@ func (m *Model) handleSnapshot() tea.Cmd {
 		return nil
 	}
 
+	// Switch to snapshot view if not already there: build the timeline
+	// separately so the view swaps even if the new snapshot has no changes.
+	var viewCmd tea.Cmd
+	if !m.showSnapshots {
+		m.normalViewCommits = make([]sidebyside.CommitSet, len(m.commits))
+		copy(m.normalViewCommits, m.commits)
+		m.showSnapshots = true
+		m.snapshotViewCommits = nil // invalidate — new snapshot changes the timeline
+		viewCmd = m.buildSnapshotHistoryCmd()
+	}
+
 	// Capture values for closure
 	gitClient := m.git
 	allMode := m.allMode
 	baseSHA := m.baseSHA
 	prevSnapshot := m.snapshots[len(m.snapshots)-1]
-	showSnapshots := m.showSnapshots
 
 	// Format commit message: "dfd: <sha> @ <datetime>"
 	baseShort := baseSHA
@@ -2115,21 +2125,13 @@ func (m *Model) handleSnapshot() tea.Cmd {
 	dateStr := time.Now().Format("Jan 2 15:04")
 	message := fmt.Sprintf("dfd: %s @ %s", baseShort, dateStr)
 
-	return func() tea.Msg {
+	snapshotCmd := func() tea.Msg {
 		newSnapshot, err := gitClient.CreateSnapshot(allMode, prevSnapshot, message)
 		if err != nil {
-			if showSnapshots {
-				return SnapshotDiffReadyMsg{Err: err}
-			}
-			return SnapshotCreatedSilentMsg{Err: err}
+			return SnapshotDiffReadyMsg{Err: err}
 		}
 
-		// Silent mode: just return the SHA, no diff needed
-		if !showSnapshots {
-			return SnapshotCreatedSilentMsg{SHA: newSnapshot, Subject: message, Date: dateStr}
-		}
-
-		// Visible mode: compute the incremental diff
+		// Compute the incremental diff
 		diffOutput, err := gitClient.DiffSnapshots(prevSnapshot, newSnapshot)
 		if err != nil {
 			return SnapshotDiffReadyMsg{Err: err}
@@ -2182,4 +2184,9 @@ func (m *Model) handleSnapshot() tea.Cmd {
 			Err:         nil,
 		}
 	}
+
+	if viewCmd != nil {
+		return tea.Batch(viewCmd, snapshotCmd)
+	}
+	return snapshotCmd
 }

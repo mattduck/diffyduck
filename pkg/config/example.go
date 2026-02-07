@@ -129,7 +129,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 		writeKeys("yank", "copy item (SHA / path / comment)", a.Yank)
 		writeKeys("yank_all", "copy all comments", a.YankAll)
 		writeKeys("refresh", "recalculate layout", a.Refresh)
-		writeKeys("snapshot", "create snapshot", a.Snapshot)
+		writeKeys("snapshot", "take snapshot", a.Snapshot)
 		writeKeys("snapshot_toggle", "toggle snapshot view", a.SnapshotToggle)
 		writeKeys("visual", "enter visual line mode", a.Visual)
 		writeKeys("help", "toggle help screen", a.Help)

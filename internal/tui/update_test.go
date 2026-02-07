@@ -53,6 +53,27 @@ func TestUpdate_ScrollUp(t *testing.T) {
 	assert.Equal(t, 9, model.w().scroll)
 }
 
+// executeBatchCmd runs a tea.Cmd that may be a tea.Batch and collects all
+// resulting messages. Non-batch commands return a single-element slice.
+func executeBatchCmd(t *testing.T, cmd tea.Cmd) []tea.Msg {
+	t.Helper()
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	// tea.Batch returns a tea.BatchMsg (which is []tea.Cmd)
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		var msgs []tea.Msg
+		for _, c := range batch {
+			if c != nil {
+				msgs = append(msgs, c())
+			}
+		}
+		return msgs
+	}
+	return []tea.Msg{msg}
+}
+
 func TestUpdate_ScrollUp_AtTop(t *testing.T) {
 	m := makeTestModel(100)
 	m.w().scroll = 0
@@ -4450,7 +4471,7 @@ func TestSnapshotCreatedMsg_SkipsUpdateWhenSHAAlreadySet(t *testing.T) {
 }
 
 // =============================================================================
-// handleSnapshot (R key) tests
+// handleSnapshot (S key) tests
 // =============================================================================
 
 func TestHandleSnapshot_DisabledShowsStatus(t *testing.T) {
@@ -4458,7 +4479,7 @@ func TestHandleSnapshot_DisabledShowsStatus(t *testing.T) {
 	m.autoSnapshots = false
 	m.keys = DefaultKeyMap()
 
-	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
 	result := newModel.(Model)
 
 	assert.Equal(t, "Snapshots not available (no working tree changes)", result.statusMessage)
@@ -4471,7 +4492,7 @@ func TestHandleSnapshot_NoInitialSnapshotShowsStatus(t *testing.T) {
 	m.snapshots = nil // no initial snapshot yet
 	m.keys = DefaultKeyMap()
 
-	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
 	result := newModel.(Model)
 
 	assert.Equal(t, "Initial snapshot not ready yet", result.statusMessage)
@@ -4634,6 +4655,68 @@ func TestLoadCommitDiff_NegativeDelta_ShiftsCorrectly(t *testing.T) {
 	assert.False(t, hasOld, "old index 3 should no longer have highlight data")
 }
 
+func TestHandleSnapshot_SwitchesViewEvenWhenNoChanges(t *testing.T) {
+	// S key from normal view should switch to snapshot view even when the
+	// new snapshot has no changes (empty diff). The view swap is done via
+	// buildSnapshotHistoryCmd independently of the snapshot creation.
+	simpleDiff := "diff --git a/file.go b/file.go\n--- a/file.go\n+++ b/file.go\n@@ -1,3 +1,3 @@\n line1\n-old\n+new\n line3\n"
+
+	baseCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "base diff"},
+		Files: []sidebyside.FilePair{{NewPath: "base.go"}},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{baseCommit},
+		WithAutoSnapshots(true),
+		WithBaseSHA("aaaa"),
+		WithBranch("main"),
+		WithPersistedSnapshots([]string{"snap1"}),
+	)
+	m.keys = DefaultKeyMap()
+	m.git = &git.MockGit{DiffOutput: simpleDiff}
+
+	assert.False(t, m.showSnapshots)
+
+	// Press S — should return batched commands (view build + snapshot take)
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result := newModel.(Model)
+
+	assert.True(t, result.showSnapshots, "showSnapshots should be true")
+	require.NotNil(t, result.normalViewCommits, "normal view should be cached")
+	require.NotNil(t, cmd, "should return commands")
+
+	// Execute the batched commands and collect messages
+	batchCmd := cmd
+	msgs := executeBatchCmd(t, batchCmd)
+
+	// We should get a SnapshotHistoryReadyMsg (view build) regardless of
+	// whether the snapshot had changes
+	var gotHistoryReady bool
+	for _, msg := range msgs {
+		if _, ok := msg.(SnapshotHistoryReadyMsg); ok {
+			gotHistoryReady = true
+		}
+	}
+	assert.True(t, gotHistoryReady, "should get SnapshotHistoryReadyMsg for view swap")
+}
+
+func TestHandleSnapshot_StaysInSnapshotView(t *testing.T) {
+	// S key from snapshot view should NOT toggle out — it just takes a
+	// snapshot. Only s (SnapshotToggle) toggles out.
+	m := makeTestModel(10)
+	m.autoSnapshots = true
+	m.showSnapshots = true
+	m.snapshots = []string{"snap1"}
+	m.git = &git.MockGit{}
+	m.keys = DefaultKeyMap()
+
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	result := newModel.(Model)
+
+	assert.True(t, result.showSnapshots, "S should not toggle out of snapshot view")
+	assert.NotNil(t, cmd, "should return snapshot creation command")
+}
+
 func TestHandleSnapshot_NilGitReturnsNil(t *testing.T) {
 	m := makeTestModel(10)
 	m.autoSnapshots = true
@@ -4641,7 +4724,7 @@ func TestHandleSnapshot_NilGitReturnsNil(t *testing.T) {
 	m.git = nil
 	m.keys = DefaultKeyMap()
 
-	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
 	result := newModel.(Model)
 
 	// No status message, no command — just a no-op
@@ -4650,7 +4733,7 @@ func TestHandleSnapshot_NilGitReturnsNil(t *testing.T) {
 }
 
 // =============================================================================
-// SnapshotToggle (S key) tests
+// SnapshotToggle (s key) tests
 // =============================================================================
 
 func TestSnapshotToggle_DisabledWhenNoAutoSnapshots(t *testing.T) {
@@ -4658,7 +4741,7 @@ func TestSnapshotToggle_DisabledWhenNoAutoSnapshots(t *testing.T) {
 	m.autoSnapshots = false
 	m.keys = DefaultKeyMap()
 
-	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	result := newModel.(Model)
 
 	assert.Equal(t, "Snapshots not enabled", result.statusMessage)
@@ -4682,8 +4765,8 @@ func TestSnapshotToggle_BuildsHistoryAsync(t *testing.T) {
 
 	assert.False(t, m.showSnapshots)
 
-	// Press S to toggle on
-	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	// Press s to toggle on
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	result := newModel.(Model)
 
 	assert.True(t, result.showSnapshots)
@@ -4715,8 +4798,8 @@ func TestSnapshotToggle_SwitchesToCachedSnapshotView(t *testing.T) {
 	assert.False(t, m.showSnapshots)
 	assert.Equal(t, "base.go", m.files[0].NewPath)
 
-	// Press S to toggle to snapshot view
-	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	// Press s to toggle to snapshot view
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	result := newModel.(Model)
 
 	assert.True(t, result.showSnapshots)
@@ -4743,12 +4826,12 @@ func TestSnapshotToggle_SwitchesBack(t *testing.T) {
 	m.keys = DefaultKeyMap()
 
 	// Toggle on
-	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	result := newModel.(Model)
 	assert.True(t, result.showSnapshots)
 
 	// Toggle off
-	newModel2, _ := result.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	newModel2, _ := result.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	result2 := newModel2.(Model)
 	assert.False(t, result2.showSnapshots)
 	require.Len(t, result2.commits, 1)
@@ -4783,21 +4866,21 @@ func TestSnapshotToggle_StartInSnapshotView(t *testing.T) {
 	require.NotNil(t, m.normalViewCommits, "normal view should be cached at init")
 	assert.Equal(t, "base diff", m.normalViewCommits[0].Info.Subject)
 
-	// First S press: toggle OFF → should restore base→WT view
-	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	// First s press: toggle OFF → should restore base→WT view
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	result := newModel.(Model)
 	assert.False(t, result.showSnapshots)
 	assert.Equal(t, "base.go", result.files[0].NewPath, "should swap to normal view")
 
-	// Second S press: toggle ON → should restore snapshot view
-	newModel2, _ := result.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	// Second s press: toggle ON → should restore snapshot view
+	newModel2, _ := result.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	result2 := newModel2.(Model)
 	assert.True(t, result2.showSnapshots)
 	assert.Equal(t, "snap.go", result2.files[0].NewPath, "should swap back to snapshot view")
 }
 
 // =============================================================================
-// End-to-end snapshot toggle test (S key → async build → message → view swap)
+// End-to-end snapshot toggle test (s key → async build → message → view swap)
 // =============================================================================
 
 func TestSnapshotToggle_EndToEnd_BuildsAndSwapsView(t *testing.T) {
@@ -4824,8 +4907,8 @@ func TestSnapshotToggle_EndToEnd_BuildsAndSwapsView(t *testing.T) {
 	assert.False(t, m.showSnapshots)
 	assert.Equal(t, "base.go", m.files[0].NewPath)
 
-	// Step 1: Press S to toggle on snapshot view
-	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	// Step 1: Press s to toggle on snapshot view
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	result := newModel.(Model)
 
 	assert.True(t, result.showSnapshots, "showSnapshots should be set immediately")
