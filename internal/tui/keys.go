@@ -161,8 +161,8 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 		}},
 		{Name: "Actions", Bindings: []Binding{
 			{Keys: km.Enter, Desc: "Add comment"},
-			{Keys: km.Yank, Desc: "Copy current line"},
-			{Keys: km.YankAll, Desc: "Copy all visible content"},
+			{Keys: km.Yank, Desc: "Copy item (SHA / path / comment)"},
+			{Keys: km.YankAll, Desc: "Copy all comments"},
 			{Keys: km.RefreshLayout, Desc: "Refresh layout"},
 			{Keys: km.Snapshot, Desc: "Create snapshot"},
 			{Keys: km.SnapshotToggle, Desc: "Toggle snapshot view"},

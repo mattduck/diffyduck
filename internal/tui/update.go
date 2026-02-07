@@ -360,6 +360,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Clear stale status message on any keypress (after minimum display time)
+	if m.statusMessage != "" && time.Since(m.statusMessageTime) >= statusMessageMinDuration {
+		m.statusMessage = ""
+	}
+
 	// Handle comment input mode first (highest priority)
 	if m.w().commentMode {
 		return m.handleCommentInput(msg)

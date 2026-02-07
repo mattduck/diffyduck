@@ -12,34 +12,98 @@ import (
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
-// statusMessageDuration is how long status messages are shown before auto-clearing.
-const statusMessageDuration = 3 * time.Second
+// statusMessageMinDuration is the minimum time a status message is shown before
+// it can be cleared by a keypress. After this period, the next keypress clears it.
+const statusMessageMinDuration = 1 * time.Second
 
-// handleYank copies the comment at the cursor position to the clipboard.
-// The output is formatted as a unified diff snippet with the comment as # lines.
+// handleYank is a context-sensitive "copy item" action:
+//   - On a commit row: copies the full SHA
+//   - On a comment or content row with a comment: copies the comment as a diff snippet
 func (m Model) handleYank() (tea.Model, tea.Cmd) {
-	// Find comment for current cursor position
-	ck, found := m.findCommentForCursor()
-	if !found {
-		return m, nil // no comment to yank
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return m, nil
+	}
+	row := rows[cursorPos]
+
+	// Commit header row: copy SHA
+	if row.kind == RowKindCommitHeader {
+		return m.yankCommitSHA(row.commitIndex)
 	}
 
+	// File header row: copy relative file path
+	if row.kind == RowKindHeader {
+		return m.yankFilePath(row.fileIndex)
+	}
+
+	// Comment / content rows: copy comment as diff snippet
+	ck, found := m.findCommentForCursor()
+	if !found {
+		return m, nil
+	}
 	comment := m.comments[ck]
 	if comment == "" {
 		return m, nil
 	}
+	return m.yankComment(ck, comment)
+}
 
-	// Build the diff snippet
+// yankCommitSHA copies the full commit SHA to the clipboard.
+func (m Model) yankCommitSHA(commitIndex int) (tea.Model, tea.Cmd) {
+	if commitIndex < 0 || commitIndex >= len(m.commits) {
+		return m, nil
+	}
+	sha := m.commits[commitIndex].Info.SHA
+	if sha == "" {
+		return m, nil
+	}
+
+	now := time.Now()
+	if err := m.clipboard.Copy(sha); err != nil {
+		m.statusMessage = fmt.Sprintf("Error: %v", err)
+		m.statusMessageTime = now
+		return m, m.clearStatusAfter(now)
+	}
+
+	m.statusMessage = fmt.Sprintf("Copied %s", m.commits[commitIndex].Info.ShortSHA())
+	m.statusMessageTime = now
+	return m, m.clearStatusAfter(now)
+}
+
+// yankFilePath copies the relative file path to the clipboard.
+func (m Model) yankFilePath(fileIndex int) (tea.Model, tea.Cmd) {
+	if fileIndex < 0 || fileIndex >= len(m.files) {
+		return m, nil
+	}
+	fp := m.files[fileIndex]
+	path := formatFilePath(fp.OldPath, fp.NewPath)
+	if path == "" {
+		return m, nil
+	}
+
+	now := time.Now()
+	if err := m.clipboard.Copy(path); err != nil {
+		m.statusMessage = fmt.Sprintf("Error: %v", err)
+		m.statusMessageTime = now
+		return m, m.clearStatusAfter(now)
+	}
+
+	m.statusMessage = fmt.Sprintf("Copied %s", path)
+	m.statusMessageTime = now
+	return m, m.clearStatusAfter(now)
+}
+
+// yankComment copies a comment as a unified diff snippet to the clipboard.
+func (m Model) yankComment(ck commentKey, comment string) (tea.Model, tea.Cmd) {
 	snippet := m.buildDiffSnippet(ck, comment)
 
-	// Get file name for status message
 	fileName := ""
 	if ck.fileIndex >= 0 && ck.fileIndex < len(m.files) {
 		fp := m.files[ck.fileIndex]
 		fileName = formatFilePath(fp.OldPath, fp.NewPath)
 	}
 
-	// Copy to clipboard
 	now := time.Now()
 	if err := m.clipboard.Copy(snippet); err != nil {
 		m.statusMessage = fmt.Sprintf("Error: %v", err)
@@ -307,11 +371,10 @@ func (m Model) AllCommentsSnippet() string {
 	return m.buildAllCommentsSnippet()
 }
 
-// clearStatusAfter returns a command that clears the status message after a delay.
-func (m Model) clearStatusAfter(setTime time.Time) tea.Cmd {
-	return tea.Tick(statusMessageDuration, func(t time.Time) tea.Msg {
-		return ClearStatusMsg{SetTime: setTime}
-	})
+// clearStatusAfter is a no-op kept for call-site compatibility. Status messages
+// are now cleared on the next keypress after statusMessageMinDuration has elapsed.
+func (m Model) clearStatusAfter(_ time.Time) tea.Cmd {
+	return nil
 }
 
 // findCommentForCursor returns the comment key for the current cursor position.

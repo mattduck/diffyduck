@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -252,53 +253,39 @@ func TestYank_WriteDiffLines(t *testing.T) {
 }
 
 // =============================================================================
-// ClearStatusMsg Tests
+// Status Message Clear-on-Keypress Tests
 // =============================================================================
 
-// Test: ClearStatusMsg clears message when timestamps match
-func TestYank_ClearStatusMsg_ClearsWhenTimestampsMatch(t *testing.T) {
+// Test: status message is cleared on keypress after minimum duration
+func TestYank_StatusMessage_ClearedOnKeypress(t *testing.T) {
 	m := makeYankTestModel()
-	now := time.Now()
+	m.calculateTotalLines()
 
-	m.statusMessage = "Test message"
-	m.statusMessageTime = now
+	// Set a status message in the past (older than minimum duration)
+	m.statusMessage = "Old message"
+	m.statusMessageTime = time.Now().Add(-2 * time.Second)
 
-	// Send ClearStatusMsg with matching timestamp
-	newModel, _ := m.Update(ClearStatusMsg{SetTime: now})
+	// Any keypress should clear it
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	m2 := newModel.(Model)
 
-	assert.Empty(t, m2.statusMessage, "message should be cleared when timestamps match")
+	assert.Empty(t, m2.statusMessage, "should clear status message after min duration on keypress")
 }
 
-// Test: ClearStatusMsg does NOT clear message when timestamps differ
-func TestYank_ClearStatusMsg_KeepsWhenTimestampsDiffer(t *testing.T) {
+// Test: status message is NOT cleared if minimum duration hasn't elapsed
+func TestYank_StatusMessage_KeptDuringMinDuration(t *testing.T) {
 	m := makeYankTestModel()
-	oldTime := time.Now()
-	newTime := oldTime.Add(time.Second)
+	m.calculateTotalLines()
 
-	m.statusMessage = "Newer message"
-	m.statusMessageTime = newTime
+	// Set a status message just now (within minimum duration)
+	m.statusMessage = "Fresh message"
+	m.statusMessageTime = time.Now()
 
-	// Send ClearStatusMsg with OLD timestamp (simulating delayed clear)
-	newModel, _ := m.Update(ClearStatusMsg{SetTime: oldTime})
+	// Keypress should NOT clear it
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	m2 := newModel.(Model)
 
-	assert.Equal(t, "Newer message", m2.statusMessage, "message should NOT be cleared when timestamps differ")
-}
-
-// Test: ClearStatusMsg handles empty message gracefully
-func TestYank_ClearStatusMsg_HandlesEmptyMessage(t *testing.T) {
-	m := makeYankTestModel()
-	now := time.Now()
-
-	m.statusMessage = ""
-	m.statusMessageTime = now
-
-	// Should not panic
-	newModel, _ := m.Update(ClearStatusMsg{SetTime: now})
-	m2 := newModel.(Model)
-
-	assert.Empty(t, m2.statusMessage)
+	assert.Equal(t, "Fresh message", m2.statusMessage, "should keep status message during minimum duration")
 }
 
 // =============================================================================
@@ -363,18 +350,14 @@ func TestYank_BuildDiffSnippet_ContextLine(t *testing.T) {
 	assert.Contains(t, snippet, "# Note about this line")
 }
 
-// Test: clearStatusAfter returns a tea.Cmd
-func TestYank_ClearStatusAfter_ReturnsCmd(t *testing.T) {
+// Test: clearStatusAfter returns nil (status is cleared on keypress now)
+func TestYank_ClearStatusAfter_ReturnsNil(t *testing.T) {
 	m := makeYankTestModel()
 	now := time.Now()
 
 	cmd := m.clearStatusAfter(now)
 
-	assert.NotNil(t, cmd, "clearStatusAfter should return a non-nil command")
-
-	// The command is a tea.Tick which we can't easily inspect,
-	// but we can verify it's callable
-	// (actual behavior is tested via ClearStatusMsg tests)
+	assert.Nil(t, cmd, "clearStatusAfter should return nil (clear happens on keypress)")
 }
 
 // Test: handleYank returns nil cmd when no comment at cursor
@@ -433,7 +416,162 @@ func TestYank_KeyPress_Integration(t *testing.T) {
 	assert.NotEmpty(t, m2.statusMessage, "pressing y should set status message")
 
 	// Should return a command (the clear timer)
-	assert.NotNil(t, cmd, "should return clear timer command")
+	// cmd is nil — status is cleared on next keypress, not by timer
+	_ = cmd
+}
+
+// =============================================================================
+// File Path Yank Tests
+// =============================================================================
+
+func TestYank_FilePath_OnFileHeader(t *testing.T) {
+	m := makeYankTestModel()
+	m.calculateTotalLines()
+
+	// Find the file header row
+	rows := m.getRows()
+	headerIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindHeader {
+			headerIdx = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, headerIdx, 0, "should find a file header row")
+
+	m.w().scroll = headerIdx
+	newModel, _ := m.handleYank()
+	m2 := newModel.(Model)
+
+	clip := m2.clipboard.(*MemoryClipboard)
+	assert.Equal(t, "test.go", clip.Content, "should copy relative file path")
+	assert.Contains(t, m2.statusMessage, "test.go")
+}
+
+func TestYank_FilePath_KeyPress(t *testing.T) {
+	m := makeYankTestModel()
+	m.calculateTotalLines()
+
+	// Find the file header row and position cursor there
+	rows := m.getRows()
+	for i, row := range rows {
+		if row.kind == RowKindHeader {
+			m.w().scroll = i
+			break
+		}
+	}
+
+	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m2 := newModel.(Model)
+
+	clip := m2.clipboard.(*MemoryClipboard)
+	assert.Equal(t, "test.go", clip.Content)
+	assert.Contains(t, m2.statusMessage, "Copied test.go")
+}
+
+// =============================================================================
+// Commit SHA Yank Tests
+// =============================================================================
+
+// makeCommitYankTestModel creates a model with commits for SHA yank testing.
+func makeCommitYankTestModel() Model {
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "abc123def456789abcdef0123456789abcdef01",
+				Author:  "Test Author",
+				Subject: "Test commit subject",
+			},
+			FoldLevel:   sidebyside.CommitNormal,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{
+					OldPath:   "a/file1.go",
+					NewPath:   "b/file1.go",
+					FoldLevel: sidebyside.FoldExpanded,
+					Pairs: []sidebyside.LinePair{
+						{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
+					},
+				},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+	m.clipboard = &MemoryClipboard{}
+	return m
+}
+
+func TestYank_CommitSHA_OnCommitHeader(t *testing.T) {
+	m := makeCommitYankTestModel()
+
+	// Find a commit header row
+	rows := m.getRows()
+	headerIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindCommitHeader {
+			headerIdx = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, headerIdx, 0, "should find a commit header row")
+
+	m.w().scroll = headerIdx
+	newModel, cmd := m.handleYank()
+	m2 := newModel.(Model)
+
+	clip := m2.clipboard.(*MemoryClipboard)
+	assert.Equal(t, "abc123def456789abcdef0123456789abcdef01", clip.Content, "should copy full SHA")
+	assert.Contains(t, m2.statusMessage, "abc123d", "status should show short SHA")
+	// cmd is nil — status is cleared on next keypress, not by timer
+	_ = cmd
+}
+
+func TestYank_CommitSHA_NotOnBorder(t *testing.T) {
+	m := makeCommitYankTestModel()
+
+	// Find a commit border row — y should NOT copy SHA here
+	rows := m.getRows()
+	borderIdx := -1
+	for i, row := range rows {
+		if row.kind == RowKindCommitHeaderTopBorder || row.kind == RowKindCommitHeaderBottomBorder {
+			borderIdx = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, borderIdx, 0, "should find a commit border row")
+
+	m.w().scroll = borderIdx
+	newModel, cmd := m.handleYank()
+	m2 := newModel.(Model)
+
+	clip := m2.clipboard.(*MemoryClipboard)
+	assert.Empty(t, clip.Content, "should NOT copy SHA from border row")
+	assert.Nil(t, cmd, "should return nil when not on a yankable row")
+	assert.Empty(t, m2.statusMessage)
+}
+
+func TestYank_CommitSHA_KeyPress(t *testing.T) {
+	m := makeCommitYankTestModel()
+
+	// Find a commit header row
+	rows := m.getRows()
+	for i, row := range rows {
+		if row.kind == RowKindCommitHeader {
+			m.w().scroll = i
+			break
+		}
+	}
+
+	// Press y
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m2 := newModel.(Model)
+
+	clip := m2.clipboard.(*MemoryClipboard)
+	assert.Equal(t, "abc123def456789abcdef0123456789abcdef01", clip.Content)
+	_ = cmd
 }
 
 // =============================================================================
@@ -617,5 +755,6 @@ func TestYankAll_KeyPress_Integration(t *testing.T) {
 	m2 := newModel.(Model)
 
 	assert.NotEmpty(t, m2.statusMessage, "pressing Y should set status message")
-	assert.NotNil(t, cmd, "should return clear timer command")
+	// cmd is nil — status is cleared on next keypress, not by timer
+	_ = cmd
 }

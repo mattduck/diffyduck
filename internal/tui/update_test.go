@@ -4289,9 +4289,8 @@ func TestSnapshotDiffReadyMsg_NoFilesNoHighlightCommand(t *testing.T) {
 	assert.Len(t, resultModel.commits, 1)
 	assert.Equal(t, "Original", resultModel.commits[0].Info.Subject)
 
-	// Command should be for clearing status message, not highlighting
-	// (since no files were added)
-	assert.NotNil(t, cmd, "should return status clear command")
+	// Status message is cleared on next keypress, not by timer command
+	_ = cmd
 }
 
 func TestSnapshotDiffReadyMsg_Error(t *testing.T) {
@@ -4317,8 +4316,7 @@ func TestSnapshotDiffReadyMsg_Error(t *testing.T) {
 
 	// Should set error status message
 	assert.Equal(t, "Snapshot diff failed", resultModel.statusMessage)
-	// Should return command (for clearing status)
-	assert.NotNil(t, cmd)
+	_ = cmd
 }
 
 func TestSnapshotDiffReadyMsg_StoresSnapshotRefs(t *testing.T) {
@@ -4460,7 +4458,7 @@ func TestHandleSnapshot_DisabledShowsStatus(t *testing.T) {
 	result := newModel.(Model)
 
 	assert.Equal(t, "Snapshots not available (no working tree changes)", result.statusMessage)
-	assert.NotNil(t, cmd, "should return clear-status command")
+	_ = cmd
 }
 
 func TestHandleSnapshot_NoInitialSnapshotShowsStatus(t *testing.T) {
@@ -4473,7 +4471,7 @@ func TestHandleSnapshot_NoInitialSnapshotShowsStatus(t *testing.T) {
 	result := newModel.(Model)
 
 	assert.Equal(t, "Initial snapshot not ready yet", result.statusMessage)
-	assert.NotNil(t, cmd, "should return clear-status command")
+	_ = cmd
 }
 
 func TestLoadCommitDiff_ShiftsHighlightMaps(t *testing.T) {
@@ -4660,7 +4658,7 @@ func TestSnapshotToggle_DisabledWhenNoAutoSnapshots(t *testing.T) {
 	result := newModel.(Model)
 
 	assert.Equal(t, "Snapshots not enabled", result.statusMessage)
-	assert.NotNil(t, cmd, "should return clear-status command")
+	_ = cmd
 	assert.False(t, result.showSnapshots)
 }
 
@@ -4879,7 +4877,7 @@ func TestSnapshotCreatedSilentMsg_Success(t *testing.T) {
 	require.Len(t, result.snapshots, 1)
 	assert.Equal(t, "newsnap1234567890", result.snapshots[0])
 	assert.Equal(t, "Snapshot taken", result.statusMessage)
-	assert.NotNil(t, cmd)
+	_ = cmd
 	// Snapshot view cache should be invalidated
 	assert.Nil(t, result.snapshotViewCommits)
 }
