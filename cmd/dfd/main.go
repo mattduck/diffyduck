@@ -102,6 +102,7 @@ type parsedArgs struct {
 	// status-specific
 	symbols        int    // -S/--symbols [N], -1 = not set, 0 = unlimited, >0 = max per file
 	untrackedFiles string // --untracked-files/-u: "all" (default), "normal", "no"
+	showBranches   bool   // --branches/-b: show branch tree
 
 	// branches-specific
 	verbose bool   // -v/--verbose
@@ -353,6 +354,10 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			return 0, fmt.Errorf("-u mode must be no, normal, or all; got %q", mode)
 		}
 
+	// status: show branches
+	case arg == "--branches" || arg == "-b":
+		p.showBranches = true
+
 	// config flags
 	case arg == "--init":
 		p.configInit = true
@@ -393,6 +398,9 @@ func (p *parsedArgs) validate() error {
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
 		}
+		if p.showBranches {
+			return fmt.Errorf("-b/--branches is only valid for status command")
+		}
 	case "show":
 		if len(p.refs) > 1 {
 			return fmt.Errorf("show accepts at most 1 ref, got %d", len(p.refs))
@@ -412,6 +420,9 @@ func (p *parsedArgs) validate() error {
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
 		}
+		if p.showBranches {
+			return fmt.Errorf("-b/--branches is only valid for status command")
+		}
 	case "log":
 		if len(p.refs) > 1 {
 			return fmt.Errorf("log accepts at most 1 ref range, got %d", len(p.refs))
@@ -428,18 +439,21 @@ func (p *parsedArgs) validate() error {
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
 		}
+		if p.showBranches {
+			return fmt.Errorf("-b/--branches is only valid for status command")
+		}
 	case "clean":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("%s does not accept arguments", p.cmd)
 		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" {
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
 			return fmt.Errorf("%s does not accept flags", p.cmd)
 		}
 	case "branches":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("branches does not accept arguments")
 		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" {
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
 			return fmt.Errorf("branches only accepts -v/--verbose and --since")
 		}
 	case "status":
@@ -447,13 +461,13 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("status does not accept arguments")
 		}
 		if p.cached || p.unstaged || p.count > 0 || p.verbose || p.allMode {
-			return fmt.Errorf("status only accepts -S/--symbols and -u/--untracked-files")
+			return fmt.Errorf("status only accepts -S/--symbols, -u/--untracked-files, and -b/--branches")
 		}
 	case "config":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("config does not accept arguments")
 		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" {
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
 			return fmt.Errorf("config does not accept diff/log flags")
 		}
 		if p.configForce && !p.configInit {
@@ -758,7 +772,7 @@ Examples:
 const usageStatus = `dfd status - show rich working tree status
 
 Usage:
-  dfd status [-S [N]] [-u<mode>]
+  dfd status [-S [N]] [-u<mode>] [-b]
 
 Flags:
   -S, --symbols [N]              Show structural diffs (functions, types) per file
@@ -767,15 +781,18 @@ Flags:
                                  no     = hide untracked files
                                  normal = list paths only
                                  all    = expand with diffs (default)
+  -b, --branches                 Include branch tree
 
-Displays branch tree, staged/unstaged changes, and untracked files.
+Displays staged/unstaged changes and untracked files.
 Untracked files are expanded with diffs by default; use -uno or
 -unormal to just list paths or hide them entirely.
 With -S, each changed file shows affected functions, methods, and types
 with per-element line counts.
+With -b, the branch tree is shown above the changes.
 
 Examples:
   dfd status               Show working tree status (untracked expanded)
+  dfd status -b            Include branch tree
   dfd status -S            Include structural diffs (5 per file)
   dfd status -S 10         Include structural diffs (10 per file)
   dfd status -uno          Hide untracked files
@@ -856,7 +873,7 @@ func run() error {
 		if args.symbols >= 0 {
 			maxSymbols = args.symbols
 		}
-		return runStatus(args.untrackedFiles, maxSymbols)
+		return runStatus(args.untrackedFiles, maxSymbols, args.showBranches)
 	}
 
 	// Handle config command
@@ -1168,19 +1185,21 @@ func runBranches(verbose bool, sinceStr string) error {
 // runStatus prints a rich working tree status: branch tree, staged/unstaged
 // changes with structural diffs, and untracked files.
 // untrackedMode is "all" (expand with diffs), "normal" (list paths), or "no" (hide).
-func runStatus(untrackedMode string, maxSymbols int) error {
+func runStatus(untrackedMode string, maxSymbols int, showBranches bool) error {
 	g := git.New()
 	hl := highlight.New()
 
-	// 1. Branch tree (filtered to last 30 days by default)
+	// 1. Branch tree (only with --branches, filtered to last 30 days)
 	var branchTree string
-	branchList, err := g.LocalBranches()
-	if err == nil && len(branchList) > 0 {
-		branchList = filterBranchList(g, branchList, 30*24*time.Hour)
-		if len(branchList) > 0 {
-			roots, err := branches.BuildTree(branchList, g)
-			if err == nil {
-				branchTree = branches.Render(roots, false)
+	if showBranches {
+		branchList, err := g.LocalBranches()
+		if err == nil && len(branchList) > 0 {
+			branchList = filterBranchList(g, branchList, 30*24*time.Hour)
+			if len(branchList) > 0 {
+				roots, err := branches.BuildTree(branchList, g)
+				if err == nil {
+					branchTree = branches.Render(roots, false)
+				}
 			}
 		}
 	}
