@@ -18,7 +18,7 @@ func stripANSI(s string) string {
 func TestRender_EmptyStatus(t *testing.T) {
 	out := Render("", "", "", nil, nil, nil, nil)
 	stripped := stripANSI(out)
-	assert.Contains(t, stripped, "Nothing to commit, working tree clean")
+	assert.Contains(t, stripped, "No changes")
 }
 
 func TestRender_BranchTreeOnly(t *testing.T) {
@@ -26,7 +26,7 @@ func TestRender_BranchTreeOnly(t *testing.T) {
 	stripped := stripANSI(out)
 	assert.Contains(t, stripped, "main")
 	assert.Contains(t, stripped, "feature (HEAD)")
-	assert.Contains(t, stripped, "Nothing to commit")
+	assert.Contains(t, stripped, "No changes")
 }
 
 func TestRender_StagedSection(t *testing.T) {
@@ -212,7 +212,7 @@ func TestRender_NoSummaryForPlainUntracked(t *testing.T) {
 	stripped := stripANSI(out)
 
 	assert.NotContains(t, stripped, "files")
-	assert.NotContains(t, stripped, "Nothing to commit")
+	assert.NotContains(t, stripped, "No changes")
 }
 
 func TestRender_RepoStateOpOnly(t *testing.T) {
@@ -220,7 +220,7 @@ func TestRender_RepoStateOpOnly(t *testing.T) {
 	stripped := stripANSI(out)
 
 	assert.Contains(t, stripped, "Cherry-picking")
-	assert.Contains(t, stripped, "Nothing to commit")
+	assert.Contains(t, stripped, "No changes")
 }
 
 func TestRender_RepoStateWithDetail(t *testing.T) {

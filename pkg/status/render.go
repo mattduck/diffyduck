@@ -362,7 +362,7 @@ func Render(branchTree string, repoOp, repoDetail string, staged, unstaged []Fil
 		if needsGap {
 			b.WriteByte('\n')
 		}
-		b.WriteString("Nothing to commit, working tree clean\n")
+		b.WriteString("No changes\n")
 	}
 
 	return b.String()
