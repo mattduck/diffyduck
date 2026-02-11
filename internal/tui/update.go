@@ -2089,14 +2089,18 @@ func (m *Model) handleSnapshot() tea.Cmd {
 		return m.clearStatusAfter(now)
 	}
 
-	if len(m.snapshots) == 0 {
-		now := time.Now()
-		m.statusMessage = "Initial snapshot not ready yet"
-		m.statusMessageTime = now
-		return m.clearStatusAfter(now)
+	if m.git == nil {
+		return nil
 	}
 
-	if m.git == nil {
+	// No snapshots yet — just switch to snapshot view and wait for the
+	// initial SnapshotCreatedMsg (which triggers buildSnapshotHistoryCmd).
+	if len(m.snapshots) == 0 {
+		if !m.showSnapshots {
+			m.normalViewCommits = make([]sidebyside.CommitSet, len(m.commits))
+			copy(m.normalViewCommits, m.commits)
+			m.showSnapshots = true
+		}
 		return nil
 	}
 

@@ -334,6 +334,11 @@ func (m Model) View() string {
 		return ""
 	}
 
+	// Suppress drawing until snapshot view is ready (waiting for initial snapshot)
+	if m.showSnapshots && m.snapshotViewCommits == nil {
+		return ""
+	}
+
 	// Help screen replaces the entire view
 	if m.helpMode {
 		return m.renderHelp()

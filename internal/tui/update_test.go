@@ -4486,17 +4486,22 @@ func TestHandleSnapshot_DisabledShowsStatus(t *testing.T) {
 	_ = cmd
 }
 
-func TestHandleSnapshot_NoInitialSnapshotShowsStatus(t *testing.T) {
+func TestHandleSnapshot_NoInitialSnapshotSwitchesToSnapshotView(t *testing.T) {
+	// S with no snapshots yet should switch to snapshot view and wait for
+	// the initial SnapshotCreatedMsg — not show an error.
 	m := makeTestModel(10)
 	m.autoSnapshots = true
 	m.snapshots = nil // no initial snapshot yet
+	m.git = &git.MockGit{}
 	m.keys = DefaultKeyMap()
 
 	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
 	result := newModel.(Model)
 
-	assert.Equal(t, "Initial snapshot not ready yet", result.statusMessage)
-	_ = cmd
+	assert.True(t, result.showSnapshots, "should switch to snapshot view")
+	assert.NotNil(t, result.normalViewCommits, "should cache normal view")
+	assert.Empty(t, result.statusMessage, "no error status")
+	assert.Nil(t, cmd, "no command — waiting for SnapshotCreatedMsg")
 }
 
 func TestLoadCommitDiff_ShiftsHighlightMaps(t *testing.T) {
@@ -4735,6 +4740,49 @@ func TestHandleSnapshot_NilGitReturnsNil(t *testing.T) {
 // =============================================================================
 // SnapshotToggle (s key) tests
 // =============================================================================
+
+func TestSnapshotToggle_WaitsWhenNoSnapshotsYet(t *testing.T) {
+	// s toggle with no snapshots taken yet should set showSnapshots=true
+	// and wait for the initial SnapshotCreatedMsg — not try to build history.
+	baseCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "base diff"},
+		Files: []sidebyside.FilePair{{NewPath: "base.go"}},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{baseCommit},
+		WithAutoSnapshots(true),
+	)
+	m.keys = DefaultKeyMap()
+	m.snapshots = nil // no initial snapshot yet
+
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	result := newModel.(Model)
+
+	assert.True(t, result.showSnapshots, "should switch to snapshot view")
+	assert.NotNil(t, result.normalViewCommits, "should cache normal view")
+	assert.Nil(t, cmd, "no command — waiting for SnapshotCreatedMsg")
+}
+
+func TestSnapshotView_SuppressesDrawUntilReady(t *testing.T) {
+	// When showSnapshots is true but snapshotViewCommits is nil (waiting for
+	// initial snapshot), View() should return empty to avoid flashing the
+	// diff view.
+	baseCommit := sidebyside.CommitSet{
+		Info:  sidebyside.CommitInfo{Subject: "base diff"},
+		Files: []sidebyside.FilePair{{NewPath: "base.go"}},
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{baseCommit},
+		WithAutoSnapshots(true),
+		WithShowSnapshots(true),
+	)
+	m.width = 120
+	m.height = 40
+
+	assert.True(t, m.showSnapshots)
+	assert.Nil(t, m.snapshotViewCommits, "no snapshot view built yet")
+	assert.Equal(t, "", m.View(), "should suppress drawing until snapshot view is ready")
+}
 
 func TestSnapshotToggle_DisabledWhenNoAutoSnapshots(t *testing.T) {
 	m := makeTestModel(10)

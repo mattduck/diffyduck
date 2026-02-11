@@ -2230,6 +2230,13 @@ func (m *Model) handleSnapshotToggle() tea.Cmd {
 			return m.swapToView(m.snapshotViewCommits)
 		}
 
+		// No snapshots taken yet — view will stay blank until SnapshotCreatedMsg
+		// arrives and triggers buildSnapshotHistoryCmd.
+		if len(m.snapshots) == 0 {
+			m.logf("handleSnapshotToggle: no snapshots yet, waiting for initial snapshot")
+			return nil
+		}
+
 		// No cached snapshot view — build the timeline asynchronously.
 		// SnapshotHistoryReadyMsg handler will swap the view when ready.
 		cmd := m.buildSnapshotHistoryCmd()
