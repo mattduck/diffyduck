@@ -2,6 +2,7 @@ package branches
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -128,8 +129,8 @@ func TestBuildTree_MultipleChildren(t *testing.T) {
 	require.Len(t, roots, 1)
 	assert.Equal(t, "main", roots[0].Name)
 	require.Len(t, roots[0].Children, 2)
-	assert.Equal(t, "alpha", roots[0].Children[0].Name)
-	assert.Equal(t, "beta", roots[0].Children[1].Name)
+	assert.Equal(t, "beta", roots[0].Children[0].Name)  // most recent first (2025-01-03)
+	assert.Equal(t, "alpha", roots[0].Children[1].Name) // older (2025-01-02)
 }
 
 func TestBuildTree_IndependentTrees(t *testing.T) {
@@ -146,8 +147,8 @@ func TestBuildTree_IndependentTrees(t *testing.T) {
 	roots, err := BuildTree(branches, q)
 	require.NoError(t, err)
 	require.Len(t, roots, 2)
-	assert.Equal(t, "main", roots[0].Name)
-	assert.Equal(t, "orphan", roots[1].Name)
+	assert.Equal(t, "orphan", roots[0].Name) // most recent first (2025-01-02)
+	assert.Equal(t, "main", roots[1].Name)   // older (2025-01-01)
 }
 
 func TestBuildTree_SameCommit(t *testing.T) {
@@ -194,6 +195,105 @@ func TestBuildTree_SameCommitWithChildren(t *testing.T) {
 	require.Len(t, roots[0].Children, 1)
 	assert.Equal(t, "second", roots[0].Children[0].Name)
 	assert.Equal(t, 1, roots[0].Children[0].Ahead)
+}
+
+func mustParseTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func TestBuildTree_Deduplication(t *testing.T) {
+	// Verify that deduplication removes branches appearing in multiple subtrees.
+	// Direct test of deduplicateTree since the fork-point algorithm can produce
+	// duplicate nodes in complex histories.
+	mainSHA := "aaaaaaa0000000000000000000000000000000aa"
+	featureSHA := "bbbbbbb0000000000000000000000000000000bb"
+	childSHA := "ccccccc0000000000000000000000000000000cc"
+
+	feature := &BranchNode{
+		Name:    "feature",
+		SHA:     "bbbbbbb",
+		Date:    mustParseTime("2025-01-02T00:00:00Z"),
+		fullSHA: featureSHA,
+		ref:     "feature",
+	}
+	child := &BranchNode{
+		Name:    "child",
+		SHA:     "ccccccc",
+		Date:    mustParseTime("2025-01-03T00:00:00Z"),
+		fullSHA: childSHA,
+		ref:     "child",
+		Ahead:   1,
+	}
+
+	// Simulate a tree where "feature" appears under two virtual forks
+	fork1 := &BranchNode{
+		SHA:     "fff1111",
+		Virtual: true,
+		fullSHA: "fff11110000000000000000000000000000000ff",
+		ref:     "fff11110000000000000000000000000000000ff",
+		Children: []*BranchNode{
+			feature,
+			child,
+		},
+	}
+	// feature is duplicated (same pointer or same SHA)
+	featureDup := &BranchNode{
+		Name:    "feature",
+		SHA:     "bbbbbbb",
+		Date:    mustParseTime("2025-01-02T00:00:00Z"),
+		fullSHA: featureSHA,
+		ref:     "feature",
+	}
+	fork2 := &BranchNode{
+		SHA:     "fff2222",
+		Virtual: true,
+		fullSHA: "fff22220000000000000000000000000000000ff",
+		ref:     "fff22220000000000000000000000000000000ff",
+		Children: []*BranchNode{
+			featureDup,
+		},
+	}
+
+	root := &BranchNode{
+		Name:     "main",
+		SHA:      "aaaaaaa",
+		Date:     mustParseTime("2025-01-01T00:00:00Z"),
+		fullSHA:  mainSHA,
+		ref:      "main",
+		Children: []*BranchNode{fork1, fork2},
+	}
+
+	result := deduplicateTree([]*BranchNode{root})
+	require.Len(t, result, 1)
+
+	// Flatten all non-virtual names to verify no duplicates
+	var names []string
+	var collect func([]*BranchNode)
+	collect = func(nodes []*BranchNode) {
+		for _, n := range nodes {
+			if !n.Virtual {
+				names = append(names, n.Name)
+			}
+			collect(n.Children)
+		}
+	}
+	collect(result)
+
+	// Each branch should appear exactly once
+	seen := make(map[string]int)
+	for _, name := range names {
+		seen[name]++
+	}
+	for name, count := range seen {
+		assert.Equal(t, 1, count, "branch %q appears %d times, want 1", name, count)
+	}
+	// fork2 had only 1 child (featureDup) which was a duplicate, so after dedup
+	// fork2 has 0 children and gets unwrapped (removed)
+	assert.Len(t, result[0].Children, 1, "fork2 should be unwrapped after dedup")
 }
 
 func TestBuildTree_StaleBranch(t *testing.T) {

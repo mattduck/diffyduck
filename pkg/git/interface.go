@@ -135,4 +135,11 @@ type Git interface {
 
 	// AheadBehind returns how many commits a is ahead of and behind b.
 	AheadBehind(a, b string) (ahead, behind int, err error)
+
+	// DefaultBranch returns the name of the repo's default branch (e.g. "main").
+	// Tries origin/HEAD first, then falls back to checking for main/master.
+	DefaultBranch() (string, error)
+
+	// WorktreeBranches returns branch names that have associated worktrees.
+	WorktreeBranches() ([]string, error)
 }

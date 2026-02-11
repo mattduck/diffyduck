@@ -25,9 +25,11 @@ type MockGit struct {
 	RepoStateDetail string // detail for RepoState (e.g. "3/5")
 
 	// Branch-related mock data
-	Branches     []BranchInfo
-	MergeBases   map[string]string // key: "a\x00b" (sorted), value: SHA
-	AheadBehinds map[string][2]int // key: "a\x00b", value: [ahead, behind]
+	Branches          []BranchInfo
+	MergeBases        map[string]string // key: "a\x00b" (sorted), value: SHA
+	AheadBehinds      map[string][2]int // key: "a\x00b", value: [ahead, behind]
+	DefaultBranchVal  string            // return value for DefaultBranch
+	WorktreeBranchVal []string          // return value for WorktreeBranches
 }
 
 // Show returns the preconfigured output or error.
@@ -216,4 +218,17 @@ func (m *MockGit) AheadBehind(a, b string) (int, int, error) {
 		return counts[0], counts[1], nil
 	}
 	return 0, 0, nil
+}
+
+// DefaultBranch returns the preconfigured default branch name.
+func (m *MockGit) DefaultBranch() (string, error) {
+	if m.DefaultBranchVal == "" {
+		return "main", nil
+	}
+	return m.DefaultBranchVal, nil
+}
+
+// WorktreeBranches returns the preconfigured worktree branch names.
+func (m *MockGit) WorktreeBranches() ([]string, error) {
+	return m.WorktreeBranchVal, nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -344,7 +345,7 @@ func TestParseArgs_BranchesWithArgs(t *testing.T) {
 func TestParseArgs_BranchesWithFlags(t *testing.T) {
 	_, err := parseArgs([]string{"branches", "--cached"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "only accepts -v")
+	assert.Contains(t, err.Error(), "only accepts -v/--verbose and --since")
 }
 
 func TestParseArgs_BranchesVerbose(t *testing.T) {
@@ -361,6 +362,69 @@ func TestParseArgs_BranchesVerbose(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, "branches", result.cmd)
 			assert.True(t, result.verbose)
+		})
+	}
+}
+
+func TestParseArgs_BranchesSince(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		since string
+	}{
+		{"--since=7d", []string{"branches", "--since=7d"}, "7d"},
+		{"--since 2w", []string{"branches", "--since", "2w"}, "2w"},
+		{"--since=all", []string{"branches", "--since=all"}, "all"},
+		{"--since=1y", []string{"branches", "--since=1y"}, "1y"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseArgs(tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, "branches", result.cmd)
+			assert.Equal(t, tt.since, result.since)
+		})
+	}
+}
+
+func TestParseArgs_SinceOnDiff(t *testing.T) {
+	_, err := parseArgs([]string{"diff", "--since=7d"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid for branches")
+}
+
+func TestParseArgs_SinceMissingValue(t *testing.T) {
+	_, err := parseArgs([]string{"branches", "--since"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a duration")
+}
+
+func TestParseSinceDuration(t *testing.T) {
+	tests := []struct {
+		input string
+		want  time.Duration
+		err   bool
+	}{
+		{"7d", 7 * 24 * time.Hour, false},
+		{"2w", 14 * 24 * time.Hour, false},
+		{"3m", 90 * 24 * time.Hour, false},
+		{"1y", 365 * 24 * time.Hour, false},
+		{"all", 0, false},
+		{"", 0, false},
+		{"bad", 0, true},
+		{"0d", 0, true},
+		{"-1d", 0, true},
+		{"3x", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := parseSinceDuration(tt.input)
+			if tt.err {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			}
 		})
 	}
 }

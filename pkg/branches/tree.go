@@ -178,20 +178,23 @@ func BuildTree(branches []git.BranchInfo, q GitQuerier) ([]*BranchNode, error) {
 		nodes[parent].Children = append(nodes[parent].Children, nodes[child])
 	}
 
-	// Sort children alphabetically
+	// Sort children by date (most recent first)
 	for _, node := range nodes {
 		sort.Slice(node.Children, func(i, j int) bool {
-			return node.Children[i].Name < node.Children[j].Name
+			return effectiveDate(node.Children[i]).After(effectiveDate(node.Children[j]))
 		})
 	}
 
-	// Collect roots
+	// Collect roots, sorted by date (most recent first)
 	var roots []*BranchNode
 	for _, key := range keys {
 		if _, hasParent := parentOf[key]; !hasParent {
 			roots = append(roots, nodes[key])
 		}
 	}
+	sort.Slice(roots, func(i, j int) bool {
+		return effectiveDate(roots[i]).After(effectiveDate(roots[j]))
+	})
 
 	// Insert virtual fork points where siblings diverged recently.
 	// Collect all branch SHAs so we don't insert forks at existing branches.
@@ -209,6 +212,9 @@ func BuildTree(branches []git.BranchInfo, q GitQuerier) ([]*BranchNode, error) {
 	if err := recomputeVirtualAhead(roots, q); err != nil {
 		return nil, err
 	}
+
+	// Remove any duplicate branches (same SHA appearing in multiple subtrees).
+	roots = deduplicateTree(roots)
 
 	return roots, nil
 }
@@ -332,17 +338,33 @@ func insertForkPoints(nodes []*BranchNode, allBranchSHAs map[string]bool, q GitQ
 		}
 
 		sort.Slice(g.members, func(i, j int) bool {
-			return g.members[i].Name < g.members[j].Name
+			return effectiveDate(g.members[i]).After(effectiveDate(g.members[j]))
 		})
 		fork.Children = g.members
 		result = append(result, fork)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Name < result[j].Name
+		return effectiveDate(result[i]).After(effectiveDate(result[j]))
 	})
 
 	return result, nil
+}
+
+// effectiveDate returns the date to use for sorting a node.
+// For virtual nodes (which have no date), it returns the most recent child's date.
+func effectiveDate(node *BranchNode) time.Time {
+	if !node.Virtual || len(node.Children) == 0 {
+		return node.Date
+	}
+	best := time.Time{}
+	for _, child := range node.Children {
+		d := effectiveDate(child)
+		if d.After(best) {
+			best = d
+		}
+	}
+	return best
 }
 
 // recomputeVirtualAhead walks the tree and sets Ahead/Behind on virtual nodes
@@ -364,4 +386,31 @@ func recomputeVirtualAhead(nodes []*BranchNode, q GitQuerier) error {
 		}
 	}
 	return nil
+}
+
+// deduplicateTree removes branches that appear in multiple places in the tree,
+// keeping only the first occurrence (depth-first order). After removal, virtual
+// nodes with 0-1 children are unwrapped (their children promoted to the parent).
+func deduplicateTree(roots []*BranchNode) []*BranchNode {
+	seen := make(map[string]bool)
+	return dedup(roots, seen)
+}
+
+func dedup(nodes []*BranchNode, seen map[string]bool) []*BranchNode {
+	var result []*BranchNode
+	for _, node := range nodes {
+		if !node.Virtual && seen[node.fullSHA] {
+			continue
+		}
+		if !node.Virtual {
+			seen[node.fullSHA] = true
+		}
+		node.Children = dedup(node.Children, seen)
+		if node.Virtual && len(node.Children) <= 1 {
+			result = append(result, node.Children...)
+			continue
+		}
+		result = append(result, node)
+	}
+	return result
 }

@@ -1282,6 +1282,45 @@ func (g *RealGit) AheadBehind(a, b string) (ahead, behind int, err error) {
 	return ahead, behind, nil
 }
 
+// DefaultBranch returns the name of the repo's default branch.
+// Tries origin/HEAD first, then falls back to checking for main/master.
+func (g *RealGit) DefaultBranch() (string, error) {
+	// Try symbolic-ref first (set by git clone)
+	cmd := g.command("symbolic-ref", "refs/remotes/origin/HEAD")
+	out, err := cmd.Output()
+	if err == nil {
+		ref := strings.TrimSpace(string(out))
+		if idx := strings.LastIndex(ref, "/"); idx >= 0 {
+			return ref[idx+1:], nil
+		}
+	}
+	// Fallback: check if main or master branch exists
+	for _, name := range []string{"main", "master"} {
+		cmd = g.command("rev-parse", "--verify", "--quiet", "refs/heads/"+name)
+		if err := cmd.Run(); err == nil {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("cannot determine default branch")
+}
+
+// WorktreeBranches returns branch names that have associated worktrees.
+func (g *RealGit) WorktreeBranches() ([]string, error) {
+	cmd := g.command("worktree", "list", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var branches []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "branch refs/heads/") {
+			name := strings.TrimPrefix(line, "branch refs/heads/")
+			branches = append(branches, name)
+		}
+	}
+	return branches, nil
+}
+
 // GitError represents an error from a git command.
 type GitError struct {
 	Command string

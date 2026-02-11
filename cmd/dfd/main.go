@@ -9,6 +9,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/internal/tui"
@@ -103,7 +104,8 @@ type parsedArgs struct {
 	untrackedFiles string // --untracked-files/-u: "all" (default), "normal", "no"
 
 	// branches-specific
-	verbose bool // -v/--verbose
+	verbose bool   // -v/--verbose
+	since   string // --since duration (e.g. "30d", "2w", "3m", "all")
 
 	// config-specific
 	configInit  bool // --init
@@ -237,6 +239,14 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 	// branches flags
 	case arg == "-v" || arg == "--verbose":
 		p.verbose = true
+	case strings.HasPrefix(arg, "--since="):
+		p.since = strings.TrimPrefix(arg, "--since=")
+	case arg == "--since":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--since requires a duration (e.g. 30d, 2w, 3m, 1y, all)")
+		}
+		p.since = args[i+1]
+		return 1, nil
 
 	// diff flags
 	case arg == "--cached" || arg == "--staged":
@@ -430,7 +440,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("branches does not accept arguments")
 		}
 		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" {
-			return fmt.Errorf("branches only accepts -v/--verbose")
+			return fmt.Errorf("branches only accepts -v/--verbose and --since")
 		}
 	case "status":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
@@ -463,6 +473,11 @@ func (p *parsedArgs) validate() error {
 	// Config-specific flags are only valid for the config command
 	if p.cmd != "config" && (p.configInit || p.configForce || p.configPrint || p.configPath || p.configEdit) {
 		return fmt.Errorf("--init, --force, --print, --path, --edit are only valid for config command")
+	}
+
+	// --since is only valid for branches
+	if p.cmd != "branches" && p.since != "" {
+		return fmt.Errorf("--since is only valid for branches command")
 	}
 	return nil
 }
@@ -725,13 +740,19 @@ Usage:
   dfd branches [flags]
 
 Displays local branches as a tree based on their upstream relationships.
+By default, only branches active in the last 30 days are shown. The current
+branch, default branch, and worktree branches are always included.
 
 Flags:
-  -v, --verbose    Show commit subject for each branch
+  -v, --verbose          Show commit subject for each branch
+      --since <duration> Only show branches active within duration (default: 30d)
+                         Accepts: 7d (days), 2w (weeks), 3m (months), 1y (years), all
 
 Examples:
-  dfd branches             Show branch tree
-  dfd branches -v          Show branch tree with commit subjects
+  dfd branches                Show branch tree (last 30 days)
+  dfd branches --since=1y     Show branches from the last year
+  dfd branches --since=all    Show all branches
+  dfd branches -v             Show branch tree with commit subjects
 `
 
 const usageStatus = `dfd status - show rich working tree status
@@ -826,7 +847,7 @@ func run() error {
 
 	// Handle branches command - show branch dependency tree
 	if args.cmd == "branches" {
-		return runBranches(args.verbose)
+		return runBranches(args.verbose, args.since)
 	}
 
 	// Handle status command - rich working tree status
@@ -1068,8 +1089,50 @@ func run() error {
 	return nil
 }
 
+// parseSinceDuration parses a human-friendly duration string.
+// Accepts: "7d" (days), "2w" (weeks), "3m" (months), "1y" (years), "all" (no filter).
+// Returns 0 for "all" or empty string (caller should skip filtering).
+func parseSinceDuration(s string) (time.Duration, error) {
+	if s == "" || s == "all" {
+		return 0, nil
+	}
+	if len(s) < 2 {
+		return 0, fmt.Errorf("invalid duration %q: expected number + unit (d/w/m/y)", s)
+	}
+	numStr := s[:len(s)-1]
+	unit := s[len(s)-1]
+	n, err := strconv.Atoi(numStr)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid duration %q: expected positive number + unit (d/w/m/y)", s)
+	}
+	switch unit {
+	case 'd':
+		return time.Duration(n) * 24 * time.Hour, nil
+	case 'w':
+		return time.Duration(n) * 7 * 24 * time.Hour, nil
+	case 'm':
+		return time.Duration(n) * 30 * 24 * time.Hour, nil
+	case 'y':
+		return time.Duration(n) * 365 * 24 * time.Hour, nil
+	default:
+		return 0, fmt.Errorf("invalid duration unit %q: expected d, w, m, or y", string(unit))
+	}
+}
+
+// filterBranchList applies the recency filter to a branch list.
+// dur is the lookback duration; 0 means no filtering.
+func filterBranchList(g git.Git, branchList []git.BranchInfo, dur time.Duration) []git.BranchInfo {
+	if dur <= 0 {
+		return branchList
+	}
+	since := time.Now().Add(-dur)
+	defaultBranch, _ := g.DefaultBranch()
+	worktrees, _ := g.WorktreeBranches()
+	return branches.FilterBranches(branchList, since, defaultBranch, worktrees)
+}
+
 // runBranches prints a tree view of local branch dependencies.
-func runBranches(verbose bool) error {
+func runBranches(verbose bool, sinceStr string) error {
 	g := git.New()
 	branchList, err := g.LocalBranches()
 	if err != nil {
@@ -1079,6 +1142,21 @@ func runBranches(verbose bool) error {
 		fmt.Println("No local branches")
 		return nil
 	}
+
+	dur := 30 * 24 * time.Hour // default: 1 month
+	if sinceStr != "" {
+		parsed, err := parseSinceDuration(sinceStr)
+		if err != nil {
+			return fmt.Errorf("invalid --since value: %w", err)
+		}
+		dur = parsed
+	}
+	branchList = filterBranchList(g, branchList, dur)
+	if len(branchList) == 0 {
+		fmt.Println("No local branches")
+		return nil
+	}
+
 	roots, err := branches.BuildTree(branchList, g)
 	if err != nil {
 		return fmt.Errorf("build branch tree: %w", err)
@@ -1094,13 +1172,16 @@ func runStatus(untrackedMode string, maxSymbols int) error {
 	g := git.New()
 	hl := highlight.New()
 
-	// 1. Branch tree
+	// 1. Branch tree (filtered to last 30 days by default)
 	var branchTree string
 	branchList, err := g.LocalBranches()
 	if err == nil && len(branchList) > 0 {
-		roots, err := branches.BuildTree(branchList, g)
-		if err == nil {
-			branchTree = branches.Render(roots, false)
+		branchList = filterBranchList(g, branchList, 30*24*time.Hour)
+		if len(branchList) > 0 {
+			roots, err := branches.BuildTree(branchList, g)
+			if err == nil {
+				branchTree = branches.Render(roots, false)
+			}
 		}
 	}
 
