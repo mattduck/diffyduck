@@ -905,13 +905,31 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// If transitioning to FoldNormal, ensure structural data is available for the
+	// code-stats view. If not, either trigger highlighting (content already loaded)
+	// or fetch the content first (which triggers highlighting on arrival).
+	var cmd tea.Cmd
+	if newLevel == sidebyside.FoldNormal && m.structureMaps[fileIdx] == nil {
+		fp := m.files[fileIdx]
+		if len(fp.OldContent) > 0 || len(fp.NewContent) > 0 {
+			// Content available but not yet highlighted with structure
+			cmd = m.RequestHighlight(fileIdx)
+		} else if !m.isFileLoading(fileIdx) {
+			// No content — fetch it (highlighting happens on arrival)
+			if fetchCmd := m.FetchFileContent(fileIdx); fetchCmd != nil {
+				m.markFileLoading(fileIdx)
+				cmd = fetchCmd
+			}
+		}
+	}
+
 	m.calculateTotalLines()
 
 	// Preserve scroll position
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
 
-	return m, nil
+	return m, cmd
 }
 
 // handleFullFileToggle toggles the full-file content view for the current file.
@@ -1178,7 +1196,7 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 
 // setAllCommitsToLevel sets all commits and their files to the specified visibility level.
 // Level 1: CommitFolded, all files FoldFolded
-// Level 2: CommitNormal, all files FoldFolded (file headers only, commit info header only)
+// Level 2: CommitNormal, all files FoldNormal (structural diff preview, commit info header only)
 // Level 3: CommitExpanded, all files FoldExpanded (diff hunks visible, commit info expanded)
 func (m *Model) setAllCommitsToLevel(level int) {
 	m.setCommitsToLevel(0, len(m.commits), level)
@@ -1195,7 +1213,7 @@ func (m *Model) setCommitsToLevel(start, end, level int) {
 		fileFold = sidebyside.FoldFolded
 	case 2:
 		commitFold = sidebyside.CommitNormal
-		fileFold = sidebyside.FoldFolded
+		fileFold = sidebyside.FoldNormal
 	case 3:
 		commitFold = sidebyside.CommitExpanded
 		fileFold = sidebyside.FoldExpanded
@@ -1888,7 +1906,7 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 
 	switch currentLevel {
 	case 1:
-		// Level 1 -> Level 2: Show file headings only
+		// Level 1 -> Level 2: Show file headings with structural diff preview
 		// Load diff content on demand if not already loaded
 		if !commit.FilesLoaded && m.git != nil {
 			m.loadCommitDiff(commitIdx)
@@ -1900,7 +1918,7 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 		}
 		m.setCommitFoldLevel(commitIdx, sidebyside.CommitNormal)
 		for i := startIdx; i < endIdx; i++ {
-			m.setFileFoldLevel(i, sidebyside.FoldFolded)
+			m.setFileFoldLevel(i, sidebyside.FoldNormal)
 		}
 		// Queue files for loading now that the commit is expanded
 		cmd = m.queueFilesForCommit(commitIdx)
@@ -2067,14 +2085,14 @@ func (m Model) commitVisibilityLevelFor(commitIdx int) int {
 		endIdx = m.commitFileStarts[commitIdx+1]
 	}
 
-	// Check if any file in this commit is expanded beyond FoldFolded
+	// Check if any file in this commit is beyond FoldNormal (structural diff preview)
 	for i := startIdx; i < endIdx; i++ {
-		if m.fileFoldLevel(i) != sidebyside.FoldFolded {
+		if m.fileFoldLevel(i) != sidebyside.FoldNormal {
 			return 3
 		}
 	}
 
-	// All files are FoldFolded
+	// All files are FoldNormal
 	return 2
 }
 

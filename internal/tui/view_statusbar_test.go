@@ -964,12 +964,12 @@ func TestCommitFoldCycle(t *testing.T) {
 	assert.Equal(t, 1, m.commitVisibilityLevel(), "should start at level 1")
 	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
 
-	// Cycle to Level 2 (file headings only)
+	// Cycle to Level 2 (file headings with structural diff preview)
 	m.handleCommitFoldCycle()
 	assert.Equal(t, 2, m.commitVisibilityLevel(), "should be at level 2 after first cycle")
 	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0))
 	for i := range m.files {
-		assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(i), "all files should be FoldFolded at level 2")
+		assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(i), "all files should be FoldNormal at level 2")
 	}
 
 	// Cycle to Level 3 (file hunks visible)

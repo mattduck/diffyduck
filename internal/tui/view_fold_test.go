@@ -621,11 +621,11 @@ func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
 }
 
 func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
-	// When a file is expanded beyond just its header (FoldFolded),
+	// When a file is expanded beyond FoldNormal to FoldExpanded,
 	// the visibility level becomes 3, but the commit stays at CommitNormal.
 	// This allows file expansion without automatically expanding commit info.
-	// Level 2 means "file headings only" - if any file shows content,
-	// the visibility level is 3 but commit fold level stays CommitNormal.
+	// Level 2 means "structural diff preview" (FoldNormal) - if any file shows
+	// full diffs, the visibility level is 3 but commit fold level stays CommitNormal.
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
 			SHA:     "def5678",
@@ -636,13 +636,13 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldNormal,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
 				},
 			},
 		},
-		FoldLevel:   sidebyside.CommitNormal, // Start at level 2 (file headers visible)
+		FoldLevel:   sidebyside.CommitNormal, // Start at level 2 (structural diff preview)
 		FilesLoaded: true,
 	}
 
@@ -655,7 +655,7 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 	// Verify we're at level 2
 	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "should start at level 2")
 	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0), "commit should be CommitNormal")
-	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0), "file should be FoldFolded")
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0), "file should be FoldNormal")
 
 	// Navigate to the file and expand it
 	// First, move cursor to be on the file (not the commit header)
@@ -673,9 +673,9 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 	newM, _ := m.handleFoldToggle()
 	m = newM.(Model)
 
-	// File should now be expanded
-	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0),
-		"file should be FoldNormal after toggle")
+	// File should now be expanded (FoldNormal → FoldExpanded)
+	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0),
+		"file should be FoldExpanded after toggle")
 
 	// The commit should now be at level 3 but still CommitNormal
 	// (file expansion doesn't force commit info to expand)

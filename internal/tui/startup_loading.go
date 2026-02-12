@@ -19,12 +19,14 @@ func (m *Model) initStartupQueue() tea.Cmd {
 	}
 	m.startupQueuedInit = true
 
-	// Queue supported files only in non-folded commits
+	// Queue supported files in visible commits.
+	// Skip files in folded commits (they'll be loaded on demand when expanded),
+	// but not for no-metadata commits where CommitFolded doesn't hide files.
 	for i, file := range m.files {
-		// Skip files in folded commits - they'll be loaded on demand when expanded
 		commitIdx := m.commitForFile(i)
 		if commitIdx >= 0 && commitIdx < len(m.commits) {
-			if m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded {
+			if m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded &&
+				m.commits[commitIdx].Info.HasMetadata() {
 				continue
 			}
 		}

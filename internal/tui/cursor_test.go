@@ -1670,8 +1670,9 @@ func TestMultiCommit_VisibilityLevelIndependent(t *testing.T) {
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should be at level 1")
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should be at level 1")
 
-	// Expand first commit to level 2
+	// Expand first commit to level 2 (CommitNormal, files FoldNormal)
 	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.files[0].FoldLevel = sidebyside.FoldNormal
 	m.calculateTotalLines()
 
 	// First at level 2, second still at level 1
@@ -1679,7 +1680,7 @@ func TestMultiCommit_VisibilityLevelIndependent(t *testing.T) {
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should still be at level 1")
 
 	// Expand first commit's files to level 3
-	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
 	m.calculateTotalLines()
 
 	// First at level 3, second still at level 1
@@ -2037,9 +2038,9 @@ func TestMultiCommit_ExpandingCommit_DoesNotAffectOtherCommitFiles(t *testing.T)
 func TestMultiCommit_MixedFoldStates(t *testing.T) {
 	m := createTwoCommitModel()
 
-	// Set commit 0 to level 3 (fully expanded)
+	// Set commit 0 to level 3 (fully expanded with diffs)
 	m.commits[0].FoldLevel = sidebyside.CommitNormal
-	m.files[0].FoldLevel = sidebyside.FoldNormal
+	m.files[0].FoldLevel = sidebyside.FoldExpanded
 
 	// Set commit 1 to level 1 (folded)
 	m.commits[1].FoldLevel = sidebyside.CommitFolded
@@ -3021,14 +3022,14 @@ func TestShiftTab_CyclesAllCommitsThroughLevels(t *testing.T) {
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(0), "commit 0 should start at level 1")
 	assert.Equal(t, 1, m.commitVisibilityLevelFor(1), "commit 1 should start at level 1")
 
-	// Shift+Tab 1: Level 1 -> Level 2 (CommitNormal, files FoldFolded)
+	// Shift+Tab 1: Level 1 -> Level 2 (CommitNormal, files FoldNormal for structural diff)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = newM.(Model)
 
 	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0), "commit 0 should be CommitNormal")
 	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(1), "commit 1 should be CommitNormal")
-	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0), "file 0 should be FoldFolded")
-	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(1), "file 1 should be FoldFolded")
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0), "file 0 should be FoldNormal")
+	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(1), "file 1 should be FoldNormal")
 	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "commit 0 should be at level 2")
 	assert.Equal(t, 2, m.commitVisibilityLevelFor(1), "commit 1 should be at level 2")
 

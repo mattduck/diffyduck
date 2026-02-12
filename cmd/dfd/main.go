@@ -1042,7 +1042,7 @@ func run() error {
 		commit := sidebyside.CommitSet{
 			Info:               commitInfo,
 			Files:              files,
-			FoldLevel:          sidebyside.CommitNormal,
+			FoldLevel:          sidebyside.CommitFolded,
 			FilesLoaded:        true,
 			TruncatedFileCount: truncatedFileCount,
 		}

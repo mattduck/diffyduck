@@ -635,9 +635,12 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 
 	// Synchronously highlight the first file so initial render has highlighting.
 	// Skip if in log mode with folded commits (first file won't be visible anyway).
+	// For no-metadata commits (diff view), files are always visible even when
+	// CommitFolded, so we still need to highlight.
 	// The rest will be highlighted async in Init().
 	firstFileVisible := len(m.files) > 0 &&
-		(len(m.commits) == 0 || m.commitFoldLevel(0) != sidebyside.CommitFolded)
+		(len(m.commits) == 0 || m.commitFoldLevel(0) != sidebyside.CommitFolded ||
+			!m.commits[0].Info.HasMetadata())
 	if firstFileVisible {
 		m.highlightPairsSync(0)
 	}

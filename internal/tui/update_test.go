@@ -755,18 +755,18 @@ func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
 	m.width = 80
 	m.height = 20
 
-	// Both files at FoldNormal, commit at CommitNormal = level 3
+	// Both files at FoldNormal, commit at CommitNormal = level 2
 	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0))
 	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(1))
 	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0))
 
-	// Press Shift+Tab - should cycle from level 3 to level 1 (all folded)
+	// Press Shift+Tab - should cycle from level 2 to level 3 (all expanded)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0))
-	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(1))
-	assert.Equal(t, sidebyside.CommitFolded, model.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(1))
+	assert.Equal(t, sidebyside.CommitExpanded, model.commitFoldLevel(0))
 }
 
 func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
