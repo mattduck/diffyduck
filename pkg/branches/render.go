@@ -9,12 +9,13 @@ import (
 
 // ANSI color helpers
 const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[31m" // fg=1
-	colorGreen  = "\033[32m" // fg=2
-	colorYellow = "\033[33m" // fg=3
-	colorCyan   = "\033[36m" // fg=6
-	colorWhite  = "\033[37m" // fg=7
+	colorReset     = "\033[0m"
+	colorRed       = "\033[31m" // fg=1
+	colorGreen     = "\033[32m" // fg=2
+	colorYellow    = "\033[33m" // fg=3
+	colorCyan      = "\033[36m" // fg=6
+	colorWhite     = "\033[37m" // fg=7
+	colorBrightBlk = "\033[90m" // fg=8
 
 	underlineOn  = "\033[4m"
 	underlineOff = "\033[24m"
@@ -103,7 +104,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 		var upstreams []upstreamEntry
 		for _, u := range node.Upstreams {
 			text := u.Name
-			color := colorGreen // default: synced
+			color := colorBrightBlk // default: synced or ahead
 			if u.Gone {
 				text += " gone"
 				color = colorRed
@@ -116,8 +117,6 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 				if u.Behind > 0 {
 					text += fmt.Sprintf(" ↓%d", u.Behind)
 					color = colorRed
-				} else {
-					color = colorWhite // ahead-only
 				}
 			}
 			upstreams = append(upstreams, upstreamEntry{text: text, color: color})

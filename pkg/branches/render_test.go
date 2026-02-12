@@ -226,9 +226,9 @@ func TestRender_MultipleUpstreams(t *testing.T) {
 	// Each upstream is individually colored, so check them separately
 	assert.Contains(t, got, "origin/main =")
 	assert.Contains(t, got, "origin/release ↑1")
-	// Synced upstream should be green, ahead-only should be white
-	assert.Contains(t, got, colorGreen+"origin/main =")
-	assert.Contains(t, got, colorWhite+"origin/release ↑1")
+	// Synced and ahead-only upstreams should be dim (fg=8)
+	assert.Contains(t, got, colorBrightBlk+"origin/main =")
+	assert.Contains(t, got, colorBrightBlk+"origin/release ↑1")
 }
 
 func TestRender_HeadRefUnderline(t *testing.T) {
