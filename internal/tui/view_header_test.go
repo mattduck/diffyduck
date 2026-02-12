@@ -913,7 +913,7 @@ func TestRenderHeaderBottomBorder_CorrectCorner(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 
-	output := m.renderHeaderBottomBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true), TreePath{})
+	output := m.renderHeaderBottomBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true), TreePath{}, sidebyside.FoldNormal)
 	// Uses heavy box-drawing: ┗ corner (not ┘)
 	assert.Contains(t, output, "┗", "bottom border should use ┗ corner")
 	assert.Contains(t, output, "━", "bottom border should use heavy horizontal line")
@@ -942,8 +942,8 @@ func TestRenderHeaderBottomBorder_BorderVisibility(t *testing.T) {
 	}
 
 	// Both visible and hidden borders should render (just with different colors)
-	visibleOutput := m.renderHeaderBottomBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{})
-	hiddenOutput := m.renderHeaderBottomBorder(30, HeaderSingleLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{})
+	visibleOutput := m.renderHeaderBottomBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{}, sidebyside.FoldNormal)
+	hiddenOutput := m.renderHeaderBottomBorder(30, HeaderSingleLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{}, sidebyside.FoldNormal)
 
 	// Uses heavy box-drawing characters: ┗ corner and ━ horizontal
 	assert.Contains(t, visibleOutput, "━", "visible border should contain heavy horizontal line")
@@ -1219,7 +1219,7 @@ func TestRenderHeaderBottomBorder_WidthScaling(t *testing.T) {
 	var prevWidth int
 
 	for _, w := range widths {
-		bottomBorder := m.renderHeaderBottomBorder(w, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{})
+		bottomBorder := m.renderHeaderBottomBorder(w, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{}, sidebyside.FoldNormal)
 		borderWidth := displayWidth(bottomBorder)
 
 		// Wider header box should produce wider border
@@ -1765,8 +1765,8 @@ func TestBorderAlignmentWithCursor(t *testing.T) {
 	require.NotZero(t, spacerIdx, "should find header spacer for file 1")
 
 	spacerRow := rows[spacerIdx]
-	noCursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status, false, spacerRow.treePrefixWidth, spacerRow.treePath)
-	cursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status, true, spacerRow.treePrefixWidth, spacerRow.treePath)
+	noCursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status, false, spacerRow.treePrefixWidth, spacerRow.treePath, spacerRow.foldLevel)
+	cursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status, true, spacerRow.treePrefixWidth, spacerRow.treePath, spacerRow.foldLevel)
 
 	noCursorSpacerLen := utf8.RuneCountInString(stripANSI(noCursorSpacer))
 	cursorSpacerLen := utf8.RuneCountInString(stripANSI(cursorSpacer))
@@ -1939,6 +1939,7 @@ func TestTreeLayoutAlignment(t *testing.T) {
 				false,
 				bottomBorderRow.treePrefixWidth,
 				bottomBorderRow.treePath,
+				bottomBorderRow.foldLevel,
 			)
 			bottomStripped := stripANSI(bottomBorder)
 

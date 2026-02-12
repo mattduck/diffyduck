@@ -167,19 +167,10 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	switch {
 	case foldLevel == sidebyside.FoldFolded:
 		// No trailing indicator
-	case foldLevel == sidebyside.FoldNormal && m.width > 0:
-		result += boxPadding + fileStatusStyle.Render("┏━━◐")
 	case headerMode != HeaderSingleLine && m.width > 0:
-		// FoldExpanded: full-width border to screen edge, last char is ●
+		// Unfolded: corner turning down, border continues on next line
 		result += boxPadding
-		treePrefixWidth := treeWidth(len(treePath.Ancestors), true)
-		headerLineWidth := treePrefixWidth + headerBoxWidth - 2
-		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
-		if trailingFill > 1 {
-			result += fileStatusStyle.Render("┏" + strings.Repeat("━", trailingFill-1) + "●")
-		} else if trailingFill > 0 {
-			result += fileStatusStyle.Render("┏●")
-		}
+		result += fileStatusStyle.Render("━━━━┓")
 	default:
 		result += boxPadding
 	}

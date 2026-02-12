@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // renderNodeBorder renders a top or bottom border for a tree node (file header, commit-info, etc).
@@ -90,8 +91,9 @@ func (m Model) renderHeaderTopBorder(headerBoxWidth int, headerMode HeaderMode, 
 }
 
 // renderHeaderBottomBorder renders the bottom border of the file header.
-// Renders as an underline starting at the fold icon position with a corner character.
-func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMode, status FileStatus, isCursorRow bool, treePrefixWidth int, treePath TreePath) string {
+// For expanded files: corner ┗ aligned under header's ┓, extending to screen edge with ●.
+// For normal files: underline starting at the fold icon position with ┗━━━┛.
+func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMode, status FileStatus, isCursorRow bool, treePrefixWidth int, treePath TreePath, foldLevel sidebyside.FoldLevel) string {
 	// Use file status color for border (matches branch color)
 	var style lipgloss.Style
 	if headerMode != HeaderThreeLine {
@@ -104,6 +106,7 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMod
 
 	// Build tree continuation from ancestors
 	var treeCont string
+	var treeContWidth int
 	if len(treePath.Ancestors) > 0 {
 		level := treePath.Ancestors[0]
 		if !level.IsLast && !level.IsFolded {
@@ -111,16 +114,63 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMod
 		} else {
 			treeCont = " "
 		}
+		treeContWidth = 1
 	}
 
 	margin := strings.Repeat(" ", TreeLeftMargin)
 
-	// Calculate spacing to position corner at fold icon column
-	// Header layout: margin(1) + branch(4) + space(1) + fold_icon
-	// treePrefixWidth = margin + branch + 1 = 6
-	// Corner should be at position treePrefixWidth (same column as fold icon)
-	// With continuation: margin(1) + cont(1) + spaces + corner at treePrefixWidth
-	// Without continuation: margin(1) + spaces + corner at treePrefixWidth
+	// Unfolded files: position content under the ┓ on the header line.
+	// Expanded: ┗━━━━━━━━━━━━━━━━━━━━━━━●  (line to screen edge)
+	// Normal:   ◐                          (just the fold icon)
+	if headerMode == HeaderThreeLine && (foldLevel == sidebyside.FoldExpanded || foldLevel == sidebyside.FoldNormal) {
+		// Compute the same column as the header's ┓:
+		// header uses treeWidth(headerAncestors, true) + headerBoxWidth - 2 + 4
+		// Content rows have one extra ancestor (the file level itself).
+		headerNumAncestors := len(treePath.Ancestors) - 1
+		if headerNumAncestors < 0 {
+			headerNumAncestors = 0
+		}
+		cornerColumn := treeWidth(headerNumAncestors, true) + headerBoxWidth - 2 + 4 // +4 for ━━━━ before ┓
+
+		spacesBeforeCorner := cornerColumn - TreeLeftMargin - treeContWidth
+		if spacesBeforeCorner < 0 {
+			spacesBeforeCorner = 0
+		}
+		spacing := strings.Repeat(" ", spacesBeforeCorner)
+
+		var content string
+		if foldLevel == sidebyside.FoldExpanded {
+			corner := "┗"
+			borderFill := m.width - cornerColumn - 1 // -1 for corner char
+			if borderFill > 1 {
+				content = corner + strings.Repeat("━", borderFill-1) + "●"
+			} else if borderFill > 0 {
+				content = corner + "●"
+			} else {
+				content = corner
+			}
+		} else {
+			// FoldNormal: corner turning right with fold icon
+			content = "┗━◐"
+		}
+
+		if isCursorRow {
+			var arrow string
+			if m.focused {
+				arrow = cursorArrowStyle.Render("▌")
+			} else {
+				arrow = " "
+			}
+			if TreeLeftMargin > 0 {
+				return arrow + margin[1:] + treeCont + spacing + style.Render(content)
+			}
+			return arrow + treeCont + spacing + style.Render(content)
+		}
+
+		return margin + treeCont + spacing + style.Render(content)
+	}
+
+	// Normal/folded files: underline under header content
 	var spacesBeforeCorner int
 	if len(treePath.Ancestors) > 0 {
 		spacesBeforeCorner = treePrefixWidth - TreeLeftMargin - 1 // -1 for continuation char
@@ -133,13 +183,11 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMod
 	spacing := strings.Repeat(" ", spacesBeforeCorner)
 
 	// Border width: from corner to end of header content
-	// headerBoxWidth includes the full header width from tree prefix to right edge
 	borderWidth := headerBoxWidth - treePrefixWidth + 2
 	if borderWidth < 1 {
 		borderWidth = 1
 	}
 
-	// Use heavy box-drawing characters for underline: ┗ corner, ━ horizontal, ┛ closing corner
 	corner := "┗"
 	borderLine := strings.Repeat("━", borderWidth) + "┛"
 
@@ -218,8 +266,54 @@ func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) str
 }
 
 // renderCommitHeaderBottomBorder renders the bottom border of the commit header.
-// The border extends full-width to the screen edge.
+// Expanded: ╚═══════════════════════●  (line to screen edge)
+// Normal:   ╚═●                        (short connector with fold icon)
 func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) string {
 	isSnapshot := row.commitIndex < len(m.commits) && m.commits[row.commitIndex].IsSnapshot
-	return m.renderCommitBorderLine(row.headerMode == HeaderThreeLine, false, isCursorRow, row.treePath, isSnapshot)
+	visible := row.headerMode == HeaderThreeLine
+
+	// Style: yellow for commits, magenta for snapshots, dark when not visible
+	treeStyle := commitTreeStyle
+	if isSnapshot {
+		treeStyle = snapshotTreeStyle
+	}
+	borderStyle := treeStyle
+	if !visible {
+		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
+	}
+
+	// ╗ on the header is at column headerBoxWidth + 1 (space) + 4 (════)
+	// = headerBoxWidth + 5. The ╚ goes under the ╗.
+	cornerColumn := row.headerBoxWidth + 5
+	spacesBeforeCorner := cornerColumn - 1 // -1 for margin
+	if spacesBeforeCorner < 0 {
+		spacesBeforeCorner = 0
+	}
+	spacing := strings.Repeat(" ", spacesBeforeCorner)
+
+	// Both Normal and Expanded: line extends to screen edge with ● end cap
+	borderFill := m.width - cornerColumn - 1 // -1 for corner char
+	var content string
+	if borderFill > 1 {
+		content = "╚" + strings.Repeat("═", borderFill-1) + "●"
+	} else if borderFill > 0 {
+		content = "╚●"
+	} else {
+		content = "╚"
+	}
+
+	// Tree continuation line under the commit fold icon (column 1)
+	treeCont := treeContinuationStyle.Render("│")
+
+	if isCursorRow {
+		var arrow string
+		if m.focused {
+			arrow = cursorArrowStyle.Render("▌")
+		} else {
+			arrow = " "
+		}
+		return arrow + treeCont + spacing[1:] + borderStyle.Render(content)
+	}
+
+	return " " + treeCont + spacing[1:] + borderStyle.Render(content)
 }

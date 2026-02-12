@@ -14,7 +14,7 @@ import (
 // --- File header border connector tests ---
 
 func TestFileHeader_NormalHasShortTrailingConnector(t *testing.T) {
-	// FoldNormal file headers should have short ┏━━◐ trailing indicator
+	// FoldNormal file headers should have ━━━━┓ trailing indicator
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
@@ -44,11 +44,11 @@ func TestFileHeader_NormalHasShortTrailingConnector(t *testing.T) {
 	)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "┏━━◐", "FoldNormal header should have short ┏━━◐ trailing indicator")
+	assert.Contains(t, stripped, "━━━━┓", "FoldNormal header should have ━━━━┓ trailing indicator")
 }
 
 func TestFileHeader_ExpandedHasFullTrailingConnector(t *testing.T) {
-	// FoldExpanded file headers should have full-width ┏━━━ trailing fill to screen edge
+	// FoldExpanded file headers should have ━━━━┓ corner turning down
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
@@ -78,12 +78,12 @@ func TestFileHeader_ExpandedHasFullTrailingConnector(t *testing.T) {
 	)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "┏", "expanded header should contain ┏ trailing connector")
+	assert.Contains(t, stripped, "━━━━┓", "expanded header should contain ━━━━┓ trailing corner")
 	assert.NotContains(t, stripped, "…", "expanded header should not contain ellipsis")
-	// Expanded header should end with ● at the right edge (replacing final ━)
+	// Expanded header should end with ┓
 	trimmed := strings.TrimRight(stripped, " ")
-	assert.True(t, strings.HasSuffix(trimmed, "●"),
-		"expanded header should end with ●, got: %q", trimmed[max(0, len(trimmed)-10):])
+	assert.True(t, strings.HasSuffix(trimmed, "┓"),
+		"expanded header should end with ┓, got: %q", trimmed[max(0, len(trimmed)-10):])
 }
 
 func TestFileHeader_FoldedHasNoTrailingConnector(t *testing.T) {
@@ -123,7 +123,7 @@ func TestFileHeader_FoldedHasNoTrailingConnector(t *testing.T) {
 }
 
 func TestFileBottomBorder_HasClosingCorner(t *testing.T) {
-	// Unfolded file bottom border should end with ┛
+	// Expanded file bottom border should extend to screen edge with ●
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
@@ -149,16 +149,15 @@ func TestFileBottomBorder_HasClosingCorner(t *testing.T) {
 
 	rendered := m.renderHeaderBottomBorder(
 		spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status,
-		false, spacerRow.treePrefixWidth, spacerRow.treePath,
+		false, spacerRow.treePrefixWidth, spacerRow.treePath, spacerRow.foldLevel,
 	)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "┛", "bottom border should end with ┛ closing corner")
-	assert.Contains(t, stripped, "┗", "bottom border should contain ┗ left corner")
-	// ┛ should be the last non-space character
+	assert.Contains(t, stripped, "┗", "bottom border should contain ┗ corner")
+	// ● should be the last non-space character
 	trimmed := strings.TrimRight(stripped, " ")
-	assert.True(t, strings.HasSuffix(trimmed, "┛"),
-		"┛ should be the last character, got: %q", trimmed[max(0, len(trimmed)-10):])
+	assert.True(t, strings.HasSuffix(trimmed, "●"),
+		"● should be the last character, got: %q", trimmed[max(0, len(trimmed)-10):])
 }
 
 func TestFileHeader_ConnectorAlignsBetweenHeaderAndBorder(t *testing.T) {
@@ -197,15 +196,18 @@ func TestFileHeader_ConnectorAlignsBetweenHeaderAndBorder(t *testing.T) {
 	))
 	border := stripANSI(m.renderHeaderBottomBorder(
 		spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status,
-		false, spacerRow.treePrefixWidth, spacerRow.treePath,
+		false, spacerRow.treePrefixWidth, spacerRow.treePath, spacerRow.foldLevel,
 	))
 
-	// Header should have ┏━━━●, border should end with ┛
-	assert.Contains(t, header, "┏", "header should contain ┏ trailing connector")
+	// Header should have ━━━━┓, border should have ┗ and end with ●
+	assert.Contains(t, header, "━━━━┓", "header should contain ━━━━┓ trailing corner")
 	headerTrimmed := strings.TrimRight(header, " ")
-	assert.True(t, strings.HasSuffix(headerTrimmed, "●"),
-		"header should end with ●, got: %q", headerTrimmed[max(0, len(headerTrimmed)-10):])
-	assert.Contains(t, border, "┛", "border should contain ┛")
+	assert.True(t, strings.HasSuffix(headerTrimmed, "┓"),
+		"header should end with ┓, got: %q", headerTrimmed[max(0, len(headerTrimmed)-10):])
+	assert.Contains(t, border, "┗", "border should contain ┗ corner")
+	borderTrimmed := strings.TrimRight(border, " ")
+	assert.True(t, strings.HasSuffix(borderTrimmed, "●"),
+		"border should end with ●, got: %q", borderTrimmed[max(0, len(borderTrimmed)-10):])
 }
 
 // --- Commit header border connector tests ---
@@ -269,7 +271,7 @@ func TestCommitHeader_FoldedHasNoTrailingConnector(t *testing.T) {
 }
 
 func TestCommitBottomBorder_ExtendsFullWidthWithCorner(t *testing.T) {
-	// Unfolded commit bottom border should extend full-width ending with ╝
+	// Unfolded commit bottom border should extend full-width with ╚═══● pattern
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := makeCommitModel(
@@ -293,15 +295,15 @@ func TestCommitBottomBorder_ExtendsFullWidthWithCorner(t *testing.T) {
 	rendered := m.renderCommitHeaderBottomBorder(*borderRow, false)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "╞", "commit bottom border should start with ╞ connector")
+	assert.Contains(t, stripped, "╚", "commit bottom border should contain ╚ corner")
 	assert.Contains(t, stripped, "═", "commit bottom border should have ═ fill")
 	trimmed := strings.TrimRight(stripped, " ")
-	assert.True(t, strings.HasSuffix(trimmed, "╛"),
-		"╝ should be the last character, got: %q", trimmed[max(0, len(trimmed)-10):])
+	assert.True(t, strings.HasSuffix(trimmed, "●"),
+		"● should be the last character, got: %q", trimmed[max(0, len(trimmed)-10):])
 }
 
 func TestCommitHeader_VerticalAndCornerAligned(t *testing.T) {
-	// The commit header should have ║ at the right edge, and the border should end with ╝ aligned to it
+	// The commit header ╗ and the border ╚ should be vertically aligned
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := makeCommitModel(
@@ -328,25 +330,16 @@ func TestCommitHeader_VerticalAndCornerAligned(t *testing.T) {
 	header := stripANSI(m.renderCommitHeaderRow(*headerRow, false))
 	border := stripANSI(m.renderCommitHeaderBottomBorder(*borderRow, false))
 
-	assert.Contains(t, header, "●", "header should have ● at right edge")
-	assert.Contains(t, border, "╛", "border should end with ╛")
-	assert.Contains(t, border, "╞", "border should have ╞ connector")
+	assert.Contains(t, header, "════╗", "header should have ════╗ trailing corner")
+	assert.Contains(t, border, "╚", "border should contain ╚ corner")
 
-	// trailing ● and ╛ should be vertically aligned at the right edge
-	// Use last occurrence of ● since fold icon also uses ●
-	headerRunes := []rune(header)
-	headerPos := -1
-	for i := len(headerRunes) - 1; i >= 0; i-- {
-		if string(headerRunes[i]) == "●" {
-			headerPos = i
-			break
-		}
-	}
-	borderPos := findRuneIndex(border, "╛")
-	require.NotEqual(t, -1, headerPos, "header should contain trailing ●")
-	require.NotEqual(t, -1, borderPos, "border should contain ╛")
+	// ╗ and ╚ should be vertically aligned
+	headerPos := findRuneIndex(header, "╗")
+	borderPos := findRuneIndex(border, "╚")
+	require.NotEqual(t, -1, headerPos, "header should contain ╗")
+	require.NotEqual(t, -1, borderPos, "border should contain ╚")
 	assert.Equal(t, headerPos, borderPos,
-		"● (col %d) and ╛ (col %d) should be vertically aligned", headerPos, borderPos)
+		"╗ (col %d) and ╚ (col %d) should be vertically aligned", headerPos, borderPos)
 }
 
 // --- Width calculation tests ---
@@ -384,28 +377,16 @@ func TestCommitHeader_TruncatedSubjectAlignsWithBorder(t *testing.T) {
 	header := stripANSI(m.renderCommitHeaderRow(*headerRow, false))
 	border := stripANSI(m.renderCommitHeaderBottomBorder(*borderRow, false))
 
-	// Border should end with ╝; header should have ║ at right edge if there's room
-	assert.Contains(t, border, "╛", "border should end with ╝")
-	assert.Contains(t, border, "╞", "border should have ╞ connector")
+	// Border should have ╚═══● pattern; header should have ════╗
+	assert.Contains(t, border, "╚", "border should contain ╚ corner")
+	assert.Contains(t, header, "════╗", "header should have ════╗ trailing corner")
 
-	// Border should end with ╛ at the right edge
-	borderPos := findRuneIndex(border, "╛")
-	require.NotEqual(t, -1, borderPos, "border should contain ╛")
-
-	// If header has a trailing ● (distinct from the fold icon at col 1),
-	// it should align with ╛. When content fills the full width, no trailing ● is added.
-	headerRunes := []rune(header)
-	headerPos := -1
-	for i := len(headerRunes) - 1; i >= 0; i-- {
-		if string(headerRunes[i]) == "●" {
-			headerPos = i
-			break
-		}
-	}
-	if headerPos > 2 {
-		// Trailing ● exists (not just the fold icon)
+	// ╗ and ╚ should be vertically aligned
+	headerPos := findRuneIndex(header, "╗")
+	borderPos := findRuneIndex(border, "╚")
+	if headerPos > 0 && borderPos > 0 {
 		assert.Equal(t, headerPos, borderPos,
-			"● (col %d) and ╛ (col %d) should align even with truncated subject", headerPos, borderPos)
+			"╗ (col %d) and ╚ (col %d) should align even with truncated subject", headerPos, borderPos)
 	}
 }
 
@@ -516,7 +497,7 @@ func TestCommitHeader_UnfoldedUsesPerCommitSubjectWidth(t *testing.T) {
 // --- Commit info header border connector tests ---
 
 func TestCommitInfoHeader_ExpandedHasTrailingConnector(t *testing.T) {
-	// Expanded commit info header ("details") should have ┏━━━ trailing fill
+	// Expanded commit info header ("details") should have ━━━━┓ trailing corner
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := makeCommitModel(
@@ -543,11 +524,10 @@ func TestCommitInfoHeader_ExpandedHasTrailingConnector(t *testing.T) {
 	stripped := stripANSI(rendered)
 
 	assert.Contains(t, stripped, "Jan 1st", "commit info header should contain date text")
-	assert.Contains(t, stripped, "┏", "expanded commit info header should contain ┏ trailing connector")
-	// Should end with ● at the right edge (replacing final ━)
+	assert.Contains(t, stripped, "━━━━┓", "expanded commit info header should contain ━━━━┓ trailing corner")
 	trimmed := strings.TrimRight(stripped, " ")
-	assert.True(t, strings.HasSuffix(trimmed, "●"),
-		"expanded commit info header should end with ●, got: %q", trimmed[max(0, len(trimmed)-10):])
+	assert.True(t, strings.HasSuffix(trimmed, "┓"),
+		"expanded commit info header should end with ┓, got: %q", trimmed[max(0, len(trimmed)-10):])
 }
 
 func TestCommitInfoHeader_NormalHasNoTrailingConnector(t *testing.T) {
@@ -608,16 +588,19 @@ func TestCommitInfoHeader_ConnectorAlignsBetweenHeaderAndBorder(t *testing.T) {
 	header := stripANSI(m.renderCommitInfoHeader(*infoHeaderRow, false))
 	border := stripANSI(m.renderCommitInfoBottomBorder(*infoBorderRow, false))
 
-	// Header should have ┏━━━●, border should end with ┛
-	assert.Contains(t, header, "┏", "info header should contain ┏ trailing connector")
+	// Header should have ━━━━┓, border should have ┗ and end with ●
+	assert.Contains(t, header, "━━━━┓", "info header should contain ━━━━┓ trailing corner")
 	headerTrimmed := strings.TrimRight(header, " ")
-	assert.True(t, strings.HasSuffix(headerTrimmed, "●"),
-		"info header should end with ●, got: %q", headerTrimmed[max(0, len(headerTrimmed)-10):])
-	assert.Contains(t, border, "┛", "info border should contain ┛")
+	assert.True(t, strings.HasSuffix(headerTrimmed, "┓"),
+		"info header should end with ┓, got: %q", headerTrimmed[max(0, len(headerTrimmed)-10):])
+	assert.Contains(t, border, "┗", "info border should contain ┗ corner")
+	borderTrimmed := strings.TrimRight(border, " ")
+	assert.True(t, strings.HasSuffix(borderTrimmed, "●"),
+		"info border should end with ●, got: %q", borderTrimmed[max(0, len(borderTrimmed)-10):])
 }
 
 func TestCommitInfoBottomBorder_HasClosingCorner(t *testing.T) {
-	// Expanded commit info bottom border should end with ┛
+	// Expanded commit info bottom border should extend to screen edge with ●
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := makeCommitModel(
@@ -641,10 +624,10 @@ func TestCommitInfoBottomBorder_HasClosingCorner(t *testing.T) {
 	rendered := m.renderCommitInfoBottomBorder(*infoBorderRow, false)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "┛", "commit info bottom border should end with ┛")
+	assert.Contains(t, stripped, "┗", "commit info bottom border should contain ┗ corner")
 	trimmed := strings.TrimRight(stripped, " ")
-	assert.True(t, strings.HasSuffix(trimmed, "┛"),
-		"┛ should be the last character, got: %q", trimmed[max(0, len(trimmed)-10):])
+	assert.True(t, strings.HasSuffix(trimmed, "●"),
+		"● should be the last character, got: %q", trimmed[max(0, len(trimmed)-10):])
 }
 
 // --- Helpers ---

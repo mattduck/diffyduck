@@ -445,23 +445,14 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	result := fixedPart + dynamicPart
 
 	// Trailing indicator based on commit fold level:
-	// - Folded: ellipsis right after content
-	// - Normal: short border + ellipsis (can expand further)
-	// - Expanded: full-width border to screen edge
+	// - Folded: no trailing indicator
+	// - Normal/Expanded: corner turning down, border continues on next line
 	switch row.commitFoldLevel {
 	case sidebyside.CommitFolded:
 		// No trailing indicator
 	default:
-		// CommitNormal and CommitExpanded: pad to screen edge with ║ at last column
-		if m.width > 0 {
-			headerLineWidth := row.headerBoxWidth
-			padding := m.width - headerLineWidth - 1 // -1 for ║
-			if padding > 0 {
-				result += strings.Repeat(" ", padding) + treeStyle.Render("●")
-			} else if padding == 0 {
-				result += treeStyle.Render("●")
-			}
-		}
+		// CommitNormal and CommitExpanded: ════╗ after content
+		result += " " + treeStyle.Render("════╗")
 	}
 
 	return result
@@ -522,20 +513,13 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 	}
 	result := treeLine + branchConnector + styledIcon + " " + styledHeader
 
-	// Trailing indicator: ellipsis when folded, full border when expanded
+	// Trailing indicator: nothing when folded, corner turning down when expanded
 	greyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	if row.headerMode == HeaderSingleLine {
 		// Folded commit info: no trailing indicator
 	} else if m.width > 0 {
-		// Expanded: full-width border to screen edge, last char is ●
-		treePrefixWidth := treeWidth(len(row.treePath.Ancestors), true)
-		headerLineWidth := treePrefixWidth + row.headerBoxWidth - 2
-		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
-		if trailingFill > 1 {
-			result += " " + greyStyle.Render("┏"+strings.Repeat("━", trailingFill-1)+"●")
-		} else if trailingFill > 0 {
-			result += " " + greyStyle.Render("┏●")
-		}
+		// Expanded: ━━━━┓ after content, border continues on next line
+		result += " " + greyStyle.Render("━━━━┓")
 	}
 
 	return result
@@ -548,12 +532,13 @@ func (m Model) renderCommitInfoTopBorder(row displayRow, isCursorRow bool) strin
 }
 
 // renderCommitInfoBottomBorder renders the bottom border of the commit info header.
-// Renders as an underline starting at the fold icon position with a corner character.
+// Positions ┗ under the ┓ on the header line, extends ━━━ to screen edge with ●.
 func (m Model) renderCommitInfoBottomBorder(row displayRow, isCursorRow bool) string {
 	greyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 
 	// Build tree continuation from ancestors
 	var treeCont string
+	var treeContWidth int
 	if len(row.treePath.Ancestors) > 0 {
 		level := row.treePath.Ancestors[0]
 		if !level.IsLast && !level.IsFolded {
@@ -561,34 +546,34 @@ func (m Model) renderCommitInfoBottomBorder(row displayRow, isCursorRow bool) st
 		} else {
 			treeCont = " "
 		}
+		treeContWidth = 1
 	}
 
 	margin := strings.Repeat(" ", TreeLeftMargin)
 
-	// Calculate spacing to position corner at fold icon column
-	// treePrefixWidth = margin + branch + alignment
-	// Corner should be at position treePrefixWidth (same column as fold icon)
-	var spacesBeforeCorner int
-	if len(row.treePath.Ancestors) > 0 {
-		spacesBeforeCorner = row.treePrefixWidth - TreeLeftMargin - 1
-	} else {
-		spacesBeforeCorner = row.treePrefixWidth - TreeLeftMargin
+	// Compute column of ┓ on the header line (same formula as file headers + 4 for ━━━━)
+	headerNumAncestors := len(row.treePath.Ancestors) - 1
+	if headerNumAncestors < 0 {
+		headerNumAncestors = 0
 	}
+	cornerColumn := treeWidth(headerNumAncestors, true) + row.headerBoxWidth - 2 + 4 // +4 for ━━━━ before ┓
+
+	spacesBeforeCorner := cornerColumn - TreeLeftMargin - treeContWidth
 	if spacesBeforeCorner < 0 {
 		spacesBeforeCorner = 0
 	}
 	spacing := strings.Repeat(" ", spacesBeforeCorner)
 
-	// Border width: from corner to end of header content
-	// +2 matches the -2 offset in the header render formula (treePrefixWidth + headerBoxWidth - 2)
-	borderWidth := row.headerBoxWidth - row.treePrefixWidth + 2
-	if borderWidth < 1 {
-		borderWidth = 1
+	// Extend to screen edge with ● end cap
+	borderFill := m.width - cornerColumn - 1 // -1 for corner char
+	var content string
+	if borderFill > 1 {
+		content = "┗" + strings.Repeat("━", borderFill-1) + "●"
+	} else if borderFill > 0 {
+		content = "┗●"
+	} else {
+		content = "┗"
 	}
-
-	// Use heavy box-drawing characters for underline: ┗ corner, ━ horizontal, ┛ closing corner
-	corner := "┗"
-	borderLine := strings.Repeat("━", borderWidth) + "┛"
 
 	if isCursorRow {
 		var arrow string
@@ -598,12 +583,12 @@ func (m Model) renderCommitInfoBottomBorder(row displayRow, isCursorRow bool) st
 			arrow = " "
 		}
 		if TreeLeftMargin > 0 {
-			return arrow + margin[1:] + treeCont + spacing + greyStyle.Render(corner+borderLine)
+			return arrow + margin[1:] + treeCont + spacing + greyStyle.Render(content)
 		}
-		return arrow + treeCont + spacing + greyStyle.Render(corner+borderLine)
+		return arrow + treeCont + spacing + greyStyle.Render(content)
 	}
 
-	return margin + treeCont + spacing + greyStyle.Render(corner+borderLine)
+	return margin + treeCont + spacing + greyStyle.Render(content)
 }
 
 // renderCommitInfoBody renders a commit info body row (Author, Date, message content).

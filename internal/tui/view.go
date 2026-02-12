@@ -1931,7 +1931,7 @@ func (m Model) renderDisplayRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	} else if row.isHeaderTopBorder {
 		return m.renderHeaderTopBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
 	} else if row.isHeaderSpacer {
-		return m.renderHeaderBottomBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
+		return m.renderHeaderBottomBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath, row.foldLevel)
 	} else if row.isBlank {
 		return renderEmptyTreeRow(row.treePath, isCursorRow, m.focused, row.treeTerminator)
 	} else if row.isHeader {
