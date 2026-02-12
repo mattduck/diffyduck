@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // ANSI color helpers
@@ -60,22 +61,18 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			displayName = "(" + node.SHA + ")"
 		}
 
+		if node.IsHead {
+			displayName = insertStarBeforeBranch(displayName, node.HeadRef)
+		}
+
 		if isRoot {
-			if node.IsHead {
-				nameCol = "*" + displayName
-			} else {
-				nameCol = displayName
-			}
+			nameCol = displayName
 		} else {
 			connector := "├─ "
 			if isFirst {
 				connector = "┌─ "
 			}
-			if node.IsHead {
-				nameCol = prefix + connector + "*" + displayName
-			} else {
-				nameCol = prefix + connector + displayName
-			}
+			nameCol = prefix + connector + displayName
 		}
 
 		// Build counts column
@@ -178,8 +175,8 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 	maxCounts := 0
 	maxDate := 0
 	for _, l := range lines {
-		if len(l.nameCol) > maxName {
-			maxName = len(l.nameCol)
+		if w := utf8.RuneCountInString(l.nameCol); w > maxName {
+			maxName = w
 		}
 		if len(l.countsCol) > maxCounts {
 			maxCounts = len(l.countsCol)
@@ -226,7 +223,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 		if l.headRef != "" {
 			styledName = underlineInString(styledName, l.headRef)
 		}
-		namePad := maxName - len(l.nameCol)
+		namePad := maxName - utf8.RuneCountInString(l.nameCol)
 
 		if verbose {
 			fmt.Fprintf(&sb, "%s%s%*s%s  %s%-*s%s  %s%s%s  %s%-*s%s  %s  %s%s%s",
@@ -285,6 +282,23 @@ func relativeTime(t time.Time, now time.Time) string {
 	default:
 		return fmt.Sprintf("%dy ago", int(d.Hours()/(24*365)))
 	}
+}
+
+// insertStarBeforeBranch places a "*" before the HEAD branch name within
+// a possibly comma-separated display name (e.g. "a, main, z" → "a, *main, z").
+// Falls back to prepending "*" when headRef is empty or not found.
+func insertStarBeforeBranch(displayName, headRef string) string {
+	if headRef == "" {
+		return "*" + displayName
+	}
+	names := strings.Split(displayName, ", ")
+	for i, name := range names {
+		if name == headRef {
+			names[i] = "*" + name
+			return strings.Join(names, ", ")
+		}
+	}
+	return "*" + displayName
 }
 
 // underlineInString inserts underline ANSI codes around the first

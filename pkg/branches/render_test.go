@@ -1,8 +1,10 @@
 package branches
 
 import (
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -243,6 +245,9 @@ func TestRender_HeadRefUnderline(t *testing.T) {
 	}
 
 	got := RenderAt(roots, false, now)
+	// Asterisk should be before the HEAD branch, not the first name
+	assert.Contains(t, got, "*\033[4msecond\033[24m")
+	assert.NotContains(t, got, "*main")
 	// HEAD branch name should be underlined, others should not
 	assert.Contains(t, got, "\033[4msecond\033[24m")
 	assert.NotContains(t, got, "\033[4mmain\033[24m")
@@ -250,4 +255,79 @@ func TestRender_HeadRefUnderline(t *testing.T) {
 	// Matching upstream should be underlined
 	assert.Contains(t, got, "\033[4morigin/second\033[24m")
 	assert.NotContains(t, got, "\033[4morigin/main\033[24m")
+}
+
+func TestRender_ColumnAlignment(t *testing.T) {
+	// Verify that root branches (no tree-drawing chars) align with child
+	// branches (which contain multi-byte box-drawing chars like ┌─).
+	now := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	roots := []*BranchNode{
+		{
+			Name: "main",
+			SHA:  "a1b2c3d",
+			Date: now.Add(-2 * time.Hour),
+			Children: []*BranchNode{
+				{
+					Name:  "feature",
+					SHA:   "e4f5g6h",
+					Date:  now.Add(-30 * time.Minute),
+					Ahead: 3,
+				},
+			},
+		},
+		{
+			Name: "orphan",
+			SHA:  "x9y8z7w",
+			Date: now.Add(-3 * 24 * time.Hour),
+		},
+	}
+
+	got := RenderAt(roots, false, now)
+
+	// Strip ANSI escape codes for alignment checking
+	stripped := stripANSI(got)
+	lines := strings.Split(strings.TrimRight(stripped, "\n"), "\n")
+
+	// Find SHA visual column position in each non-blank line.
+	// Use rune count (not byte offset) so box-drawing chars count as 1 column.
+	var shaPositions []int
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		for _, sha := range []string{"a1b2c3d", "e4f5g6h", "x9y8z7w"} {
+			idx := strings.Index(line, sha)
+			if idx >= 0 {
+				shaPositions = append(shaPositions, utf8.RuneCountInString(line[:idx]))
+				break
+			}
+		}
+	}
+
+	// All SHA columns should start at the same position
+	assert.NotEmpty(t, shaPositions, "should find SHA in output lines")
+	for i := 1; i < len(shaPositions); i++ {
+		assert.Equal(t, shaPositions[0], shaPositions[i],
+			"SHA column misaligned between lines %d and %d", 0, i)
+	}
+}
+
+func stripANSI(s string) string {
+	var out strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
+			// Skip to 'm'
+			j := i + 2
+			for j < len(s) && s[j] != 'm' {
+				j++
+			}
+			i = j + 1
+		} else {
+			out.WriteByte(s[i])
+			i++
+		}
+	}
+	return out.String()
 }
