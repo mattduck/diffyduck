@@ -1566,13 +1566,11 @@ func TestCommitBorder_RowCountStability_FirstFolded(t *testing.T) {
 
 	// With CommitNormal, the commit info node is shown under the commit header.
 	// In tree layout, the difference includes:
+	// - 1 for commit header bottom border
 	// - 1 for commit info header
-	// - 1 for commit info bottom border
-	// - 1 for additional tree structure row
 	t.Logf("Folded: %d rows, Unfolded: %d rows", foldedCount, unfoldedCount)
 
-	// Verify the difference is consistent (actual behavior shows 3 rows added)
-	expectedDiff := 3
+	expectedDiff := 2
 	actualDiff := unfoldedCount - foldedCount
 	assert.Equal(t, expectedDiff, actualDiff, "row count difference should be consistent for commit unfold")
 }

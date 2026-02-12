@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -630,7 +629,6 @@ const (
 	RowKindCommitHeaderBottomBorder // bottom border line after commit header
 	RowKindCommitBody               // commit body row (full sha, author, date, message) - legacy, kept for separators
 	RowKindCommitInfoHeader         // commit info header with yellow shaders (foldable child node)
-	RowKindCommitInfoTopBorder      // top border line before commit info header
 	RowKindCommitInfoBottomBorder   // bottom border line after commit info header
 	RowKindCommitInfoBody           // commit info body row (Author, Date, message content)
 	RowKindComment                  // inline comment row (belongs to line above)
@@ -705,7 +703,6 @@ type displayRow struct {
 	commitBodyIsBlank bool   // true if this is a blank line in the body
 	// Commit info fields (foldable child node under commit)
 	isCommitInfoHeader       bool // true if this is a commit info header row
-	isCommitInfoTopBorder    bool // true if this is a commit info top border row
 	isCommitInfoBottomBorder bool // true if this is a commit info bottom border row
 	isCommitInfoBody         bool // true if this is a commit info body row
 	// Tree hierarchy fields (generic representation)
@@ -1006,9 +1003,7 @@ func (m Model) buildRows() []displayRow {
 				continue
 			}
 
-			// Unfolded commits produce 2 margin lines before first child:
-			// - Line 1: available for commit's bottom border
-			// - Line 2: available for first child's top border (commit-info)
+			// Bottom border row for commit header (margin before first child)
 			rows = append(rows, displayRow{
 				kind:                       RowKindCommitHeaderBottomBorder,
 				fileIndex:                  -1,
@@ -1016,40 +1011,6 @@ func (m Model) buildRows() []displayRow {
 				commitIndex:                commitIdx,
 				headerMode:                 commitHeaderMode,
 				headerBoxWidth:             useHeaderBoxWidth,
-			})
-
-			// Calculate commit-info header box width for the top border slot
-			treePrefixWidth := treeWidth(0, true) + 1
-			iconPartWidth := treePrefixWidth + 2
-			headerText := commit.Info.FormattedDate(time.Now())
-			infoHeaderBoxWidth := iconPartWidth + displayWidth(headerText) + 2
-
-			// Build tree path for commit-info top border.
-			detailsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // grey for details
-			// The border sits between commit header and details header, always showing
-			// commit trunk continuation (│). Use a level that's never folded/last since
-			// at least the details header always follows below this row.
-			commitTrunkLevel := TreeLevel{
-				IsLast:   false,
-				IsFolded: false,
-				Style:    detailsStyle,
-				Depth:    0,
-			}
-			detailsBorderTreePath := TreePath{
-				Ancestors: []TreeLevel{commitTrunkLevel},
-				Current:   nil,
-			}
-
-			// Top border slot for commit-info - renders as border when expanded, blank when normal
-			rows = append(rows, displayRow{
-				kind:                  RowKindCommitInfoTopBorder,
-				fileIndex:             -1,
-				isCommitInfoTopBorder: true,
-				commitIndex:           commitIdx,
-				commitFoldLevel:       m.commitFoldLevel(commitIdx),
-				headerBoxWidth:        infoHeaderBoxWidth,
-				treePrefixWidth:       treePrefixWidth,
-				treePath:              detailsBorderTreePath,
 			})
 
 			// Add commit info rows (foldable child node under commit)
@@ -1920,8 +1881,6 @@ func (m Model) renderDisplayRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 		return m.renderCommitBodyRow(row, isCursorRow)
 	} else if row.isCommitInfoHeader {
 		return m.renderCommitInfoHeader(row, isCursorRow)
-	} else if row.isCommitInfoTopBorder {
-		return m.renderCommitInfoTopBorder(row, isCursorRow)
 	} else if row.isCommitInfoBottomBorder {
 		return m.renderCommitInfoBottomBorder(row, isCursorRow)
 	} else if row.isCommitInfoBody {

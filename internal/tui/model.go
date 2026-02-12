@@ -1666,7 +1666,7 @@ func (m *Model) toggleNarrow() {
 		m.w().narrow.CommitInfoOnly = false
 
 	case row.kind == RowKindCommitInfoHeader || row.kind == RowKindCommitInfoBody ||
-		row.kind == RowKindCommitInfoTopBorder || row.kind == RowKindCommitInfoBottomBorder:
+		row.kind == RowKindCommitInfoBottomBorder:
 		// On a commit info row: narrow to just the commit info section
 		m.w().narrow.Active = true
 		m.w().narrow.CommitIdx = row.commitIndex
