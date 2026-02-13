@@ -53,6 +53,9 @@ type Comment struct {
 
 	// HeadSHA is the HEAD commit when the comment was created (for pre-commit association).
 	HeadSHA string
+
+	// Resolved marks the comment as resolved (addressed/done).
+	Resolved bool
 }
 
 // LineContext stores the original line and its surrounding context for matching.
@@ -136,6 +139,9 @@ func (c *Comment) Serialize() string {
 	if c.HeadSHA != "" {
 		b.WriteString(fmt.Sprintf("# HEAD: %s\n", c.HeadSHA))
 	}
+	if c.Resolved {
+		b.WriteString("# RESOLVED: true\n")
+	}
 	b.WriteString(fmt.Sprintf("# FILE: %s\n", c.File))
 	b.WriteString(fmt.Sprintf("# LINE: %d\n", c.Line))
 	b.WriteString(fmt.Sprintf("# ANCHOR: %s\n", c.Anchor))
@@ -198,6 +204,10 @@ func ParseComment(id string, data string) (*Comment, error) {
 			c.Anchor = strings.TrimPrefix(line, "# ANCHOR: ")
 			continue
 		}
+		if strings.HasPrefix(line, "# RESOLVED: ") {
+			c.Resolved = strings.TrimPrefix(line, "# RESOLVED: ") == "true"
+			continue
+		}
 
 		// Parse comment text
 		if line == "# COMMENT:" {
@@ -214,7 +224,8 @@ func ParseComment(id string, data string) (*Comment, error) {
 				strings.HasPrefix(rest, "HEAD:") ||
 				strings.HasPrefix(rest, "FILE:") ||
 				strings.HasPrefix(rest, "LINE:") ||
-				strings.HasPrefix(rest, "ANCHOR:") {
+				strings.HasPrefix(rest, "ANCHOR:") ||
+				strings.HasPrefix(rest, "RESOLVED:") {
 				inComment = false
 				// Re-process this line as metadata
 				if strings.HasPrefix(line, "# CREATED: ") {

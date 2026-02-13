@@ -407,6 +407,36 @@ func (s *Store) updateRef(treeSHA string) error {
 	return s.gitCmd("update-ref", RefPath, treeSHA).Run()
 }
 
+// ReachableCommits returns the set of commit SHAs reachable from ref.
+// Uses a single git rev-list call for efficiency.
+func (s *Store) ReachableCommits(ref string) (map[string]bool, error) {
+	cmd := s.gitCmd("rev-list", ref)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("rev-list %s: %w", ref, err)
+	}
+
+	result := make(map[string]bool)
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			result[line] = true
+		}
+	}
+	return result, nil
+}
+
+// CurrentBranch returns the current branch name.
+// Returns "HEAD" if in detached HEAD state.
+func (s *Store) CurrentBranch() (string, error) {
+	cmd := s.gitCmd("symbolic-ref", "--short", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return "HEAD", nil
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // Exists checks if the comments ref exists.
 func (s *Store) Exists() bool {
 	return s.gitCmd("rev-parse", "--verify", RefPath).Run() == nil

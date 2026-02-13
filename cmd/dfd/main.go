@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -108,6 +110,15 @@ type parsedArgs struct {
 	verbose bool   // -v/--verbose
 	since   string // --since duration (e.g. "30d", "2w", "3m", "all")
 
+	// comment-specific
+	commentSub         string // "list" or "edit"
+	commentID          string // comment ID for edit
+	commentN           int    // -n count: positive=newest, negative=oldest, 0=uncapped
+	commentNSet        bool   // true if -n was explicitly passed
+	commentStatus      string // --status: "unresolved" (default), "resolved", "all"
+	commentOneline     bool   // --oneline: compact single-line output
+	commentAllBranches bool   // --all-branches: show comments from all branches
+
 	// config-specific
 	configInit  bool // --init
 	configForce bool // --force
@@ -141,6 +152,8 @@ func expandAlias(s string) string {
 		return "branches"
 	case "s":
 		return "status"
+	case "c":
+		return "comment"
 	default:
 		return s
 	}
@@ -155,10 +168,23 @@ func parseArgs(args []string) (parsedArgs, error) {
 	remaining := args
 	if len(remaining) > 0 {
 		switch remaining[0] {
-		case "diff", "d", "show", "log", "l", "clean", "branches", "b", "config", "status", "s":
+		case "diff", "d", "show", "log", "l", "clean", "branches", "b", "config", "status", "s", "comment", "c":
 			result.cmd = expandAlias(remaining[0])
 			result.helpCmd = result.cmd // target for --help flag
 			remaining = remaining[1:]
+
+			// Consume comment sub-subcommand and ID
+			if result.cmd == "comment" && len(remaining) > 0 {
+				switch remaining[0] {
+				case "list", "edit":
+					result.commentSub = remaining[0]
+					remaining = remaining[1:]
+				}
+				if result.commentSub == "edit" && len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
+					result.commentID = remaining[0]
+					remaining = remaining[1:]
+				}
+			}
 		case "help":
 			result.showHelp = true
 			remaining = remaining[1:]
@@ -286,6 +312,15 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		if i+1 >= len(args) {
 			return 0, fmt.Errorf("-n requires a count argument")
 		}
+		if p.cmd == "comment" {
+			n, err := strconv.Atoi(args[i+1])
+			if err != nil {
+				return 0, fmt.Errorf("-n requires an integer, got %q", args[i+1])
+			}
+			p.commentN = n
+			p.commentNSet = true
+			return 1, nil
+		}
 		n, err := strconv.Atoi(args[i+1])
 		if err != nil || n <= 0 {
 			return 0, fmt.Errorf("-n requires a positive integer, got %q", args[i+1])
@@ -294,6 +329,15 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		return 1, nil
 	case strings.HasPrefix(arg, "-n"):
 		nStr := strings.TrimPrefix(arg, "-n")
+		if p.cmd == "comment" {
+			n, err := strconv.Atoi(nStr)
+			if err != nil {
+				return 0, fmt.Errorf("-n requires an integer, got %q", nStr)
+			}
+			p.commentN = n
+			p.commentNSet = true
+			break
+		}
 		n, err := strconv.Atoi(nStr)
 		if err != nil || n <= 0 {
 			return 0, fmt.Errorf("-n requires a positive integer, got %q", nStr)
@@ -357,6 +401,31 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 	// status: show branches
 	case arg == "--branches" || arg == "-b":
 		p.showBranches = true
+
+	// comment flags
+	case arg == "--oneline":
+		p.commentOneline = true
+	case arg == "--all-branches":
+		p.commentAllBranches = true
+	case arg == "--status":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--status requires a value (unresolved, resolved, all)")
+		}
+		switch args[i+1] {
+		case "unresolved", "resolved", "all":
+			p.commentStatus = args[i+1]
+		default:
+			return 0, fmt.Errorf("--status must be unresolved, resolved, or all; got %q", args[i+1])
+		}
+		return 1, nil
+	case strings.HasPrefix(arg, "--status="):
+		val := strings.TrimPrefix(arg, "--status=")
+		switch val {
+		case "unresolved", "resolved", "all":
+			p.commentStatus = val
+		default:
+			return 0, fmt.Errorf("--status must be unresolved, resolved, or all; got %q", val)
+		}
 
 	// config flags
 	case arg == "--init":
@@ -463,6 +532,16 @@ func (p *parsedArgs) validate() error {
 		if p.cached || p.unstaged || p.count > 0 || p.verbose || p.allMode {
 			return fmt.Errorf("status only accepts -S/--symbols, -u/--untracked-files, and -b/--branches")
 		}
+	case "comment":
+		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
+			return fmt.Errorf("comment does not accept ref or path arguments")
+		}
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
+			return fmt.Errorf("comment only accepts -n and --status")
+		}
+		if p.commentSub == "edit" && p.commentID == "" {
+			return fmt.Errorf("comment edit requires a comment ID")
+		}
 	case "config":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("config does not accept arguments")
@@ -492,6 +571,17 @@ func (p *parsedArgs) validate() error {
 	// --since is only valid for branches
 	if p.cmd != "branches" && p.since != "" {
 		return fmt.Errorf("--since is only valid for branches command")
+	}
+
+	// --status and --oneline are only valid for comment
+	if p.cmd != "comment" && p.commentStatus != "" {
+		return fmt.Errorf("--status is only valid for comment command")
+	}
+	if p.cmd != "comment" && p.commentOneline {
+		return fmt.Errorf("--oneline is only valid for comment command")
+	}
+	if p.cmd != "comment" && p.commentAllBranches {
+		return fmt.Errorf("--all-branches is only valid for comment command")
 	}
 	return nil
 }
@@ -637,6 +727,8 @@ func printUsage(cmd string) {
 		fmt.Print(usageStatus)
 	case "config":
 		fmt.Print(usageConfig)
+	case "comment":
+		fmt.Print(usageComment)
 	default:
 		fmt.Print(usageGeneral)
 	}
@@ -656,6 +748,7 @@ Commands:
   branches, b
              Show branch dependency tree
   status, s  Show rich working tree status
+  comment, c List and edit comments
   config     Manage configuration
 
 Global flags:
@@ -823,6 +916,35 @@ Examples:
   dfd config --edit            Edit config in your editor
 `
 
+const usageComment = `dfd comment - manage comments
+
+Usage:
+  dfd comment list [flags]
+  dfd comment edit <id>
+
+Sub-commands:
+  list       List comments (default: 5 newest unresolved)
+  edit       Open a comment in $EDITOR
+
+List flags:
+  -n <count>       Positive: newest N, negative: oldest |N|, 0: uncapped (default: 5)
+      --status <s> Filter: unresolved (default), resolved, all
+      --oneline    Compact single-line output per comment
+      --all-branches
+                   Show comments from all branches (default: current branch only)
+
+Examples:
+  dfd comment list                    Show 5 newest unresolved
+  dfd comment list -n 10              Show 10 newest unresolved
+  dfd comment list -n -3              Show 3 oldest unresolved
+  dfd comment list -n 0               Show all unresolved
+  dfd comment list --status all       Include resolved
+  dfd comment list --status resolved  Only resolved
+  dfd comment list --oneline          Compact output
+  dfd comment edit <id>               Edit in $EDITOR
+  dfd c list                          Short alias
+`
+
 func run() error {
 	args, err := parseArgs(os.Args[1:])
 	if err != nil {
@@ -855,6 +977,11 @@ func run() error {
 			return fmt.Errorf("start cpu profile: %w", err)
 		}
 		defer pprof.StopCPUProfile()
+	}
+
+	// Handle comment command - list and edit comments
+	if args.cmd == "comment" {
+		return runComment(args)
 	}
 
 	// Handle clean command - deletes all persisted snapshot refs
@@ -1333,6 +1460,368 @@ func runConfigEdit() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// runComment dispatches comment sub-commands.
+func runComment(args parsedArgs) error {
+	switch args.commentSub {
+	case "list":
+		return runCommentList(args)
+	case "edit":
+		return runCommentEdit(args.commentID)
+	default:
+		printUsage("comment")
+		return nil
+	}
+}
+
+// runCommentList lists comments filtered by status and limited by -n.
+func runCommentList(args parsedArgs) error {
+	store := comments.NewStore("")
+	all, err := store.AllComments()
+	if err != nil {
+		return fmt.Errorf("reading comments: %w", err)
+	}
+
+	// Filter by --status (default: unresolved)
+	status := args.commentStatus
+	if status == "" {
+		status = "unresolved"
+	}
+	if status != "all" {
+		var filtered []*comments.Comment
+		for _, c := range all {
+			if status == "resolved" && c.Resolved {
+				filtered = append(filtered, c)
+			} else if status == "unresolved" && !c.Resolved {
+				filtered = append(filtered, c)
+			}
+		}
+		all = filtered
+	}
+
+	// Filter by reachability from HEAD (default: on, --all-branches disables)
+	if !args.commentAllBranches {
+		reachable, revListErr := store.ReachableCommits("HEAD")
+		currentBranch, _ := store.CurrentBranch()
+
+		if revListErr == nil {
+			var filtered []*comments.Comment
+			for _, c := range all {
+				if c.CommitSHA != "" {
+					// Has a commit: check if reachable from HEAD
+					if reachable[c.CommitSHA] {
+						filtered = append(filtered, c)
+					}
+				} else if c.Branch != "" {
+					// Working-tree comment: check branch match
+					if c.Branch == currentBranch {
+						filtered = append(filtered, c)
+					}
+				} else {
+					// No commit and no branch: include (legacy comment)
+					filtered = append(filtered, c)
+				}
+			}
+			all = filtered
+		}
+	}
+
+	if len(all) == 0 {
+		fmt.Println("No comments")
+		return nil
+	}
+
+	// Sort by Created descending (newest first)
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Created.After(all[j].Created)
+	})
+
+	// Apply -n limiting
+	if !args.commentNSet {
+		// Default: 5 newest
+		if len(all) > 5 {
+			all = all[:5]
+		}
+	} else if args.commentN == 0 {
+		// Uncapped: show all
+	} else if args.commentN > 0 {
+		if args.commentN < len(all) {
+			all = all[:args.commentN]
+		}
+	} else {
+		// Negative: oldest |N|
+		count := -args.commentN
+		if count < len(all) {
+			all = all[len(all)-count:]
+		}
+		// Reverse so oldest prints first (chronological)
+		slices.Reverse(all)
+	}
+
+	// Create highlighter for multiline output (reused across comments)
+	var h *highlight.Highlighter
+	if !args.commentOneline {
+		h = highlight.New()
+		defer h.Close()
+	}
+
+	for i, c := range all {
+		if args.commentOneline {
+			fmt.Println(formatCommentOneline(c))
+		} else {
+			if i > 0 {
+				fmt.Print("\n\n")
+			}
+			fmt.Print(formatCommentBlock(c, h))
+		}
+	}
+	return nil
+}
+
+// ANSI color codes for comment list output, matching TUI theme defaults.
+const (
+	cReset       = "\033[0m"
+	cBold        = "\033[1m"
+	cYellow      = "\033[33m"      // fg=3 - commit SHA
+	cGreen       = "\033[38;5;10m" // fg=10 - added/resolved
+	cGray        = "\033[38;5;8m"  // fg=8 - labels, dim text
+	cCyan        = "\033[36m"      // fg=6 - branch name
+	cDirWhite    = "\033[38;5;7m"  // fg=7 - directory part of path
+	cBrightWhite = "\033[38;5;15m" // fg=15 - basename, header text
+)
+
+// formatCommentOneline formats a single comment as a compact one-liner.
+func formatCommentOneline(c *comments.Comment) string {
+	// First line of text, truncated to 60 chars
+	text := c.Text
+	if idx := strings.IndexByte(text, '\n'); idx >= 0 {
+		text = text[:idx]
+	}
+	if len(text) > 60 {
+		text = text[:57] + "..."
+	}
+
+	commitShort := c.CommitSHA
+	if len(commitShort) > 7 {
+		commitShort = commitShort[:7]
+	}
+	if commitShort == "" {
+		commitShort = "-"
+	}
+
+	resolved := ""
+	if c.Resolved {
+		resolved = cGreen + " [resolved]" + cReset
+	}
+
+	return fmt.Sprintf("%s%s%s%s  %s  %s%s%s%s  %s",
+		cBrightWhite, cBold, c.ID, cReset,
+		styleCommentPath(c.File, c.Line),
+		cYellow, commitShort, cReset,
+		resolved,
+		text)
+}
+
+// formatCommentBlock formats a comment as a multiline block showing the full
+// serialized patch context and metadata. If h is non-nil, context lines are
+// syntax-highlighted based on the comment's file extension.
+func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
+	var b strings.Builder
+
+	// Header line
+	commitShort := c.CommitSHA
+	if len(commitShort) > 7 {
+		commitShort = commitShort[:7]
+	}
+	resolved := ""
+	if c.Resolved {
+		resolved = cGreen + " [resolved]" + cReset
+	}
+	fmt.Fprintf(&b, "%sID:%s     %s%s%s%s%s\n",
+		cGray, cReset,
+		cBrightWhite+cBold, c.ID, cReset,
+		resolved, cReset)
+
+	// Metadata
+	if commitShort != "" {
+		fmt.Fprintf(&b, "%sCommit:%s %s%s%s\n", cGray, cReset, cYellow, commitShort, cReset)
+	}
+	if c.Branch != "" {
+		fmt.Fprintf(&b, "%sBranch:%s %s%s%s\n", cGray, cReset, cCyan, c.Branch, cReset)
+	}
+	fmt.Fprintf(&b, "%sFile:%s   %s\n", cGray, cReset, styleCommentPath(c.File, c.Line))
+	fmt.Fprintf(&b, "%sDate:%s   %s\n", cGray, cReset, c.Created.Format(time.RFC3339))
+
+	// Diff context (with optional syntax highlighting)
+	b.WriteString("\n")
+	contextLines := highlightContext(c, h)
+	targetIdx := len(c.Context.Above)
+	for i, hl := range contextLines {
+		if i == targetIdx {
+			fmt.Fprintf(&b, " %s+%s%s%s\n", cGreen, cReset, hl, cReset)
+		} else {
+			fmt.Fprintf(&b, "  %s%s\n", hl, cReset)
+		}
+	}
+
+	// Comment text
+	b.WriteString("\n")
+	for _, line := range strings.Split(c.Text, "\n") {
+		fmt.Fprintf(&b, "    %s\n", line)
+	}
+
+	// Add grey left margin bar to every line
+	bar := cGray + "┃" + cReset + " "
+	raw := b.String()
+	lines := strings.Split(strings.TrimRight(raw, "\n"), "\n")
+	var out strings.Builder
+	for _, line := range lines {
+		out.WriteString(bar)
+		out.WriteString(line)
+		out.WriteByte('\n')
+	}
+	return out.String()
+}
+
+// styleCommentPath formats a file:line with dir in dim, basename in bright white.
+func styleCommentPath(path string, line int) string {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	if dir == "." {
+		return fmt.Sprintf("%s%s%s%s:%s%d%s", cBrightWhite, base, cReset, cGray, cReset, line, cReset)
+	}
+	return fmt.Sprintf("%s%s/%s%s%s%s%s:%s%d%s",
+		cDirWhite, dir, cReset,
+		cBrightWhite, base, cReset,
+		cGray, cReset, line, cReset)
+}
+
+// highlightContext applies syntax highlighting to a comment's context lines.
+// Returns the context lines (above + target + below) as styled strings.
+// Falls back to plain text if the language isn't supported or h is nil.
+func highlightContext(c *comments.Comment, h *highlight.Highlighter) []string {
+	// Collect all lines
+	allLines := make([]string, 0, len(c.Context.Above)+1+len(c.Context.Below))
+	allLines = append(allLines, c.Context.Above...)
+	allLines = append(allLines, c.Context.Line)
+	allLines = append(allLines, c.Context.Below...)
+
+	if h == nil || len(allLines) == 0 {
+		return allLines
+	}
+
+	// Build single snippet for tree-sitter
+	snippet := strings.Join(allLines, "\n")
+	content := []byte(snippet)
+
+	spans, _ := h.Highlight(c.File, content)
+	if len(spans) == 0 {
+		return allLines
+	}
+
+	theme := h.Theme()
+	result := make([]string, len(allLines))
+	offset := 0
+	for i, line := range allLines {
+		lineBytes := []byte(line)
+		lineStart := offset
+		lineEnd := offset + len(lineBytes)
+
+		lineSpans := highlight.SpansForLine(spans, lineStart, lineEnd)
+		if len(lineSpans) == 0 {
+			result[i] = line
+		} else {
+			var sb strings.Builder
+			pos := 0
+			for _, s := range lineSpans {
+				// Emit unstyled text before this span
+				if s.Start > pos {
+					sb.Write(lineBytes[pos:s.Start])
+				}
+				// Emit styled text
+				style := theme.Style(s.Category)
+				sb.WriteString(style.Render(string(lineBytes[s.Start:s.End])))
+				pos = s.End
+			}
+			// Emit remainder
+			if pos < len(lineBytes) {
+				sb.Write(lineBytes[pos:])
+			}
+			result[i] = sb.String()
+		}
+
+		offset = lineEnd + 1 // +1 for newline
+	}
+
+	return result
+}
+
+// runCommentEdit opens a comment in $EDITOR for editing.
+func runCommentEdit(id string) error {
+	editor := editorCmd()
+	if editor == "" {
+		return fmt.Errorf("$VISUAL or $EDITOR must be set")
+	}
+
+	store := comments.NewStore("")
+
+	// Read the existing comment
+	original, err := store.ReadComment(id)
+	if err != nil {
+		return fmt.Errorf("comment %s not found: %w", id, err)
+	}
+
+	// Serialize to temp file
+	serialized := original.Serialize()
+	tmpFile, err := os.CreateTemp("", "dfd-comment-*.patch")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmpFile.WriteString(serialized); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	// Open in editor
+	cmd := exec.Command("sh", "-c", editor+` "$@"`, "--", tmpPath)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("editor exited with error: %w", err)
+	}
+
+	// Read back edited content
+	edited, err := os.ReadFile(tmpPath)
+	if err != nil {
+		return fmt.Errorf("read edited file: %w", err)
+	}
+
+	// Parse and validate
+	parsed, err := comments.ParseComment(id, string(edited))
+	if err != nil {
+		return fmt.Errorf("invalid comment format: %w", err)
+	}
+	if parsed.File == "" {
+		return fmt.Errorf("invalid edit: FILE metadata is required")
+	}
+	if parsed.Line <= 0 {
+		return fmt.Errorf("invalid edit: LINE metadata must be positive")
+	}
+
+	// Update timestamp and write back
+	parsed.Updated = time.Now()
+	if _, err := store.WriteComment(parsed); err != nil {
+		return fmt.Errorf("saving comment: %w", err)
+	}
+
+	fmt.Printf("Updated comment %s\n", id)
+	return nil
 }
 
 // runClean deletes all persisted snapshot refs.

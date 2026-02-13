@@ -214,12 +214,12 @@ func (m *Model) persistComment(key commentKey, text string) string {
 
 	// Get current git state for metadata
 	if m.git != nil {
-		// Try to get HEAD SHA
-		// Note: We don't have direct access to current commit SHA from here,
-		// but we can store HEAD for context
+		if branch, err := m.git.CurrentBranch(); err == nil {
+			c.Branch = branch
+		}
 	}
 
-	// Get branch name if available
+	// Get commit SHA if viewing a specific commit
 	if len(m.commits) > 0 && m.commits[0].Info.SHA != "" {
 		c.CommitSHA = m.commits[0].Info.SHA
 	}

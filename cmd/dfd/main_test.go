@@ -3,13 +3,23 @@ package main
 import (
 	"bytes"
 	"os"
+	"regexp"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/content"
+	"github.com/user/diffyduck/pkg/highlight"
 )
+
+// stripANSI removes ANSI escape codes for test assertions.
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string {
+	return ansiRegex.ReplaceAllString(s, "")
+}
 
 func TestParseArgs_Empty(t *testing.T) {
 	res, err := parseArgs([]string{})
@@ -802,4 +812,339 @@ func TestEditorCmd(t *testing.T) {
 		os.Unsetenv("EDITOR")
 		assert.Equal(t, "", editorCmd())
 	})
+}
+
+// --- Comment subcommand tests ---
+
+func TestParseArgs_Comment(t *testing.T) {
+	result, err := parseArgs([]string{"comment"})
+	require.NoError(t, err)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "", result.commentSub)
+}
+
+func TestParseArgs_CommentAlias(t *testing.T) {
+	result, err := parseArgs([]string{"c"})
+	require.NoError(t, err)
+	assert.Equal(t, "comment", result.cmd)
+}
+
+func TestParseArgs_CommentList(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list"})
+	require.NoError(t, err)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "list", result.commentSub)
+	assert.False(t, result.commentNSet)
+}
+
+func TestParseArgs_CommentListN(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantN   int
+		wantSet bool
+	}{
+		{"positive", []string{"comment", "list", "-n", "10"}, 10, true},
+		{"negative", []string{"comment", "list", "-n", "-3"}, -3, true},
+		{"zero", []string{"comment", "list", "-n", "0"}, 0, true},
+		{"attached positive", []string{"comment", "list", "-n10"}, 10, true},
+		{"attached negative", []string{"c", "list", "-n-5"}, -5, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseArgs(tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantN, result.commentN)
+			assert.Equal(t, tt.wantSet, result.commentNSet)
+		})
+	}
+}
+
+func TestParseArgs_CommentListStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		args   []string
+		wantSt string
+	}{
+		{"unresolved", []string{"comment", "list", "--status", "unresolved"}, "unresolved"},
+		{"resolved", []string{"comment", "list", "--status", "resolved"}, "resolved"},
+		{"all", []string{"comment", "list", "--status", "all"}, "all"},
+		{"equals form", []string{"comment", "list", "--status=resolved"}, "resolved"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseArgs(tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSt, result.commentStatus)
+		})
+	}
+}
+
+func TestParseArgs_CommentListStatusInvalid(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "list", "--status", "bogus"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must be unresolved, resolved, or all")
+}
+
+func TestParseArgs_CommentEdit(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "edit", "1705312200000"})
+	require.NoError(t, err)
+	assert.Equal(t, "edit", result.commentSub)
+	assert.Equal(t, "1705312200000", result.commentID)
+}
+
+func TestParseArgs_CommentEditMissingID(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "edit"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a comment ID")
+}
+
+func TestParseArgs_CommentWithDiffFlags(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "--cached"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only accepts")
+}
+
+func TestParseArgs_CommentOneline(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list", "--oneline"})
+	require.NoError(t, err)
+	assert.True(t, result.commentOneline)
+}
+
+func TestParseArgs_CommentStatusOnDiff(t *testing.T) {
+	_, err := parseArgs([]string{"diff", "--status", "all"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid for comment")
+}
+
+func TestParseArgs_CommentOnelineOnDiff(t *testing.T) {
+	_, err := parseArgs([]string{"diff", "--oneline"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid for comment")
+}
+
+func TestParseArgs_CommentAllBranches(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list", "--all-branches"})
+	require.NoError(t, err)
+	assert.True(t, result.commentAllBranches)
+}
+
+func TestParseArgs_CommentAllBranchesOnDiff(t *testing.T) {
+	_, err := parseArgs([]string{"diff", "--all-branches"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid for comment")
+}
+
+func TestParseArgs_HelpComment(t *testing.T) {
+	result, err := parseArgs([]string{"help", "comment"})
+	require.NoError(t, err)
+	assert.True(t, result.showHelp)
+	assert.Equal(t, "comment", result.helpCmd)
+}
+
+func TestParseArgs_CommentHelp(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "--help"})
+	require.NoError(t, err)
+	assert.True(t, result.showHelp)
+	assert.Equal(t, "comment", result.helpCmd)
+}
+
+func TestFormatCommentOneline(t *testing.T) {
+	tests := []struct {
+		name     string
+		comment  *comments.Comment
+		contains []string
+	}{
+		{
+			name: "basic",
+			comment: &comments.Comment{
+				ID:        "1705312200000",
+				File:      "src/foo.go",
+				Line:      42,
+				CommitSHA: "abc123def456",
+				Text:      "Fix this bug",
+			},
+			contains: []string{"1705312200000", "src/foo.go:42", "abc123d", "Fix this bug"},
+		},
+		{
+			name: "resolved",
+			comment: &comments.Comment{
+				ID:        "100",
+				File:      "test.go",
+				Line:      1,
+				CommitSHA: "abc1234",
+				Resolved:  true,
+				Text:      "Done",
+			},
+			contains: []string{"[resolved]", "Done"},
+		},
+		{
+			name: "no commit",
+			comment: &comments.Comment{
+				ID:   "101",
+				File: "test.go",
+				Line: 1,
+				Text: "No commit",
+			},
+			contains: []string{"  -  "},
+		},
+		{
+			name: "long text truncated",
+			comment: &comments.Comment{
+				ID:        "102",
+				File:      "test.go",
+				Line:      1,
+				CommitSHA: "abc1234",
+				Text:      "This is a very long comment that should be truncated after sixty characters total",
+			},
+			contains: []string{"..."},
+		},
+		{
+			name: "multiline uses first line",
+			comment: &comments.Comment{
+				ID:        "103",
+				File:      "test.go",
+				Line:      1,
+				CommitSHA: "abc1234",
+				Text:      "First line\nSecond line\nThird line",
+			},
+			contains: []string{"First line"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			line := stripANSI(formatCommentOneline(tt.comment))
+			for _, s := range tt.contains {
+				assert.Contains(t, line, s)
+			}
+		})
+	}
+}
+
+func TestFormatCommentOneline_MultilineExcludesSecond(t *testing.T) {
+	c := &comments.Comment{
+		ID:        "103",
+		File:      "test.go",
+		Line:      1,
+		CommitSHA: "abc1234",
+		Text:      "First line\nSecond line",
+	}
+	line := stripANSI(formatCommentOneline(c))
+	assert.NotContains(t, line, "Second line")
+}
+
+func TestFormatCommentBlock(t *testing.T) {
+	created := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
+	c := &comments.Comment{
+		ID:        "1705312200000",
+		File:      "src/foo.go",
+		Line:      42,
+		CommitSHA: "abc123def456",
+		Branch:    "main",
+		Created:   created,
+		Text:      "Fix this bug\nIt causes crashes",
+		Context: comments.LineContext{
+			Above: []string{"func foo() {", "    x := 1"},
+			Line:  "    return x",
+			Below: []string{"}"},
+		},
+	}
+
+	block := stripANSI(formatCommentBlock(c, nil))
+
+	// Header
+	assert.Contains(t, block, "┃ ID:     1705312200000\n")
+	// Metadata
+	assert.Contains(t, block, "┃ Commit: abc123d\n")
+	assert.Contains(t, block, "┃ Branch: main\n")
+	assert.Contains(t, block, "┃ File:   src/foo.go:42\n")
+	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z\n")
+	// Diff context
+	assert.Contains(t, block, "┃   func foo() {\n")
+	assert.Contains(t, block, "┃   "+`    x := 1`+"\n")
+	assert.Contains(t, block, "┃  +    return x\n")
+	assert.Contains(t, block, "┃   }\n")
+	// Comment text
+	assert.Contains(t, block, "┃     Fix this bug\n")
+	assert.Contains(t, block, "┃     It causes crashes\n")
+}
+
+func TestFormatCommentBlock_Resolved(t *testing.T) {
+	c := &comments.Comment{
+		ID:       "100",
+		File:     "test.go",
+		Line:     1,
+		Created:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Resolved: true,
+		Text:     "Done",
+		Context:  comments.LineContext{Line: "code"},
+	}
+	block := stripANSI(formatCommentBlock(c, nil))
+	assert.Contains(t, block, "┃ ID:     100 [resolved]\n")
+}
+
+func TestFormatCommentBlock_NoCommit(t *testing.T) {
+	c := &comments.Comment{
+		ID:      "101",
+		File:    "test.go",
+		Line:    1,
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Text:    "No commit",
+		Context: comments.LineContext{Line: "code"},
+	}
+	block := stripANSI(formatCommentBlock(c, nil))
+	assert.NotContains(t, block, "Commit:")
+}
+
+func TestFormatCommentBlock_Highlighted(t *testing.T) {
+	h := highlight.New()
+	defer h.Close()
+
+	c := &comments.Comment{
+		ID:      "200",
+		File:    "test.go",
+		Line:    3,
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Text:    "Check this",
+		Context: comments.LineContext{
+			Above: []string{"func foo() {", "    x := 1"},
+			Line:  "    return x",
+			Below: []string{"}"},
+		},
+	}
+
+	// With highlighter: should produce valid output (ANSI codes present)
+	block := formatCommentBlock(c, h)
+	stripped := stripANSI(block)
+
+	// Content should be the same after stripping ANSI
+	assert.Contains(t, stripped, "func foo() {\n")
+	assert.Contains(t, stripped, "    return x\n")
+
+	// The highlighted version should have ANSI codes (more bytes than stripped)
+	assert.Greater(t, len(block), len(stripped), "highlighting should add ANSI codes")
+
+	// Nil highlighter should also work (plain text)
+	plain := formatCommentBlock(c, nil)
+	plainStripped := stripANSI(plain)
+	assert.Equal(t, stripped, plainStripped, "stripped output should match regardless of highlighter")
+}
+
+func TestFormatCommentBlock_UnsupportedLanguage(t *testing.T) {
+	h := highlight.New()
+	defer h.Close()
+
+	c := &comments.Comment{
+		ID:      "201",
+		File:    "data.xyz",
+		Line:    1,
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Text:    "Unknown file type",
+		Context: comments.LineContext{Line: "some content"},
+	}
+
+	// Should gracefully fall back to plain text
+	block := formatCommentBlock(c, h)
+	stripped := stripANSI(block)
+	assert.Contains(t, stripped, "some content")
 }

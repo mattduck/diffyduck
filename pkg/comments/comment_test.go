@@ -279,3 +279,80 @@ func TestParseCommentMultiLineText(t *testing.T) {
 		t.Errorf("expected Text %q, got %q", expected, c.Text)
 	}
 }
+
+func TestCommentResolvedRoundTrip(t *testing.T) {
+	c := &Comment{
+		ID:       "100",
+		Text:     "resolved comment",
+		File:     "test.go",
+		Line:     5,
+		Anchor:   "abc",
+		Resolved: true,
+		Created:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Updated:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Context:  LineContext{Line: "code"},
+	}
+
+	serialized := c.Serialize()
+	if !strings.Contains(serialized, "# RESOLVED: true") {
+		t.Error("serialized should contain RESOLVED: true")
+	}
+
+	parsed, err := ParseComment("100", serialized)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if !parsed.Resolved {
+		t.Error("expected Resolved=true after round-trip")
+	}
+}
+
+func TestCommentUnresolvedOmitted(t *testing.T) {
+	c := &Comment{
+		ID:       "101",
+		Text:     "unresolved comment",
+		File:     "test.go",
+		Line:     5,
+		Anchor:   "abc",
+		Resolved: false,
+		Created:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Updated:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Context:  LineContext{Line: "code"},
+	}
+
+	serialized := c.Serialize()
+	if strings.Contains(serialized, "RESOLVED") {
+		t.Error("serialized should not contain RESOLVED when false")
+	}
+
+	parsed, err := ParseComment("101", serialized)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if parsed.Resolved {
+		t.Error("expected Resolved=false when absent")
+	}
+}
+
+func TestParseCommentResolvedBackwardCompat(t *testing.T) {
+	// Existing blobs without RESOLVED field should parse as unresolved
+	data := `--- a/test.go
++++ b/test.go
+@@ -1,1 +1,1 @@
++code
+# COMMENT:
+# old comment
+# FILE: test.go
+# LINE: 1
+# ANCHOR: abc
+# CREATED: 2026-01-01T00:00:00Z
+# UPDATED: 2026-01-01T00:00:00Z
+`
+	c, err := ParseComment("200", data)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if c.Resolved {
+		t.Error("expected Resolved=false for old blob without RESOLVED field")
+	}
+}
