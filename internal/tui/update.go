@@ -130,10 +130,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
-	case PairsHighlightReadyMsg:
-		m.storePairsHighlightSpans(msg)
-		return m, nil
-
 	case CommitStatsLoadedMsg:
 		if msg.Stats != nil {
 			// Apply stats to commits
@@ -253,10 +249,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			))
 		}
 
-		// Request syntax highlighting
-		for i := 0; i < newFileCount; i++ {
-			cmds = append(cmds, m.RequestHighlightFromPairs(i))
-		}
 		return m, tea.Batch(cmds...)
 
 	case SnapshotCreatedSilentMsg:
@@ -903,22 +895,10 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// If transitioning to FoldStructure, ensure structural data is available for the
-	// code-stats view. If not, either trigger highlighting (content already loaded)
-	// or fetch the content first (which triggers highlighting on arrival).
-	var cmd tea.Cmd
-	if newLevel == sidebyside.FoldStructure && m.structureMaps[fileIdx] == nil {
-		fp := m.files[fileIdx]
-		if len(fp.OldContent) > 0 || len(fp.NewContent) > 0 {
-			// Content available but not yet highlighted with structure
-			cmd = m.RequestHighlight(fileIdx)
-		} else if !m.isFileLoading(fileIdx) {
-			// No content — fetch it (highlighting happens on arrival)
-			if fetchCmd := m.FetchFileContent(fileIdx); fetchCmd != nil {
-				m.markFileLoading(fileIdx)
-				cmd = fetchCmd
-			}
-		}
+	// If expanding to show content (hunks or structure), ensure content and
+	// highlighting are loaded synchronously so the first render is complete.
+	if newLevel == sidebyside.FoldHunks || newLevel == sidebyside.FoldStructure {
+		m.loadAndHighlightFileSync(fileIdx)
 	}
 
 	m.calculateTotalLines()
@@ -927,7 +907,7 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
 
-	return m, cmd
+	return m, nil
 }
 
 // handleFullFileToggle toggles the full-file content view for the current file.
@@ -986,9 +966,9 @@ func (m Model) handleFullFileToggle() (tea.Model, tea.Cmd) {
 		m.adjustScrollToRow(newRowIdx)
 	}
 
-	// If enabling full-file and content not yet loaded, fetch it
-	if m.files[fileIdx].ShowFullFile && !m.files[fileIdx].HasContent() {
-		return m, m.FetchFileContent(fileIdx)
+	// If enabling full-file, ensure content and highlighting are loaded
+	if m.files[fileIdx].ShowFullFile {
+		m.loadAndHighlightFileSync(fileIdx)
 	}
 
 	return m, nil
@@ -1188,17 +1168,22 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
 
-	// If expanding to structural diff or beyond, queue files for content loading
-	var cmd tea.Cmd
+	// Synchronously load content + highlighting when expanding to show structure or beyond
 	if newLevel >= sidebyside.CommitFileStructure {
-		if m.w().narrow.Active && m.w().narrow.CommitIdx >= 0 {
-			cmd = m.queueFilesForCommit(m.w().narrow.CommitIdx)
-		} else {
-			cmd = m.queueFilesForAllCommits()
+		for ci := startCommit; ci < endCommit; ci++ {
+			startIdx := m.commitFileStarts[ci]
+			endIdx := len(m.files)
+			if ci+1 < len(m.commits) {
+				endIdx = m.commitFileStarts[ci+1]
+			}
+			for i := startIdx; i < endIdx; i++ {
+				m.loadAndHighlightFileSync(i)
+			}
 		}
+		m.calculateTotalLines()
 	}
 
-	return m, cmd
+	return m, nil
 }
 
 // effectiveCommitLevel determines which CommitFoldLevel best matches the actual
@@ -1950,15 +1935,21 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	// Apply new level via the shared helper
 	m.setCommitsToLevel(commitIdx, commitIdx+1, newLevel)
 
-	m.calculateTotalLines()
-
-	// Queue files for content loading if expanding to structural diff or beyond
-	var cmd tea.Cmd
+	// Synchronously load content + highlighting when expanding to show structure or beyond
 	if newLevel >= sidebyside.CommitFileStructure {
-		cmd = m.queueFilesForCommit(commitIdx)
+		startIdx := m.commitFileStarts[commitIdx]
+		endIdx := len(m.files)
+		if commitIdx+1 < len(m.commits) {
+			endIdx = m.commitFileStarts[commitIdx+1]
+		}
+		for i := startIdx; i < endIdx; i++ {
+			m.loadAndHighlightFileSync(i)
+		}
 	}
 
-	return m, cmd
+	m.calculateTotalLines()
+
+	return m, nil
 }
 
 // handleCommitInfoFoldToggle toggles the commit info between header-only and expanded.

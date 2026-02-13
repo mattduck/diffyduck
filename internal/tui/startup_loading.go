@@ -19,15 +19,19 @@ func (m *Model) initStartupQueue() tea.Cmd {
 	}
 	m.startupQueuedInit = true
 
-	// Queue supported files in visible commits.
-	// Skip files in folded commits (they'll be loaded on demand when expanded),
-	// but not for no-metadata commits where CommitFolded doesn't hide files.
+	// Queue supported files for preloading.
+	// In diff/show mode (fetcher set), preload everything — the user will expand the commit.
+	// In log mode (no fetcher), skip files in folded commits with metadata (they'll be
+	// loaded on demand when expanded), but not for no-metadata commits where
+	// CommitFolded doesn't hide files.
 	for i, file := range m.files {
-		commitIdx := m.commitForFile(i)
-		if commitIdx >= 0 && commitIdx < len(m.commits) {
-			if m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded &&
-				m.commits[commitIdx].Info.HasMetadata() {
-				continue
+		if m.fetcher == nil {
+			commitIdx := m.commitForFile(i)
+			if commitIdx >= 0 && commitIdx < len(m.commits) {
+				if m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded &&
+					m.commits[commitIdx].Info.HasMetadata() {
+					continue
+				}
 			}
 		}
 
@@ -59,30 +63,6 @@ func (m *Model) shouldQueueFile(file sidebyside.FilePair) bool {
 	// Use the filename (not full path) for extension matching
 	basename := filepath.Base(filename)
 	return m.highlighter != nil && m.highlighter.SupportsFile(basename)
-}
-
-// queueFilesForCommit queues all supported files for a specific commit.
-// Called when a commit is expanded from folded state.
-func (m *Model) queueFilesForCommit(commitIdx int) tea.Cmd {
-	if commitIdx < 0 || commitIdx >= len(m.commits) {
-		return nil
-	}
-
-	// Get file range for this commit
-	startIdx := m.commitFileStarts[commitIdx]
-	endIdx := len(m.files)
-	if commitIdx+1 < len(m.commits) {
-		endIdx = m.commitFileStarts[commitIdx+1]
-	}
-
-	// Queue supported files that don't already have content
-	for i := startIdx; i < endIdx; i++ {
-		if m.shouldQueueFile(m.files[i]) {
-			m.startupQueue = append(m.startupQueue, i)
-		}
-	}
-
-	return m.processStartupQueue()
 }
 
 // queueFilesForAllCommits queues files for all non-folded commits.

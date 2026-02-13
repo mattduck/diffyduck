@@ -184,10 +184,9 @@ func TestDynamicDivider_NarrowContentUses5050(t *testing.T) {
 				},
 			},
 		},
-		maxNewContentWidth:  0,
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		maxNewContentWidth: 0,
+		inlineDiffCache:    make(map[inlineDiffKey]inlineDiffResult),
+		highlightSpans:     make(map[int]*FileHighlight),
 	}
 
 	// Calculate widths
@@ -227,10 +226,9 @@ func TestDynamicDivider_WideContentExpandsLeft(t *testing.T) {
 				},
 			},
 		},
-		maxNewContentWidth:  0,
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		maxNewContentWidth: 0,
+		inlineDiffCache:    make(map[inlineDiffKey]inlineDiffResult),
+		highlightSpans:     make(map[int]*FileHighlight),
 	}
 
 	m.updateMaxNewContentWidth()
@@ -271,10 +269,9 @@ func TestDynamicDivider_WideTerminalUses5050(t *testing.T) {
 				},
 			},
 		},
-		maxNewContentWidth:  0,
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		maxNewContentWidth: 0,
+		inlineDiffCache:    make(map[inlineDiffKey]inlineDiffResult),
+		highlightSpans:     make(map[int]*FileHighlight),
 	}
 
 	m.updateMaxNewContentWidth()
@@ -309,10 +306,9 @@ func TestDynamicDivider_VeryNarrowTerminal(t *testing.T) {
 				},
 			},
 		},
-		maxNewContentWidth:  0,
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		maxNewContentWidth: 0,
+		inlineDiffCache:    make(map[inlineDiffKey]inlineDiffResult),
+		highlightSpans:     make(map[int]*FileHighlight),
 	}
 
 	m.updateMaxNewContentWidth()

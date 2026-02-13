@@ -625,12 +625,11 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 				},
 			},
 		},
-		width:               80,
-		height:              15,
-		keys:                DefaultKeyMap(),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		width:           80,
+		height:          15,
+		keys:            DefaultKeyMap(),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
+		highlightSpans:  make(map[int]*FileHighlight),
 	}
 	m.calculateTotalLines()
 

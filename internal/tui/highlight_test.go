@@ -276,14 +276,13 @@ func TestSyntaxHighlighting_FullFlow(t *testing.T) {
 	}
 }
 
-func TestSyntaxHighlighting_NormalViewFromPairs(t *testing.T) {
-	// In normal view (FoldStructure), full content is not loaded, but we now
-	// highlight from Pairs content (done synchronously in New for first file)
+func TestSyntaxHighlighting_NoSpansWithoutFullContent(t *testing.T) {
+	// Without full content loaded, getLineSpans returns nil (no pairs-based fallback)
 	files := []sidebyside.FilePair{
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldHunks, // Normal view
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
@@ -297,23 +296,10 @@ func TestSyntaxHighlighting_NormalViewFromPairs(t *testing.T) {
 	m := New(files)
 	defer m.highlighter.Close()
 
-	// Now we should get spans from pairs-based highlighting (done sync in New)
+	// No spans until full content is loaded
 	spans := m.getLineSpans(0, 1, false)
-	if spans == nil {
-		t.Error("Expected spans from pairs-based highlighting in normal view")
-	}
-
-	// Check that we get the keyword "package" highlighted
-	foundPackage := false
-	for _, span := range spans {
-		// "package" is 7 bytes long, starts at 0
-		if span.Start == 0 && span.End == 7 {
-			foundPackage = true
-			break
-		}
-	}
-	if !foundPackage {
-		t.Error("Expected 'package' keyword to be highlighted")
+	if spans != nil {
+		t.Error("Expected nil spans when full content is not loaded")
 	}
 }
 
@@ -349,275 +335,8 @@ func TestSyntaxHighlighting_FullContentRequestNoSpans(t *testing.T) {
 	}
 }
 
-func TestBuildContentFromPairs(t *testing.T) {
-	pairs := []sidebyside.LinePair{
-		{
-			Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-			New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
-		},
-		{
-			Old: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
-			New: sidebyside.Line{Num: 2, Content: "", Type: sidebyside.Context},
-		},
-		{
-			Old: sidebyside.Line{Num: 3, Content: "func main() {", Type: sidebyside.Context},
-			New: sidebyside.Line{Num: 3, Content: "func main() {", Type: sidebyside.Context},
-		},
-	}
-
-	// Test old side (left)
-	content, lineStarts, lineLens := buildContentFromPairs(pairs, true)
-
-	// Check content is concatenated correctly
-	expected := "package main\n\nfunc main() {\n"
-	if string(content) != expected {
-		t.Errorf("Expected content %q, got %q", expected, string(content))
-	}
-
-	// Check line starts mapping
-	if lineStarts[1] != 0 {
-		t.Errorf("Expected line 1 to start at 0, got %d", lineStarts[1])
-	}
-	if lineStarts[2] != 13 { // "package main\n" = 13 bytes
-		t.Errorf("Expected line 2 to start at 13, got %d", lineStarts[2])
-	}
-	if lineStarts[3] != 14 { // "package main\n" + "\n" = 14 bytes
-		t.Errorf("Expected line 3 to start at 14, got %d", lineStarts[3])
-	}
-
-	// Check line lengths
-	if lineLens[1] != 12 { // "package main"
-		t.Errorf("Expected line 1 length 12, got %d", lineLens[1])
-	}
-	if lineLens[2] != 0 { // empty line
-		t.Errorf("Expected line 2 length 0, got %d", lineLens[2])
-	}
-	if lineLens[3] != 13 { // "func main() {"
-		t.Errorf("Expected line 3 length 13, got %d", lineLens[3])
-	}
-}
-
-func TestBuildContentFromPairs_SkipsEmptyLineNumbers(t *testing.T) {
-	// Test that lines with Num=0 (empty placeholder lines) are skipped
-	pairs := []sidebyside.LinePair{
-		{
-			Old: sidebyside.Line{Num: 1, Content: "old line", Type: sidebyside.Removed},
-			New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}, // empty on right
-		},
-		{
-			Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}, // empty on left
-			New: sidebyside.Line{Num: 1, Content: "new line", Type: sidebyside.Added},
-		},
-	}
-
-	// Old side should only have "old line"
-	oldContent, oldStarts, oldLens := buildContentFromPairs(pairs, true)
-	if string(oldContent) != "old line\n" {
-		t.Errorf("Expected old content 'old line\\n', got %q", string(oldContent))
-	}
-	if _, ok := oldStarts[0]; ok {
-		t.Error("Should not have entry for line 0")
-	}
-	if oldStarts[1] != 0 {
-		t.Errorf("Expected line 1 start at 0, got %d", oldStarts[1])
-	}
-	if oldLens[1] != 8 {
-		t.Errorf("Expected line 1 length 8, got %d", oldLens[1])
-	}
-
-	// New side should only have "new line"
-	newContent, newStarts, newLens := buildContentFromPairs(pairs, false)
-	if string(newContent) != "new line\n" {
-		t.Errorf("Expected new content 'new line\\n', got %q", string(newContent))
-	}
-	if newStarts[1] != 0 {
-		t.Errorf("Expected line 1 start at 0, got %d", newStarts[1])
-	}
-	if newLens[1] != 8 {
-		t.Errorf("Expected line 1 length 8, got %d", newLens[1])
-	}
-}
-
-func TestBuildContentFromPairs_NonContiguousLines(t *testing.T) {
-	// Simulate a diff with gaps between hunks (non-contiguous line numbers)
-	pairs := []sidebyside.LinePair{
-		// First hunk: lines 5-7
-		{
-			Old: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
-			New: sidebyside.Line{Num: 5, Content: "line five", Type: sidebyside.Context},
-		},
-		{
-			Old: sidebyside.Line{Num: 6, Content: "line six", Type: sidebyside.Removed},
-			New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
-		},
-		{
-			Old: sidebyside.Line{Num: 7, Content: "line seven", Type: sidebyside.Context},
-			New: sidebyside.Line{Num: 6, Content: "line seven", Type: sidebyside.Context},
-		},
-		// Gap here (lines 8-19 not in diff)
-		// Second hunk: lines 20-21
-		{
-			Old: sidebyside.Line{Num: 20, Content: "line twenty", Type: sidebyside.Context},
-			New: sidebyside.Line{Num: 19, Content: "line twenty", Type: sidebyside.Context},
-		},
-	}
-
-	content, lineStarts, lineLens := buildContentFromPairs(pairs, true)
-
-	// Content should be all lines concatenated (no gaps in content itself)
-	expected := "line five\nline six\nline seven\nline twenty\n"
-	if string(content) != expected {
-		t.Errorf("Expected content %q, got %q", expected, string(content))
-	}
-
-	// But line number mapping should preserve original line numbers
-	if lineStarts[5] != 0 {
-		t.Errorf("Line 5 should start at 0, got %d", lineStarts[5])
-	}
-	if lineStarts[6] != 10 { // "line five\n" = 10 bytes
-		t.Errorf("Line 6 should start at 10, got %d", lineStarts[6])
-	}
-	if lineStarts[20] != 30 { // after "line five\nline six\nline seven\n"
-		t.Errorf("Line 20 should start at 30, got %d", lineStarts[20])
-	}
-
-	// Line lengths
-	if lineLens[5] != 9 {
-		t.Errorf("Line 5 length should be 9, got %d", lineLens[5])
-	}
-	if lineLens[20] != 11 {
-		t.Errorf("Line 20 length should be 11, got %d", lineLens[20])
-	}
-}
-
-func TestRequestHighlightFromPairs(t *testing.T) {
-	files := []sidebyside.FilePair{
-		{
-			OldPath:   "a/test.go",
-			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldHunks,
-			Pairs: []sidebyside.LinePair{
-				{
-					Old: sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
-					New: sidebyside.Line{Num: 1, Content: "func hello() {", Type: sidebyside.Context},
-				},
-				{
-					Old: sidebyside.Line{Num: 2, Content: `	return "hello"`, Type: sidebyside.Removed},
-					New: sidebyside.Line{Num: 2, Content: `	return "world"`, Type: sidebyside.Added},
-				},
-			},
-		},
-	}
-
-	m := New(files)
-	defer m.highlighter.Close()
-
-	// Clear the sync-highlighted spans to test async path
-	m.pairsHighlightSpans = make(map[int]*PairsFileHighlight)
-
-	cmd := m.RequestHighlightFromPairs(0)
-	msg := cmd()
-
-	phlMsg, ok := msg.(PairsHighlightReadyMsg)
-	if !ok {
-		t.Fatalf("Expected PairsHighlightReadyMsg, got %T", msg)
-	}
-
-	// Should have spans
-	if len(phlMsg.OldSpans) == 0 {
-		t.Error("Expected OldSpans from pairs highlighting")
-	}
-	if len(phlMsg.NewSpans) == 0 {
-		t.Error("Expected NewSpans from pairs highlighting")
-	}
-
-	// Should have line mappings
-	if len(phlMsg.OldLineStarts) == 0 {
-		t.Error("Expected OldLineStarts mapping")
-	}
-	if len(phlMsg.NewLineStarts) == 0 {
-		t.Error("Expected NewLineStarts mapping")
-	}
-
-	// Check that "func" keyword is found (bytes 0-4)
-	foundFunc := false
-	for _, s := range phlMsg.OldSpans {
-		if s.Start == 0 && s.End == 4 && s.Category == int(highlight.CategoryKeyword) {
-			foundFunc = true
-			break
-		}
-	}
-	if !foundFunc {
-		t.Error("Expected 'func' keyword in OldSpans")
-	}
-}
-
-func TestPairsHighlighting_StorageAndRetrieval(t *testing.T) {
-	files := []sidebyside.FilePair{
-		{
-			OldPath:   "a/test.go",
-			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldHunks,
-			Pairs: []sidebyside.LinePair{
-				{
-					Old: sidebyside.Line{Num: 10, Content: "package main", Type: sidebyside.Context},
-					New: sidebyside.Line{Num: 10, Content: "package main", Type: sidebyside.Context},
-				},
-				{
-					Old: sidebyside.Line{Num: 11, Content: "func test() {}", Type: sidebyside.Context},
-					New: sidebyside.Line{Num: 11, Content: "func test() {}", Type: sidebyside.Context},
-				},
-			},
-		},
-	}
-
-	m := New(files)
-	defer m.highlighter.Close()
-
-	// First file is highlighted sync in New(), so spans should already exist
-	if _, ok := m.pairsHighlightSpans[0]; !ok {
-		t.Fatal("Expected pairs highlight spans for file 0 after New()")
-	}
-
-	// Get spans for line 10 (package main)
-	spans10 := m.getLineSpans(0, 10, false)
-	if len(spans10) == 0 {
-		t.Fatal("Expected spans for line 10")
-	}
-
-	// "package" should be at bytes 0-7
-	foundPackage := false
-	for _, s := range spans10 {
-		if s.Start == 0 && s.End == 7 && s.Category == highlight.CategoryKeyword {
-			foundPackage = true
-			break
-		}
-	}
-	if !foundPackage {
-		t.Error("Expected 'package' keyword span for line 10")
-	}
-
-	// Get spans for line 11 (func test() {})
-	spans11 := m.getLineSpans(0, 11, false)
-	if len(spans11) == 0 {
-		t.Fatal("Expected spans for line 11")
-	}
-
-	// "func" should be at bytes 0-4
-	foundFunc := false
-	for _, s := range spans11 {
-		if s.Start == 0 && s.End == 4 && s.Category == highlight.CategoryKeyword {
-			foundFunc = true
-			break
-		}
-	}
-	if !foundFunc {
-		t.Error("Expected 'func' keyword span for line 11")
-	}
-}
-
-func TestFullContentSpansTakePriority(t *testing.T) {
-	// When both full content and pairs spans exist, full content should be used
+func TestHighlightFileSync(t *testing.T) {
+	// Test that highlightFileSync highlights from full content
 	files := []sidebyside.FilePair{
 		{
 			OldPath:   "a/test.go",
@@ -637,29 +356,39 @@ func TestFullContentSpansTakePriority(t *testing.T) {
 	m := New(files)
 	defer m.highlighter.Close()
 
-	// New() will have created pairs-based spans for file 0
-	// Now trigger full content highlighting
-	cmd := m.RequestHighlight(0)
-	msg := cmd()
-	hlMsg := msg.(HighlightReadyMsg)
-	m.storeHighlightSpans(hlMsg)
-
-	// Both should exist now
-	if _, ok := m.pairsHighlightSpans[0]; !ok {
-		t.Error("Expected pairs highlight spans")
-	}
-	if _, ok := m.highlightSpans[0]; !ok {
-		t.Error("Expected full content highlight spans")
+	// No spans initially (pairs-based highlighting removed)
+	if m.highlightSpans[0] != nil {
+		t.Error("Expected no highlight spans initially")
 	}
 
-	// getLineSpans should return full content spans (which include line 2)
-	// Line 2 exists in full content but not in pairs
+	// Highlight synchronously from full content
+	m.highlightFileSync(0)
+
+	if m.highlightSpans[0] == nil {
+		t.Fatal("Expected full content highlight spans after highlightFileSync")
+	}
+
+	// Line 1: "package" should be keyword
+	spans1 := m.getLineSpans(0, 1, false)
+	if len(spans1) == 0 {
+		t.Fatal("Expected spans for line 1")
+	}
+	foundPackage := false
+	for _, s := range spans1 {
+		if s.Start == 0 && s.End == 7 && s.Category == highlight.CategoryKeyword {
+			foundPackage = true
+			break
+		}
+	}
+	if !foundPackage {
+		t.Error("Expected 'package' keyword span for line 1")
+	}
+
+	// Line 2: "// comment" should be a comment
 	spans2 := m.getLineSpans(0, 2, false)
 	if len(spans2) == 0 {
-		t.Error("Expected spans for line 2 from full content")
+		t.Fatal("Expected spans for line 2")
 	}
-
-	// Check it's a comment
 	foundComment := false
 	for _, s := range spans2 {
 		if s.Category == highlight.CategoryComment {
@@ -672,39 +401,17 @@ func TestFullContentSpansTakePriority(t *testing.T) {
 	}
 }
 
-func TestPairsHighlighting_MultipleFiles(t *testing.T) {
-	// Test that first file is highlighted sync, rest are available for async
+func TestGetLineSpans_NoSpansWithoutContent(t *testing.T) {
+	// Without full content loaded, getLineSpans returns nil
 	files := []sidebyside.FilePair{
 		{
-			OldPath:   "a/first.go",
-			NewPath:   "b/first.go",
+			OldPath:   "a/test.go",
+			NewPath:   "b/test.go",
 			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
-					Old: sidebyside.Line{Num: 1, Content: "package first", Type: sidebyside.Context},
-					New: sidebyside.Line{Num: 1, Content: "package first", Type: sidebyside.Context},
-				},
-			},
-		},
-		{
-			OldPath:   "a/second.go",
-			NewPath:   "b/second.go",
-			FoldLevel: sidebyside.FoldHunks,
-			Pairs: []sidebyside.LinePair{
-				{
-					Old: sidebyside.Line{Num: 1, Content: "package second", Type: sidebyside.Context},
-					New: sidebyside.Line{Num: 1, Content: "package second", Type: sidebyside.Context},
-				},
-			},
-		},
-		{
-			OldPath:   "a/third.go",
-			NewPath:   "b/third.go",
-			FoldLevel: sidebyside.FoldHunks,
-			Pairs: []sidebyside.LinePair{
-				{
-					Old: sidebyside.Line{Num: 1, Content: "package third", Type: sidebyside.Context},
-					New: sidebyside.Line{Num: 1, Content: "package third", Type: sidebyside.Context},
+					Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
+					New: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
 				},
 			},
 		},
@@ -713,90 +420,9 @@ func TestPairsHighlighting_MultipleFiles(t *testing.T) {
 	m := New(files)
 	defer m.highlighter.Close()
 
-	// First file should be highlighted sync
-	if _, ok := m.pairsHighlightSpans[0]; !ok {
-		t.Error("Expected first file to be highlighted synchronously")
-	}
-
-	// Other files should NOT be highlighted yet (they're async)
-	if _, ok := m.pairsHighlightSpans[1]; ok {
-		t.Error("Second file should not be highlighted yet")
-	}
-	if _, ok := m.pairsHighlightSpans[2]; ok {
-		t.Error("Third file should not be highlighted yet")
-	}
-
-	// Init() should return a command to highlight the rest
-	cmd := m.Init()
-	if cmd == nil {
-		t.Fatal("Expected Init() to return highlight command for remaining files")
-	}
-
-	// Execute the batch command - this returns multiple messages
-	// For testing, we'll execute RequestHighlightFromPairs directly for each remaining file
-	for i := 1; i < len(files); i++ {
-		hlCmd := m.RequestHighlightFromPairs(i)
-		msg := hlCmd()
-		if phlMsg, ok := msg.(PairsHighlightReadyMsg); ok {
-			m.storePairsHighlightSpans(phlMsg)
-		}
-	}
-
-	// Now all files should have spans
-	for i := 0; i < len(files); i++ {
-		if _, ok := m.pairsHighlightSpans[i]; !ok {
-			t.Errorf("Expected file %d to have pairs highlight spans", i)
-		}
-	}
-}
-
-func TestPairsHighlighting_UnsupportedFileType(t *testing.T) {
-	files := []sidebyside.FilePair{
-		{
-			OldPath:   "a/data.txt",
-			NewPath:   "b/data.txt",
-			FoldLevel: sidebyside.FoldHunks,
-			Pairs: []sidebyside.LinePair{
-				{
-					Old: sidebyside.Line{Num: 1, Content: "some text", Type: sidebyside.Context},
-					New: sidebyside.Line{Num: 1, Content: "some text", Type: sidebyside.Context},
-				},
-			},
-		},
-	}
-
-	m := New(files)
-	defer m.highlighter.Close()
-
-	// .txt files are not supported, so no spans should be created
-	if _, ok := m.pairsHighlightSpans[0]; ok {
-		t.Error("Should not have pairs highlight spans for unsupported file type")
-	}
-
-	// getLineSpans should return nil
 	spans := m.getLineSpans(0, 1, false)
 	if spans != nil {
-		t.Error("Expected nil spans for unsupported file type")
-	}
-}
-
-func TestPairsHighlighting_EmptyPairs(t *testing.T) {
-	files := []sidebyside.FilePair{
-		{
-			OldPath:   "a/empty.go",
-			NewPath:   "b/empty.go",
-			FoldLevel: sidebyside.FoldHunks,
-			Pairs:     []sidebyside.LinePair{}, // No pairs
-		},
-	}
-
-	m := New(files)
-	defer m.highlighter.Close()
-
-	// Should not crash, and no spans should be created
-	spans := m.getLineSpans(0, 1, false)
-	if spans != nil {
-		t.Error("Expected nil spans for file with no pairs")
+		t.Error("Expected nil spans when full content is not loaded")
 	}
 }
 

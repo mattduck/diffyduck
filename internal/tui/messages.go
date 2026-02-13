@@ -55,17 +55,6 @@ type HighlightSpan struct {
 	Category int // highlight.Category value
 }
 
-// PairsHighlightReadyMsg is sent when syntax highlighting from Pairs is ready for a file.
-type PairsHighlightReadyMsg struct {
-	FileIndex     int
-	OldSpans      []HighlightSpan // spans for concatenated old lines
-	NewSpans      []HighlightSpan // spans for concatenated new lines
-	OldLineStarts map[int]int     // line number -> byte offset
-	NewLineStarts map[int]int     // line number -> byte offset
-	OldLineLens   map[int]int     // line number -> line length
-	NewLineLens   map[int]int     // line number -> line length
-}
-
 // StructureEntry represents a structural code element for breadcrumbs.
 // This mirrors structure.Entry to avoid import in messages.
 type StructureEntry struct {

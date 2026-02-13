@@ -3987,11 +3987,11 @@ func TestShiftFileIndexMaps_ShiftsHighlightSpans(t *testing.T) {
 			0: {OldSpans: []highlight.Span{{Start: 0, End: 5}}},
 			1: {OldSpans: []highlight.Span{{Start: 10, End: 15}}},
 		},
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
 	}
 
 	m.shiftFileIndexMaps(3)
@@ -4005,35 +4005,11 @@ func TestShiftFileIndexMaps_ShiftsHighlightSpans(t *testing.T) {
 	assert.Equal(t, 10, m.highlightSpans[4].OldSpans[0].Start)
 }
 
-func TestShiftFileIndexMaps_ShiftsPairsHighlightSpans(t *testing.T) {
-	m := Model{
-		highlightSpans: make(map[int]*FileHighlight),
-		pairsHighlightSpans: map[int]*PairsFileHighlight{
-			0: {OldSpans: []highlight.Span{{Start: 0, End: 5}}},
-			2: {OldSpans: []highlight.Span{{Start: 20, End: 25}}},
-		},
-		structureMaps:      make(map[int]*FileStructure),
-		pairsStructureMaps: make(map[int]*FileStructure),
-		loadingFiles:       make(map[int]time.Time),
-		inlineDiffCache:    make(map[inlineDiffKey]inlineDiffResult),
-	}
-
-	m.shiftFileIndexMaps(2)
-
-	assert.Nil(t, m.pairsHighlightSpans[0])
-	assert.NotNil(t, m.pairsHighlightSpans[2], "index 2 should have old index 0's data")
-	assert.NotNil(t, m.pairsHighlightSpans[4], "index 4 should have old index 2's data")
-}
-
 func TestShiftFileIndexMaps_ShiftsStructureMaps(t *testing.T) {
 	m := Model{
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
+		highlightSpans: make(map[int]*FileHighlight),
 		structureMaps: map[int]*FileStructure{
 			0: {NewStructure: &structure.Map{}},
-		},
-		pairsStructureMaps: map[int]*FileStructure{
-			1: {NewStructure: &structure.Map{}},
 		},
 		loadingFiles:    make(map[int]time.Time),
 		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
@@ -4043,17 +4019,15 @@ func TestShiftFileIndexMaps_ShiftsStructureMaps(t *testing.T) {
 
 	assert.Nil(t, m.structureMaps[0])
 	assert.NotNil(t, m.structureMaps[5])
-	assert.Nil(t, m.pairsStructureMaps[1])
-	assert.NotNil(t, m.pairsStructureMaps[6])
 }
 
 func TestShiftFileIndexMaps_ShiftsLoadingFiles(t *testing.T) {
 	now := time.Now()
 	m := Model{
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
+		highlightSpans: make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
 		loadingFiles: map[int]time.Time{
 			0: now,
 			3: now.Add(time.Second),
@@ -4070,11 +4044,11 @@ func TestShiftFileIndexMaps_ShiftsLoadingFiles(t *testing.T) {
 
 func TestShiftFileIndexMaps_ClearsInlineDiffCache(t *testing.T) {
 	m := Model{
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
+		highlightSpans: make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles: make(map[int]time.Time),
 		inlineDiffCache: map[inlineDiffKey]inlineDiffResult{
 			{fileIndex: 0, oldNum: 1, newNum: 1}: {},
 			{fileIndex: 1, oldNum: 2, newNum: 2}: {},
@@ -4088,19 +4062,18 @@ func TestShiftFileIndexMaps_ClearsInlineDiffCache(t *testing.T) {
 
 func TestShiftFileIndexMaps_EmptyMaps(t *testing.T) {
 	m := Model{
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		highlightSpans: make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
 	}
 
 	// Should not panic with empty maps
 	m.shiftFileIndexMaps(5)
 
 	assert.Empty(t, m.highlightSpans)
-	assert.Empty(t, m.pairsHighlightSpans)
 }
 
 // =============================================================================
@@ -4115,13 +4088,13 @@ func TestInsertSnapshotCommit_PrependsCommit(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{NewPath: "original.go"},
 		},
-		commitFileStarts:    []int{0},
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		commitFileStarts: []int{0},
+		highlightSpans:   make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
 	}
 
 	newCommit := sidebyside.CommitSet{
@@ -4145,13 +4118,13 @@ func TestInsertSnapshotCommit_PrependsFiles(t *testing.T) {
 			{NewPath: "original1.go"},
 			{NewPath: "original2.go"},
 		},
-		commitFileStarts:    []int{0},
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		commitFileStarts: []int{0},
+		highlightSpans:   make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
 	}
 
 	newCommit := sidebyside.CommitSet{
@@ -4183,13 +4156,13 @@ func TestInsertSnapshotCommit_UpdatesCommitFileStarts(t *testing.T) {
 			{NewPath: "c1f2.go"},
 			{NewPath: "c2f1.go"},
 		},
-		commitFileStarts:    []int{0, 2}, // Commit1 starts at 0, Commit2 starts at 2
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		commitFileStarts: []int{0, 2}, // Commit1 starts at 0, Commit2 starts at 2
+		highlightSpans:   make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
 	}
 
 	newCommit := sidebyside.CommitSet{
@@ -4219,13 +4192,9 @@ func TestInsertSnapshotCommit_ShiftsHighlightMaps(t *testing.T) {
 		highlightSpans: map[int]*FileHighlight{
 			0: {OldSpans: []highlight.Span{{Start: 100, End: 200}}},
 		},
-		pairsHighlightSpans: map[int]*PairsFileHighlight{
-			0: {OldSpans: []highlight.Span{{Start: 50, End: 75}}},
-		},
-		structureMaps:      make(map[int]*FileStructure),
-		pairsStructureMaps: make(map[int]*FileStructure),
-		loadingFiles:       make(map[int]time.Time),
-		inlineDiffCache:    make(map[inlineDiffKey]inlineDiffResult),
+		structureMaps:   make(map[int]*FileStructure),
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
 	}
 
 	newCommit := sidebyside.CommitSet{
@@ -4241,10 +4210,6 @@ func TestInsertSnapshotCommit_ShiftsHighlightMaps(t *testing.T) {
 	assert.Nil(t, m.highlightSpans[0], "old index 0 should be empty")
 	assert.NotNil(t, m.highlightSpans[2], "shifted index 2 should have the data")
 	assert.Equal(t, 100, m.highlightSpans[2].OldSpans[0].Start)
-
-	assert.Nil(t, m.pairsHighlightSpans[0])
-	assert.NotNil(t, m.pairsHighlightSpans[2])
-	assert.Equal(t, 50, m.pairsHighlightSpans[2].OldSpans[0].Start)
 }
 
 func TestInsertSnapshotCommit_ScrollsToTop(t *testing.T) {
@@ -4252,15 +4217,15 @@ func TestInsertSnapshotCommit_ScrollsToTop(t *testing.T) {
 		commits: []sidebyside.CommitSet{
 			{Info: sidebyside.CommitInfo{Subject: "Original"}},
 		},
-		files:               []sidebyside.FilePair{{NewPath: "original.go"}},
-		commitFileStarts:    []int{0},
-		windows:             []*Window{{scroll: 50}},
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
+		files:            []sidebyside.FilePair{{NewPath: "original.go"}},
+		commitFileStarts: []int{0},
+		windows:          []*Window{{scroll: 50}},
+		highlightSpans:   make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
 	}
 
 	m.insertSnapshotCommit(sidebyside.CommitSet{
@@ -4274,20 +4239,19 @@ func TestInsertSnapshotCommit_ScrollsToTop(t *testing.T) {
 // SnapshotDiffReadyMsg handling tests
 // =============================================================================
 
-func TestSnapshotDiffReadyMsg_RequestsHighlighting(t *testing.T) {
+func TestSnapshotDiffReadyMsg_FetchesContent(t *testing.T) {
 	m := Model{
 		commits: []sidebyside.CommitSet{
 			{Info: sidebyside.CommitInfo{Subject: "Original"}},
 		},
-		files:               []sidebyside.FilePair{{NewPath: "original.go"}},
-		commitFileStarts:    []int{0},
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		keys:                DefaultKeyMap(),
+		files:            []sidebyside.FilePair{{NewPath: "original.go"}},
+		commitFileStarts: []int{0},
+		highlightSpans:   make(map[int]*FileHighlight),
+		structureMaps:    make(map[int]*FileStructure),
+		loadingFiles:     make(map[int]time.Time),
+		inlineDiffCache:  make(map[inlineDiffKey]inlineDiffResult),
+		keys:             DefaultKeyMap(),
+		git:              &git.MockGit{},
 	}
 
 	msg := SnapshotDiffReadyMsg{
@@ -4297,6 +4261,8 @@ func TestSnapshotDiffReadyMsg_RequestsHighlighting(t *testing.T) {
 				{NewPath: "file1.go", Pairs: []sidebyside.LinePair{{}}},
 				{NewPath: "file2.go", Pairs: []sidebyside.LinePair{{}}},
 			},
+			SnapshotOldRef: "oldref",
+			SnapshotNewRef: "newref",
 		},
 		SnapshotSHA: "abc123",
 	}
@@ -4313,8 +4279,8 @@ func TestSnapshotDiffReadyMsg_RequestsHighlighting(t *testing.T) {
 	assert.Equal(t, "file1.go", resultModel.files[0].NewPath)
 	assert.Equal(t, "file2.go", resultModel.files[1].NewPath)
 
-	// Should return a command for highlighting (non-nil)
-	assert.NotNil(t, cmd, "should return highlight command for new files")
+	// Should return a command for content fetching (feeds into highlight pipeline)
+	assert.NotNil(t, cmd, "should return content fetch command for new files")
 }
 
 func TestSnapshotDiffReadyMsg_NoFilesNoHighlightCommand(t *testing.T) {
@@ -4322,15 +4288,15 @@ func TestSnapshotDiffReadyMsg_NoFilesNoHighlightCommand(t *testing.T) {
 		commits: []sidebyside.CommitSet{
 			{Info: sidebyside.CommitInfo{Subject: "Original"}},
 		},
-		files:               []sidebyside.FilePair{{NewPath: "original.go"}},
-		commitFileStarts:    []int{0},
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		keys:                DefaultKeyMap(),
+		files:            []sidebyside.FilePair{{NewPath: "original.go"}},
+		commitFileStarts: []int{0},
+		highlightSpans:   make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
+		keys:            DefaultKeyMap(),
 	}
 
 	// Empty files = no changes
@@ -4355,16 +4321,16 @@ func TestSnapshotDiffReadyMsg_NoFilesNoHighlightCommand(t *testing.T) {
 
 func TestSnapshotDiffReadyMsg_Error(t *testing.T) {
 	m := Model{
-		commits:             []sidebyside.CommitSet{},
-		files:               []sidebyside.FilePair{},
-		commitFileStarts:    []int{},
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		keys:                DefaultKeyMap(),
+		commits:          []sidebyside.CommitSet{},
+		files:            []sidebyside.FilePair{},
+		commitFileStarts: []int{},
+		highlightSpans:   make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
+		keys:            DefaultKeyMap(),
 	}
 
 	msg := SnapshotDiffReadyMsg{
@@ -4381,16 +4347,16 @@ func TestSnapshotDiffReadyMsg_Error(t *testing.T) {
 
 func TestSnapshotDiffReadyMsg_StoresSnapshotRefs(t *testing.T) {
 	m := Model{
-		commits:             []sidebyside.CommitSet{},
-		files:               []sidebyside.FilePair{},
-		commitFileStarts:    []int{},
-		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
-		loadingFiles:        make(map[int]time.Time),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		keys:                DefaultKeyMap(),
+		commits:          []sidebyside.CommitSet{},
+		files:            []sidebyside.FilePair{},
+		commitFileStarts: []int{},
+		highlightSpans:   make(map[int]*FileHighlight),
+
+		structureMaps: make(map[int]*FileStructure),
+
+		loadingFiles:    make(map[int]time.Time),
+		inlineDiffCache: make(map[inlineDiffKey]inlineDiffResult),
+		keys:            DefaultKeyMap(),
 	}
 
 	msg := SnapshotDiffReadyMsg{
@@ -4596,11 +4562,6 @@ func TestLoadCommitDiff_ShiftsHighlightMaps(t *testing.T) {
 		OldSpans: []highlight.Span{sentinelSpan},
 		NewSpans: []highlight.Span{sentinelSpan},
 	}
-	m.pairsHighlightSpans[1] = &PairsFileHighlight{
-		OldSpans:      []highlight.Span{sentinelSpan},
-		OldLineStarts: map[int]int{1: 0},
-		OldLineLens:   map[int]int{1: 12},
-	}
 	m.structureMaps[1] = &FileStructure{
 		NewStructure: structure.NewMap([]structure.Entry{{StartLine: 1, EndLine: 2, Name: "Hello", Kind: "function"}}),
 	}
@@ -4620,9 +4581,6 @@ func TestLoadCommitDiff_ShiftsHighlightMaps(t *testing.T) {
 	// C1's file is now at index 2. Highlight data must follow.
 	assert.NotNil(t, m.highlightSpans[2], "highlightSpans for C1 should shift to index 2")
 	assert.Nil(t, m.highlightSpans[1], "index 1 is now C0's second file, should have no highlight data")
-
-	assert.NotNil(t, m.pairsHighlightSpans[2], "pairsHighlightSpans for C1 should shift to index 2")
-	assert.Nil(t, m.pairsHighlightSpans[1], "pairsHighlightSpans at index 1 should be cleared")
 
 	assert.NotNil(t, m.structureMaps[2], "structureMaps for C1 should shift to index 2")
 	assert.Nil(t, m.structureMaps[1], "structureMaps at index 1 should be cleared")

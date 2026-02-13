@@ -151,13 +151,11 @@ type Model struct {
 	debugLog  *log.Logger // file-based debug logger (nil when not in debug mode)
 
 	// Syntax highlighting
-	highlighter         *highlight.Highlighter
-	highlightSpans      map[int]*FileHighlight      // file index -> full content highlight spans
-	pairsHighlightSpans map[int]*PairsFileHighlight // file index -> pairs-based highlight spans
+	highlighter    *highlight.Highlighter
+	highlightSpans map[int]*FileHighlight // file index -> full content highlight spans
 
 	// Code structure for breadcrumbs
-	structureMaps      map[int]*FileStructure // file index -> full content structure
-	pairsStructureMaps map[int]*FileStructure // file index -> pairs-based structure
+	structureMaps map[int]*FileStructure // file index -> full content structure
 
 	// Windows - multiple views into the same data
 	windows           []*Window // up to 2 windows
@@ -388,19 +386,6 @@ type FileHighlight struct {
 	NewSpans []highlight.Span // spans for new content
 }
 
-// PairsFileHighlight stores syntax highlighting spans derived from diff Pairs.
-// Unlike FileHighlight which has spans for full file content, this has spans
-// for the concatenated lines from Pairs, with a mapping from line numbers back
-// to positions in the concatenated content.
-type PairsFileHighlight struct {
-	OldSpans      []highlight.Span // spans for concatenated old lines
-	NewSpans      []highlight.Span // spans for concatenated new lines
-	OldLineStarts map[int]int      // line number -> byte offset in concatenated old content
-	NewLineStarts map[int]int      // line number -> byte offset in concatenated new content
-	OldLineLens   map[int]int      // line number -> length of line content
-	NewLineLens   map[int]int      // line number -> length of line content
-}
-
 // FileStructure stores code structure maps for breadcrumbs and structural diff.
 // NewStructure is used for breadcrumbs (current version of the file).
 // OldStructure is used for structural diff (comparing old vs new).
@@ -607,9 +592,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		hscrollStep:         DefaultHScrollStep,
 		highlighter:         highlight.New(),
 		highlightSpans:      make(map[int]*FileHighlight),
-		pairsHighlightSpans: make(map[int]*PairsFileHighlight),
 		structureMaps:       make(map[int]*FileStructure),
-		pairsStructureMaps:  make(map[int]*FileStructure),
 		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
 		spinner:             s,
 		loadingFiles:        make(map[int]time.Time),
@@ -657,18 +640,6 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 	m.loadCommentIndex()
 
 	m.calculateTotalLines()
-
-	// Synchronously highlight the first file so initial render has highlighting.
-	// Skip if in log mode with folded commits (first file won't be visible anyway).
-	// For no-metadata commits (diff view), files are always visible even when
-	// CommitFolded, so we still need to highlight.
-	// The rest will be highlighted async in Init().
-	firstFileVisible := len(m.files) > 0 &&
-		(len(m.commits) == 0 || m.commitFoldLevel(0) != sidebyside.CommitFolded ||
-			!m.commits[0].Info.HasMetadata())
-	if firstFileVisible {
-		m.highlightPairsSync(0)
-	}
 
 	return m
 }
@@ -768,11 +739,6 @@ func (m Model) Init() tea.Cmd {
 	// Take initial snapshot for diff mode if enabled
 	if m.autoSnapshots && m.git != nil {
 		cmds = append(cmds, m.createSnapshot())
-	}
-
-	// Highlight remaining files async
-	if len(m.files) > 1 {
-		cmds = append(cmds, m.RequestHighlightFromPairsExcept(map[int]bool{0: true}))
 	}
 
 	return tea.Batch(cmds...)
@@ -2194,9 +2160,7 @@ func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
 
 	// Clear file-indexed maps (indices have changed completely)
 	m.highlightSpans = make(map[int]*FileHighlight)
-	m.pairsHighlightSpans = make(map[int]*PairsFileHighlight)
 	m.structureMaps = make(map[int]*FileStructure)
-	m.pairsStructureMaps = make(map[int]*FileStructure)
 	m.inlineDiffCache = make(map[inlineDiffKey]inlineDiffResult)
 
 	// Reset all windows
@@ -2227,14 +2191,10 @@ func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
 		m.matchCommentsForFiles(0, len(m.files))
 	}
 
-	// Synchronously highlight first file, then async the rest
-	if len(m.files) > 0 {
-		m.highlightPairsSync(0)
-		if len(m.files) > 1 {
-			return m.RequestHighlightFromPairsExcept(map[int]bool{0: true})
-		}
-	}
-	return nil
+	// Reset startup queue and trigger async content loading for the new view
+	m.startupQueue = nil
+	m.startupInFlight = 0
+	return m.queueFilesForAllCommits()
 }
 
 // handleSnapshotToggle handles the S key to toggle between normal and snapshot view.
@@ -2465,19 +2425,6 @@ func (m *Model) shiftFileIndexMapsFrom(fromIdx, delta int) {
 		m.highlightSpans = newMap
 	}
 
-	// Shift pairsHighlightSpans
-	if len(m.pairsHighlightSpans) > 0 {
-		newMap := make(map[int]*PairsFileHighlight, len(m.pairsHighlightSpans))
-		for k, v := range m.pairsHighlightSpans {
-			if k >= fromIdx {
-				newMap[k+delta] = v
-			} else {
-				newMap[k] = v
-			}
-		}
-		m.pairsHighlightSpans = newMap
-	}
-
 	// Shift structureMaps
 	if len(m.structureMaps) > 0 {
 		newMap := make(map[int]*FileStructure, len(m.structureMaps))
@@ -2489,19 +2436,6 @@ func (m *Model) shiftFileIndexMapsFrom(fromIdx, delta int) {
 			}
 		}
 		m.structureMaps = newMap
-	}
-
-	// Shift pairsStructureMaps
-	if len(m.pairsStructureMaps) > 0 {
-		newMap := make(map[int]*FileStructure, len(m.pairsStructureMaps))
-		for k, v := range m.pairsStructureMaps {
-			if k >= fromIdx {
-				newMap[k+delta] = v
-			} else {
-				newMap[k] = v
-			}
-		}
-		m.pairsStructureMaps = newMap
 	}
 
 	// Shift loadingFiles
@@ -2560,15 +2494,6 @@ func (m *Model) shiftFileIndexMaps(offset int) {
 		m.highlightSpans = newMap
 	}
 
-	// Shift pairsHighlightSpans
-	if len(m.pairsHighlightSpans) > 0 {
-		newMap := make(map[int]*PairsFileHighlight, len(m.pairsHighlightSpans))
-		for k, v := range m.pairsHighlightSpans {
-			newMap[k+offset] = v
-		}
-		m.pairsHighlightSpans = newMap
-	}
-
 	// Shift structureMaps
 	if len(m.structureMaps) > 0 {
 		newMap := make(map[int]*FileStructure, len(m.structureMaps))
@@ -2576,15 +2501,6 @@ func (m *Model) shiftFileIndexMaps(offset int) {
 			newMap[k+offset] = v
 		}
 		m.structureMaps = newMap
-	}
-
-	// Shift pairsStructureMaps
-	if len(m.pairsStructureMaps) > 0 {
-		newMap := make(map[int]*FileStructure, len(m.pairsStructureMaps))
-		for k, v := range m.pairsStructureMaps {
-			newMap[k+offset] = v
-		}
-		m.pairsStructureMaps = newMap
 	}
 
 	// Shift loadingFiles

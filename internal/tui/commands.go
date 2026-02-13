@@ -7,6 +7,80 @@ import (
 	"github.com/user/diffyduck/pkg/content"
 )
 
+// fetcherForFile returns a fetcher suitable for the given file index.
+// Uses the persistent fetcher (diff/show mode) or creates one from the commit's SHA.
+func (m Model) fetcherForFile(fileIndex int) *content.Fetcher {
+	if m.fetcher != nil {
+		return m.fetcher
+	}
+	if m.git != nil && len(m.commits) > 0 {
+		commitIdx := m.commitForFile(fileIndex)
+		if commitIdx >= 0 && commitIdx < len(m.commits) {
+			commit := m.commits[commitIdx]
+			if commit.IsSnapshot && commit.SnapshotOldRef != "" && commit.SnapshotNewRef != "" {
+				return content.NewFetcher(m.git, content.ModeDiffRefs, commit.SnapshotOldRef, commit.SnapshotNewRef)
+			} else if commit.Info.SHA != "" {
+				return content.NewFetcher(m.git, content.ModeShow, commit.Info.SHA, "")
+			}
+		}
+	}
+	return nil
+}
+
+// loadFileContentSync fetches content for a file synchronously and stores it on the model.
+// Returns true if content is available (already loaded or successfully fetched).
+func (m *Model) loadFileContentSync(fileIndex int) bool {
+	if fileIndex < 0 || fileIndex >= len(m.files) {
+		return false
+	}
+	fp := &m.files[fileIndex]
+	if fp.HasContent() {
+		return true
+	}
+	if fp.IsBinary {
+		return false
+	}
+
+	fetcher := m.fetcherForFile(fileIndex)
+	if fetcher == nil {
+		return false
+	}
+
+	oldPath := stripPathPrefix(fp.OldPath)
+	newPath := stripPathPrefix(fp.NewPath)
+
+	if fp.OldPath != "/dev/null" {
+		lines, wasTruncated, err := fetcher.GetOldContentLines(oldPath)
+		if err == nil {
+			fp.OldContent = lines
+			fp.OldContentTruncated = wasTruncated
+		}
+	}
+	if fp.NewPath != "/dev/null" {
+		lines, wasTruncated, err := fetcher.GetNewContentLines(newPath)
+		if err == nil {
+			fp.NewContent = lines
+			fp.NewContentTruncated = wasTruncated
+		}
+	}
+	fp.ContentTruncated = fp.OldContentTruncated || fp.NewContentTruncated
+	return true
+}
+
+// loadAndHighlightFileSync loads content and highlights a file synchronously.
+// Used when expanding files/commits to ensure highlighting is ready before render.
+func (m *Model) loadAndHighlightFileSync(fileIndex int) {
+	if fileIndex < 0 || fileIndex >= len(m.files) {
+		return
+	}
+	// Skip if already highlighted
+	if m.highlightSpans[fileIndex] != nil {
+		return
+	}
+	m.loadFileContentSync(fileIndex)
+	m.highlightFileSync(fileIndex)
+}
+
 // FetchFileContent returns a command that fetches content for one file.
 // Content is fetched with limits applied (max lines, max line length, max bytes).
 // Returns nil for binary files since they have no viewable text content.
@@ -22,24 +96,7 @@ func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 		return nil
 	}
 
-	// Use existing fetcher if available
-	fetcher := m.fetcher
-
-	// In log mode or for snapshot commits, create an on-demand fetcher
-	if fetcher == nil && m.git != nil && len(m.commits) > 0 {
-		commitIdx := m.commitForFile(fileIndex)
-		if commitIdx >= 0 && commitIdx < len(m.commits) {
-			commit := m.commits[commitIdx]
-			if commit.IsSnapshot && commit.SnapshotOldRef != "" && commit.SnapshotNewRef != "" {
-				// Snapshot commits use ModeDiffRefs with both snapshot SHAs
-				fetcher = content.NewFetcher(m.git, content.ModeDiffRefs, commit.SnapshotOldRef, commit.SnapshotNewRef)
-			} else if commit.Info.SHA != "" {
-				// Regular commits use ModeShow with the commit SHA
-				fetcher = content.NewFetcher(m.git, content.ModeShow, commit.Info.SHA, "")
-			}
-		}
-	}
-
+	fetcher := m.fetcherForFile(fileIndex)
 	if fetcher == nil {
 		return nil
 	}
