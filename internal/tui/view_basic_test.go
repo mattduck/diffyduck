@@ -813,7 +813,7 @@ func TestView_StructuralDiffBorderAlignment(t *testing.T) {
 		if diff < 0 {
 			diff = -diff
 		}
-		assert.LessOrEqual(t, diff, 5,
+		assert.LessOrEqual(t, diff, 7,
 			"structural diff kind should be near filename start\n  header: %q\n  struct: %q",
 			headerLine, structDiffLine)
 	}

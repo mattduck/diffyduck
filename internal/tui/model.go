@@ -191,12 +191,13 @@ type Model struct {
 	maxNewContentWidth int // display width of new-side content (left side); defaults to 90, updated on 'r' refresh
 
 	// Cached column widths for commit headers - updated on 'r' refresh
-	cachedCommitFileCount int // max commit file count width (e.g., "99" = 2)
-	cachedCommitAddWidth  int // max commit "+N" width
-	cachedCommitRemWidth  int // max commit "-N" width
-	cachedCommitTimeWidth int // max relative time width (e.g., "12 months")
-	cachedCommitSubjWidth int // max subject width (capped at 120)
-	cachedStructDiffWidth int // max structural diff content width
+	cachedCommitFileCount    int // max commit file count width (e.g., "99" = 2)
+	cachedCommitAddWidth     int // max commit "+N" width
+	cachedCommitRemWidth     int // max commit "-N" width
+	cachedCommitTimeWidth    int // max relative time width (e.g., "12 months")
+	cachedCommitAbsTimeWidth int // max absolute time width for snapshots (e.g., "Feb 13 05:51")
+	cachedCommitSubjWidth    int // max subject width (capped at 120)
+	cachedStructDiffWidth    int // max structural diff content width
 
 	// Inline diff cache - avoids recomputing Myers diff on every render
 	inlineDiffCache map[inlineDiffKey]inlineDiffResult
@@ -598,12 +599,13 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
 		maxLineNumSeen:      9999, // default gives 4-digit gutter; recalculated on 'r' refresh
 		// Column width defaults - recalculated on 'r' refresh
-		cachedCommitFileCount: 2,   // "99" files
-		cachedCommitAddWidth:  5,   // "+9999"
-		cachedCommitRemWidth:  5,   // "-9999"
-		cachedCommitTimeWidth: 3,   // "16h"
-		cachedCommitSubjWidth: 100, // reasonable subject length
-		cachedStructDiffWidth: 0,   // structural diff width; 0 until 'r' refresh
+		cachedCommitFileCount:    2,   // "99" files
+		cachedCommitAddWidth:     5,   // "+9999"
+		cachedCommitRemWidth:     5,   // "-9999"
+		cachedCommitTimeWidth:    3,   // "16h"
+		cachedCommitAbsTimeWidth: 12,  // "Feb 13 05:51"
+		cachedCommitSubjWidth:    100, // reasonable subject length
+		cachedStructDiffWidth:    0,   // structural diff width; 0 until 'r' refresh
 	}
 
 	// Flatten files from all commits and track boundaries
@@ -1392,6 +1394,7 @@ func (m *Model) updateColumnWidths() {
 	m.cachedCommitAddWidth = 0
 	m.cachedCommitRemWidth = 0
 	m.cachedCommitTimeWidth = 0
+	m.cachedCommitAbsTimeWidth = 0
 	m.cachedCommitSubjWidth = 0
 
 	// Calculate commit header widths
@@ -1441,9 +1444,16 @@ func (m *Model) updateColumnWidths() {
 		if rw > m.cachedCommitRemWidth {
 			m.cachedCommitRemWidth = rw
 		}
-		tw := len(formatShortRelativeDate(commit.Info.Date))
-		if tw > m.cachedCommitTimeWidth {
-			m.cachedCommitTimeWidth = tw
+		if commit.IsSnapshot {
+			tw := len(formatAbsoluteTime(commit.Info.Date))
+			if tw > m.cachedCommitAbsTimeWidth {
+				m.cachedCommitAbsTimeWidth = tw
+			}
+		} else {
+			tw := len(formatShortRelativeDate(commit.Info.Date))
+			if tw > m.cachedCommitTimeWidth {
+				m.cachedCommitTimeWidth = tw
+			}
 		}
 		sw := displayWidth(commit.Info.Subject) + commit.Info.RefsDisplayWidth()
 		if sw > 120 {

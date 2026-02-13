@@ -856,6 +856,7 @@ func (m Model) buildRows() []displayRow {
 	maxCommitAddWidth := m.cachedCommitAddWidth
 	maxCommitRemWidth := m.cachedCommitRemWidth
 	maxCommitTimeWidth := m.cachedCommitTimeWidth
+	maxCommitAbsTimeWidth := m.cachedCommitAbsTimeWidth
 	maxCommitSubjectWidth := m.cachedCommitSubjWidth
 	if maxCommitFilesWidth == 0 && len(m.commits) > 0 {
 		for commitIdx, commit := range m.commits {
@@ -903,9 +904,16 @@ func (m Model) buildRows() []displayRow {
 			if rw > maxCommitRemWidth {
 				maxCommitRemWidth = rw
 			}
-			tw := len(formatShortRelativeDate(commit.Info.Date))
-			if tw > maxCommitTimeWidth {
-				maxCommitTimeWidth = tw
+			if commit.IsSnapshot {
+				tw := len(formatAbsoluteTime(commit.Info.Date))
+				if tw > maxCommitAbsTimeWidth {
+					maxCommitAbsTimeWidth = tw
+				}
+			} else {
+				tw := len(formatShortRelativeDate(commit.Info.Date))
+				if tw > maxCommitTimeWidth {
+					maxCommitTimeWidth = tw
+				}
 			}
 			sw := displayWidth(commit.Info.Subject) + commit.Info.RefsDisplayWidth()
 			if sw > 120 {
@@ -957,6 +965,9 @@ func (m Model) buildRows() []displayRow {
 			addedWidth := len(fmt.Sprintf("+%d", totalAdded))
 			removedWidth := len(fmt.Sprintf("-%d", totalRemoved))
 			timeWidth := len(formatShortRelativeDate(commit.Info.Date))
+			if commit.IsSnapshot {
+				timeWidth = len(formatAbsoluteTime(commit.Info.Date))
+			}
 			authorWidth := displayWidth(commit.Info.Author)
 			if authorWidth > 15 {
 				authorWidth = 15
@@ -966,8 +977,14 @@ func (m Model) buildRows() []displayRow {
 				subjectPlusRefsWidth = 120
 			}
 			// Total: prefix(1) + icon(1) + space(1) + sha(7) + space(1) + added + space(1)
-			//        + removed + space(1) + files + space(1) + time + space(1) + author + space(1) + subject+refs
-			commitHeaderWidth := 1 + 1 + 1 + 7 + 1 + filesWidth + 1 + addedWidth + 1 + removedWidth + 1 + timeWidth + 1 + authorWidth + 1 + subjectPlusRefsWidth
+			//        + removed + space(1) + files + space(1) + time + space(1) + [author + space(1)] + subject+refs
+			// Snapshots skip the author column entirely
+			var commitHeaderWidth int
+			if commit.IsSnapshot {
+				commitHeaderWidth = 1 + 1 + 1 + 7 + 1 + filesWidth + 1 + addedWidth + 1 + removedWidth + 1 + timeWidth + 1 + subjectPlusRefsWidth
+			} else {
+				commitHeaderWidth = 1 + 1 + 1 + 7 + 1 + filesWidth + 1 + addedWidth + 1 + removedWidth + 1 + timeWidth + 1 + authorWidth + 1 + subjectPlusRefsWidth
+			}
 
 			// When unfolded, keep shared column widths for alignment but use
 			// per-commit subject width so the border hugs actual content
@@ -979,7 +996,12 @@ func (m Model) buildRows() []displayRow {
 					renderSubjWidth = maxCommitSubjectWidth
 				}
 				// Recompute with shared fixed columns + per-commit subject/author
-				useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitTimeWidth + 1 + authorWidth + 1 + renderSubjWidth
+				// Snapshots use absolute time width and skip the author column
+				if commit.IsSnapshot {
+					useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitAbsTimeWidth + 1 + renderSubjWidth
+				} else {
+					useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitTimeWidth + 1 + authorWidth + 1 + renderSubjWidth
+				}
 			}
 
 			rows = append(rows, displayRow{
