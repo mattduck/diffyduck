@@ -24,7 +24,7 @@ type completionContext struct {
 // subcommands is the list of completable subcommand names.
 // Aliases (d, l, b, s) are excluded — users who know them don't need completion.
 var subcommands = []string{
-	"diff", "show", "log", "clean", "branches", "status", "config", "help", "completion",
+	"diff", "show", "log", "clean", "branch", "status", "config", "comment", "help", "completion",
 }
 
 // parseCompletionContext parses a word list from __complete into a context.
@@ -79,8 +79,8 @@ func parseCompletionContext(words []string) completionContext {
 
 func isSubcommand(w string) bool {
 	switch w {
-	case "diff", "d", "show", "log", "l", "clean", "branches", "b",
-		"config", "status", "s", "help", "completion":
+	case "diff", "d", "show", "log", "l", "clean", "branch", "b",
+		"config", "status", "s", "comment", "c", "help", "completion":
 		return true
 	}
 	return false
@@ -93,7 +93,7 @@ func isFlag(w string) bool {
 // flagTakesValue returns true if the flag consumes a separate next word as its value.
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--exclude", "-e", "-n", "--since", "--cpuprofile":
+	case "--exclude", "-e", "-n", "--since", "--status", "--cpuprofile":
 		return true
 	}
 	return false
@@ -129,11 +129,9 @@ func generateCompletions(ctx completionContext, g git.Git) []string {
 		return completeFlags(ctx)
 	}
 
-	// No subcommand yet: subcommands + refs (since bare "dfd main" = diff mode).
+	// No subcommand yet: complete subcommands.
 	if ctx.cmd == "" {
-		candidates := filterPrefix(subcommands, ctx.current)
-		candidates = append(candidates, completeRefs(ctx, g)...)
-		return candidates
+		return filterPrefix(subcommands, ctx.current)
 	}
 
 	// Subcommand-specific positional completion.
@@ -144,8 +142,14 @@ func generateCompletions(ctx completionContext, g git.Git) []string {
 		return filterPrefix([]string{"bash", "zsh", "fish"}, ctx.current)
 	case "diff", "show", "log":
 		return completeRefs(ctx, g)
+	case "comment":
+		// Complete sub-subcommand (list, edit) if not yet given.
+		if len(ctx.refs) == 0 {
+			return filterPrefix([]string{"list", "edit"}, ctx.current)
+		}
+		return completeFlags(ctx)
 	default:
-		// clean, config, branches, status: no positional args, offer flags.
+		// clean, config, branch, status: no positional args, offer flags.
 		return completeFlags(ctx)
 	}
 }
@@ -157,6 +161,8 @@ func completeFlagValue(flag, prefix string) []string {
 		values = []string{"7d", "2w", "1m", "3m", "1y", "all"}
 	case "--untracked-files", "-u":
 		values = []string{"no", "normal", "all"}
+	case "--status":
+		values = []string{"unresolved", "resolved", "all"}
 	default:
 		return nil
 	}
@@ -179,10 +185,12 @@ func flagsForCmd(cmd string) []string {
 		return append(global, "--exclude")
 	case "clean":
 		return global
-	case "branches":
+	case "branch":
 		return append(global, "--verbose", "--since")
 	case "status":
 		return append(global, "--symbols", "--untracked-files", "--branches")
+	case "comment":
+		return append(global, "-n", "--since", "--status", "--oneline", "--all-branches")
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:

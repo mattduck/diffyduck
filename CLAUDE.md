@@ -94,10 +94,15 @@ When adding or changing features, update all related surfaces. Use these checkli
 1. `usageXxx` const in `cmd/dfd/main.go`
 2. `printUsage()` switch case in `cmd/dfd/main.go`
 3. Entry in `usageGeneral` Commands section
+4. `subcommands` list in `cmd/dfd/complete.go`
+5. `flagsForCmd()` in `cmd/dfd/complete.go`
+6. Positional completion handling in `generateCompletions()` if needed
 
 **New CLI flag:**
 1. Relevant `usageXxx` const for the subcommand
 2. `usageGeneral` if it's a global or cross-command flag
+3. `flagsForCmd()` in `cmd/dfd/complete.go`
+4. `completeFlagValue()` in `cmd/dfd/complete.go` if the flag takes enumerated values
 
 ## Commit Conventions
 

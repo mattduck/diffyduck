@@ -69,8 +69,8 @@ func TestParseCompletionContext(t *testing.T) {
 		},
 		{
 			name:          "flag expecting value (--since)",
-			words:         []string{"branches", "--since", ""},
-			wantCmd:       "branches",
+			words:         []string{"branch", "--since", ""},
+			wantCmd:       "branch",
 			wantFlags:     []string{"--since"},
 			wantCurrent:   "",
 			wantFlagValue: "--since",
@@ -93,8 +93,8 @@ func TestParseCompletionContext(t *testing.T) {
 		},
 		{
 			name:        "flag value already consumed",
-			words:       []string{"branches", "--since", "30d", ""},
-			wantCmd:     "branches",
+			words:       []string{"branch", "--since", "30d", ""},
+			wantCmd:     "branch",
 			wantFlags:   []string{"--since"},
 			wantCurrent: "",
 		},
@@ -113,8 +113,8 @@ func TestParseCompletionContext(t *testing.T) {
 		},
 		{
 			name:        "inline equals",
-			words:       []string{"branches", "--since="},
-			wantCmd:     "branches",
+			words:       []string{"branch", "--since="},
+			wantCmd:     "branch",
 			wantCurrent: "--since=",
 		},
 		{
@@ -175,7 +175,7 @@ func TestGenerateCompletions(t *testing.T) {
 		{
 			name:        "empty: subcommands",
 			words:       []string{""},
-			wantContain: []string{"diff", "show", "log", "branches", "status", "config"},
+			wantContain: []string{"diff", "show", "log", "branch", "status", "config", "comment"},
 		},
 		{
 			name:        "partial subcommand",
@@ -191,7 +191,7 @@ func TestGenerateCompletions(t *testing.T) {
 		},
 		{
 			name:        "branches flags",
-			words:       []string{"branches", "--"},
+			words:       []string{"branch", "--"},
 			wantContain: []string{"--verbose", "--since"},
 			wantAbsent:  []string{"--cached", "--all"},
 		},
@@ -237,35 +237,35 @@ func TestGenerateCompletions(t *testing.T) {
 		},
 		{
 			name:        "flag value --since",
-			words:       []string{"branches", "--since", ""},
+			words:       []string{"branch", "--since", ""},
 			wantContain: []string{"7d", "2w", "1m", "3m", "1y", "all"},
 		},
 		{
 			name:        "flag value --since with prefix",
-			words:       []string{"branches", "--since", "1"},
+			words:       []string{"branch", "--since", "1"},
 			wantContain: []string{"1m", "1y"},
 			wantAbsent:  []string{"7d", "2w", "3m", "all"},
 		},
 		{
 			name:        "inline --since=value",
-			words:       []string{"branches", "--since="},
+			words:       []string{"branch", "--since="},
 			wantContain: []string{"--since=7d", "--since=2w", "--since=1m"},
 		},
 		{
 			name:        "inline --since=partial",
-			words:       []string{"branches", "--since=1"},
+			words:       []string{"branch", "--since=1"},
 			wantContain: []string{"--since=1m", "--since=1y"},
 			wantAbsent:  []string{"--since=7d"},
 		},
 		{
 			name:        "help completes subcommands",
 			words:       []string{"help", ""},
-			wantContain: []string{"diff", "show", "log", "branches"},
+			wantContain: []string{"diff", "show", "log", "branch", "comment"},
 		},
 		{
 			name:        "help partial",
 			words:       []string{"help", "b"},
-			wantContain: []string{"branches"},
+			wantContain: []string{"branch"},
 			wantAbsent:  []string{"diff", "show"},
 		},
 		{
@@ -280,9 +280,38 @@ func TestGenerateCompletions(t *testing.T) {
 			wantAbsent:  []string{"--cached", "--since"},
 		},
 		{
-			name:        "no subcommand includes refs",
-			words:       []string{"ma"},
-			wantContain: []string{"main"},
+			name:        "comment sub-subcommands",
+			words:       []string{"comment", ""},
+			wantContain: []string{"list", "edit"},
+			wantAbsent:  []string{"diff", "show"},
+		},
+		{
+			name:        "comment sub-subcommand partial",
+			words:       []string{"comment", "l"},
+			wantContain: []string{"list"},
+			wantAbsent:  []string{"edit"},
+		},
+		{
+			name:        "comment flags after sub-subcommand",
+			words:       []string{"comment", "list", "--"},
+			wantContain: []string{"--since", "--status", "--oneline", "--all-branches"},
+			wantAbsent:  []string{"--cached", "--verbose"},
+		},
+		{
+			name:        "comment --status value",
+			words:       []string{"comment", "list", "--status", ""},
+			wantContain: []string{"unresolved", "resolved", "all"},
+		},
+		{
+			name:        "comment inline --status=",
+			words:       []string{"comment", "list", "--status="},
+			wantContain: []string{"--status=unresolved", "--status=resolved", "--status=all"},
+		},
+		{
+			name:        "no subcommand matches subcommands only",
+			words:       []string{"co"},
+			wantContain: []string{"comment", "config", "completion"},
+			wantAbsent:  []string{"main", "diff"},
 		},
 		{
 			name:        "log flags",
