@@ -166,9 +166,14 @@ func TestGenerateCompletions(t *testing.T) {
 		TagNames: []string{"v1.0.0", "v2.0.0"},
 	}
 
+	mockCommentIDs := func() []string {
+		return []string{"1739380234567", "1739380299000", "1739400000000"}
+	}
+
 	tests := []struct {
 		name        string
 		words       []string
+		commentIDs  commentIDsFunc
 		wantContain []string
 		wantAbsent  []string
 	}{
@@ -308,6 +313,25 @@ func TestGenerateCompletions(t *testing.T) {
 			wantContain: []string{"--status=unresolved", "--status=resolved", "--status=all"},
 		},
 		{
+			name:        "comment edit completes IDs",
+			words:       []string{"comment", "edit", ""},
+			commentIDs:  mockCommentIDs,
+			wantContain: []string{"1739380234567", "1739380299000", "1739400000000"},
+		},
+		{
+			name:        "comment edit ID with prefix",
+			words:       []string{"comment", "edit", "17394"},
+			commentIDs:  mockCommentIDs,
+			wantContain: []string{"1739400000000"},
+			wantAbsent:  []string{"1739380234567", "1739380299000"},
+		},
+		{
+			name:       "comment edit no IDs without store",
+			words:      []string{"comment", "edit", ""},
+			commentIDs: nil,
+			wantAbsent: []string{"1739380234567"},
+		},
+		{
 			name:        "no subcommand matches subcommands only",
 			words:       []string{"co"},
 			wantContain: []string{"comment", "config", "completion"},
@@ -336,7 +360,7 @@ func TestGenerateCompletions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := parseCompletionContext(tt.words)
-			got := generateCompletions(ctx, mockGit)
+			got := generateCompletions(ctx, mockGit, tt.commentIDs)
 
 			for _, want := range tt.wantContain {
 				if !slices.Contains(got, want) {

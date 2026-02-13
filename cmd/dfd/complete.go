@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/git"
 )
 
@@ -99,9 +100,12 @@ func flagTakesValue(flag string) bool {
 	return false
 }
 
+// commentIDsFunc returns all comment IDs, or nil if unavailable.
+type commentIDsFunc func() []string
+
 // generateCompletions returns candidate completions for the given context.
-// The gitFunc parameter allows injecting a git instance for testing.
-func generateCompletions(ctx completionContext, g git.Git) []string {
+// The git and commentIDs parameters allow injecting dependencies for testing.
+func generateCompletions(ctx completionContext, g git.Git, commentIDs commentIDsFunc) []string {
 	// Flag value completion.
 	if ctx.expectFlagValue != "" {
 		return completeFlagValue(ctx.expectFlagValue, ctx.current)
@@ -146,6 +150,12 @@ func generateCompletions(ctx completionContext, g git.Git) []string {
 		// Complete sub-subcommand (list, edit) if not yet given.
 		if len(ctx.refs) == 0 {
 			return filterPrefix([]string{"list", "edit"}, ctx.current)
+		}
+		// Complete comment ID after "edit" sub-subcommand.
+		if len(ctx.refs) == 1 && ctx.refs[0] == "edit" && commentIDs != nil {
+			if ids := commentIDs(); len(ids) > 0 {
+				return filterPrefix(ids, ctx.current)
+			}
 		}
 		return completeFlags(ctx)
 	default:
@@ -293,6 +303,17 @@ func listRefs(g git.Git) []string {
 	return refs
 }
 
+// commentIDsFromStore reads comment IDs from the git-backed store.
+// Returns nil if the store can't be read (e.g. not in a repo).
+func commentIDsFromStore() []string {
+	store := comments.NewStore("")
+	idx, err := store.ReadIndex()
+	if err != nil {
+		return nil
+	}
+	return idx.All()
+}
+
 func filterPrefix(items []string, prefix string) []string {
 	var result []string
 	for _, item := range items {
@@ -307,7 +328,7 @@ func filterPrefix(items []string, prefix string) []string {
 func runComplete(args []string) error {
 	ctx := parseCompletionContext(args)
 	g := git.New()
-	candidates := generateCompletions(ctx, g)
+	candidates := generateCompletions(ctx, g, commentIDsFromStore)
 	for _, c := range candidates {
 		fmt.Println(c)
 	}
