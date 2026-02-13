@@ -1286,41 +1286,62 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		// Unfolded path: header (with border) → spacer → body content → margin → next top border
 		// Note: First file's top border is added after commit body rows, not here
 		// This prevents content shift when first file is unfolded
-		headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, false, TreeRowHeader)
-		// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.
-		contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
-
-		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: m.fileFoldLevel(fileIdx), status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
-
-		rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: m.fileFoldLevel(fileIdx), status: status, headerBoxWidth: ownBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: headerMode, treePath: contentTreePath})
-
+		foldLevel := m.fileFoldLevel(fileIdx)
 		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth)
-		rows = append(rows, bodyRows...)
 
-		// Bottom margin: one blank row after content.
-		// The next file's HeaderTopBorder or next commit's top border provides a second line of spacing.
-		marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
-		rows = append(rows, displayRow{
-			kind:               RowKindBlank,
-			fileIndex:          fileIdx,
-			isBlank:            true,
-			isLastFileInCommit: isLastFile,
-			treeTerminator:     isLastFile,
-			treePath:           marginTreePath,
-		})
+		// FoldStructure with no structural diff content: treat like folded path
+		// (header only, no spacer/margin/top-border) but keep the ━━━━◐ trailing.
+		if foldLevel == sidebyside.FoldStructure && len(bodyRows) == 0 {
+			headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, true, TreeRowHeader)
+			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: foldLevel, status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
 
-		// Skip next file's top border if next file is outside narrow scope
-		if !isLastFile && m.w().narrow.IncludesFile(fileIdx+1) {
-			// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
-			// Current file is unfolded, so next file's prev sibling is unfolded
-			// Always add this row to prevent content shift; render as border or blank based on next file's mode
-			nextFileFolded := m.fileFoldLevel(fileIdx+1) == sidebyside.FoldHeader
-			nextFileHeaderMode := determineFileHeaderMode(nextFileFolded, false, true)
-			nextIsLastFile := fileIdx+1 == commitEndIdx-1
-			// Force IsLast=false so │ continuation shows on the top border row;
-			// the branch point (├/└) appears on the header row below, not here.
-			nextBorderTreePath := m.buildFileTreePath(fileIdx+1, false, nextFileFolded, TreeRowContent)
-			rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: m.fileFoldLevel(fileIdx), status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath, isLastFileInCommit: nextIsLastFile})
+			if isLastFile {
+				terminatorPath := m.buildFileTreePath(fileIdx, false, true, TreeRowContent)
+				rows = append(rows, displayRow{
+					kind:               RowKindBlank,
+					fileIndex:          fileIdx,
+					isBlank:            true,
+					isLastFileInCommit: isLastFile,
+					treeTerminator:     true,
+					treePath:           terminatorPath,
+				})
+			}
+		} else {
+			headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, false, TreeRowHeader)
+			// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.
+			contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
+
+			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: foldLevel, status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
+
+			rows = append(rows, displayRow{kind: RowKindHeaderSpacer, fileIndex: fileIdx, isHeaderSpacer: true, foldLevel: foldLevel, status: status, headerBoxWidth: ownBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: headerMode, treePath: contentTreePath})
+
+			rows = append(rows, bodyRows...)
+
+			// Bottom margin: one blank row after content.
+			// The next file's HeaderTopBorder or next commit's top border provides a second line of spacing.
+			marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
+			rows = append(rows, displayRow{
+				kind:               RowKindBlank,
+				fileIndex:          fileIdx,
+				isBlank:            true,
+				isLastFileInCommit: isLastFile,
+				treeTerminator:     isLastFile,
+				treePath:           marginTreePath,
+			})
+
+			// Skip next file's top border if next file is outside narrow scope
+			if !isLastFile && m.w().narrow.IncludesFile(fileIdx+1) {
+				// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
+				// Current file is unfolded, so next file's prev sibling is unfolded
+				// Always add this row to prevent content shift; render as border or blank based on next file's mode
+				nextFileFolded := m.fileFoldLevel(fileIdx+1) == sidebyside.FoldHeader
+				nextFileHeaderMode := determineFileHeaderMode(nextFileFolded, false, true)
+				nextIsLastFile := fileIdx+1 == commitEndIdx-1
+				// Force IsLast=false so │ continuation shows on the top border row;
+				// the branch point (├/└) appears on the header row below, not here.
+				nextBorderTreePath := m.buildFileTreePath(fileIdx+1, false, nextFileFolded, TreeRowContent)
+				rows = append(rows, displayRow{kind: RowKindHeaderTopBorder, fileIndex: fileIdx + 1, isHeaderTopBorder: true, foldLevel: foldLevel, status: status, headerBoxWidth: headerBoxWidth, treePrefixWidth: treeWidth(0, true) + 1, headerMode: nextFileHeaderMode, treePath: nextBorderTreePath, isLastFileInCommit: nextIsLastFile})
+			}
 		}
 	}
 
