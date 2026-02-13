@@ -426,7 +426,7 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 	assert.True(t, rows[1].isBlank, "second row should be terminator blank")
 	assert.True(t, rows[1].treeTerminator, "second row should be a tree terminator")
 	require.Greater(t, len(rows[1].treePath.Ancestors), 0, "terminator should have ancestors")
-	assert.False(t, rows[1].treePath.Ancestors[0].IsLast, "terminator ancestor IsLast=false so ┴ renders")
+	assert.False(t, rows[1].treePath.Ancestors[0].IsLast, "terminator ancestor IsLast=false so ╵ renders")
 }
 
 // Test: First file unfolded has header as first row (top border is in padding area in diff view)
@@ -1708,7 +1708,7 @@ func TestCommitBorder_TreeLayoutConnectsCommitsDirectly(t *testing.T) {
 	require.NotEqual(t, 0, secondCommitHeaderIdx, "should find second commit header")
 
 	// Verify tree layout - no stray blank separator rows between commits
-	// Tree terminator blanks (┴) are expected; other blanks are not
+	// Tree terminator blanks (╵) are expected; other blanks are not
 	var strayBlanks bool
 	for i := 0; i < secondCommitHeaderIdx; i++ {
 		row := rows[i]

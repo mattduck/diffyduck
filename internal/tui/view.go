@@ -664,7 +664,7 @@ type displayRow struct {
 
 	headerMode      HeaderMode // how to render the header (single/two/three line)
 	isFirstLine     bool       // first line pair in a file (uses ┬ separator)
-	isLastLine      bool       // last line pair in a file (uses ┴ separator)
+	isLastLine      bool       // last line pair in a file (uses ╵ separator)
 	header          string
 	foldLevel       sidebyside.FoldLevel // fold level for headers (used for icon and styling)
 	status          FileStatus           // file status (added, deleted, renamed, modified) for headers
@@ -709,7 +709,7 @@ type displayRow struct {
 	treePath TreePath // full path from root to this node (for tree prefix rendering)
 	// Legacy tree fields - kept during migration, will be removed in Phase 4
 	isLastFileInCommit bool                 // true if this file is the last file in its commit (for tree └─ vs ├─)
-	treeTerminator     bool                 // true if this blank row should render ┴ instead of │ (end of tree)
+	treeTerminator     bool                 // true if this blank row should render ╵ instead of │ (end of tree)
 	isFileFolded       bool                 // true if the parent file is folded (hide commit-level tree line)
 	commitInfoLine     string               // text content for info body lines
 	dateParts          sidebyside.DateParts // structured date parts for styled rendering
@@ -1238,7 +1238,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	isLastFile := fileIdx == commitEndIdx-1
 
 	// Content rows of the last file always show │ continuation because the
-	// ┴ terminator row (added after content) provides the visual end-of-tree.
+	// ╵ terminator row (added after content) provides the visual end-of-tree.
 	contentIsLast := false
 
 	// Per-file header box width for unfolded headers (tighter border around own content)
@@ -1246,7 +1246,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	ownBoxWidth := fileHeaderBoxWidth(header, added, removed)
 
 	// The last file's header always uses ├ (not └) because there is always something
-	// below it: either content rows or a ┴ terminator row.
+	// below it: either content rows or a ╵ terminator row.
 	headerIsLast := false
 
 	if isFolded {
@@ -1269,8 +1269,8 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				treePath:           marginTreePath,
 			})
 		} else if isLastFile {
-			// Last file with no preview content: add ┴ terminator after the bare header.
-			// Force IsLast=false so the ancestor renders ┴ (not blank space).
+			// Last file with no preview content: add ╵ terminator after the bare header.
+			// Force IsLast=false so the ancestor renders ╵ (not blank space).
 			terminatorPath := m.buildFileTreePath(fileIdx, false, true, TreeRowContent)
 			rows = append(rows, displayRow{
 				kind:               RowKindBlank,

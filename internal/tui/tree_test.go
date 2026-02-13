@@ -269,7 +269,7 @@ func TestTree_LastFileHeader_WithHunkContent_UsesTBranch(t *testing.T) {
 		"last file with hunk content should use ├ (IsLast=false)")
 }
 
-// Test: Last file when folded with no preview uses ├ in log mode (┴ terminator follows)
+// Test: Last file when folded with no preview uses ├ in log mode (╵ terminator follows)
 func TestTree_LastFileHeader_FoldedNoPreview_UsesTBranch(t *testing.T) {
 	m := makeLogModeModel([]sidebyside.FilePair{
 		{
@@ -292,9 +292,9 @@ func TestTree_LastFileHeader_FoldedNoPreview_UsesTBranch(t *testing.T) {
 	require.NotNil(t, header, "should find last file header")
 	require.NotNil(t, header.treePath.Current, "header should have Current tree level")
 	// When a terminator row follows the bare header, IsLast is false so we get ├ (not └).
-	// The ┴ terminator row below provides the visual end-of-tree.
+	// The ╵ terminator row below provides the visual end-of-tree.
 	assert.False(t, header.treePath.Current.IsLast,
-		"last file folded with no preview should use ├ (IsLast=false) because ┴ terminator follows")
+		"last file folded with no preview should use ├ (IsLast=false) because ╵ terminator follows")
 }
 
 // Test: Last file with expanded content uses ├ in log mode
@@ -347,7 +347,7 @@ func TestTree_NonLastFileHeader_AlwaysUsesTBranch(t *testing.T) {
 	t.Fatal("did not find first file header")
 }
 
-// Test: In diff mode (no commits), last file uses ├ since ┴ terminator follows
+// Test: In diff mode (no commits), last file uses ├ since ╵ terminator follows
 func TestTree_LastFileHeader_DiffMode_UsesTBranch(t *testing.T) {
 	m := Model{
 		focused: true,
@@ -370,7 +370,7 @@ func TestTree_LastFileHeader_DiffMode_UsesTBranch(t *testing.T) {
 	require.NotNil(t, header, "should find last file header")
 	require.NotNil(t, header.treePath.Current, "header should have Current tree level")
 	assert.False(t, header.treePath.Current.IsLast,
-		"last file should use ├ (IsLast=false) since ┴ terminator follows")
+		"last file should use ├ (IsLast=false) since ╵ terminator follows")
 }
 
 // Test: Content rows of last file in log mode show │ continuation
@@ -428,7 +428,7 @@ func TestTree_LastFileContentRows_DiffMode_ShowContinuation(t *testing.T) {
 	t.Fatal("did not find content row")
 }
 
-// Test: In diff mode with multiple files, only last file gets ┴ terminator
+// Test: In diff mode with multiple files, only last file gets ╵ terminator
 func TestTree_DiffMode_MultiFile_TerminatorOnlyLast(t *testing.T) {
 	m := Model{
 		focused: true,
@@ -475,7 +475,7 @@ func TestTree_DiffMode_MultiFile_TerminatorOnlyLast(t *testing.T) {
 	require.Len(t, terminators, 1, "only one terminator row expected")
 	assert.Equal(t, 1, terminators[0].fileIndex, "terminator should belong to the last file")
 	assert.False(t, terminators[0].treePath.Ancestors[0].IsLast,
-		"terminator treePath should have IsLast=false so ┴ renders")
+		"terminator treePath should have IsLast=false so ╵ renders")
 }
 
 func TestRenderEmptyTreeRow(t *testing.T) {
@@ -534,12 +534,12 @@ func TestRenderEmptyTreeRow(t *testing.T) {
 		assert.NotContains(t, got, "│", "folded ancestor should not show continuation")
 	})
 
-	t.Run("terminator renders ┴ instead of │", func(t *testing.T) {
+	t.Run("terminator renders ╵ instead of │", func(t *testing.T) {
 		path := TreePath{
 			Ancestors: []TreeLevel{{IsLast: false, Style: plainStyle}},
 		}
 		got := renderEmptyTreeRow(path, false, true, true)
-		assert.Contains(t, got, "┴", "terminator should render ┴")
+		assert.Contains(t, got, "╵", "terminator should render ╵")
 		assert.NotContains(t, got, "│", "terminator should not render │")
 	})
 
@@ -549,7 +549,7 @@ func TestRenderEmptyTreeRow(t *testing.T) {
 		}
 		got := renderEmptyTreeRow(path, true, true, true)
 		assert.Contains(t, got, "▌", "cursor should show arrow")
-		assert.Contains(t, got, "┴", "terminator with cursor should render ┴")
+		assert.Contains(t, got, "╵", "terminator with cursor should render ╵")
 		assert.NotContains(t, got, "│", "terminator should not render │")
 	})
 

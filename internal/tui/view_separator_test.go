@@ -111,9 +111,9 @@ func TestView_TreeConnectsFilesDirectly(t *testing.T) {
 	require.NotEqual(t, -1, firstHeaderIdx, "should find first file header")
 	require.NotEqual(t, -1, secondHeaderIdx, "should find second file header")
 
-	// Both files should have ├ branch (never └, since ┴ terminator follows last file)
+	// Both files should have ├ branch (never └, since ╵ terminator follows last file)
 	assert.Contains(t, lines[firstHeaderIdx], "├", "first file should have non-last tree branch")
-	assert.Contains(t, lines[secondHeaderIdx], "├", "second file should have ├ branch (┴ terminator follows)")
+	assert.Contains(t, lines[secondHeaderIdx], "├", "second file should have ├ branch (╵ terminator follows)")
 
 	// There should be no blank lines between last content of first file and second file header
 	// Check that lines between files contain tree continuation (│) or are content/borders
@@ -169,8 +169,8 @@ func TestView_FirstFileHasTreeBranch(t *testing.T) {
 	}
 	require.NotEqual(t, -1, headerIdx, "should find file header with tree branch")
 
-	// Single file should have ├ branch (┴ terminator follows)
-	assert.Contains(t, lines[headerIdx], "├", "single file should have ├ branch (┴ terminator follows)")
+	// Single file should have ├ branch (╵ terminator follows)
+	assert.Contains(t, lines[headerIdx], "├", "single file should have ├ branch (╵ terminator follows)")
 	assert.Contains(t, lines[headerIdx], "━━━", "tree branch should have heavy horizontal line")
 }
 
