@@ -142,4 +142,7 @@ type Git interface {
 
 	// WorktreeBranches returns branch names that have associated worktrees.
 	WorktreeBranches() ([]string, error)
+
+	// Tags returns all tag names.
+	Tags() ([]string, error)
 }

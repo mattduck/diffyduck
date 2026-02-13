@@ -730,6 +730,8 @@ func printUsage(cmd string) {
 		fmt.Print(usageConfig)
 	case "comment":
 		fmt.Print(usageComment)
+	case "completion":
+		fmt.Print(usageCompletion)
 	default:
 		fmt.Print(usageGeneral)
 	}
@@ -751,6 +753,7 @@ Commands:
   status, s  Show rich working tree status
   comment, c List and edit comments
   config     Manage configuration
+  completion Print shell completion script
 
 Global flags:
   -h, --help       Show help
@@ -950,6 +953,17 @@ Examples:
 `
 
 func run() error {
+	// Intercept completion subcommands before normal parsing.
+	// __complete receives partial/invalid input that would fail parseArgs.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "completion":
+			return runCompletion(os.Args[2:])
+		case "__complete":
+			return runComplete(os.Args[2:])
+		}
+	}
+
 	args, err := parseArgs(os.Args[1:])
 	if err != nil {
 		return fmt.Errorf("%w\nRun 'dfd --help' for usage.", err)

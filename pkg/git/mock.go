@@ -30,6 +30,7 @@ type MockGit struct {
 	AheadBehinds      map[string][2]int // key: "a\x00b", value: [ahead, behind]
 	DefaultBranchVal  string            // return value for DefaultBranch
 	WorktreeBranchVal []string          // return value for WorktreeBranches
+	TagNames          []string          // return value for Tags
 }
 
 // Show returns the preconfigured output or error.
@@ -231,4 +232,9 @@ func (m *MockGit) DefaultBranch() (string, error) {
 // WorktreeBranches returns the preconfigured worktree branch names.
 func (m *MockGit) WorktreeBranches() ([]string, error) {
 	return m.WorktreeBranchVal, nil
+}
+
+// Tags returns the preconfigured tag names.
+func (m *MockGit) Tags() ([]string, error) {
+	return m.TagNames, nil
 }

@@ -1321,6 +1321,26 @@ func (g *RealGit) WorktreeBranches() ([]string, error) {
 	return branches, nil
 }
 
+// Tags returns all tag names.
+func (g *RealGit) Tags() ([]string, error) {
+	cmd := g.command("tag", "--list")
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git tag",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+	output := strings.TrimSpace(string(out))
+	if output == "" {
+		return nil, nil
+	}
+	return strings.Split(output, "\n"), nil
+}
+
 // GitError represents an error from a git command.
 type GitError struct {
 	Command string
