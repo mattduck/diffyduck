@@ -1006,12 +1006,12 @@ func TestCommitFoldCycleWithMixedFiles(t *testing.T) {
 	m.height = 40
 	m.calculateTotalLines()
 
-	// Commit fold level is CommitFileHeaders (even though file is at FoldHunks)
+	// Commit fold level is CommitFileHeaders (even though file is at FoldHunks) — inconsistent
 	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
 
-	// Cycling advances to CommitFileStructure
+	// Cycling detects inconsistency → folds up to CommitFolded
 	m.handleCommitFoldCycle()
-	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
 }
 
 func TestCommitBodyRows_WhenNotFolded(t *testing.T) {

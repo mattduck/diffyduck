@@ -3124,12 +3124,12 @@ func TestShiftTab_FileExpanded_UsesCommitFoldLevel(t *testing.T) {
 	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
 	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(1))
 
-	// Shift+Tab: Both at same level → advance to CommitFileStructure
+	// Shift+Tab: Files inconsistent with commit level → fold up to CommitFolded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = newM.(Model)
 
-	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(0))
-	assert.Equal(t, sidebyside.FoldStructure, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHeader, m.fileFoldLevel(0))
 }
 
 func TestShiftTab_SingleCommit_CyclesCorrectly(t *testing.T) {

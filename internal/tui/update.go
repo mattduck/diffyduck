@@ -1152,22 +1152,23 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 		endCommit = m.w().narrow.CommitIdx + 1
 	}
 
-	// Check the fold level of commits in scope
-	firstLevel := m.commitFoldLevel(startCommit)
-	allSame := true
+	// Check the effective level of commits in scope
+	firstEffective, firstConsistent := m.effectiveCommitLevel(startCommit)
+	allConsistent := firstConsistent
 	for i := startCommit + 1; i < endCommit; i++ {
-		if m.commitFoldLevel(i) != firstLevel {
-			allSame = false
+		effective, consistent := m.effectiveCommitLevel(i)
+		if !consistent || effective != firstEffective {
+			allConsistent = false
 			break
 		}
 	}
 
 	var newLevel sidebyside.CommitFoldLevel
-	if allSame {
-		// All same — advance to next level in the cycle
-		newLevel = firstLevel.NextLevel()
+	if allConsistent {
+		// All same and consistent — advance to next level in the cycle
+		newLevel = firstEffective.NextLevel()
 	} else {
-		// Mixed levels — reset all to folded
+		// Mixed or inconsistent — reset all to folded
 		newLevel = sidebyside.CommitFolded
 	}
 
@@ -1191,6 +1192,52 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+// effectiveCommitLevel determines which CommitFoldLevel best matches the actual
+// state of a commit's files and info. If all files are at the same fold level and
+// the info expanded state matches a known level, returns (level, true).
+// If files are mixed or the combo doesn't match any level, returns (CommitFolded, false).
+func (m Model) effectiveCommitLevel(commitIdx int) (sidebyside.CommitFoldLevel, bool) {
+	storedLevel := m.commitFoldLevel(commitIdx)
+
+	// CommitFolded is always consistent (files are hidden)
+	if storedLevel == sidebyside.CommitFolded {
+		return storedLevel, true
+	}
+
+	// Check all files are at the same fold level
+	startIdx := m.commitFileStarts[commitIdx]
+	endIdx := len(m.files)
+	if commitIdx+1 < len(m.commitFileStarts) {
+		endIdx = m.commitFileStarts[commitIdx+1]
+	}
+	if startIdx >= endIdx {
+		return storedLevel, true
+	}
+
+	firstFileFold := m.fileFoldLevel(startIdx)
+	for i := startIdx + 1; i < endIdx; i++ {
+		if m.fileFoldLevel(i) != firstFileFold {
+			return sidebyside.CommitFolded, false // Mixed file levels
+		}
+	}
+
+	// All files at same level. Find which CommitFoldLevel matches both
+	// the file fold level and the info expanded state.
+	infoExpanded := m.isCommitInfoExpanded(commitIdx)
+	for _, level := range sidebyside.CommitCycle {
+		if level == sidebyside.CommitFolded {
+			continue // Skip — commit is visible, not folded
+		}
+		if sidebyside.CommitFileFold[level] == firstFileFold &&
+			sidebyside.CommitInfoExpandedAt[level] == infoExpanded {
+			return level, true
+		}
+	}
+
+	// Files are consistent but info+files combo doesn't match any level
+	return sidebyside.CommitFolded, false
 }
 
 // setAllCommitsToLevel sets all commits and their files to the specified commit fold level.
@@ -1872,11 +1919,20 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	}
 
 	commit := &m.commits[commitIdx]
-	currentLevel := m.commitFoldLevel(commitIdx)
-	newLevel := currentLevel.NextLevel()
+
+	// Determine the effective level from actual file + info state.
+	// If files have been individually changed and don't match any known
+	// commit level, fold up. Otherwise advance from the effective level.
+	effective, consistent := m.effectiveCommitLevel(commitIdx)
+	var newLevel sidebyside.CommitFoldLevel
+	if !consistent {
+		newLevel = sidebyside.CommitFolded
+	} else {
+		newLevel = effective.NextLevel()
+	}
 
 	// Load diff content on demand when expanding from folded
-	if currentLevel == sidebyside.CommitFolded && !commit.FilesLoaded && m.git != nil {
+	if effective == sidebyside.CommitFolded && !commit.FilesLoaded && m.git != nil {
 		m.loadCommitDiff(commitIdx)
 	}
 

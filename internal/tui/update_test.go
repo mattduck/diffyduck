@@ -829,19 +829,18 @@ func TestUpdate_FoldToggleAll_DifferentLevels(t *testing.T) {
 	m.width = 80
 	m.height = 20
 
-	// Files at different levels, but commit is at CommitFileHeaders
+	// Files at different levels, but commit is at CommitFileHeaders — inconsistent
 	assert.Equal(t, sidebyside.FoldStructure, m.fileFoldLevel(0))
 	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(1))
 	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
 
-	// Press Shift+Tab - advances commit level (CommitFileHeaders → CommitFileStructure)
-	// Individual file overrides are reset to the commit's target fold level
+	// Press Shift+Tab - inconsistent files → fold up to CommitFolded
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldStructure, model.fileFoldLevel(0))
-	assert.Equal(t, sidebyside.FoldStructure, model.fileFoldLevel(1))
-	assert.Equal(t, sidebyside.CommitFileStructure, model.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHeader, model.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHeader, model.fileFoldLevel(1))
+	assert.Equal(t, sidebyside.CommitFolded, model.commitFoldLevel(0))
 }
 
 func TestUpdate_FileContentLoadedMsg(t *testing.T) {
@@ -5163,4 +5162,95 @@ func TestSnapshotHistoryReadyMsg_ErrorResetsToggle(t *testing.T) {
 
 	assert.False(t, result.showSnapshots, "should reset toggle on error")
 	assert.Equal(t, "Failed to load snapshot history", result.statusMessage)
+}
+
+func TestEffectiveCommitLevel(t *testing.T) {
+	makePairs := func(n int) []sidebyside.LinePair {
+		pairs := make([]sidebyside.LinePair, n)
+		for i := range pairs {
+			pairs[i] = sidebyside.LinePair{
+				Old: sidebyside.Line{Num: i + 1, Content: "x"},
+				New: sidebyside.Line{Num: i + 1, Content: "x"},
+			}
+		}
+		return pairs
+	}
+
+	setup := func() Model {
+		m := New([]sidebyside.FilePair{
+			{OldPath: "a/one.go", NewPath: "b/one.go", Pairs: makePairs(3)},
+			{OldPath: "a/two.go", NewPath: "b/two.go", Pairs: makePairs(3)},
+		})
+		m.width = 80
+		m.height = 40
+		return m
+	}
+
+	t.Run("files manually set to match another level advances from that level", func(t *testing.T) {
+		m := setup()
+		// Start at CommitFileHeaders (set by New)
+		assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
+
+		// Manually expand both files to FoldStructure (matches CommitFileStructure)
+		m.setFileFoldLevel(0, sidebyside.FoldStructure)
+		m.setFileFoldLevel(1, sidebyside.FoldStructure)
+
+		effective, consistent := m.effectiveCommitLevel(0)
+		assert.True(t, consistent)
+		assert.Equal(t, sidebyside.CommitFileStructure, effective,
+			"should detect files match CommitFileStructure")
+	})
+
+	t.Run("mixed file levels are inconsistent", func(t *testing.T) {
+		m := setup()
+		m.setFileFoldLevel(0, sidebyside.FoldStructure)
+		m.setFileFoldLevel(1, sidebyside.FoldHunks)
+
+		_, consistent := m.effectiveCommitLevel(0)
+		assert.False(t, consistent)
+	})
+
+	t.Run("info expanded state is checked", func(t *testing.T) {
+		m := setup()
+		// Set files to FoldHunks (matches CommitFileHunks)
+		m.setFileFoldLevel(0, sidebyside.FoldHunks)
+		m.setFileFoldLevel(1, sidebyside.FoldHunks)
+
+		// Without info expanded — doesn't match CommitFileHunks (which expects info expanded)
+		effective, consistent := m.effectiveCommitLevel(0)
+		assert.False(t, consistent,
+			"FoldHunks + info collapsed doesn't match any known level")
+		assert.Equal(t, sidebyside.CommitFolded, effective)
+
+		// Expand info — now matches CommitFileHunks
+		m.setCommitInfoExpanded(0, true)
+		effective, consistent = m.effectiveCommitLevel(0)
+		assert.True(t, consistent)
+		assert.Equal(t, sidebyside.CommitFileHunks, effective)
+	})
+
+	t.Run("commit folded is always consistent", func(t *testing.T) {
+		m := setup()
+		m.setCommitFoldLevel(0, sidebyside.CommitFolded)
+
+		effective, consistent := m.effectiveCommitLevel(0)
+		assert.True(t, consistent)
+		assert.Equal(t, sidebyside.CommitFolded, effective)
+	})
+
+	t.Run("shift-tab advances from manually matched level", func(t *testing.T) {
+		m := setup()
+		// Manually set files to FoldStructure (matches CommitFileStructure)
+		m.setFileFoldLevel(0, sidebyside.FoldStructure)
+		m.setFileFoldLevel(1, sidebyside.FoldStructure)
+
+		// Shift-Tab should advance to CommitFileHunks (not fold up)
+		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+		model := newM.(Model)
+
+		assert.Equal(t, sidebyside.CommitFileHunks, model.commitFoldLevel(0),
+			"should advance from detected CommitFileStructure to CommitFileHunks")
+		assert.Equal(t, sidebyside.FoldHunks, model.fileFoldLevel(0))
+		assert.Equal(t, sidebyside.FoldHunks, model.fileFoldLevel(1))
+	})
 }
