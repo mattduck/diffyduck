@@ -87,7 +87,7 @@ func main() {
 
 // parsedArgs contains parsed command line arguments.
 type parsedArgs struct {
-	cmd      string   // "diff", "show", "log", "clean", "branches", "config"
+	cmd      string   // "diff", "show", "log", "clean", "branch", "config"
 	refs     []string // 0-2 refs for diff, 0-1 for show/log (before --)
 	paths    []string // file paths (after --)
 	excludes []string // --exclude/-e glob patterns
@@ -106,7 +106,7 @@ type parsedArgs struct {
 	untrackedFiles string // --untracked-files/-u: "all" (default), "normal", "no"
 	showBranches   bool   // --branches/-b: show branch tree
 
-	// branches-specific
+	// branch-specific
 	verbose bool   // -v/--verbose
 	since   string // --since duration (e.g. "30d", "2w", "3m", "all")
 
@@ -149,7 +149,7 @@ func expandAlias(s string) string {
 	case "l":
 		return "log"
 	case "b":
-		return "branches"
+		return "branch"
 	case "s":
 		return "status"
 	case "c":
@@ -168,7 +168,7 @@ func parseArgs(args []string) (parsedArgs, error) {
 	remaining := args
 	if len(remaining) > 0 {
 		switch remaining[0] {
-		case "diff", "d", "show", "log", "l", "clean", "branches", "b", "config", "status", "s", "comment", "c":
+		case "diff", "d", "show", "log", "l", "clean", "branch", "b", "config", "status", "s", "comment", "c":
 			result.cmd = expandAlias(remaining[0])
 			result.helpCmd = result.cmd // target for --help flag
 			remaining = remaining[1:]
@@ -264,7 +264,7 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		p.cpuProfile = args[i+1]
 		return 1, nil
 
-	// branches flags
+	// branch flags
 	case arg == "-v" || arg == "--verbose":
 		p.verbose = true
 	case strings.HasPrefix(arg, "--since="):
@@ -463,7 +463,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("-n is only valid for log command")
 		}
 		if p.verbose {
-			return fmt.Errorf("-v is only valid for branches command")
+			return fmt.Errorf("-v is only valid for branch command")
 		}
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
@@ -485,7 +485,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("-n is only valid for log command")
 		}
 		if p.verbose {
-			return fmt.Errorf("-v is only valid for branches command")
+			return fmt.Errorf("-v is only valid for branch command")
 		}
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
@@ -504,7 +504,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("--snapshots/--no-snapshots are only valid for diff command")
 		}
 		if p.verbose {
-			return fmt.Errorf("-v is only valid for branches command")
+			return fmt.Errorf("-v is only valid for branch command")
 		}
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
@@ -519,12 +519,12 @@ func (p *parsedArgs) validate() error {
 		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
 			return fmt.Errorf("%s does not accept flags", p.cmd)
 		}
-	case "branches":
+	case "branch":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
-			return fmt.Errorf("branches does not accept arguments")
+			return fmt.Errorf("branch does not accept arguments")
 		}
 		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
-			return fmt.Errorf("branches only accepts -v/--verbose and --since")
+			return fmt.Errorf("branch only accepts -v/--verbose and --since")
 		}
 	case "status":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
@@ -569,9 +569,9 @@ func (p *parsedArgs) validate() error {
 		return fmt.Errorf("--init, --force, --print, --path, --edit are only valid for config command")
 	}
 
-	// --since is only valid for branches and comment list
-	if p.cmd != "branches" && p.cmd != "comment" && p.since != "" {
-		return fmt.Errorf("--since is only valid for branches and comment commands")
+	// --since is only valid for branch and comment list
+	if p.cmd != "branch" && p.cmd != "comment" && p.since != "" {
+		return fmt.Errorf("--since is only valid for branch and comment commands")
 	}
 
 	// --status and --oneline are only valid for comment
@@ -722,8 +722,8 @@ func printUsage(cmd string) {
 		fmt.Print(usageLog)
 	case "clean":
 		fmt.Print(usageClean)
-	case "branches":
-		fmt.Print(usageBranches)
+	case "branch":
+		fmt.Print(usageBranch)
 	case "status":
 		fmt.Print(usageStatus)
 	case "config":
@@ -748,8 +748,7 @@ Commands:
   show       Show a commit
   log, l     Browse commit history
   clean      Delete persisted snapshots
-  branches, b
-             Show branch dependency tree
+  branch, b  Show branch dependency tree
   status, s  Show rich working tree status
   comment, c List and edit comments
   config     Manage configuration
@@ -845,10 +844,10 @@ Removes all persisted snapshot refs (refs/dfd/snapshots/*) from the
 current repository.
 `
 
-const usageBranches = `dfd branches - show branch dependency tree
+const usageBranch = `dfd branch - show branch dependency tree
 
 Usage:
-  dfd branches [flags]
+  dfd branch [flags]
 
 Displays local branches as a tree based on their upstream relationships.
 By default, only branches active in the last 30 days are shown. The current
@@ -860,10 +859,10 @@ Flags:
                          Accepts: 7d (days), 2w (weeks), 3m (months), 1y (years), all
 
 Examples:
-  dfd branches                Show branch tree (last 30 days)
-  dfd branches --since=1y     Show branches from the last year
-  dfd branches --since=all    Show all branches
-  dfd branches -v             Show branch tree with commit subjects
+  dfd branch                Show branch tree (last 30 days)
+  dfd branch --since=1y     Show branches from the last year
+  dfd branch --since=all    Show all branches
+  dfd branch -v             Show branch tree with commit subjects
 `
 
 const usageStatus = `dfd status - show rich working tree status
@@ -1007,8 +1006,8 @@ func run() error {
 		return runClean()
 	}
 
-	// Handle branches command - show branch dependency tree
-	if args.cmd == "branches" {
+	// Handle branch command - show branch dependency tree
+	if args.cmd == "branch" {
 		return runBranches(args.verbose, args.since)
 	}
 
