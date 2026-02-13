@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -47,11 +46,8 @@ var (
 	// Visual selection style (bg=7 silver, fg=0 black) - overrides all other styling
 	visualSelectionStyle = lipgloss.NewStyle().Background(lipgloss.Color("7")).Foreground(lipgloss.Color("0"))
 
-	// Cursor arrow style (fg=15 bright white, no background)
+	// Cursor block style (fg=15 bright white, no background) - left half block ▌
 	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-
-	// Unfocused cursor arrow style (fg=8 gray) - outline arrow when terminal loses focus
-	unfocusedCursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 	// Unfocused status bar style (inverted from normal: fg=8 gray on default bg)
 	unfocusedStatusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -633,7 +629,6 @@ const (
 	RowKindCommitHeaderBottomBorder // bottom border line after commit header
 	RowKindCommitBody               // commit body row (full sha, author, date, message) - legacy, kept for separators
 	RowKindCommitInfoHeader         // commit info header with yellow shaders (foldable child node)
-	RowKindCommitInfoTopBorder      // top border line before commit info header
 	RowKindCommitInfoBottomBorder   // bottom border line after commit info header
 	RowKindCommitInfoBody           // commit info body row (Author, Date, message content)
 	RowKindComment                  // inline comment row (belongs to line above)
@@ -708,7 +703,6 @@ type displayRow struct {
 	commitBodyIsBlank bool   // true if this is a blank line in the body
 	// Commit info fields (foldable child node under commit)
 	isCommitInfoHeader       bool // true if this is a commit info header row
-	isCommitInfoTopBorder    bool // true if this is a commit info top border row
 	isCommitInfoBottomBorder bool // true if this is a commit info bottom border row
 	isCommitInfoBody         bool // true if this is a commit info body row
 	// Tree hierarchy fields (generic representation)
@@ -862,6 +856,7 @@ func (m Model) buildRows() []displayRow {
 	maxCommitAddWidth := m.cachedCommitAddWidth
 	maxCommitRemWidth := m.cachedCommitRemWidth
 	maxCommitTimeWidth := m.cachedCommitTimeWidth
+	maxCommitAbsTimeWidth := m.cachedCommitAbsTimeWidth
 	maxCommitSubjectWidth := m.cachedCommitSubjWidth
 	if maxCommitFilesWidth == 0 && len(m.commits) > 0 {
 		for commitIdx, commit := range m.commits {
@@ -909,9 +904,16 @@ func (m Model) buildRows() []displayRow {
 			if rw > maxCommitRemWidth {
 				maxCommitRemWidth = rw
 			}
-			tw := len(formatShortRelativeDate(commit.Info.Date))
-			if tw > maxCommitTimeWidth {
-				maxCommitTimeWidth = tw
+			if commit.IsSnapshot {
+				tw := len(formatAbsoluteTime(commit.Info.Date))
+				if tw > maxCommitAbsTimeWidth {
+					maxCommitAbsTimeWidth = tw
+				}
+			} else {
+				tw := len(formatShortRelativeDate(commit.Info.Date))
+				if tw > maxCommitTimeWidth {
+					maxCommitTimeWidth = tw
+				}
 			}
 			sw := displayWidth(commit.Info.Subject) + commit.Info.RefsDisplayWidth()
 			if sw > 120 {
@@ -963,6 +965,9 @@ func (m Model) buildRows() []displayRow {
 			addedWidth := len(fmt.Sprintf("+%d", totalAdded))
 			removedWidth := len(fmt.Sprintf("-%d", totalRemoved))
 			timeWidth := len(formatShortRelativeDate(commit.Info.Date))
+			if commit.IsSnapshot {
+				timeWidth = len(formatAbsoluteTime(commit.Info.Date))
+			}
 			authorWidth := displayWidth(commit.Info.Author)
 			if authorWidth > 15 {
 				authorWidth = 15
@@ -972,8 +977,14 @@ func (m Model) buildRows() []displayRow {
 				subjectPlusRefsWidth = 120
 			}
 			// Total: prefix(1) + icon(1) + space(1) + sha(7) + space(1) + added + space(1)
-			//        + removed + space(1) + files + space(1) + time + space(1) + author + space(1) + subject+refs
-			commitHeaderWidth := 1 + 1 + 1 + 7 + 1 + filesWidth + 1 + addedWidth + 1 + removedWidth + 1 + timeWidth + 1 + authorWidth + 1 + subjectPlusRefsWidth
+			//        + removed + space(1) + files + space(1) + time + space(1) + [author + space(1)] + subject+refs
+			// Snapshots skip the author column entirely
+			var commitHeaderWidth int
+			if commit.IsSnapshot {
+				commitHeaderWidth = 1 + 1 + 1 + 7 + 1 + filesWidth + 1 + addedWidth + 1 + removedWidth + 1 + timeWidth + 1 + subjectPlusRefsWidth
+			} else {
+				commitHeaderWidth = 1 + 1 + 1 + 7 + 1 + filesWidth + 1 + addedWidth + 1 + removedWidth + 1 + timeWidth + 1 + authorWidth + 1 + subjectPlusRefsWidth
+			}
 
 			// When unfolded, keep shared column widths for alignment but use
 			// per-commit subject width so the border hugs actual content
@@ -985,7 +996,12 @@ func (m Model) buildRows() []displayRow {
 					renderSubjWidth = maxCommitSubjectWidth
 				}
 				// Recompute with shared fixed columns + per-commit subject/author
-				useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitTimeWidth + 1 + authorWidth + 1 + renderSubjWidth
+				// Snapshots use absolute time width and skip the author column
+				if commit.IsSnapshot {
+					useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitAbsTimeWidth + 1 + renderSubjWidth
+				} else {
+					useHeaderBoxWidth = 1 + 1 + 1 + 7 + 1 + maxCommitFilesWidth + 1 + maxCommitAddWidth + 1 + maxCommitRemWidth + 1 + maxCommitTimeWidth + 1 + authorWidth + 1 + renderSubjWidth
+				}
 			}
 
 			rows = append(rows, displayRow{
@@ -1009,9 +1025,7 @@ func (m Model) buildRows() []displayRow {
 				continue
 			}
 
-			// Unfolded commits produce 2 margin lines before first child:
-			// - Line 1: available for commit's bottom border
-			// - Line 2: available for first child's top border (commit-info)
+			// Bottom border row for commit header (margin before first child)
 			rows = append(rows, displayRow{
 				kind:                       RowKindCommitHeaderBottomBorder,
 				fileIndex:                  -1,
@@ -1019,40 +1033,6 @@ func (m Model) buildRows() []displayRow {
 				commitIndex:                commitIdx,
 				headerMode:                 commitHeaderMode,
 				headerBoxWidth:             useHeaderBoxWidth,
-			})
-
-			// Calculate commit-info header box width for the top border slot
-			treePrefixWidth := treeWidth(0, true) + 1
-			iconPartWidth := treePrefixWidth + 2
-			headerText := commit.Info.FormattedDate(time.Now())
-			infoHeaderBoxWidth := iconPartWidth + displayWidth(headerText) + 2
-
-			// Build tree path for commit-info top border.
-			detailsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // grey for details
-			// The border sits between commit header and details header, always showing
-			// commit trunk continuation (│). Use a level that's never folded/last since
-			// at least the details header always follows below this row.
-			commitTrunkLevel := TreeLevel{
-				IsLast:   false,
-				IsFolded: false,
-				Style:    detailsStyle,
-				Depth:    0,
-			}
-			detailsBorderTreePath := TreePath{
-				Ancestors: []TreeLevel{commitTrunkLevel},
-				Current:   nil,
-			}
-
-			// Top border slot for commit-info - renders as border when expanded, blank when normal
-			rows = append(rows, displayRow{
-				kind:                  RowKindCommitInfoTopBorder,
-				fileIndex:             -1,
-				isCommitInfoTopBorder: true,
-				commitIndex:           commitIdx,
-				commitFoldLevel:       m.commitFoldLevel(commitIdx),
-				headerBoxWidth:        infoHeaderBoxWidth,
-				treePrefixWidth:       treePrefixWidth,
-				treePath:              detailsBorderTreePath,
 			})
 
 			// Add commit info rows (foldable child node under commit)
@@ -1886,7 +1866,15 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 		// Apply visual selection highlighting (overrides all other styles)
 		if selectionStart >= 0 && i >= selectionStart && i <= selectionEnd {
-			rendered = visualSelectionStyle.Render(ansi.Strip(rendered))
+			stripped := ansi.Strip(rendered)
+			rendered = visualSelectionStyle.Render(stripped)
+			// Re-inject cursor block on the cursor row so it stays visible
+			if isCursorRow && m.focused {
+				runes := []rune(stripped)
+				if len(runes) > 0 && runes[0] == '▌' {
+					rendered = cursorArrowStyle.Render("▌") + visualSelectionStyle.Render(string(runes[1:]))
+				}
+			}
 		}
 
 		// Apply focus colour dimming to rows outside the focus area
@@ -1915,8 +1903,6 @@ func (m Model) renderDisplayRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 		return m.renderCommitBodyRow(row, isCursorRow)
 	} else if row.isCommitInfoHeader {
 		return m.renderCommitInfoHeader(row, isCursorRow)
-	} else if row.isCommitInfoTopBorder {
-		return m.renderCommitInfoTopBorder(row, isCursorRow)
 	} else if row.isCommitInfoBottomBorder {
 		return m.renderCommitInfoBottomBorder(row, isCursorRow)
 	} else if row.isCommitInfoBody {
@@ -1926,7 +1912,7 @@ func (m Model) renderDisplayRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	} else if row.isHeaderTopBorder {
 		return m.renderHeaderTopBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
 	} else if row.isHeaderSpacer {
-		return m.renderHeaderBottomBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
+		return m.renderHeaderBottomBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath, row.foldLevel)
 	} else if row.isBlank {
 		return renderEmptyTreeRow(row.treePath, isCursorRow, m.focused, row.treeTerminator)
 	} else if row.isHeader {

@@ -49,9 +49,9 @@ func (m Model) renderTruncationIndicator(message string, isCursorRow bool, trunc
 		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
 
 		if isCursorRow && m.focused {
-			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + truncStyle.Render(msgText) + msgPadding
+			left = cursorArrowStyle.Render("▌") + " " + cursorStyle.Render(padding+dots) + " " + truncStyle.Render(msgText) + msgPadding
 		} else if isCursorRow && !m.focused {
-			left = unfocusedCursorArrowStyle.Render("▷") + " " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
+			left = " " + " " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
 		} else {
 			left = "  " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
 		}
@@ -59,9 +59,9 @@ func (m Model) renderTruncationIndicator(message string, isCursorRow bool, trunc
 		// Blank left side
 		blankContent := strings.Repeat(" ", contentWidth)
 		if isCursorRow && m.focused {
-			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+			left = cursorArrowStyle.Render("▌") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
 		} else if isCursorRow && !m.focused {
-			left = unfocusedCursorArrowStyle.Render("▷") + " " + blankGutter + " " + blankContent
+			left = " " + " " + blankGutter + " " + blankContent
 		} else {
 			left = "  " + blankGutter + " " + blankContent
 		}
@@ -78,9 +78,9 @@ func (m Model) renderTruncationIndicator(message string, isCursorRow bool, trunc
 		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
 
 		if isCursorRow && m.focused {
-			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + truncStyle.Render(msgText) + msgPadding
+			right = cursorArrowStyle.Render("▌") + " " + cursorStyle.Render(padding+dots) + " " + truncStyle.Render(msgText) + msgPadding
 		} else if isCursorRow && !m.focused {
-			right = unfocusedCursorArrowStyle.Render("▷") + " " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
+			right = " " + " " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
 		} else {
 			right = "  " + padding + truncStyle.Render(dots) + " " + truncStyle.Render(msgText) + msgPadding
 		}
@@ -88,9 +88,9 @@ func (m Model) renderTruncationIndicator(message string, isCursorRow bool, trunc
 		// Blank right side
 		blankContent := strings.Repeat(" ", contentWidth)
 		if isCursorRow && m.focused {
-			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+			right = cursorArrowStyle.Render("▌") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
 		} else if isCursorRow && !m.focused {
-			right = unfocusedCursorArrowStyle.Render("▷") + " " + blankGutter + " " + blankContent
+			right = " " + " " + blankGutter + " " + blankContent
 		} else {
 			right = "  " + blankGutter + " " + blankContent
 		}
@@ -136,9 +136,9 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
 
 		if isCursorRow && m.focused {
-			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + binaryStyle.Render(msgText) + msgPadding
+			left = cursorArrowStyle.Render("▌") + " " + cursorStyle.Render(padding+dots) + " " + binaryStyle.Render(msgText) + msgPadding
 		} else if isCursorRow && !m.focused {
-			left = unfocusedCursorArrowStyle.Render("▷") + " " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
+			left = " " + " " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
 		} else {
 			left = "  " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
 		}
@@ -146,9 +146,9 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 		// Blank left side
 		blankContent := strings.Repeat(" ", contentWidth)
 		if isCursorRow && m.focused {
-			left = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+			left = cursorArrowStyle.Render("▌") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
 		} else if isCursorRow && !m.focused {
-			left = unfocusedCursorArrowStyle.Render("▷") + " " + blankGutter + " " + blankContent
+			left = " " + " " + blankGutter + " " + blankContent
 		} else {
 			left = "  " + blankGutter + " " + blankContent
 		}
@@ -165,9 +165,9 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 		msgPadding := strings.Repeat(" ", contentWidth-len(msgText))
 
 		if isCursorRow && m.focused {
-			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(padding+dots) + " " + binaryStyle.Render(msgText) + msgPadding
+			right = cursorArrowStyle.Render("▌") + " " + cursorStyle.Render(padding+dots) + " " + binaryStyle.Render(msgText) + msgPadding
 		} else if isCursorRow && !m.focused {
-			right = unfocusedCursorArrowStyle.Render("▷") + " " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
+			right = " " + " " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
 		} else {
 			right = "  " + padding + binaryStyle.Render(dots) + " " + binaryStyle.Render(msgText) + msgPadding
 		}
@@ -175,9 +175,9 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 		// Blank right side
 		blankContent := strings.Repeat(" ", contentWidth)
 		if isCursorRow && m.focused {
-			right = cursorArrowStyle.Render("▶") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
+			right = cursorArrowStyle.Render("▌") + " " + cursorStyle.Render(blankGutter) + " " + blankContent
 		} else if isCursorRow && !m.focused {
-			right = unfocusedCursorArrowStyle.Render("▷") + " " + blankGutter + " " + blankContent
+			right = " " + " " + blankGutter + " " + blankContent
 		} else {
 			right = "  " + blankGutter + " " + blankContent
 		}

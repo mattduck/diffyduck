@@ -222,10 +222,10 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the content area file header (contains ▶ arrow when cursor is on it)
+	// Find the content area file header (contains ▌ arrow when cursor is on it)
 	var headerLine string
 	for _, line := range lines {
-		if strings.Contains(line, "▶") && strings.Contains(line, "test.go") {
+		if strings.Contains(line, "▌") && strings.Contains(line, "test.go") {
 			headerLine = line
 			break
 		}
@@ -306,20 +306,10 @@ func TestView_HeaderFileNumWidthMatchesLineNumWidth(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the file header line (contains test.go and fold icon)
-	var headerLine string
-	for _, line := range lines {
-		if strings.Contains(line, "test.go") && strings.Contains(line, "●") {
-			headerLine = line
-			break
-		}
-	}
-
-	require.NotEmpty(t, headerLine, "should find file header line")
-
-	// The header should contain the file number "1" followed by spaces to pad to lineNumWidth
-	// Since we have 1 file, the file number is "1" and lineNumWidth is 5, so we get "1    "
-	assert.Contains(t, headerLine, "1", "header should contain file number")
+	// The top bar file line (line index 0) shows the file counter (#1)
+	topBar := lines[0]
+	assert.Contains(t, topBar, "#1", "top bar should contain file number")
+	assert.Contains(t, topBar, "test.go", "top bar should contain file name")
 }
 
 func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
@@ -360,7 +350,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	// Find the line with cursor arrow and ┗ corner (bottom border with cursor, heavy for tree layout)
 	var borderLine string
 	for _, line := range lines {
-		if strings.Contains(line, "▶") && strings.Contains(line, "┗") {
+		if strings.Contains(line, "▌") && strings.Contains(line, "┗") {
 			borderLine = line
 			break
 		}
@@ -369,7 +359,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	require.NotEmpty(t, borderLine, "should find bottom border line with cursor")
 
 	// Bottom border with cursor should have ONE arrow
-	arrowCount := strings.Count(borderLine, "▶")
+	arrowCount := strings.Count(borderLine, "▌")
 	assert.Equal(t, 1, arrowCount, "bottom border with cursor should have one arrow")
 
 	// Bottom border should have horizontal line (heavy ━)
@@ -384,7 +374,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	// Find the line with cursor arrow and content (not borders)
 	var contentLine string
 	for _, line := range lines2 {
-		if strings.Count(line, "▶") == 1 && strings.Contains(line, "content") {
+		if strings.Count(line, "▌") == 1 && strings.Contains(line, "content") {
 			contentLine = line
 			break
 		}
@@ -393,7 +383,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	require.NotEmpty(t, contentLine, "should find content line with cursor")
 
 	// Content line should have one arrow (in the tree gutter, not in line number columns)
-	contentArrowCount := strings.Count(contentLine, "▶")
+	contentArrowCount := strings.Count(contentLine, "▌")
 	assert.Equal(t, 1, contentArrowCount, "content line with cursor should have one arrow in tree gutter")
 
 	// Content line should have a separator (┃ box drawings heavy vertical)
@@ -884,11 +874,11 @@ func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
 
 	// Cursor row should have arrow indicator
 	cursorOutput := m.renderHeaderTopBorder(30, HeaderThreeLine, FileStatusModified, true, treeWidth(0, true), TreePath{})
-	assert.Contains(t, cursorOutput, "▶", "cursor row should have arrow indicator")
+	assert.Contains(t, cursorOutput, "▌", "cursor row should have arrow indicator")
 
 	// Non-cursor row should not have arrow
 	normalOutput := m.renderHeaderTopBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true), TreePath{})
-	assert.NotContains(t, normalOutput, "▶", "non-cursor row should not have arrow")
+	assert.NotContains(t, normalOutput, "▌", "non-cursor row should not have arrow")
 
 	// Cursor row WITH tree path should have both arrow and tree continuation
 	treePath := TreePath{
@@ -896,7 +886,7 @@ func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
 		Current:   nil,
 	}
 	cursorTreeOutput := m.renderHeaderTopBorder(30, HeaderThreeLine, FileStatusModified, true, treeWidth(1, true), treePath)
-	assert.Contains(t, cursorTreeOutput, "▶", "cursor+tree should have arrow")
+	assert.Contains(t, cursorTreeOutput, "▌", "cursor+tree should have arrow")
 	assert.Contains(t, cursorTreeOutput, "│", "cursor+tree should preserve tree continuation")
 	assert.NotContains(t, cursorTreeOutput, "░", "cursor+tree should not have shading")
 }
@@ -923,7 +913,7 @@ func TestRenderHeaderBottomBorder_CorrectCorner(t *testing.T) {
 		keys:   DefaultKeyMap(),
 	}
 
-	output := m.renderHeaderBottomBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true), TreePath{})
+	output := m.renderHeaderBottomBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true), TreePath{}, sidebyside.FoldStructure)
 	// Uses heavy box-drawing: ┗ corner (not ┘)
 	assert.Contains(t, output, "┗", "bottom border should use ┗ corner")
 	assert.Contains(t, output, "━", "bottom border should use heavy horizontal line")
@@ -952,8 +942,8 @@ func TestRenderHeaderBottomBorder_BorderVisibility(t *testing.T) {
 	}
 
 	// Both visible and hidden borders should render (just with different colors)
-	visibleOutput := m.renderHeaderBottomBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{})
-	hiddenOutput := m.renderHeaderBottomBorder(30, HeaderSingleLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{})
+	visibleOutput := m.renderHeaderBottomBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{}, sidebyside.FoldStructure)
+	hiddenOutput := m.renderHeaderBottomBorder(30, HeaderSingleLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{}, sidebyside.FoldStructure)
 
 	// Uses heavy box-drawing characters: ┗ corner and ━ horizontal
 	assert.Contains(t, visibleOutput, "━", "visible border should contain heavy horizontal line")
@@ -1229,7 +1219,7 @@ func TestRenderHeaderBottomBorder_WidthScaling(t *testing.T) {
 	var prevWidth int
 
 	for _, w := range widths {
-		bottomBorder := m.renderHeaderBottomBorder(w, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{})
+		bottomBorder := m.renderHeaderBottomBorder(w, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true)+1, TreePath{}, sidebyside.FoldStructure)
 		borderWidth := displayWidth(bottomBorder)
 
 		// Wider header box should produce wider border
@@ -1576,13 +1566,11 @@ func TestCommitBorder_RowCountStability_FirstFolded(t *testing.T) {
 
 	// With CommitFileHeaders, the commit info node is shown under the commit header.
 	// In tree layout, the difference includes:
+	// - 1 for commit header bottom border
 	// - 1 for commit info header
-	// - 1 for commit info bottom border
-	// - 1 for additional tree structure row
 	t.Logf("Folded: %d rows, Unfolded: %d rows", foldedCount, unfoldedCount)
 
-	// Verify the difference is consistent (actual behavior shows 3 rows added)
-	expectedDiff := 3
+	expectedDiff := 2
 	actualDiff := unfoldedCount - foldedCount
 	assert.Equal(t, expectedDiff, actualDiff, "row count difference should be consistent for commit unfold")
 }
@@ -1775,8 +1763,8 @@ func TestBorderAlignmentWithCursor(t *testing.T) {
 	require.NotZero(t, spacerIdx, "should find header spacer for file 1")
 
 	spacerRow := rows[spacerIdx]
-	noCursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status, false, spacerRow.treePrefixWidth, spacerRow.treePath)
-	cursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status, true, spacerRow.treePrefixWidth, spacerRow.treePath)
+	noCursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status, false, spacerRow.treePrefixWidth, spacerRow.treePath, spacerRow.foldLevel)
+	cursorSpacer := m.renderHeaderBottomBorder(spacerRow.headerBoxWidth, spacerRow.headerMode, spacerRow.status, true, spacerRow.treePrefixWidth, spacerRow.treePath, spacerRow.foldLevel)
 
 	noCursorSpacerLen := utf8.RuneCountInString(stripANSI(noCursorSpacer))
 	cursorSpacerLen := utf8.RuneCountInString(stripANSI(cursorSpacer))
@@ -1788,7 +1776,7 @@ func TestBorderAlignmentWithCursor(t *testing.T) {
 
 	// Bottom border with cursor should start with arrow
 	strippedCursor := stripANSI(cursorSpacer)
-	assert.True(t, strings.HasPrefix(strippedCursor, "▶"),
+	assert.True(t, strings.HasPrefix(strippedCursor, "▌"),
 		"bottom border with cursor should start with arrow, got: %q", strippedCursor[:min(10, len(strippedCursor))])
 
 	// Bottom border should contain ┗ corner (heavy, for tree layout)
@@ -1949,6 +1937,7 @@ func TestTreeLayoutAlignment(t *testing.T) {
 				false,
 				bottomBorderRow.treePrefixWidth,
 				bottomBorderRow.treePath,
+				bottomBorderRow.foldLevel,
 			)
 			bottomStripped := stripANSI(bottomBorder)
 

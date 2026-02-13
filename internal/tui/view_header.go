@@ -142,9 +142,9 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	var prefix string
 	if isCursorRow {
 		if m.focused {
-			prefix = cursorArrowStyle.Render("▶")
+			prefix = cursorArrowStyle.Render("▌")
 		} else {
-			prefix = unfocusedCursorArrowStyle.Render("▷")
+			prefix = " "
 		}
 		// Replace first char of treeLine with arrow
 		if len(treeLine) > 0 {
@@ -161,25 +161,15 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	}
 	// Trailing indicator based on fold level:
 	// - Header: ellipsis right after content (no box padding)
-	// - Structure: box padding + short border + ellipsis
-	// - Hunks: box padding + full-width border to screen edge
+	// - Structure/Hunks: box padding + corner turning down
 	result := treeLine + branchConnector + styledIcon + styledHeader + statsBar
 	switch {
 	case foldLevel == sidebyside.FoldHeader:
 		// No trailing indicator
-	case foldLevel == sidebyside.FoldStructure && m.width > 0:
-		result += boxPadding + fileStatusStyle.Render("┏━━◐")
 	case headerMode != HeaderSingleLine && m.width > 0:
-		// FoldHunks: full-width border to screen edge, last char is ●
+		// Unfolded: corner turning down, border continues on next line
 		result += boxPadding
-		treePrefixWidth := treeWidth(len(treePath.Ancestors), true)
-		headerLineWidth := treePrefixWidth + headerBoxWidth - 2
-		trailingFill := m.width - headerLineWidth - 1 // -1 for ┏
-		if trailingFill > 1 {
-			result += fileStatusStyle.Render("┏" + strings.Repeat("━", trailingFill-1) + "●")
-		} else if trailingFill > 0 {
-			result += fileStatusStyle.Render("┏●")
-		}
+		result += fileStatusStyle.Render("━━━━┓")
 	default:
 		result += boxPadding
 	}

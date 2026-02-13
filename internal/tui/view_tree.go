@@ -56,8 +56,8 @@ const (
 	TreeLeftMargin = 1
 	// TreeLevelWidth is the width of each tree level: "│    " or "     "
 	TreeLevelWidth = 5
-	// TreeBranchWidth is the width of branch characters: "├───" or "└───"
-	TreeBranchWidth = 4
+	// TreeBranchWidth is the width of branch characters: "├━" or "└━"
+	TreeBranchWidth = 2
 	// TreeContentIndent is extra indent for content rows to align with file heading text
 	TreeContentIndent = 2
 )
@@ -110,9 +110,9 @@ func renderTreePrefixTightWithCursor(path TreePath, isCursorRow bool, focused bo
 	if isCursorRow {
 		var arrow string
 		if focused {
-			arrow = cursorArrowStyle.Render("▶")
+			arrow = cursorArrowStyle.Render("▌")
 		} else {
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+			arrow = " "
 		}
 		return arrow + continuation
 	}
@@ -132,9 +132,9 @@ func renderEmptyTreeRow(treePath TreePath, isCursorRow bool, focused bool, termi
 	if isCursorRow {
 		var arrow string
 		if focused {
-			arrow = cursorArrowStyle.Render("▶")
+			arrow = cursorArrowStyle.Render("▌")
 		} else {
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+			arrow = " "
 		}
 		// Arrow replaces the left margin space
 		return arrow + continuation
@@ -168,17 +168,17 @@ func treeWidthTight(numAncestors int) int {
 }
 
 // renderTreeBranch renders the branch character for a header node.
-// T-connectors (├/└) use grey to match vertical lines, horizontal (━━━) uses status color.
-// Example output: "├━━━" or "└━━━" with mixed colors.
+// T-connectors (├/└) use grey to match vertical lines, horizontal (━) uses status color.
+// Example output: "├━" or "└━" with mixed colors.
 func renderTreeBranch(level TreeLevel) string {
 	if level.IsLast {
-		return treeContinuationStyle.Render("└") + level.Style.Render("━━━")
+		return treeContinuationStyle.Render("└") + level.Style.Render("━")
 	}
-	return treeContinuationStyle.Render("├") + level.Style.Render("━━━")
+	return treeContinuationStyle.Render("├") + level.Style.Render("━")
 }
 
 // renderTreePrefix renders the full tree prefix for any row.
-// For headers (isHeader=true): margin + continuation + branch (e.g., " ├───")
+// For headers (isHeader=true): margin + continuation + branch (e.g., " ├━")
 // For content (isHeader=false): margin + continuation + innermost │ (e.g., " │ ")
 //
 // The left margin aligns the tree with the fold icon column on commit headers.
@@ -199,7 +199,7 @@ func renderTreePrefix(path TreePath, isHeader bool) string {
 	continuation := renderTreeContinuation(outerAncestors)
 
 	if isHeader && path.Current != nil {
-		// Header row: margin + outer continuation + innermost continuation (5 chars) + branch (4 chars)
+		// Header row: margin + outer continuation + innermost continuation (5 chars) + branch (2 chars)
 		var innermostCont string
 		if innermost.IsLast || innermost.IsFolded {
 			innermostCont = "     " // 5 spaces
@@ -219,21 +219,21 @@ func renderTreePrefix(path TreePath, isHeader bool) string {
 
 // treeWidth calculates the character width of tree prefixes.
 // numAncestors is the number of ancestor levels (e.g., 1 for content under file).
-// For headers, the Current level adds a branch (4 chars).
+// For headers, the Current level adds a branch (2 chars).
 // All ancestor levels use 5-char treatment (│ + 4 spaces or 5 spaces).
 // Content rows get additional TreeContentIndent (2 chars) for alignment.
 // All widths include TreeLeftMargin.
 func treeWidth(numAncestors int, isHeader bool) int {
 	if numAncestors == 0 {
 		if isHeader {
-			return TreeLeftMargin + TreeBranchWidth // margin + branch: " ├───"
+			return TreeLeftMargin + TreeBranchWidth // margin + branch: " ├━"
 		}
 		return TreeLeftMargin + TreeContentIndent // just the margin + content indent for content with no ancestors
 	}
 	// All ancestors get 5-char treatment
 	ancestorWidth := numAncestors * TreeLevelWidth
 	if isHeader {
-		return TreeLeftMargin + ancestorWidth + TreeBranchWidth // margin + ancestors(5 each) + branch(4)
+		return TreeLeftMargin + ancestorWidth + TreeBranchWidth // margin + ancestors(5 each) + branch(2)
 	}
 	return TreeLeftMargin + ancestorWidth + TreeContentIndent // margin + ancestors(5 each) + content indent
 }

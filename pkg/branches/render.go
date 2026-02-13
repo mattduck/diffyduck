@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // ANSI color helpers
 const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[31m" // fg=1
-	colorGreen  = "\033[32m" // fg=2
-	colorYellow = "\033[33m" // fg=3
-	colorCyan   = "\033[36m" // fg=6
-	colorWhite  = "\033[37m" // fg=7
+	colorReset     = "\033[0m"
+	colorRed       = "\033[31m" // fg=1
+	colorGreen     = "\033[32m" // fg=2
+	colorYellow    = "\033[33m" // fg=3
+	colorCyan      = "\033[36m" // fg=6
+	colorWhite     = "\033[37m" // fg=7
+	colorBrightBlk = "\033[90m" // fg=8
 
 	underlineOn  = "\033[4m"
 	underlineOff = "\033[24m"
@@ -32,21 +34,24 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 	}
 
 	// First pass: collect all lines to compute column widths
+	type upstreamEntry struct {
+		text    string // plain text for this upstream (e.g. "origin/main =")
+		color   string // per-upstream color
+		isHead  bool   // true if this upstream matches the HEAD branch
+		headRef string // the upstream name to underline (when isHead)
+	}
 	type line struct {
-		nameCol        string // tree prefix + branch name (plain, for width calc)
-		countsCol      string // "+N -M" or "" (plain, for width calc)
-		isHead         bool
-		virtual        bool
-		behind         int
-		sha            string
-		dateStr        string
-		subject        string
-		author         string
-		upstreamCol    string // upstream display text (plain, for width calc)
-		upstreamBehind bool   // true if behind or diverged from upstream
-		upstreamGone   bool   // true if upstream was deleted
-		headRef        string // specific HEAD branch name to underline
-		headUpstream   string // upstream name matching HEAD branch to underline
+		nameCol   string // tree prefix + branch name (plain, for width calc)
+		countsCol string // "+N -M" or "" (plain, for width calc)
+		isHead    bool
+		virtual   bool
+		behind    int
+		sha       string
+		dateStr   string
+		subject   string
+		author    string
+		upstreams []upstreamEntry // per-upstream info for individual coloring
+		headRef   string          // specific HEAD branch name to underline
 	}
 
 	var lines []line
@@ -60,22 +65,18 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			displayName = "(" + node.SHA + ")"
 		}
 
+		if node.IsHead {
+			displayName = insertStarBeforeBranch(displayName, node.HeadRef)
+		}
+
 		if isRoot {
-			if node.IsHead {
-				nameCol = "*" + displayName
-			} else {
-				nameCol = displayName
-			}
+			nameCol = displayName
 		} else {
 			connector := "├─ "
 			if isFirst {
 				connector = "┌─ "
 			}
-			if node.IsHead {
-				nameCol = prefix + connector + "*" + displayName
-			} else {
-				nameCol = prefix + connector + displayName
-			}
+			nameCol = prefix + connector + displayName
 		}
 
 		// Build counts column
@@ -99,28 +100,26 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			author = ""
 		}
 
-		// Build upstream column
-		var upstreamCol string
-		var upstreamBehind, upstreamGone bool
-		for k, u := range node.Upstreams {
-			if k > 0 {
-				upstreamCol += ", "
-			}
-			upstreamCol += u.Name
+		// Build per-upstream entries
+		var upstreams []upstreamEntry
+		for _, u := range node.Upstreams {
+			text := u.Name
+			color := colorBrightBlk // default: synced or ahead
 			if u.Gone {
-				upstreamCol += " gone"
-				upstreamGone = true
+				text += " gone"
+				color = colorRed
 			} else if u.Ahead == 0 && u.Behind == 0 {
-				upstreamCol += " ="
+				text += " ="
 			} else {
 				if u.Ahead > 0 {
-					upstreamCol += fmt.Sprintf(" ↑%d", u.Ahead)
+					text += fmt.Sprintf(" ↑%d", u.Ahead)
 				}
 				if u.Behind > 0 {
-					upstreamCol += fmt.Sprintf(" ↓%d", u.Behind)
-					upstreamBehind = true
+					text += fmt.Sprintf(" ↓%d", u.Behind)
+					color = colorRed
 				}
 			}
+			upstreams = append(upstreams, upstreamEntry{text: text, color: color})
 		}
 
 		// Recurse into children first (bottom-up: children appear above parent)
@@ -136,32 +135,36 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			walk(child, childPrefix, i == 0, false)
 		}
 
-		// Find matching upstream for HEAD branch (by name: remote/headRef)
-		var headUpstream string
+		// Mark the upstream entry matching the HEAD branch for underlining.
 		if node.HeadRef != "" {
-			for _, u := range node.Upstreams {
-				if strings.HasSuffix(u.Name, "/"+node.HeadRef) {
-					headUpstream = u.Name
+			for i := range upstreams {
+				if strings.HasSuffix(upstreams[i].text, "/"+node.HeadRef+" =") ||
+					strings.Contains(upstreams[i].text, "/"+node.HeadRef+" ") ||
+					strings.HasSuffix(upstreams[i].text, "/"+node.HeadRef) {
+					// Extract just the upstream name (first space-separated token)
+					name := upstreams[i].text
+					if idx := strings.Index(name, " "); idx >= 0 {
+						name = name[:idx]
+					}
+					upstreams[i].isHead = true
+					upstreams[i].headRef = name
 					break
 				}
 			}
 		}
 
 		lines = append(lines, line{
-			nameCol:        nameCol,
-			countsCol:      countsCol,
-			isHead:         node.IsHead,
-			virtual:        node.Virtual,
-			behind:         node.Behind,
-			sha:            sha,
-			dateStr:        dateStr,
-			subject:        subject,
-			author:         author,
-			upstreamCol:    upstreamCol,
-			upstreamBehind: upstreamBehind,
-			upstreamGone:   upstreamGone,
-			headRef:        node.HeadRef,
-			headUpstream:   headUpstream,
+			nameCol:   nameCol,
+			countsCol: countsCol,
+			isHead:    node.IsHead,
+			virtual:   node.Virtual,
+			behind:    node.Behind,
+			sha:       sha,
+			dateStr:   dateStr,
+			subject:   subject,
+			author:    author,
+			upstreams: upstreams,
+			headRef:   node.HeadRef,
 		})
 	}
 
@@ -178,8 +181,8 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 	maxCounts := 0
 	maxDate := 0
 	for _, l := range lines {
-		if len(l.nameCol) > maxName {
-			maxName = len(l.nameCol)
+		if w := utf8.RuneCountInString(l.nameCol); w > maxName {
+			maxName = w
 		}
 		if len(l.countsCol) > maxCounts {
 			maxCounts = len(l.countsCol)
@@ -211,22 +214,14 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 			countsColor = colorRed
 		}
 
-		// Upstream column: green if synced, red if behind/gone, yellow if ahead only
-		upstreamColor := colorWhite
-		if l.upstreamCol != "" {
-			if l.upstreamGone || l.upstreamBehind {
-				upstreamColor = colorRed
-			} else {
-				upstreamColor = colorGreen
-			}
-		}
+		// (upstream colors are per-entry, applied below)
 
 		// Apply underline to HEAD branch name within the name column
 		styledName := l.nameCol
 		if l.headRef != "" {
 			styledName = underlineInString(styledName, l.headRef)
 		}
-		namePad := maxName - len(l.nameCol)
+		namePad := maxName - utf8.RuneCountInString(l.nameCol)
 
 		if verbose {
 			fmt.Fprintf(&sb, "%s%s%*s%s  %s%-*s%s  %s%s%s  %s%-*s%s  %s  %s%s%s",
@@ -245,12 +240,19 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 				colorWhite, l.dateStr, colorReset,
 			)
 		}
-		if l.upstreamCol != "" {
-			styledUpstream := l.upstreamCol
-			if l.headUpstream != "" {
-				styledUpstream = underlineInString(styledUpstream, l.headUpstream)
+		if len(l.upstreams) > 0 {
+			sb.WriteString("  ")
+			for k, u := range l.upstreams {
+				if k > 0 {
+					sb.WriteString(colorReset + ", ")
+				}
+				text := u.text
+				if u.isHead && u.headRef != "" {
+					text = underlineInString(text, u.headRef)
+				}
+				fmt.Fprintf(&sb, "%s%s", u.color, text)
 			}
-			fmt.Fprintf(&sb, "  %s%s%s", upstreamColor, styledUpstream, colorReset)
+			sb.WriteString(colorReset)
 		}
 		sb.WriteByte('\n')
 	}
@@ -285,6 +287,23 @@ func relativeTime(t time.Time, now time.Time) string {
 	default:
 		return fmt.Sprintf("%dy ago", int(d.Hours()/(24*365)))
 	}
+}
+
+// insertStarBeforeBranch places a "*" before the HEAD branch name within
+// a possibly comma-separated display name (e.g. "a, main, z" → "a, *main, z").
+// Falls back to prepending "*" when headRef is empty or not found.
+func insertStarBeforeBranch(displayName, headRef string) string {
+	if headRef == "" {
+		return "*" + displayName
+	}
+	names := strings.Split(displayName, ", ")
+	for i, name := range names {
+		if name == headRef {
+			names[i] = "*" + name
+			return strings.Join(names, ", ")
+		}
+	}
+	return "*" + displayName
 }
 
 // underlineInString inserts underline ANSI codes around the first

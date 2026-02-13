@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // renderTopBar renders the top bar showing file info with a divider line below.
@@ -64,23 +63,8 @@ func (m *Model) renderCommitLine() string {
 	// Style for SHA (yellow/gold)
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
-	// Build commit line: ◐ a1b2c3d Subject line    N files +X -Y
-	// Fold level icon: ◯ = folded, ◔ = file headers, ◐ = file structure, ● = file hunks
+	// Build commit line: a1b2c3d Subject line    N files +X -Y
 	commitIdx := m.currentCommitIndex()
-	var foldIcon string
-	switch m.commitFoldLevel(commitIdx) {
-	case sidebyside.CommitFolded:
-		foldIcon = "◯"
-	case sidebyside.CommitFileHeaders:
-		foldIcon = "◔"
-	case sidebyside.CommitFileStructure:
-		foldIcon = "◐"
-	case sidebyside.CommitFileHunks:
-		foldIcon = "●"
-	}
-	// Fold icon - always fg=8, no faint
-	foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	foldIconRendered := foldIconStyle.Render(foldIcon) + " "
 
 	sha := shaStyle.Render(commitInfo.ShortSHA())
 	subject := commitInfo.Subject
@@ -135,8 +119,8 @@ func (m *Model) renderCommitLine() string {
 	rightWidth := len(rightText)
 
 	// Calculate available width for subject
-	// Layout: foldIcon(2) + sha(7) + sep(1) + subject + padding(1+) + rightSection
-	fixedWidth := 2 + 7 + 1 + 1 + rightWidth
+	// Layout: sha(7) + sep(1) + subject + padding(1+) + rightSection
+	fixedWidth := 7 + 1 + 1 + rightWidth
 	availableWidth := m.width - fixedWidth
 	if availableWidth < 0 {
 		availableWidth = 0
@@ -154,26 +138,22 @@ func (m *Model) renderCommitLine() string {
 	}
 
 	// Calculate padding between subject and right section
-	padding := m.width - 2 - 7 - 1 - len(subject) - rightWidth
+	padding := m.width - 7 - 1 - len(subject) - rightWidth
 	if padding < 1 {
 		padding = 1
 	}
 
-	return foldIconRendered + sha + " " + subject + strings.Repeat(" ", padding) + rightSection
+	return sha + " " + subject + strings.Repeat(" ", padding) + rightSection
 }
 
 // renderFileLine renders the file info line for the top bar.
 func (m Model) renderFileLine(info StatusInfo) string {
 	// Only show file info when cursor is on a file (not on commit header)
 	var content string
-	var foldIcon string
 	var fileNum string
 	var leftSectionWidth int
 	if info.CurrentFile > 0 {
 		content = m.formatStatusFileInfo(info)
-
-		// Fold icon
-		foldIcon = m.foldLevelIcon(info.FoldLevel)
 
 		// File number with # prefix
 		_, fileCounterStyle := fileStatusIndicator(FileStatus(info.FileStatus))
@@ -181,8 +161,8 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		fileNumText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
 		fileNum = fileCounterStyle.Render(fileNumText) + " "
 
-		// Layout: indent(3) + icon(1) + space(1) + #fileNum + space(1)
-		leftSectionWidth = 3 + 1 + 1 + 1 + totalWidth + 1
+		// Layout: #fileNum + space(1)
+		leftSectionWidth = 1 + totalWidth + 1
 	}
 
 	// Right section: N files +123 -123 (only when no commit info - stats move to commit line otherwise)
@@ -232,12 +212,9 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		padding = 0
 	}
 
-	// Build the left section: indent(3) + icon + space + fileNum
 	var leftSection string
 	if info.CurrentFile > 0 {
-		// Style fold icon with fg=8 to match commit header fold icon
-		foldIconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-		leftSection = "  " + foldIconStyle.Render(foldIcon) + " " + fileNum
+		leftSection = fileNum
 	}
 
 	return leftSection + content + strings.Repeat(" ", padding) + rightSection
@@ -245,21 +222,18 @@ func (m Model) renderFileLine(info StatusInfo) string {
 
 // renderBreadcrumbLine renders the breadcrumb line for the top bar.
 // Shows the function/scope context from tree-sitter structure analysis.
-// Indented to align with the # file number on the file line above.
 func (m Model) renderBreadcrumbLine(info StatusInfo) string {
-	// Indent: 2 spaces + fold icon(1) + space(1) = 4 columns, aligns with #
-	const indent = "    "
-	availableWidth := m.width - len(indent)
+	availableWidth := m.width
 	if availableWidth < 0 {
 		availableWidth = 0
 	}
 	if len(info.BreadcrumbEntries) > 0 && m.highlighter != nil {
 		theme := m.highlighter.Theme()
-		return indent + formatBreadcrumbsStyled(info.BreadcrumbEntries, theme, availableWidth)
+		return formatBreadcrumbsStyled(info.BreadcrumbEntries, theme, availableWidth)
 	}
 	if info.Breadcrumbs != "" {
 		breadcrumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-		return indent + breadcrumbStyle.Render(info.Breadcrumbs)
+		return breadcrumbStyle.Render(info.Breadcrumbs)
 	}
 	return ""
 }

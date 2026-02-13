@@ -101,12 +101,12 @@ func TestRenderTreeBranch(t *testing.T) {
 		{
 			name:  "non-last branch",
 			level: TreeLevel{IsLast: false, Style: plainStyle},
-			want:  "├━━━", // uses heavy horizontal line
+			want:  "├━", // uses heavy horizontal line
 		},
 		{
 			name:  "last branch",
 			level: TreeLevel{IsLast: true, Style: plainStyle},
-			want:  "└━━━", // uses heavy horizontal line
+			want:  "└━", // uses heavy horizontal line
 		},
 	}
 
@@ -144,7 +144,7 @@ func TestRenderTreePrefix(t *testing.T) {
 				Current: &TreeLevel{IsLast: false, IsFolded: false, Style: plainStyle, Depth: 1},
 			},
 			isHeader: true,
-			want:     " │    ├━━━", // margin(1) + continuation(5) + branch(4) = 10 chars
+			want:     " │    ├━", // margin(1) + continuation(5) + branch(2) = 8 chars
 		},
 		{
 			name: "last file header",
@@ -155,7 +155,7 @@ func TestRenderTreePrefix(t *testing.T) {
 				Current: &TreeLevel{IsLast: true, IsFolded: false, Style: plainStyle, Depth: 1},
 			},
 			isHeader: true,
-			want:     " │    └━━━", // margin(1) + continuation(5) + branch(4)
+			want:     " │    └━", // margin(1) + continuation(5) + branch(2)
 		},
 		{
 			name: "content row under non-last file",
@@ -490,14 +490,14 @@ func TestRenderEmptyTreeRow(t *testing.T) {
 	t.Run("no ancestors, cursor focused", func(t *testing.T) {
 		path := TreePath{}
 		got := renderEmptyTreeRow(path, true, true, false)
-		assert.Contains(t, got, "▶", "cursor row should have arrow")
+		assert.Contains(t, got, "▌", "cursor row should have arrow")
 		assert.NotContains(t, got, "│", "no ancestors means no continuation")
 	})
 
 	t.Run("no ancestors, cursor unfocused", func(t *testing.T) {
 		path := TreePath{}
 		got := renderEmptyTreeRow(path, true, false, false)
-		assert.Contains(t, got, "▷", "unfocused cursor should have outline arrow")
+		assert.NotContains(t, got, "▌", "unfocused cursor should be hidden (no block character)")
 		assert.NotContains(t, got, "│", "no ancestors means no continuation")
 	})
 
@@ -514,7 +514,7 @@ func TestRenderEmptyTreeRow(t *testing.T) {
 			Ancestors: []TreeLevel{{IsLast: false, Style: plainStyle}},
 		}
 		got := renderEmptyTreeRow(path, true, true, false)
-		assert.Contains(t, got, "▶", "cursor row should have arrow")
+		assert.Contains(t, got, "▌", "cursor row should have arrow")
 		assert.Contains(t, got, "│", "tree continuation must survive cursor rendering")
 	})
 
@@ -548,7 +548,7 @@ func TestRenderEmptyTreeRow(t *testing.T) {
 			Ancestors: []TreeLevel{{IsLast: false, Style: plainStyle}},
 		}
 		got := renderEmptyTreeRow(path, true, true, true)
-		assert.Contains(t, got, "▶", "cursor should show arrow")
+		assert.Contains(t, got, "▌", "cursor should show arrow")
 		assert.Contains(t, got, "┴", "terminator with cursor should render ┴")
 		assert.NotContains(t, got, "│", "terminator should not render │")
 	})
@@ -572,11 +572,11 @@ func TestTreeWidth(t *testing.T) {
 		isHeader     bool
 		want         int
 	}{
-		// Headers: margin(1) + outer*(5) + innermost(5) + branch(4)
-		{"0 ancestors header (root)", 0, true, 5},  // margin(1) + branch(4) = 5
-		{"1 ancestor header (file)", 1, true, 10},  // 1 + 5 + 4 = 10
-		{"2 ancestors header (hunk)", 2, true, 15}, // 1 + 10 + 4 = 15
-		{"3 ancestors header", 3, true, 20},        // 1 + 15 + 4 = 20
+		// Headers: margin(1) + outer*(5) + innermost(5) + branch(2)
+		{"0 ancestors header (root)", 0, true, 3},  // margin(1) + branch(2) = 3
+		{"1 ancestor header (file)", 1, true, 8},   // 1 + 5 + 2 = 8
+		{"2 ancestors header (hunk)", 2, true, 13}, // 1 + 10 + 2 = 13
+		{"3 ancestors header", 3, true, 18},        // 1 + 15 + 2 = 18
 
 		// Content: margin(1) + ancestors*(5) + contentIndent(2)
 		{"0 ancestors content", 0, false, 3},                 // margin(1) + contentIndent(2) = 3

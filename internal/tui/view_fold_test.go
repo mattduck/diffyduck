@@ -600,20 +600,25 @@ func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the commit header line (contains the SHA)
+	// Find the commit header line in the content area (skip top bar lines).
+	// Content area commit headers have fold icons; the top bar does not.
 	var commitHeaderLine string
-	for _, line := range lines {
+	for i, line := range lines {
+		// Skip top bar area (first few lines before content)
+		if i < 4 {
+			continue
+		}
 		if strings.Contains(line, "abc1234") {
 			commitHeaderLine = line
 			break
 		}
 	}
 
-	require.NotEmpty(t, commitHeaderLine, "should find commit header with SHA")
+	require.NotEmpty(t, commitHeaderLine, "should find commit header with SHA in content area")
 
-	// Any non-folded commit shows ● icon in the main view
-	assert.Contains(t, commitHeaderLine, "●",
-		"commit header at CommitFileHunks should show ● icon")
+	// Any non-folded commit shows ════╗ border
+	assert.Contains(t, commitHeaderLine, "════╗",
+		"commit header at CommitFileHunks should show ════╗ border")
 }
 
 func TestCommitHeader_ExpandingFileKeepsCommitFoldLevel(t *testing.T) {
@@ -721,7 +726,7 @@ func TestCommitBorder_CursorRendersArrowOnBorderLine(t *testing.T) {
 	// Find the line with the cursor arrow in the content area
 	var cursorLine string
 	for _, line := range lines {
-		if strings.HasPrefix(line, "▶") {
+		if strings.HasPrefix(line, "▌") {
 			cursorLine = line
 			break
 		}
@@ -729,6 +734,6 @@ func TestCommitBorder_CursorRendersArrowOnBorderLine(t *testing.T) {
 
 	require.NotEmpty(t, cursorLine, "should find content line with cursor arrow")
 	// Arrow should be present at the start of the border line
-	assert.True(t, strings.HasPrefix(cursorLine, "▶"),
+	assert.True(t, strings.HasPrefix(cursorLine, "▌"),
 		"commit bottom border with cursor should start with arrow, got: %s", cursorLine)
 }
