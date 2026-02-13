@@ -162,6 +162,15 @@ var CommitInfoExpandedAt = map[CommitFoldLevel]bool{
 	CommitFileHunks:     true,
 }
 
+// CommitFoldIcon maps each CommitFoldLevel to a Unicode circle character
+// whose fill visually represents the expansion state.
+var CommitFoldIcon = map[CommitFoldLevel]string{
+	CommitFolded:        "◯", // empty
+	CommitFileHeaders:   "◑", // half-filled
+	CommitFileStructure: "◕", // three-quarters filled
+	CommitFileHunks:     "●", // fully filled
+}
+
 // NextLevel returns the next commit fold level in the cycle.
 func (c CommitFoldLevel) NextLevel() CommitFoldLevel {
 	for i, level := range CommitCycle {

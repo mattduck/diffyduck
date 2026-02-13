@@ -191,6 +191,17 @@ func styleParams(params string, punctStyle, typeStyle, paramStyle lipgloss.Style
 	return result.String()
 }
 
+// commitDisplayIcon returns the circle character representing the effective
+// fold state of a commit. If files have been individually toggled into a state
+// that doesn't match any named CommitFoldLevel, returns "●" (fully filled).
+func (m Model) commitDisplayIcon(commitIdx int) string {
+	level, ok := m.effectiveCommitLevel(commitIdx)
+	if !ok {
+		return "●"
+	}
+	return sidebyside.CommitFoldIcon[level]
+}
+
 // renderCommitHeaderRow renders a commit header row in the content area.
 // This is shown when viewing a commit and can be folded/unfolded.
 //
@@ -223,13 +234,8 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 		foldIconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	}
 
-	// Fold icon
-	var foldIcon string
-	if row.commitFoldLevel == sidebyside.CommitFolded {
-		foldIcon = "◯"
-	} else {
-		foldIcon = "●"
-	}
+	// Fold icon — fill level reflects effective state of files/info
+	foldIcon := m.commitDisplayIcon(row.commitIndex)
 
 	// Get file count and stats for this commit
 	startIdx := m.commitFileStarts[row.commitIndex]
@@ -443,18 +449,18 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	// Trailing indicator based on commit fold level:
 	// - Folded: no trailing indicator
-	// - Unfolded: ════...● extending to screen edge
+	// - Unfolded: ════...● extending to screen edge (circle matches fold icon)
 	switch row.commitFoldLevel {
 	case sidebyside.CommitFolded:
 		// No trailing indicator
 	default:
-		// Unfolded commit: fill with ═ to screen edge, end with ●
+		// Unfolded commit: fill with ═ to screen edge, end with matching circle
 		resultWidth := lipgloss.Width(result)
-		fill := m.width - resultWidth - 1 - 1 // -1 for space, -1 for ● end cap
+		fill := m.width - resultWidth - 1 - 1 // -1 for space, -1 for end cap
 		if fill > 0 {
-			result += " " + treeStyle.Render(strings.Repeat("═", fill)+"●")
+			result += " " + treeStyle.Render(strings.Repeat("═", fill)+foldIcon)
 		} else {
-			result += " " + treeStyle.Render("●")
+			result += " " + treeStyle.Render(foldIcon)
 		}
 	}
 

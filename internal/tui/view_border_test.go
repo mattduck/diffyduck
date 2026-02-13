@@ -327,8 +327,8 @@ func TestCommitHeader_FillExtendsToScreenEdge(t *testing.T) {
 
 	assert.Contains(t, header, "═", "header should have ═ fill")
 	trimmed := strings.TrimRight(header, " ")
-	assert.True(t, strings.HasSuffix(trimmed, "●"),
-		"header should end with ● end cap, got: %q", trimmed[max(0, len(trimmed)-10):])
+	assert.True(t, strings.HasSuffix(trimmed, "◑"),
+		"header should end with ◑ end cap, got: %q", trimmed[max(0, len(trimmed)-10):])
 	assert.Equal(t, 100, displayWidth(trimmed),
 		"header fill should extend to screen width")
 }
@@ -365,8 +365,8 @@ func TestCommitHeader_TruncatedSubjectFillsToEdge(t *testing.T) {
 	trimmed := strings.TrimRight(header, " ")
 
 	assert.Contains(t, header, "═", "header should have ═ fill")
-	assert.True(t, strings.HasSuffix(trimmed, "●"),
-		"header should end with ● end cap, got: %q", trimmed[max(0, len(trimmed)-10):])
+	assert.True(t, strings.HasSuffix(trimmed, "◑"),
+		"header should end with ◑ end cap, got: %q", trimmed[max(0, len(trimmed)-10):])
 	assert.Equal(t, 160, displayWidth(trimmed),
 		"header fill should extend to screen width even with long subject")
 }
