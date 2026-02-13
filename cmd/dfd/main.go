@@ -2006,11 +2006,12 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 	g := git.New()
 
 	// Build extra args for git log (ref range + pathspec)
+	pathspec := buildPathspec(args.paths, args.excludes)
 	var logArgs []string
 	if len(args.refs) > 0 {
 		logArgs = append(logArgs, args.refs[0])
 	}
-	logArgs = append(logArgs, buildPathspec(args.paths, args.excludes)...)
+	logArgs = append(logArgs, pathspec...)
 
 	// Use -n count if specified, otherwise default batching
 	initialBatch := tui.DefaultCommitBatchSize
@@ -2100,6 +2101,9 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 	}
 	if len(logArgs) > 0 {
 		opts = append(opts, tui.WithLogArgs(logArgs))
+	}
+	if len(pathspec) > 0 {
+		opts = append(opts, tui.WithLogPathspec(pathspec))
 	}
 
 	model := tui.NewWithCommits(commitSets, opts...)

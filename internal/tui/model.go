@@ -240,6 +240,7 @@ type Model struct {
 	commitBatchSize    int      // commits per batch (default 100)
 	loadingMoreCommits bool     // true when fetching next batch
 	logArgs            []string // extra args for git log (ref ranges, pathspecs)
+	logPathspec        []string // pathspec portion only (for filtering git show)
 
 	// Snapshot state (diff mode only)
 	autoSnapshots bool     // true when snapshot-taking is enabled
@@ -455,6 +456,15 @@ func WithPagination(loaded, batchSize int) Option {
 func WithLogArgs(args []string) Option {
 	return func(m *Model) {
 		m.logArgs = args
+	}
+}
+
+// WithLogPathspec sets the pathspec portion of the log filter (e.g. ["--", "Makefile"]).
+// This is passed to git show when loading individual commit diffs, so only the
+// requested paths are shown rather than the full commit.
+func WithLogPathspec(pathspec []string) Option {
+	return func(m *Model) {
+		m.logPathspec = pathspec
 	}
 }
 

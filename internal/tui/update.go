@@ -1991,8 +1991,10 @@ func (m *Model) loadCommitDiff(commitIdx int) {
 		return
 	}
 
-	// Fetch the diff for this commit
-	diffStr, err := m.git.Show(commit.Info.SHA)
+	// Fetch the diff for this commit, filtered by pathspec if set
+	showArgs := []string{commit.Info.SHA}
+	showArgs = append(showArgs, m.logPathspec...)
+	diffStr, err := m.git.Show(showArgs...)
 	if err != nil {
 		// On error, mark as loaded to avoid retrying
 		commit.FilesLoaded = true
