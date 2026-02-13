@@ -66,6 +66,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// If only 1 file, or all content fits on screen, start fully expanded (hunks)
 			if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
 				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+				// Sync load content + highlighting so the first render is complete
+				if m.fetcher != nil {
+					for i := range m.files {
+						m.loadAndHighlightFileSync(i)
+					}
+				}
 			} else {
 				// Otherwise start with file headers only
 				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHeaders)
