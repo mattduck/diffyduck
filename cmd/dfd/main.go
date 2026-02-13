@@ -569,9 +569,9 @@ func (p *parsedArgs) validate() error {
 		return fmt.Errorf("--init, --force, --print, --path, --edit are only valid for config command")
 	}
 
-	// --since is only valid for branches
-	if p.cmd != "branches" && p.since != "" {
-		return fmt.Errorf("--since is only valid for branches command")
+	// --since is only valid for branches and comment list
+	if p.cmd != "branches" && p.cmd != "comment" && p.since != "" {
+		return fmt.Errorf("--since is only valid for branches and comment commands")
 	}
 
 	// --status and --oneline are only valid for comment
@@ -920,7 +920,7 @@ Examples:
 const usageComment = `dfd comment - manage comments
 
 Usage:
-  dfd comment list [flags]
+  dfd comment list [flags] [<id>]
   dfd comment edit <id>
 
 Sub-commands:
@@ -930,6 +930,7 @@ Sub-commands:
 List flags:
   -n <count>       Positive: newest N, negative: oldest |N|, 0: uncapped (default: 5)
       --status <s> Filter: unresolved (default), resolved, all
+      --since <d>  Only show comments created within duration (e.g. 7d, 2w, 3m, 1y, all)
       --oneline    Compact single-line output per comment
       --all-branches
                    Show comments from all branches (default: current branch only)
@@ -941,7 +942,9 @@ Examples:
   dfd comment list -n 0               Show all unresolved
   dfd comment list --status all       Include resolved
   dfd comment list --status resolved  Only resolved
+  dfd comment list --since 2w         Comments from last 2 weeks
   dfd comment list --oneline          Compact output
+  dfd comment list 415                Show comment(s) matching suffix
   dfd comment edit <id>               Edit in $EDITOR
   dfd c list                          Short alias
 `
@@ -1512,6 +1515,24 @@ func runCommentList(args parsedArgs) error {
 				}
 			}
 			all = filtered
+		}
+
+		// Filter by --since
+		if args.since != "" {
+			dur, err := parseSinceDuration(args.since)
+			if err != nil {
+				return fmt.Errorf("invalid --since value: %w", err)
+			}
+			if dur > 0 {
+				cutoff := time.Now().Add(-dur)
+				var filtered []*comments.Comment
+				for _, c := range all {
+					if c.Created.After(cutoff) {
+						filtered = append(filtered, c)
+					}
+				}
+				all = filtered
+			}
 		}
 
 		// Filter by reachability from HEAD (default: on, --all-branches disables)

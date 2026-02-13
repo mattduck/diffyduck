@@ -400,7 +400,7 @@ func TestParseArgs_BranchesSince(t *testing.T) {
 func TestParseArgs_SinceOnDiff(t *testing.T) {
 	_, err := parseArgs([]string{"diff", "--since=7d"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "only valid for branches")
+	assert.Contains(t, err.Error(), "only valid for branches and comment")
 }
 
 func TestParseArgs_SinceMissingValue(t *testing.T) {
@@ -940,6 +940,13 @@ func TestParseArgs_CommentAllBranchesOnDiff(t *testing.T) {
 	_, err := parseArgs([]string{"diff", "--all-branches"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "only valid for comment")
+}
+
+func TestParseArgs_CommentSince(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list", "--since=2w"})
+	require.NoError(t, err)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "2w", result.since)
 }
 
 func TestParseArgs_HelpComment(t *testing.T) {
