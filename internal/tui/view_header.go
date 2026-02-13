@@ -160,14 +160,19 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 		branchConnector = treePath.Current.Style.Render("━")
 	}
 	// Trailing indicator based on fold level:
-	// - Header: ellipsis right after content (no box padding)
-	// - Structure/Hunks: box padding + corner turning down
+	// - Header: no trailing indicator
+	// - Structure: box padding + close with ◐ (no border on next line)
+	// - Hunks: box padding + corner turning down (border continues on next line)
 	result := treeLine + branchConnector + styledIcon + styledHeader + statsBar
 	switch {
 	case foldLevel == sidebyside.FoldHeader:
 		// No trailing indicator
+	case foldLevel == sidebyside.FoldStructure && headerMode != HeaderSingleLine && m.width > 0:
+		// Structure: close with half-filled circle, no corner
+		result += boxPadding
+		result += fileStatusStyle.Render("━━━━◐")
 	case headerMode != HeaderSingleLine && m.width > 0:
-		// Unfolded: corner turning down, border continues on next line
+		// Hunks: corner turning down, border continues on next line
 		result += boxPadding
 		result += fileStatusStyle.Render("━━━━┓")
 	default:

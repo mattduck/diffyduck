@@ -1912,6 +1912,10 @@ func (m Model) renderDisplayRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	} else if row.isHeaderTopBorder {
 		return m.renderHeaderTopBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath)
 	} else if row.isHeaderSpacer {
+		if row.foldLevel == sidebyside.FoldStructure {
+			// Structure headers close on the same line (◐), so spacer is just tree continuation
+			return renderEmptyTreeRow(row.treePath, isCursorRow, m.focused, false)
+		}
 		return m.renderHeaderBottomBorder(row.headerBoxWidth, row.headerMode, row.status, isCursorRow, row.treePrefixWidth, row.treePath, row.foldLevel)
 	} else if row.isBlank {
 		return renderEmptyTreeRow(row.treePath, isCursorRow, m.focused, row.treeTerminator)
