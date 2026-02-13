@@ -161,8 +161,8 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		fileNumText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
 		fileNum = fileCounterStyle.Render(fileNumText) + " "
 
-		// Layout: indent(1) + #fileNum + space(1)
-		leftSectionWidth = 1 + 1 + totalWidth + 1
+		// Layout: #fileNum + space(1)
+		leftSectionWidth = 1 + totalWidth + 1
 	}
 
 	// Right section: N files +123 -123 (only when no commit info - stats move to commit line otherwise)
@@ -212,10 +212,9 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		padding = 0
 	}
 
-	// Build the left section: indent + fileNum
 	var leftSection string
 	if info.CurrentFile > 0 {
-		leftSection = " " + fileNum
+		leftSection = fileNum
 	}
 
 	return leftSection + content + strings.Repeat(" ", padding) + rightSection
@@ -223,21 +222,18 @@ func (m Model) renderFileLine(info StatusInfo) string {
 
 // renderBreadcrumbLine renders the breadcrumb line for the top bar.
 // Shows the function/scope context from tree-sitter structure analysis.
-// Indented to align with the # file number on the file line above.
 func (m Model) renderBreadcrumbLine(info StatusInfo) string {
-	// Indent: 2 spaces + fold icon(1) + space(1) = 4 columns, aligns with #
-	const indent = "    "
-	availableWidth := m.width - len(indent)
+	availableWidth := m.width
 	if availableWidth < 0 {
 		availableWidth = 0
 	}
 	if len(info.BreadcrumbEntries) > 0 && m.highlighter != nil {
 		theme := m.highlighter.Theme()
-		return indent + formatBreadcrumbsStyled(info.BreadcrumbEntries, theme, availableWidth)
+		return formatBreadcrumbsStyled(info.BreadcrumbEntries, theme, availableWidth)
 	}
 	if info.Breadcrumbs != "" {
 		breadcrumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-		return indent + breadcrumbStyle.Render(info.Breadcrumbs)
+		return breadcrumbStyle.Render(info.Breadcrumbs)
 	}
 	return ""
 }
