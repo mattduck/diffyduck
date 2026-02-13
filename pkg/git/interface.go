@@ -59,9 +59,10 @@ type Git interface {
 	// Extra args are appended to the git log command (e.g. ref ranges, pathspecs).
 	LogPathsOnlyRange(skip, limit int, args ...string) ([]CommitWithPaths, error)
 
-	// CommitCount returns the total number of commits in the repository.
+	// CommitCount returns the total number of commits matching the given args.
+	// Args are passed through to git rev-list (e.g. ref ranges, pathspecs).
 	// Returns -1 if count cannot be determined.
-	CommitCount() (int, error)
+	CommitCount(args ...string) (int, error)
 
 	// Diff returns the diff output for git diff.
 	// Args are passed through to git diff.

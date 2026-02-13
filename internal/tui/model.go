@@ -238,6 +238,7 @@ type Model struct {
 	loadedCommitCount  int      // number of commits currently loaded
 	totalCommitCount   int      // total commits in repo (0=unknown, -1=error)
 	commitBatchSize    int      // commits per batch (default 100)
+	commitMaxCount     int      // hard cap from -n flag (0=unlimited)
 	expandAllBudget    int      // max files for full shift-tab expansion (default 500)
 	loadingMoreCommits bool     // true when fetching next batch
 	logArgs            []string // extra args for git log (ref ranges, pathspecs)
@@ -449,6 +450,15 @@ func WithPagination(loaded, batchSize int) Option {
 	return func(m *Model) {
 		m.loadedCommitCount = loaded
 		m.commitBatchSize = batchSize
+	}
+}
+
+// WithCommitLimit sets a hard cap on the number of commits to load (from -n flag).
+// When set, pagination stops once this many commits have been loaded.
+// 0 means unlimited.
+func WithCommitLimit(n int) Option {
+	return func(m *Model) {
+		m.commitMaxCount = n
 	}
 }
 

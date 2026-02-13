@@ -2096,6 +2096,9 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 		tui.WithPagination(len(commitSets), initialBatch),
 		tui.WithCommentStore(commentStore),
 	}
+	if args.count > 0 {
+		opts = append(opts, tui.WithCommitLimit(args.count))
+	}
 	if args.debug {
 		opts = append(opts, tui.WithDebugMode())
 	}

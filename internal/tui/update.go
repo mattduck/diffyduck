@@ -339,10 +339,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if len(msg.Commits) == 0 {
-			// No more commits - we've loaded everything
-			if m.totalCommitCount <= 0 {
-				m.totalCommitCount = m.loadedCommitCount
-			}
+			// No more commits - we've loaded everything.
+			// Always update totalCommitCount so the pagination indicator disappears.
+			// This handles pathspec-filtered logs where the initial rev-list count
+			// may be higher than the actual number of matching commits.
+			m.totalCommitCount = m.loadedCommitCount
 			// Rebuild rows to remove the pagination indicator
 			m.invalidateAllRowCaches()
 			m.calculateTotalLines()

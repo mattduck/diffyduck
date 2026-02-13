@@ -103,7 +103,7 @@ func (m *MockGit) LogPathsOnlyRange(skip, limit int, args ...string) ([]CommitWi
 }
 
 // CommitCount returns the number of commits in LogPaths (for testing).
-func (m *MockGit) CommitCount() (int, error) {
+func (m *MockGit) CommitCount(args ...string) (int, error) {
 	if m.LogError != nil {
 		return -1, m.LogError
 	}

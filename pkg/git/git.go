@@ -278,10 +278,13 @@ func (g *RealGit) LogPathsOnlyRange(skip, limit int, args ...string) ([]CommitWi
 	return parseLogPathsOnly(string(out)), nil
 }
 
-// CommitCount returns the total number of commits in the repository.
+// CommitCount returns the total number of commits matching the given args.
 // Uses git rev-list --count HEAD which is fast even on large repos.
-func (g *RealGit) CommitCount() (int, error) {
-	cmd := g.command("rev-list", "--count", "HEAD")
+// Extra args are appended (e.g. ref ranges, pathspecs like "--", "file.go").
+func (g *RealGit) CommitCount(args ...string) (int, error) {
+	cmdArgs := []string{"rev-list", "--count", "HEAD"}
+	cmdArgs = append(cmdArgs, args...)
+	cmd := g.command(cmdArgs...)
 
 	out, err := cmd.Output()
 	if err != nil {

@@ -39,6 +39,10 @@ func (m Model) hasMoreCommitsToLoad() bool {
 	if m.loadedCommitCount == 0 {
 		return false
 	}
+	// Hard cap from -n flag: stop once we've loaded enough
+	if m.commitMaxCount > 0 && m.loadedCommitCount >= m.commitMaxCount {
+		return false
+	}
 	// If total count is unknown (0), assume there could be more
 	if m.totalCommitCount == 0 {
 		return true
@@ -61,6 +65,17 @@ func (m *Model) fetchMoreCommits() tea.Cmd {
 	limit := m.commitBatchSize
 	if limit == 0 {
 		limit = DefaultCommitBatchSize
+	}
+	// Clamp to -n limit so we don't fetch beyond the cap
+	if m.commitMaxCount > 0 {
+		remaining := m.commitMaxCount - skip
+		if remaining <= 0 {
+			m.loadingMoreCommits = false
+			return nil
+		}
+		if limit > remaining {
+			limit = remaining
+		}
 	}
 	gitClient := m.git
 	logArgs := m.logArgs
@@ -90,11 +105,17 @@ func (m Model) fetchTotalCommitCount() tea.Cmd {
 		return nil
 	}
 	gitClient := m.git
+	logArgs := m.logArgs
+	maxCount := m.commitMaxCount
 
 	return func() tea.Msg {
-		count, err := gitClient.CommitCount()
+		count, err := gitClient.CommitCount(logArgs...)
 		if err != nil {
 			return TotalCommitCountMsg{Count: -1}
+		}
+		// Clamp to -n limit
+		if maxCount > 0 && count > maxCount {
+			count = maxCount
 		}
 		return TotalCommitCountMsg{Count: count}
 	}
