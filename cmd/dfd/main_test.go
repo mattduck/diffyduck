@@ -24,10 +24,7 @@ func stripANSI(s string) string {
 func TestParseArgs_Empty(t *testing.T) {
 	res, err := parseArgs([]string{})
 	require.NoError(t, err)
-	assert.Equal(t, "diff", res.cmd)
-	assert.Empty(t, res.refs)
-	assert.Empty(t, res.paths)
-	assert.Equal(t, content.ModeDiffUnstaged, res.mode)
+	assert.Equal(t, "status", res.cmd)
 }
 
 func TestParseArgs_SubcommandDetection(t *testing.T) {
