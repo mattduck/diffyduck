@@ -306,20 +306,10 @@ func TestView_HeaderFileNumWidthMatchesLineNumWidth(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the file header line (contains test.go and fold icon)
-	var headerLine string
-	for _, line := range lines {
-		if strings.Contains(line, "test.go") && strings.Contains(line, "●") {
-			headerLine = line
-			break
-		}
-	}
-
-	require.NotEmpty(t, headerLine, "should find file header line")
-
-	// The header should contain the file number "1" followed by spaces to pad to lineNumWidth
-	// Since we have 1 file, the file number is "1" and lineNumWidth is 5, so we get "1    "
-	assert.Contains(t, headerLine, "1", "header should contain file number")
+	// The top bar file line (line index 0) shows the file counter (#1)
+	topBar := lines[0]
+	assert.Contains(t, topBar, "#1", "top bar should contain file number")
+	assert.Contains(t, topBar, "test.go", "top bar should contain file name")
 }
 
 func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {

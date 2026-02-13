@@ -98,9 +98,6 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 	assert.Contains(t, bottomBar, "line ")
 	assert.Contains(t, bottomBar, "/")
 
-	// Top bar should contain fold icon (● for expanded/hunks)
-	assert.Contains(t, topBar, "●")
-
 	// Top bar should contain status icon (~ for modified)
 	assert.Contains(t, topBar, "~")
 
@@ -111,8 +108,7 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 	assert.Contains(t, topBar, "+1")
 	assert.Contains(t, topBar, "-1")
 
-	// Top bar should contain fold icon and file counter
-	assert.Contains(t, topBar, "●") // fold icon for expanded (hunks) level
+	// Top bar should contain file counter
 	assert.Contains(t, topBar, "1") // file counter (no # prefix)
 }
 
@@ -144,8 +140,10 @@ func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
 	lines := strings.Split(output, "\n")
 	topBar := lines[0]
 
-	// Top bar should contain folded icon (○)
-	assert.Contains(t, topBar, "○")
+	// Top bar should not contain fold icons (removed)
+	assert.NotContains(t, topBar, "○")
+	assert.NotContains(t, topBar, "◐")
+	assert.NotContains(t, topBar, "●")
 }
 
 func TestStatusBar_NewFormat_ExpandedFile(t *testing.T) {
@@ -174,8 +172,8 @@ func TestStatusBar_NewFormat_ExpandedFile(t *testing.T) {
 	lines := strings.Split(output, "\n")
 	topBar := lines[0]
 
-	// Top bar should contain expanded icon (●)
-	assert.Contains(t, topBar, "●")
+	// Top bar should not contain fold icons (removed)
+	assert.NotContains(t, topBar, "●")
 }
 
 func TestStatusBar_NewFormat_AddedFile(t *testing.T) {
@@ -334,7 +332,7 @@ func TestTopBar_ContainsFileInfo(t *testing.T) {
 
 	// Top bar should contain file info
 	assert.Contains(t, topBar, "foo.go", "top bar should contain file name")
-	assert.Contains(t, topBar, "●", "top bar should contain fold icon")
+	assert.NotContains(t, topBar, "●", "top bar should not contain fold icon")
 	assert.Contains(t, topBar, "~", "top bar should contain status icon for modified file")
 	assert.Contains(t, topBar, "+1", "top bar should contain added count")
 	assert.Contains(t, topBar, "-1", "top bar should contain removed count")
@@ -368,9 +366,9 @@ func TestTopBar_LeftAligned(t *testing.T) {
 
 	// Top bar should be left-aligned (starts with content, not spaces)
 	assert.True(t, len(topBar) > 0, "top bar should not be empty")
-	// The fold icon should be near the start (after arrow and file counter [1/1])
-	idx := strings.Index(topBar, "●")
-	assert.True(t, idx >= 0 && idx < 12, "fold icon should be near the start (left-aligned)")
+	// The file counter should be near the start (left-aligned)
+	idx := strings.Index(topBar, "#")
+	assert.True(t, idx >= 0 && idx < 6, "file counter should be near the start (left-aligned)")
 }
 
 func TestBottomBar_OnlyLessStyle(t *testing.T) {
