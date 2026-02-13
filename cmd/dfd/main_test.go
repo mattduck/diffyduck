@@ -893,6 +893,13 @@ func TestParseArgs_CommentEdit(t *testing.T) {
 	assert.Equal(t, "1705312200000", result.commentID)
 }
 
+func TestParseArgs_CommentListSuffix(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list", "7415"})
+	require.NoError(t, err)
+	assert.Equal(t, "list", result.commentSub)
+	assert.Equal(t, "7415", result.commentID)
+}
+
 func TestParseArgs_CommentEditMissingID(t *testing.T) {
 	_, err := parseArgs([]string{"comment", "edit"})
 	assert.Error(t, err)
@@ -1013,7 +1020,7 @@ func TestFormatCommentOneline(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			line := stripANSI(formatCommentOneline(tt.comment))
+			line := stripANSI(formatCommentOneline(tt.comment, ""))
 			for _, s := range tt.contains {
 				assert.Contains(t, line, s)
 			}
@@ -1029,8 +1036,61 @@ func TestFormatCommentOneline_MultilineExcludesSecond(t *testing.T) {
 		CommitSHA: "abc1234",
 		Text:      "First line\nSecond line",
 	}
-	line := stripANSI(formatCommentOneline(c))
+	line := stripANSI(formatCommentOneline(c, ""))
 	assert.NotContains(t, line, "Second line")
+}
+
+func TestShortSuffixes(t *testing.T) {
+	tests := []struct {
+		name string
+		ids  []string
+		want map[string]string
+	}{
+		{
+			name: "single ID",
+			ids:  []string{"1770968997415"},
+			want: map[string]string{"1770968997415": "415"},
+		},
+		{
+			name: "two distinct",
+			ids:  []string{"1770968997415", "1770881758352"},
+			want: map[string]string{"1770968997415": "415", "1770881758352": "352"},
+		},
+		{
+			name: "need longer suffix",
+			ids:  []string{"1770968997415", "1770881757415"},
+			want: map[string]string{"1770968997415": "97415", "1770881757415": "57415"},
+		},
+		{
+			name: "empty",
+			ids:  []string{},
+			want: map[string]string{},
+		},
+		{
+			name: "short IDs",
+			ids:  []string{"abc", "def"},
+			want: map[string]string{"abc": "abc", "def": "def"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shortSuffixes(tt.ids)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestFormatCommentOneline_ShortID(t *testing.T) {
+	c := &comments.Comment{
+		ID:        "1770968997415",
+		File:      "test.go",
+		Line:      1,
+		CommitSHA: "abc1234",
+		Text:      "Hello",
+	}
+	line := stripANSI(formatCommentOneline(c, "7415"))
+	assert.Contains(t, line, "7415")
+	assert.NotContains(t, line, "1770968997415")
 }
 
 func TestFormatCommentBlock(t *testing.T) {

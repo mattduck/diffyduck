@@ -112,7 +112,7 @@ type parsedArgs struct {
 
 	// comment-specific
 	commentSub         string // "list" or "edit"
-	commentID          string // comment ID for edit
+	commentID          string // comment ID/suffix for edit or list lookup
 	commentN           int    // -n count: positive=newest, negative=oldest, 0=uncapped
 	commentNSet        bool   // true if -n was explicitly passed
 	commentStatus      string // --status: "unresolved" (default), "resolved", "all"
@@ -180,7 +180,8 @@ func parseArgs(args []string) (parsedArgs, error) {
 					result.commentSub = remaining[0]
 					remaining = remaining[1:]
 				}
-				if result.commentSub == "edit" && len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
+				if (result.commentSub == "edit" || result.commentSub == "list") &&
+					len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
 					result.commentID = remaining[0]
 					remaining = remaining[1:]
 				}
@@ -1483,52 +1484,67 @@ func runCommentList(args parsedArgs) error {
 		return fmt.Errorf("reading comments: %w", err)
 	}
 
-	// Filter by --status (default: unresolved)
-	status := args.commentStatus
-	if status == "" {
-		status = "unresolved"
-	}
-	if status != "all" {
-		var filtered []*comments.Comment
+	// Filter by suffix if a positional arg was given
+	if args.commentID != "" {
+		var matched []*comments.Comment
 		for _, c := range all {
-			if status == "resolved" && c.Resolved {
-				filtered = append(filtered, c)
-			} else if status == "unresolved" && !c.Resolved {
-				filtered = append(filtered, c)
+			if strings.HasSuffix(c.ID, args.commentID) {
+				matched = append(matched, c)
 			}
 		}
-		all = filtered
+		all = matched
 	}
 
-	// Filter by reachability from HEAD (default: on, --all-branches disables)
-	if !args.commentAllBranches {
-		reachable, revListErr := store.ReachableCommits("HEAD")
-		currentBranch, _ := store.CurrentBranch()
-
-		if revListErr == nil {
+	// Apply remaining filters only when not looking up by ID
+	if args.commentID == "" {
+		// Filter by --status (default: unresolved)
+		status := args.commentStatus
+		if status == "" {
+			status = "unresolved"
+		}
+		if status != "all" {
 			var filtered []*comments.Comment
 			for _, c := range all {
-				if c.CommitSHA != "" {
-					// Has a commit: check if reachable from HEAD
-					if reachable[c.CommitSHA] {
-						filtered = append(filtered, c)
-					}
-				} else if c.Branch != "" {
-					// Working-tree comment: check branch match
-					if c.Branch == currentBranch {
-						filtered = append(filtered, c)
-					}
-				} else {
-					// No commit and no branch: include (legacy comment)
+				if status == "resolved" && c.Resolved {
+					filtered = append(filtered, c)
+				} else if status == "unresolved" && !c.Resolved {
 					filtered = append(filtered, c)
 				}
 			}
 			all = filtered
 		}
+
+		// Filter by reachability from HEAD (default: on, --all-branches disables)
+		if !args.commentAllBranches {
+			reachable, revListErr := store.ReachableCommits("HEAD")
+			currentBranch, _ := store.CurrentBranch()
+
+			if revListErr == nil {
+				var filtered []*comments.Comment
+				for _, c := range all {
+					if c.CommitSHA != "" {
+						if reachable[c.CommitSHA] {
+							filtered = append(filtered, c)
+						}
+					} else if c.Branch != "" {
+						if c.Branch == currentBranch {
+							filtered = append(filtered, c)
+						}
+					} else {
+						filtered = append(filtered, c)
+					}
+				}
+				all = filtered
+			}
+		}
 	}
 
 	if len(all) == 0 {
-		fmt.Println("No comments")
+		if args.commentID != "" {
+			fmt.Printf("No comment matching suffix %q\n", args.commentID)
+		} else {
+			fmt.Println("No comments")
+		}
 		return nil
 	}
 
@@ -1537,26 +1553,28 @@ func runCommentList(args parsedArgs) error {
 		return all[i].Created.After(all[j].Created)
 	})
 
-	// Apply -n limiting
-	if !args.commentNSet {
-		// Default: 5 newest
-		if len(all) > 5 {
-			all = all[:5]
+	// Apply -n limiting (skip when looking up by ID)
+	if args.commentID == "" {
+		if !args.commentNSet {
+			// Default: 5 newest
+			if len(all) > 5 {
+				all = all[:5]
+			}
+		} else if args.commentN == 0 {
+			// Uncapped: show all
+		} else if args.commentN > 0 {
+			if args.commentN < len(all) {
+				all = all[:args.commentN]
+			}
+		} else {
+			// Negative: oldest |N|
+			count := -args.commentN
+			if count < len(all) {
+				all = all[len(all)-count:]
+			}
+			// Reverse so oldest prints first (chronological)
+			slices.Reverse(all)
 		}
-	} else if args.commentN == 0 {
-		// Uncapped: show all
-	} else if args.commentN > 0 {
-		if args.commentN < len(all) {
-			all = all[:args.commentN]
-		}
-	} else {
-		// Negative: oldest |N|
-		count := -args.commentN
-		if count < len(all) {
-			all = all[len(all)-count:]
-		}
-		// Reverse so oldest prints first (chronological)
-		slices.Reverse(all)
 	}
 
 	// Create highlighter for multiline output (reused across comments)
@@ -1566,9 +1584,19 @@ func runCommentList(args parsedArgs) error {
 		defer h.Close()
 	}
 
+	// Compute short suffix IDs for oneline display
+	var shortIDs map[string]string
+	if args.commentOneline {
+		ids := make([]string, len(all))
+		for i, c := range all {
+			ids[i] = c.ID
+		}
+		shortIDs = shortSuffixes(ids)
+	}
+
 	for i, c := range all {
 		if args.commentOneline {
-			fmt.Println(formatCommentOneline(c))
+			fmt.Println(formatCommentOneline(c, shortIDs[c.ID]))
 		} else {
 			if i > 0 {
 				fmt.Print("\n\n")
@@ -1592,7 +1620,11 @@ const (
 )
 
 // formatCommentOneline formats a single comment as a compact one-liner.
-func formatCommentOneline(c *comments.Comment) string {
+// displayID is the short suffix ID to show (or full ID if empty).
+func formatCommentOneline(c *comments.Comment, displayID string) string {
+	if displayID == "" {
+		displayID = c.ID
+	}
 	// First line of text, truncated to 60 chars
 	text := c.Text
 	if idx := strings.IndexByte(text, '\n'); idx >= 0 {
@@ -1616,7 +1648,7 @@ func formatCommentOneline(c *comments.Comment) string {
 	}
 
 	return fmt.Sprintf("%s%s%s%s  %s  %s%s%s%s  %s",
-		cBrightWhite, cBold, c.ID, cReset,
+		cBrightWhite, cBold, displayID, cReset,
 		styleCommentPath(c.File, c.Line),
 		cYellow, commitShort, cReset,
 		resolved,
@@ -1682,6 +1714,98 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
 		out.WriteByte('\n')
 	}
 	return out.String()
+}
+
+// shortSuffixes computes the shortest unique suffix for each ID.
+// Given ["1770968997415", "1770881758352"], it might return
+// {"1770968997415": "7415", "1770881758352": "8352"} if 4 chars suffice.
+// Minimum suffix length is 4.
+func shortSuffixes(ids []string) map[string]string {
+	result := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return result
+	}
+	if len(ids) == 1 {
+		id := ids[0]
+		n := 3
+		if n > len(id) {
+			n = len(id)
+		}
+		result[id] = id[len(id)-n:]
+		return result
+	}
+
+	// Start at 4 chars and increase until all suffixes are unique
+	maxLen := 0
+	for _, id := range ids {
+		if len(id) > maxLen {
+			maxLen = len(id)
+		}
+	}
+
+	for n := 3; n <= maxLen; n++ {
+		seen := make(map[string]int)
+		for _, id := range ids {
+			start := len(id) - n
+			if start < 0 {
+				start = 0
+			}
+			suffix := id[start:]
+			seen[suffix]++
+		}
+
+		allUnique := true
+		for _, count := range seen {
+			if count > 1 {
+				allUnique = false
+				break
+			}
+		}
+
+		if allUnique {
+			for _, id := range ids {
+				start := len(id) - n
+				if start < 0 {
+					start = 0
+				}
+				result[id] = id[start:]
+			}
+			return result
+		}
+	}
+
+	// Fallback: full IDs
+	for _, id := range ids {
+		result[id] = id
+	}
+	return result
+}
+
+// resolveCommentID resolves a (possibly short) suffix to a full comment ID.
+// Returns an error if the suffix matches zero or multiple IDs.
+func resolveCommentID(store *comments.Store, suffix string) (string, error) {
+	idx, err := store.ReadIndex()
+	if err != nil {
+		return "", fmt.Errorf("reading index: %w", err)
+	}
+
+	allIDs := idx.All()
+	var matches []string
+	for _, id := range allIDs {
+		if strings.HasSuffix(id, suffix) {
+			matches = append(matches, id)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("no comment matching suffix %q", suffix)
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous suffix %q matches %d comments: %s",
+			suffix, len(matches), strings.Join(matches, ", "))
+	}
 }
 
 // styleCommentPath formats a file:line with dir in dim, basename in bright white.
@@ -1766,10 +1890,16 @@ func runCommentEdit(id string) error {
 
 	store := comments.NewStore("")
 
-	// Read the existing comment
-	original, err := store.ReadComment(id)
+	// Resolve suffix to full ID
+	fullID, err := resolveCommentID(store, id)
 	if err != nil {
-		return fmt.Errorf("comment %s not found: %w", id, err)
+		return err
+	}
+
+	// Read the existing comment
+	original, err := store.ReadComment(fullID)
+	if err != nil {
+		return fmt.Errorf("comment %s not found: %w", fullID, err)
 	}
 
 	// Serialize to temp file
@@ -1803,7 +1933,7 @@ func runCommentEdit(id string) error {
 	}
 
 	// Parse and validate
-	parsed, err := comments.ParseComment(id, string(edited))
+	parsed, err := comments.ParseComment(fullID, string(edited))
 	if err != nil {
 		return fmt.Errorf("invalid comment format: %w", err)
 	}
