@@ -18,7 +18,7 @@ func (m Model) renderTopBar() string {
 
 	// Commit info line (only if we have commit metadata)
 	if m.hasCommitInfo() {
-		commitLine := m.renderCommitLine()
+		commitLine := m.renderCommitLine(info)
 		lines = append(lines, commitLine)
 	}
 
@@ -54,7 +54,7 @@ func (m Model) renderTopBar() string {
 
 // renderCommitLine renders the commit info line for the top bar.
 // Shows fold icon, SHA, subject, and file stats for a compact display.
-func (m *Model) renderCommitLine() string {
+func (m *Model) renderCommitLine(info StatusInfo) string {
 	commit := m.currentCommit()
 	if commit == nil {
 		return ""
@@ -91,11 +91,14 @@ func (m *Model) renderCommitLine() string {
 		totalRemoved += removed
 	}
 
-	// Build right section: N files +X -Y
+	// Build right section: N files +X -Y (or 01/17 files when on a file)
 	var rightText string
 	var rightSection string
 	fileCount := endIdx - startIdx
-	if fileCount == 1 {
+	totalWidth := len(fmt.Sprintf("%d", fileCount))
+	if info.CurrentFile > 0 {
+		rightText = fmt.Sprintf("%0*d/%d files", totalWidth, info.CurrentFile, fileCount)
+	} else if fileCount == 1 {
 		rightText = "1 file"
 	} else {
 		rightText = fmt.Sprintf("%d files", fileCount)
@@ -153,19 +156,8 @@ func (m *Model) renderCommitLine() string {
 func (m Model) renderFileLine(info StatusInfo) string {
 	// Only show file info when cursor is on a file (not on commit header)
 	var content string
-	var fileNum string
-	var leftSectionWidth int
 	if info.CurrentFile > 0 {
 		content = m.formatStatusFileInfo(info)
-
-		// File number with # prefix
-		_, fileCounterStyle := fileStatusIndicator(FileStatus(info.FileStatus))
-		totalWidth := len(fmt.Sprintf("%d", info.TotalFiles))
-		fileNumText := fmt.Sprintf("#%0*d", totalWidth, info.CurrentFile)
-		fileNum = fileCounterStyle.Render(fileNumText) + " "
-
-		// Layout: #fileNum + space(1)
-		leftSectionWidth = 1 + totalWidth + 1
 	}
 
 	// Right section: N files +123 -123 (only when no commit info - stats move to commit line otherwise)
@@ -182,7 +174,10 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		}
 
 		fileCount := len(m.files)
-		if fileCount == 1 {
+		totalWidth := len(fmt.Sprintf("%d", fileCount))
+		if info.CurrentFile > 0 {
+			rightText = fmt.Sprintf("%0*d/%d files", totalWidth, info.CurrentFile, fileCount)
+		} else if fileCount == 1 {
 			rightText = "1 file"
 		} else {
 			rightText = fmt.Sprintf("%d files", fileCount)
@@ -208,19 +203,14 @@ func (m Model) renderFileLine(info StatusInfo) string {
 	}
 
 	// Calculate widths for padding
-	// Layout: leftSection + content + padding + rightSection
+	// Layout: content + padding + rightSection
 	contentWidth := lipgloss.Width(content)
-	padding := m.width - leftSectionWidth - contentWidth - rightWidth
+	padding := m.width - contentWidth - rightWidth
 	if padding < 0 {
 		padding = 0
 	}
 
-	var leftSection string
-	if info.CurrentFile > 0 {
-		leftSection = fileNum
-	}
-
-	return leftSection + content + strings.Repeat(" ", padding) + rightSection
+	return content + strings.Repeat(" ", padding) + rightSection
 }
 
 // renderBreadcrumbLine renders the breadcrumb line for the top bar.

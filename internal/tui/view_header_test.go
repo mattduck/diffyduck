@@ -306,9 +306,8 @@ func TestView_HeaderFileNumWidthMatchesLineNumWidth(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// The top bar file line (line index 0) shows the file counter (#1)
+	// The top bar file line (line index 0) shows the file name
 	topBar := lines[0]
-	assert.Contains(t, topBar, "#1", "top bar should contain file number")
 	assert.Contains(t, topBar, "test.go", "top bar should contain file name")
 }
 

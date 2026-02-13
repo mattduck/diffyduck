@@ -108,8 +108,6 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 	assert.Contains(t, topBar, "+1")
 	assert.Contains(t, topBar, "-1")
 
-	// Top bar should contain file counter
-	assert.Contains(t, topBar, "1") // file counter (no # prefix)
 }
 
 func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
@@ -366,9 +364,9 @@ func TestTopBar_LeftAligned(t *testing.T) {
 
 	// Top bar should be left-aligned (starts with content, not spaces)
 	assert.True(t, len(topBar) > 0, "top bar should not be empty")
-	// The file counter should be near the start (left-aligned)
-	idx := strings.Index(topBar, "#")
-	assert.True(t, idx >= 0 && idx < 6, "file counter should be near the start (left-aligned)")
+	// The file info should be near the start (left-aligned)
+	idx := strings.Index(topBar, "foo.go")
+	assert.True(t, idx >= 0 && idx < 10, "file info should be near the start (left-aligned)")
 }
 
 func TestBottomBar_OnlyLessStyle(t *testing.T) {
@@ -593,15 +591,15 @@ func TestTopBar_WithCommitInfo(t *testing.T) {
 	assert.Contains(t, commitLine, "abc123d", "commit line should contain short SHA")
 	assert.Contains(t, commitLine, "Fix the bug", "commit line should contain subject")
 	assert.NotContains(t, commitLine, "Test Author", "commit line should NOT contain author")
-	// Stats should be on commit line
-	assert.Contains(t, commitLine, "1 file", "commit line should contain file stats")
+	// Stats should be on commit line (with file position: 1/1 files)
+	assert.Contains(t, commitLine, "1/1 files", "commit line should contain file stats with position")
 	assert.Contains(t, commitLine, "+1", "commit line should contain added stats")
 	assert.Contains(t, commitLine, "-1", "commit line should contain removed stats")
 
 	// Second line should contain file info but NOT stats
 	fileLine := lines[1]
 	assert.Contains(t, fileLine, "foo.go", "file line should contain filename")
-	assert.NotContains(t, fileLine, "1 file", "file line should NOT contain stats when commit info present")
+	assert.NotContains(t, fileLine, "files", "file line should NOT contain stats when commit info present")
 }
 
 func TestTopBar_WithoutCommitInfo(t *testing.T) {
@@ -634,8 +632,8 @@ func TestTopBar_WithoutCommitInfo(t *testing.T) {
 	fileLine := lines[0]
 	assert.Contains(t, fileLine, "foo.go", "should contain filename")
 	assert.NotContains(t, fileLine, "abc123", "should NOT contain SHA")
-	// Stats should be on file line when no commit info
-	assert.Contains(t, fileLine, "1 file", "file line should contain stats when no commit info")
+	// Stats should be on file line when no commit info (with position: 1/1 files)
+	assert.Contains(t, fileLine, "1/1 files", "file line should contain stats with position when no commit info")
 	assert.Contains(t, fileLine, "+1", "file line should contain added stats when no commit info")
 	assert.Contains(t, fileLine, "-1", "file line should contain removed stats when no commit info")
 }
