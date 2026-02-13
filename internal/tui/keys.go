@@ -94,7 +94,7 @@ func DefaultKeyMap() KeyMap {
 		FoldToggle:     []string{"tab"},
 		FoldToggleAll:  []string{"shift+tab"},
 		FullFileToggle: []string{"F"},
-		Enter:          []string{"enter"},
+		Enter:          []string{"C"},
 		Yank:           []string{"y"},
 		YankAll:        []string{"Y"},
 		RefreshLayout:  []string{"r"},
