@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	runewidth "github.com/mattn/go-runewidth"
 )
 
 // renderTopBar renders the top bar showing file info with a divider line below.
@@ -126,19 +127,21 @@ func (m *Model) renderCommitLine() string {
 		availableWidth = 0
 	}
 
-	// Truncate subject if needed
-	if len(subject) > availableWidth {
+	// Truncate subject if needed (use display width for Unicode-safe measurement)
+	subjectWidth := displayWidth(subject)
+	if subjectWidth > availableWidth {
 		if availableWidth > 3 {
-			subject = subject[:availableWidth-3] + "..."
+			subject = runewidth.Truncate(subject, availableWidth-3, "...")
 		} else if availableWidth > 0 {
-			subject = subject[:availableWidth]
+			subject = runewidth.Truncate(subject, availableWidth, "")
 		} else {
 			subject = ""
 		}
+		subjectWidth = displayWidth(subject)
 	}
 
 	// Calculate padding between subject and right section
-	padding := m.width - 7 - 1 - len(subject) - rightWidth
+	padding := m.width - 7 - 1 - subjectWidth - rightWidth
 	if padding < 1 {
 		padding = 1
 	}
