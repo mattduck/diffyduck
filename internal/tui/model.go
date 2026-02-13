@@ -2204,13 +2204,9 @@ func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
 	// Re-apply auto-fold logic (same as initial WindowSizeMsg handler)
 	if len(m.files) > 0 && m.width > 0 {
 		if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
-			for i := range m.files {
-				m.setFileFoldLevel(i, sidebyside.FoldHunks)
-			}
+			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
 		} else {
-			for i := range m.files {
-				m.setFileFoldLevel(i, sidebyside.FoldHeader)
-			}
+			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHeaders)
 		}
 	}
 

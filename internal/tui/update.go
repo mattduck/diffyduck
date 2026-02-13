@@ -58,19 +58,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clampHelpScroll()
 		}
 
-		// Set initial fold levels on first window size message
-		if !m.initialFoldSet && len(m.files) > 0 {
+		// Set initial fold levels on first window size message.
+		// Only for non-metadata commits (basic diff view) — log view commits
+		// already have their fold levels set at creation time.
+		if !m.initialFoldSet && len(m.files) > 0 && len(m.commits) > 0 && !m.commits[0].Info.HasMetadata() {
 			m.initialFoldSet = true
 			// If only 1 file, or all content fits on screen, start fully expanded (hunks)
 			if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
-				for i := range m.files {
-					m.setFileFoldLevel(i, sidebyside.FoldHunks)
-				}
+				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
 			} else {
-				// Otherwise start folded
-				for i := range m.files {
-					m.setFileFoldLevel(i, sidebyside.FoldHeader)
-				}
+				// Otherwise start with file headers only
+				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHeaders)
 			}
 			m.calculateTotalLines()
 		}
