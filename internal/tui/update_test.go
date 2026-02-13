@@ -5250,3 +5250,145 @@ func TestEffectiveCommitLevel(t *testing.T) {
 		assert.Equal(t, sidebyside.FoldHunks, model.fileFoldLevel(1))
 	})
 }
+
+// =============================================================================
+// Shift-Tab expand-all budget tests
+// =============================================================================
+
+func TestFoldToggleAll_OverBudgetCapsAtHeaders(t *testing.T) {
+	// With more files than the budget, Shift-Tab should only cycle
+	// between CommitFolded and CommitFileHeaders.
+	makeFiles := func(n int) []sidebyside.FilePair {
+		files := make([]sidebyside.FilePair, n)
+		for i := range files {
+			files[i] = sidebyside.FilePair{
+				NewPath:   fmt.Sprintf("file%d.go", i),
+				FoldLevel: sidebyside.FoldHeader,
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "x"}}},
+			}
+		}
+		return files
+	}
+
+	files := makeFiles(10)
+	commit := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc123", Subject: "test"},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.expandAllBudget = 5 // budget of 5, but we have 10 files
+	m.width = 100
+	m.height = 40
+	m.initialFoldSet = true
+	m.focused = true
+	m.calculateTotalLines()
+
+	// First Shift-Tab: Folded -> FileHeaders (within cap)
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0),
+		"first toggle should advance to FileHeaders")
+
+	// Second Shift-Tab: would be FileStructure, but over budget -> wraps to Folded
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0),
+		"second toggle should wrap to Folded (budget limits cycle to Folded ↔ FileHeaders)")
+
+	// Third Shift-Tab: Folded -> FileHeaders again
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0),
+		"third toggle should advance back to FileHeaders")
+}
+
+func TestFoldToggleAll_OverBudgetDiffViewNotCapped(t *testing.T) {
+	// In diff view (no commit metadata), CommitFolded is not in the cycle,
+	// so the budget cap should not apply — there's no cheaper level to fall back to.
+	makeFiles := func(n int) []sidebyside.FilePair {
+		files := make([]sidebyside.FilePair, n)
+		for i := range files {
+			files[i] = sidebyside.FilePair{
+				NewPath:   fmt.Sprintf("file%d.go", i),
+				FoldLevel: sidebyside.FoldHeader,
+				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "x"}}},
+			}
+		}
+		return files
+	}
+
+	// Use New() which creates a commit without metadata (skipFolded = true)
+	m := New(makeFiles(10))
+	m.expandAllBudget = 5 // over budget, but no metadata means no cap
+	m.width = 100
+	m.height = 40
+	m.initialFoldSet = true
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Should start at CommitFileHeaders (New() default for no-metadata commits)
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
+
+	// Shift-Tab should cycle through all levels, not get stuck
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(0),
+		"diff view should advance to FileStructure even when over budget")
+
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHunks, m.commitFoldLevel(0),
+		"diff view should advance to FileHunks even when over budget")
+
+	// Wraps to FileHeaders (skips CommitFolded since no metadata)
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0),
+		"diff view should wrap to FileHeaders (skipping CommitFolded)")
+}
+
+func TestFoldToggleAll_UnderBudgetFullCycle(t *testing.T) {
+	// With fewer files than the budget, Shift-Tab should cycle through all levels.
+	files := []sidebyside.FilePair{
+		{
+			NewPath:   "a.go",
+			FoldLevel: sidebyside.FoldHeader,
+			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "x"}}},
+		},
+	}
+	commit := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc123", Subject: "test"},
+		Files:       files,
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: true,
+	}
+	m := NewWithCommits([]sidebyside.CommitSet{commit})
+	m.expandAllBudget = 500 // budget of 500, we have 1 file
+	m.width = 100
+	m.height = 40
+	m.initialFoldSet = true
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Folded -> FileHeaders
+	newM, _ := m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
+
+	// FileHeaders -> FileStructure (not capped)
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(0))
+
+	// FileStructure -> FileHunks (not capped)
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHunks, m.commitFoldLevel(0))
+
+	// FileHunks -> Folded (wraps around)
+	newM, _ = m.handleFoldToggleAll()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
+}

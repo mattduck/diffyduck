@@ -238,6 +238,7 @@ type Model struct {
 	loadedCommitCount  int      // number of commits currently loaded
 	totalCommitCount   int      // total commits in repo (0=unknown, -1=error)
 	commitBatchSize    int      // commits per batch (default 100)
+	expandAllBudget    int      // max files for full shift-tab expansion (default 500)
 	loadingMoreCommits bool     // true when fetching next batch
 	logArgs            []string // extra args for git log (ref ranges, pathspecs)
 	logPathspec        []string // pathspec portion only (for filtering git show)
@@ -568,6 +569,9 @@ func WithConfig(cfg config.Config) Option {
 		if cfg.Features.CommitBatchSize != nil {
 			m.commitBatchSize = *cfg.Features.CommitBatchSize
 		}
+		if cfg.Features.ExpandAllBudget != nil {
+			m.expandAllBudget = *cfg.Features.ExpandAllBudget
+		}
 	}
 }
 
@@ -600,6 +604,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		windowSplitV:        true, // default to vertical split when created
 		keys:                DefaultKeyMap(),
 		hscrollStep:         DefaultHScrollStep,
+		expandAllBudget:     config.DefaultExpandAllBudget,
 		highlighter:         highlight.New(),
 		highlightSpans:      make(map[int]*FileHighlight),
 		structureMaps:       make(map[int]*FileStructure),

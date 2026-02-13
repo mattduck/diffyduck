@@ -1159,6 +1159,15 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 		newLevel = newLevel.NextLevel()
 	}
 
+	// When total files exceed the expand-all budget, limit the cycle to
+	// CommitFolded ↔ CommitFileHeaders. This prevents expensive sync loading
+	// of content for many commits. Individual commit expansion (Tab) is unaffected.
+	// Skip when CommitFolded is not in the cycle (diff view without metadata) —
+	// there's no cheaper level to fall back to.
+	if !skipFolded && len(m.files) > m.expandAllBudget && newLevel > sidebyside.CommitFileHeaders {
+		newLevel = sidebyside.CommitFolded
+	}
+
 	// Apply the new level to commits in scope
 	m.setCommitsToLevel(startCommit, endCommit, newLevel)
 

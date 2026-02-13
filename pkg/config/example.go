@@ -53,6 +53,7 @@ const (
 	DefaultCommitBatchSize = 100
 	DefaultAutoSnapshots   = true
 	DefaultShowSnapshots   = false
+	DefaultExpandAllBudget = 500
 )
 
 // GenerateExample returns a complete, commented TOML config file with all
@@ -219,6 +220,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 	b.WriteString(fmt.Sprintf("# commit_batch_size  = %d  # commits loaded per batch in log mode\n", DefaultCommitBatchSize))
 	b.WriteString(fmt.Sprintf("# auto_snapshots     = %v  # take snapshots automatically (--no-snapshots overrides)\n", DefaultAutoSnapshots))
 	b.WriteString(fmt.Sprintf("# show_snapshots     = %v # show snapshot view by default (--snapshots overrides)\n", DefaultShowSnapshots))
+	b.WriteString(fmt.Sprintf("# expand_all_budget  = %d  # max total files for full shift-tab expansion\n", DefaultExpandAllBudget))
 
 	return b.String()
 }

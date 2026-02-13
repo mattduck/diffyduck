@@ -100,6 +100,22 @@ show_snapshots = true
 	require.NotNil(t, cfg.Features.ShowSnapshots)
 	assert.Equal(t, true, *cfg.Features.ShowSnapshots)
 	assert.Nil(t, cfg.Features.CommitBatchSize) // unmentioned
+	assert.Nil(t, cfg.Features.ExpandAllBudget) // unmentioned
+}
+
+func TestLoad_ExpandAllBudget(t *testing.T) {
+	content := `
+[features]
+expand_all_budget = 200
+`
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+
+	cfg, err := LoadFrom(path)
+	require.NoError(t, err)
+
+	require.NotNil(t, cfg.Features.ExpandAllBudget)
+	assert.Equal(t, 200, *cfg.Features.ExpandAllBudget)
 }
 
 func TestLoad_SyntaxConfig(t *testing.T) {
