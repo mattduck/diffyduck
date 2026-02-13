@@ -4657,6 +4657,122 @@ func TestLoadCommitDiff_NegativeDelta_ShiftsCorrectly(t *testing.T) {
 	assert.False(t, hasOld, "old index 3 should no longer have highlight data")
 }
 
+func TestFoldToggleAll_LoadsCommitDiff_WhenExpandingToStructure(t *testing.T) {
+	// Shift-tab from CommitFolded through to CommitFileStructure should
+	// trigger loadCommitDiff for unloaded commits so that subsequent
+	// expansion to FoldHunks has real diff content (not empty skeleton pairs).
+	diffOutput := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1,3 +1,3 @@\n package main\n-var x = 1\n+var x = 2\n func main() {}\n"
+	mock := &git.MockGit{ShowOutput: diffOutput}
+
+	c := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc1234", Author: "A", Subject: "change x"},
+		Files:       []sidebyside.FilePair{sidebyside.SkeletonFilePairNoStats("main.go")},
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: false,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{c}, WithGit(mock))
+	m.width = 80
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Skeleton file has no Pairs
+	require.Empty(t, m.files[0].Pairs, "skeleton should have no pairs")
+	require.False(t, m.commits[0].FilesLoaded)
+
+	// Shift-tab 1: CommitFolded → CommitFileHeaders (should NOT load diff)
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
+	assert.False(t, m.commits[0].FilesLoaded, "diff should not be loaded at CommitFileHeaders")
+
+	// Shift-tab 2: CommitFileHeaders → CommitFileStructure (should load diff)
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(0))
+	assert.True(t, m.commits[0].FilesLoaded, "diff should be loaded at CommitFileStructure")
+	assert.NotEmpty(t, m.files[0].Pairs, "file should have real pairs after diff load")
+
+	// Shift-tab 3: CommitFileStructure → CommitFileHunks
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHunks, m.commitFoldLevel(0))
+
+	// Verify content rows exist at FoldHunks
+	rows := m.buildRows()
+	var contentRows int
+	for _, r := range rows {
+		if r.kind == RowKindContent && r.fileIndex == 0 {
+			contentRows++
+		}
+	}
+	assert.Greater(t, contentRows, 0, "FoldHunks should produce content rows")
+}
+
+func TestFoldToggle_LoadsCommitDiff_WhenFileExpandedIndividually(t *testing.T) {
+	// After shift-tab expands commits to CommitFileHeaders (no diff loaded),
+	// tabbing an individual file should load the parent commit's diff so that
+	// both FoldStructure and FoldHunks render correctly.
+	diffOutput := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1,3 +1,3 @@\n package main\n-var x = 1\n+var x = 2\n func main() {}\n"
+	mock := &git.MockGit{ShowOutput: diffOutput}
+
+	c := sidebyside.CommitSet{
+		Info:        sidebyside.CommitInfo{SHA: "abc1234", Author: "A", Subject: "change x"},
+		Files:       []sidebyside.FilePair{sidebyside.SkeletonFilePairNoStats("main.go")},
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: false,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{c}, WithGit(mock))
+	m.width = 80
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+
+	// Shift-tab to CommitFileHeaders (diff NOT loaded)
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
+	assert.False(t, m.commits[0].FilesLoaded)
+
+	// Navigate cursor to the file header and tab it individually.
+	// Find the file header row.
+	rows := m.buildRows()
+	fileHeaderRow := -1
+	for i, r := range rows {
+		if r.isHeader && r.fileIndex == 0 {
+			fileHeaderRow = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, fileHeaderRow, 0, "should find file header row")
+	m.w().scroll = fileHeaderRow
+
+	// Tab: FoldHeader → FoldStructure (should trigger loadCommitDiff)
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.FoldStructure, m.fileFoldLevel(0))
+	assert.True(t, m.commits[0].FilesLoaded, "individual file tab should load parent commit diff")
+	assert.NotEmpty(t, m.files[0].Pairs, "file should have real pairs")
+
+	// Tab: FoldStructure → FoldHunks
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
+
+	// Verify content rows exist at FoldHunks
+	rows = m.buildRows()
+	var contentRows int
+	for _, r := range rows {
+		if r.kind == RowKindContent && r.fileIndex == 0 {
+			contentRows++
+		}
+	}
+	assert.Greater(t, contentRows, 0,
+		"FoldHunks after individual file tab should produce content rows (not empty lines)")
+}
+
 func TestHandleSnapshot_SwitchesViewEvenWhenNoChanges(t *testing.T) {
 	// S key from normal view should switch to snapshot view even when the
 	// new snapshot has no changes (empty diff). The view swap is done via

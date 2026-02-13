@@ -901,9 +901,16 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// If expanding to show content (hunks or structure), ensure content and
-	// highlighting are loaded synchronously so the first render is complete.
+	// If expanding to show content (hunks or structure), ensure the parent
+	// commit's diff is loaded (skeleton → real files) and content/highlighting
+	// are ready so the first render is complete.
 	if newLevel == sidebyside.FoldHunks || newLevel == sidebyside.FoldStructure {
+		if len(m.commits) > 0 && m.git != nil {
+			commitIdx := m.commitForFile(fileIdx)
+			if commitIdx >= 0 && commitIdx < len(m.commits) && !m.commits[commitIdx].FilesLoaded {
+				m.loadCommitDiff(commitIdx)
+			}
+		}
 		m.loadAndHighlightFileSync(fileIdx)
 	}
 
@@ -1183,8 +1190,15 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	newRowIdx := m.findRowOrNearestAbove(identity)
 	m.adjustScrollToRow(newRowIdx)
 
-	// Synchronously load content + highlighting when expanding to show structure or beyond
+	// Load diff content + highlighting when expanding to show structure or beyond.
+	// Diff loading (skeleton → real files) is deferred to here rather than
+	// CommitFileHeaders so that shift-tab to file headers stays instant.
 	if newLevel >= sidebyside.CommitFileStructure {
+		for ci := startCommit; ci < endCommit; ci++ {
+			if !m.commits[ci].FilesLoaded && m.git != nil {
+				m.loadCommitDiff(ci)
+			}
+		}
 		for ci := startCommit; ci < endCommit; ci++ {
 			startIdx := m.commitFileStarts[ci]
 			endIdx := len(m.files)
