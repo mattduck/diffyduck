@@ -296,15 +296,13 @@ func TestCommitBottomBorder_ExtendsFullWidthWithCorner(t *testing.T) {
 	rendered := m.renderCommitHeaderBottomBorder(*borderRow, false)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "╚", "commit bottom border should contain ╚ corner")
-	assert.Contains(t, stripped, "═", "commit bottom border should have ═ fill")
-	trimmed := strings.TrimRight(stripped, " ")
-	assert.True(t, strings.HasSuffix(trimmed, "●"),
-		"● should be the last character, got: %q", trimmed[max(0, len(trimmed)-10):])
+	// Bottom border is now an empty tree continuation row (border moved to header line)
+	assert.NotContains(t, stripped, "╚", "commit bottom border should no longer contain ╚ corner")
+	assert.NotContains(t, stripped, "═", "commit bottom border should no longer have ═ fill")
 }
 
-func TestCommitHeader_VerticalAndCornerAligned(t *testing.T) {
-	// The commit header ╗ and the border ╚ should be vertically aligned
+func TestCommitHeader_FillExtendsToScreenEdge(t *testing.T) {
+	// The commit header ═══● fill should extend to the screen edge
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := makeCommitModel(
@@ -316,39 +314,30 @@ func TestCommitHeader_VerticalAndCornerAligned(t *testing.T) {
 
 	rows := m.buildRows()
 
-	var headerRow, borderRow *displayRow
+	var headerRow *displayRow
 	for i := range rows {
 		if rows[i].kind == RowKindCommitHeader && rows[i].commitIndex == 0 {
 			headerRow = &rows[i]
-		}
-		if rows[i].kind == RowKindCommitHeaderBottomBorder {
-			borderRow = &rows[i]
+			break
 		}
 	}
 	require.NotNil(t, headerRow, "should find commit header")
-	require.NotNil(t, borderRow, "should find commit bottom border")
 
 	header := stripANSI(m.renderCommitHeaderRow(*headerRow, false))
-	border := stripANSI(m.renderCommitHeaderBottomBorder(*borderRow, false))
 
-	assert.Contains(t, header, "════╗", "header should have ════╗ trailing corner")
-	assert.Contains(t, border, "╚", "border should contain ╚ corner")
-
-	// ╗ and ╚ should be vertically aligned
-	headerPos := findRuneIndex(header, "╗")
-	borderPos := findRuneIndex(border, "╚")
-	require.NotEqual(t, -1, headerPos, "header should contain ╗")
-	require.NotEqual(t, -1, borderPos, "border should contain ╚")
-	assert.Equal(t, headerPos, borderPos,
-		"╗ (col %d) and ╚ (col %d) should be vertically aligned", headerPos, borderPos)
+	assert.Contains(t, header, "═", "header should have ═ fill")
+	trimmed := strings.TrimRight(header, " ")
+	assert.True(t, strings.HasSuffix(trimmed, "●"),
+		"header should end with ● end cap, got: %q", trimmed[max(0, len(trimmed)-10):])
+	assert.Equal(t, 100, displayWidth(trimmed),
+		"header fill should extend to screen width")
 }
 
 // --- Width calculation tests ---
 
-func TestCommitHeader_TruncatedSubjectAlignsWithBorder(t *testing.T) {
+func TestCommitHeader_TruncatedSubjectFillsToEdge(t *testing.T) {
 	// When the subject is longer than maxCommitSubjectWidth (cached at 60 by default),
-	// the render truncates it with "..." but headerBoxWidth should match the truncated width.
-	// This was the bug fixed by capping subjectWidth to maxCommitSubjectWidth in buildRows.
+	// the render truncates it with "..." and the ═══● fill extends to the screen edge.
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	longSubject := "feat: add tree prefix to comment boxes and use double-sided borders for all headers"
@@ -358,37 +347,28 @@ func TestCommitHeader_TruncatedSubjectAlignsWithBorder(t *testing.T) {
 		commitSpec{sha: "abc1234", subject: longSubject, author: "Alice", date: "2024-01-01", fileCount: 3},
 	)
 	m.commits[0].FoldLevel = sidebyside.CommitFileHeaders
-	m.width = 120
+	m.width = 160
 	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
 
-	var headerRow, borderRow *displayRow
+	var headerRow *displayRow
 	for i := range rows {
 		if rows[i].kind == RowKindCommitHeader && rows[i].commitIndex == 0 {
 			headerRow = &rows[i]
-		}
-		if rows[i].kind == RowKindCommitHeaderBottomBorder {
-			borderRow = &rows[i]
+			break
 		}
 	}
 	require.NotNil(t, headerRow, "should find commit header")
-	require.NotNil(t, borderRow, "should find commit bottom border")
 
 	header := stripANSI(m.renderCommitHeaderRow(*headerRow, false))
-	border := stripANSI(m.renderCommitHeaderBottomBorder(*borderRow, false))
+	trimmed := strings.TrimRight(header, " ")
 
-	// Border should have ╚═══● pattern; header should have ════╗
-	assert.Contains(t, border, "╚", "border should contain ╚ corner")
-	assert.Contains(t, header, "════╗", "header should have ════╗ trailing corner")
-
-	// ╗ and ╚ should be vertically aligned
-	headerPos := findRuneIndex(header, "╗")
-	borderPos := findRuneIndex(border, "╚")
-	if headerPos > 0 && borderPos > 0 {
-		assert.Equal(t, headerPos, borderPos,
-			"╗ (col %d) and ╚ (col %d) should align even with truncated subject", headerPos, borderPos)
-	}
+	assert.Contains(t, header, "═", "header should have ═ fill")
+	assert.True(t, strings.HasSuffix(trimmed, "●"),
+		"header should end with ● end cap, got: %q", trimmed[max(0, len(trimmed)-10):])
+	assert.Equal(t, 160, displayWidth(trimmed),
+		"header fill should extend to screen width even with long subject")
 }
 
 func TestFileHeaderBoxWidth_MatchesRenderedWidth(t *testing.T) {

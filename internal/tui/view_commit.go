@@ -443,13 +443,19 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	// Trailing indicator based on commit fold level:
 	// - Folded: no trailing indicator
-	// - Normal/Expanded: corner turning down, border continues on next line
+	// - Unfolded: ════...● extending to screen edge
 	switch row.commitFoldLevel {
 	case sidebyside.CommitFolded:
 		// No trailing indicator
 	default:
-		// Unfolded commit: ════╗ after content
-		result += " " + treeStyle.Render("════╗")
+		// Unfolded commit: fill with ═ to screen edge, end with ●
+		resultWidth := lipgloss.Width(result)
+		fill := m.width - resultWidth - 1 - 1 // -1 for space, -1 for ● end cap
+		if fill > 0 {
+			result += " " + treeStyle.Render(strings.Repeat("═", fill)+"●")
+		} else {
+			result += " " + treeStyle.Render("●")
+		}
 	}
 
 	return result

@@ -266,45 +266,9 @@ func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) str
 }
 
 // renderCommitHeaderBottomBorder renders the bottom border of the commit header.
-// Expanded: ╚═══════════════════════●  (line to screen edge)
-// Normal:   ╚═●                        (short connector with fold icon)
+// Shows tree continuation │ below the commit fold icon (border moved to header line).
 func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) string {
-	isSnapshot := row.commitIndex < len(m.commits) && m.commits[row.commitIndex].IsSnapshot
-	visible := row.headerMode == HeaderThreeLine
-
-	// Style: yellow for commits, magenta for snapshots, dark when not visible
-	treeStyle := commitTreeStyle
-	if isSnapshot {
-		treeStyle = snapshotTreeStyle
-	}
-	borderStyle := treeStyle
-	if !visible {
-		borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
-	}
-
-	// ╗ on the header is at column headerBoxWidth + 1 (space) + 4 (════)
-	// = headerBoxWidth + 5. The ╚ goes under the ╗.
-	cornerColumn := row.headerBoxWidth + 5
-	spacesBeforeCorner := cornerColumn - 1 // -1 for margin
-	if spacesBeforeCorner < 0 {
-		spacesBeforeCorner = 0
-	}
-	spacing := strings.Repeat(" ", spacesBeforeCorner)
-
-	// Both Normal and Expanded: line extends to screen edge with ● end cap
-	borderFill := m.width - cornerColumn - 1 // -1 for corner char
-	var content string
-	if borderFill > 1 {
-		content = "╚" + strings.Repeat("═", borderFill-1) + "●"
-	} else if borderFill > 0 {
-		content = "╚●"
-	} else {
-		content = "╚"
-	}
-
-	// Tree continuation line under the commit fold icon (column 1)
 	treeCont := treeContinuationStyle.Render("│")
-
 	if isCursorRow {
 		var arrow string
 		if m.focused {
@@ -312,8 +276,7 @@ func (m Model) renderCommitHeaderBottomBorder(row displayRow, isCursorRow bool) 
 		} else {
 			arrow = " "
 		}
-		return arrow + treeCont + spacing[1:] + borderStyle.Render(content)
+		return arrow + treeCont
 	}
-
-	return " " + treeCont + spacing[1:] + borderStyle.Render(content)
+	return " " + treeCont
 }
