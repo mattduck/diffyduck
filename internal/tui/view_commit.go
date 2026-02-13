@@ -269,9 +269,9 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	var prefix string
 	if isCursorRow {
 		if m.focused {
-			prefix = cursorArrowStyle.Render("▶")
+			prefix = cursorArrowStyle.Render("▌")
 		} else {
-			prefix = unfocusedCursorArrowStyle.Render("▷")
+			prefix = " "
 		}
 	} else {
 		// Single space margin (fold icon aligns with tree branch column)
@@ -503,9 +503,9 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 	if isCursorRow {
 		var prefix string
 		if m.focused {
-			prefix = cursorArrowStyle.Render("▶")
+			prefix = cursorArrowStyle.Render("▌")
 		} else {
-			prefix = unfocusedCursorArrowStyle.Render("▷")
+			prefix = " "
 		}
 		// Replace first char of treeLine with arrow
 		if len(treeLine) > 0 {
@@ -593,9 +593,9 @@ func (m Model) renderCommitInfoBottomBorder(row displayRow, isCursorRow bool) st
 	if isCursorRow {
 		var arrow string
 		if m.focused {
-			arrow = cursorArrowStyle.Render("▶")
+			arrow = cursorArrowStyle.Render("▌")
 		} else {
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+			arrow = " "
 		}
 		if TreeLeftMargin > 0 {
 			return arrow + margin[1:] + treeCont + spacing + greyStyle.Render(corner+borderLine)
@@ -638,9 +638,9 @@ func (m Model) renderCommitInfoBody(row displayRow, isCursorRow bool) string {
 	if isCursorRow {
 		var arrow string
 		if m.focused {
-			arrow = cursorArrowStyle.Render("▶")
+			arrow = cursorArrowStyle.Render("▌")
 		} else {
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+			arrow = " "
 		}
 		// Replace first char of margin with arrow
 		if TreeLeftMargin > 0 {
@@ -1265,12 +1265,12 @@ func (m Model) renderCommitBodyRow(row displayRow, isCursorRow bool) string {
 	if isCursorRow && m.focused {
 		// Format: arrow + space + [1 char bg] + space + content
 		styledGutter := cursorStyle.Render(" ")
-		return cursorArrowStyle.Render("▶") + " " + styledGutter + " " + content
+		return cursorArrowStyle.Render("▌") + " " + styledGutter + " " + content
 	}
 
 	if isCursorRow && !m.focused {
 		// Unfocused: outline arrow, no background highlight
-		return unfocusedCursorArrowStyle.Render("▷") + "   " + content
+		return " " + "   " + content
 	}
 
 	// Non-cursor: 2-space prefix + 2-space indent
@@ -1300,9 +1300,9 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 		borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("0"))
 		var result string
 		if isCursorRow && m.focused {
-			result = cursorArrowStyle.Render("▶") + treeContinuation[1:] + styledContent + padding
+			result = cursorArrowStyle.Render("▌") + treeContinuation[1:] + styledContent + padding
 		} else if isCursorRow && !m.focused {
-			result = unfocusedCursorArrowStyle.Render("▷") + treeContinuation[1:] + styledContent + padding
+			result = " " + treeContinuation[1:] + styledContent + padding
 		} else {
 			result = treeContinuation + styledContent + padding
 		}
@@ -1378,9 +1378,9 @@ func (m Model) renderStructuralDiffRow(row displayRow, isCursorRow bool) string 
 	// Build: prefix + kind + signature + padding + stats + border
 	var result string
 	if isCursorRow && m.focused {
-		result = cursorArrowStyle.Render("▶") + treeContinuation[1:] + prefix + styledContent + statsStr + padding
+		result = cursorArrowStyle.Render("▌") + treeContinuation[1:] + prefix + styledContent + statsStr + padding
 	} else if isCursorRow && !m.focused {
-		result = unfocusedCursorArrowStyle.Render("▷") + treeContinuation[1:] + prefix + styledContent + statsStr + padding
+		result = " " + treeContinuation[1:] + prefix + styledContent + statsStr + padding
 	} else {
 		result = treeContinuation + prefix + styledContent + statsStr + padding
 	}

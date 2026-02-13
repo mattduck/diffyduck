@@ -751,7 +751,7 @@ func TestCommitBorder_CursorRendersArrowOnBorderLine(t *testing.T) {
 	// Find the line with the cursor arrow in the content area
 	var cursorLine string
 	for _, line := range lines {
-		if strings.HasPrefix(line, "▶") {
+		if strings.HasPrefix(line, "▌") {
 			cursorLine = line
 			break
 		}
@@ -759,6 +759,6 @@ func TestCommitBorder_CursorRendersArrowOnBorderLine(t *testing.T) {
 
 	require.NotEmpty(t, cursorLine, "should find content line with cursor arrow")
 	// Arrow should be present at the start of the border line
-	assert.True(t, strings.HasPrefix(cursorLine, "▶"),
+	assert.True(t, strings.HasPrefix(cursorLine, "▌"),
 		"commit bottom border with cursor should start with arrow, got: %s", cursorLine)
 }

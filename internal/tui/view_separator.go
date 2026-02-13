@@ -329,9 +329,9 @@ func (m Model) renderPaginationIndicator(isCursorRow bool) string {
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // dim
 	indicator := "   …"
 	if isCursorRow && m.focused {
-		return cursorArrowStyle.Render("▶") + " " + style.Render("…")
+		return cursorArrowStyle.Render("▌") + " " + style.Render("…")
 	} else if isCursorRow {
-		return unfocusedCursorArrowStyle.Render("▷") + " " + style.Render("…")
+		return " " + " " + style.Render("…")
 	}
 	return style.Render(indicator)
 }

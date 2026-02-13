@@ -80,7 +80,7 @@ index abc123..def456 100644
 		stripped := stripANSI(line)
 		// Skip lines that don't look like content lines (need to have digits for line numbers)
 		// Content lines have a pattern like "   5   content" on each side
-		if !regexp.MustCompile(`^\s*▶?\s*\d+`).MatchString(stripped) {
+		if !regexp.MustCompile(`^\s*▌?\s*\d+`).MatchString(stripped) {
 			continue
 		}
 		pos := findRuneIndex(stripped, "│")
@@ -149,7 +149,7 @@ index abc123..def456 100644
 	for _, line := range lines {
 		stripped := stripANSI(line)
 		// Skip lines that don't look like content lines (need to have digits for line numbers)
-		if !regexp.MustCompile(`^\s*▶?\s*\d+`).MatchString(stripped) {
+		if !regexp.MustCompile(`^\s*▌?\s*\d+`).MatchString(stripped) {
 			continue
 		}
 		pos := findRuneIndex(stripped, "│")
@@ -210,7 +210,7 @@ index 0000000..abc1234
 	for _, line := range lines {
 		stripped := stripANSI(line)
 		// Skip lines that don't look like content lines (need to have digits for line numbers)
-		if !regexp.MustCompile(`^\s*▶?\s*\d+`).MatchString(stripped) {
+		if !regexp.MustCompile(`^\s*▌?\s*\d+`).MatchString(stripped) {
 			continue
 		}
 		pos := findRuneIndex(stripped, "│")
@@ -386,7 +386,7 @@ func TestFullPipeline_TabsInContent(t *testing.T) {
 	for _, line := range lines {
 		stripped := stripANSI(line)
 		// Skip lines that don't look like content lines (need to have digits for line numbers)
-		if !regexp.MustCompile(`^\s*▶?\s*\d+`).MatchString(stripped) {
+		if !regexp.MustCompile(`^\s*▌?\s*\d+`).MatchString(stripped) {
 			continue
 		}
 		pos := findRuneIndex(stripped, "│")

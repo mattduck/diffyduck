@@ -110,9 +110,9 @@ func renderTreePrefixTightWithCursor(path TreePath, isCursorRow bool, focused bo
 	if isCursorRow {
 		var arrow string
 		if focused {
-			arrow = cursorArrowStyle.Render("▶")
+			arrow = cursorArrowStyle.Render("▌")
 		} else {
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+			arrow = " "
 		}
 		return arrow + continuation
 	}
@@ -132,9 +132,9 @@ func renderEmptyTreeRow(treePath TreePath, isCursorRow bool, focused bool, termi
 	if isCursorRow {
 		var arrow string
 		if focused {
-			arrow = cursorArrowStyle.Render("▶")
+			arrow = cursorArrowStyle.Render("▌")
 		} else {
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+			arrow = " "
 		}
 		// Arrow replaces the left margin space
 		return arrow + continuation

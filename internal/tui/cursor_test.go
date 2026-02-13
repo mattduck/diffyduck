@@ -302,14 +302,14 @@ func TestView_CursorHighlight_OnFileHeader(t *testing.T) {
 		// The header should contain the filename
 		assert.Contains(t, headerLine, "test.go", "header should contain filename")
 
-		// The header should show cursor arrow (▶) but NOT background highlighting
-		assert.Contains(t, headerLine, "▶", "header should show cursor arrow when focused")
+		// The header should show cursor arrow (▌) but NOT background highlighting
+		assert.Contains(t, headerLine, "▌", "header should show cursor arrow when focused")
 	})
 }
 
 func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 	// The fold icon (◐/○/●) should NOT be highlighted - no background highlighting on headers
-	// Only the cursor arrow (▶) indicates cursor position
+	// Only the cursor arrow (▌) indicates cursor position
 	withANSIColors(t, func() {
 		m := New([]sidebyside.FilePair{
 			{
@@ -338,7 +338,7 @@ func TestView_CursorHighlight_OnFileHeader_IconNotHighlighted(t *testing.T) {
 		headerLine := lines[5]
 
 		// Headers show cursor arrow but NO background highlighting
-		assert.Contains(t, headerLine, "▶", "header should show cursor arrow")
+		assert.Contains(t, headerLine, "▌", "header should show cursor arrow")
 		// The fold icon should NOT have cursor background style
 		assert.NotContains(t, headerLine, ansiCursorStyle, "header should not have cursor background highlighting")
 	})
@@ -375,8 +375,8 @@ func TestView_CursorHighlight_OnFileHeader_UnfocusedNoBg(t *testing.T) {
 		// lines[0..2]=topBar, lines[3]=divider, lines[4]=top border, lines[5]=header (with cursor)
 		headerLine := lines[5]
 
-		// Should have outline arrow
-		assert.Contains(t, headerLine, "▷", "unfocused header should have outline arrow")
+		// Cursor should be hidden when unfocused (just a space, no block character)
+		assert.NotContains(t, headerLine, "▌", "unfocused header should not show cursor block")
 
 		// Should NOT have cursor background style (bg=7)
 		assert.NotContains(t, headerLine, ansiCursorStyle, "unfocused header should NOT have cursor background highlighting")

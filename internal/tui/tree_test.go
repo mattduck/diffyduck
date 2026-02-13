@@ -490,14 +490,14 @@ func TestRenderEmptyTreeRow(t *testing.T) {
 	t.Run("no ancestors, cursor focused", func(t *testing.T) {
 		path := TreePath{}
 		got := renderEmptyTreeRow(path, true, true, false)
-		assert.Contains(t, got, "▶", "cursor row should have arrow")
+		assert.Contains(t, got, "▌", "cursor row should have arrow")
 		assert.NotContains(t, got, "│", "no ancestors means no continuation")
 	})
 
 	t.Run("no ancestors, cursor unfocused", func(t *testing.T) {
 		path := TreePath{}
 		got := renderEmptyTreeRow(path, true, false, false)
-		assert.Contains(t, got, "▷", "unfocused cursor should have outline arrow")
+		assert.NotContains(t, got, "▌", "unfocused cursor should be hidden (no block character)")
 		assert.NotContains(t, got, "│", "no ancestors means no continuation")
 	})
 
@@ -514,7 +514,7 @@ func TestRenderEmptyTreeRow(t *testing.T) {
 			Ancestors: []TreeLevel{{IsLast: false, Style: plainStyle}},
 		}
 		got := renderEmptyTreeRow(path, true, true, false)
-		assert.Contains(t, got, "▶", "cursor row should have arrow")
+		assert.Contains(t, got, "▌", "cursor row should have arrow")
 		assert.Contains(t, got, "│", "tree continuation must survive cursor rendering")
 	})
 
@@ -548,7 +548,7 @@ func TestRenderEmptyTreeRow(t *testing.T) {
 			Ancestors: []TreeLevel{{IsLast: false, Style: plainStyle}},
 		}
 		got := renderEmptyTreeRow(path, true, true, true)
-		assert.Contains(t, got, "▶", "cursor should show arrow")
+		assert.Contains(t, got, "▌", "cursor should show arrow")
 		assert.Contains(t, got, "┴", "terminator with cursor should render ┴")
 		assert.NotContains(t, got, "│", "terminator should not render │")
 	})

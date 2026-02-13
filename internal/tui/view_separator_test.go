@@ -586,7 +586,7 @@ func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
 	var cursorHunkLine string
 	for _, line := range lines {
 		// Look for arrow and partial breadcrumb (might be truncated in tree layout)
-		if strings.Contains(line, "▶") && (strings.Contains(line, "MyFunction") || strings.Contains(line, "MyFunct")) {
+		if strings.Contains(line, "▌") && (strings.Contains(line, "MyFunction") || strings.Contains(line, "MyFunct")) {
 			cursorHunkLine = line
 			break
 		}
@@ -594,7 +594,7 @@ func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
 	require.NotEmpty(t, cursorHunkLine, "cursor row should show arrow and breadcrumb (partial or full)")
 
 	// Verify arrow appears and breadcrumb is preserved (partial match OK)
-	assert.Contains(t, cursorHunkLine, "▶", "cursor row should have arrow")
+	assert.Contains(t, cursorHunkLine, "▌", "cursor row should have arrow")
 	assert.True(t, strings.Contains(cursorHunkLine, "MyFunction") || strings.Contains(cursorHunkLine, "MyFunct"),
 		"cursor row should preserve breadcrumb text (partial or full)")
 }
@@ -650,7 +650,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 				}
 				continue
 			}
-			if r == '▶' {
+			if r == '▌' {
 				positions = append(positions, displayCol)
 			}
 			displayCol++
@@ -667,7 +667,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	// Find the content line with cursor (has "100" line number and arrows)
 	var contentLineWithCursor string
 	for _, line := range contentLines {
-		if strings.Contains(line, "100") && strings.Contains(line, "▶") {
+		if strings.Contains(line, "100") && strings.Contains(line, "▌") {
 			contentLineWithCursor = line
 			break
 		}
@@ -685,7 +685,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 	var hunkSepLine string
 	for i, line := range hunkLines {
 		// Skip header area, look for line that has arrows but no line content
-		if i > 3 && strings.Contains(line, "▶") &&
+		if i > 3 && strings.Contains(line, "▌") &&
 			!strings.Contains(line, "test.go") && !strings.Contains(line, "100") &&
 			!strings.Contains(line, "first") && !strings.Contains(line, "second") {
 			hunkSepLine = line
@@ -739,17 +739,17 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 	lines := strings.Split(output, "\n")
 
 	// Find the hunk separator line (blank line without line numbers, not the header)
-	// Hunk separators don't contain file names or line numbers, and have ▶ when cursor is on them
+	// Hunk separators don't contain file names or line numbers, and have ▌ when cursor is on them
 	var hunkSepLine string
 	for i, line := range lines {
-		if i > 2 && strings.Contains(line, "▶") && !strings.Contains(line, "test.go") && !strings.Contains(line, "100") && !strings.Contains(line, "first") {
+		if i > 2 && strings.Contains(line, "▌") && !strings.Contains(line, "test.go") && !strings.Contains(line, "100") && !strings.Contains(line, "first") {
 			hunkSepLine = line
 			break
 		}
 	}
 
 	require.NotEmpty(t, hunkSepLine, "should find hunk separator line")
-	assert.Contains(t, hunkSepLine, "▶", "hunk separator with cursor should have arrow indicator")
+	assert.Contains(t, hunkSepLine, "▌", "hunk separator with cursor should have arrow indicator")
 }
 
 func TestFilterVisibleEntries(t *testing.T) {

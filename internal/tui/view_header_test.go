@@ -222,10 +222,10 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the content area file header (contains ▶ arrow when cursor is on it)
+	// Find the content area file header (contains ▌ arrow when cursor is on it)
 	var headerLine string
 	for _, line := range lines {
-		if strings.Contains(line, "▶") && strings.Contains(line, "test.go") {
+		if strings.Contains(line, "▌") && strings.Contains(line, "test.go") {
 			headerLine = line
 			break
 		}
@@ -360,7 +360,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	// Find the line with cursor arrow and ┗ corner (bottom border with cursor, heavy for tree layout)
 	var borderLine string
 	for _, line := range lines {
-		if strings.Contains(line, "▶") && strings.Contains(line, "┗") {
+		if strings.Contains(line, "▌") && strings.Contains(line, "┗") {
 			borderLine = line
 			break
 		}
@@ -369,7 +369,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	require.NotEmpty(t, borderLine, "should find bottom border line with cursor")
 
 	// Bottom border with cursor should have ONE arrow
-	arrowCount := strings.Count(borderLine, "▶")
+	arrowCount := strings.Count(borderLine, "▌")
 	assert.Equal(t, 1, arrowCount, "bottom border with cursor should have one arrow")
 
 	// Bottom border should have horizontal line (heavy ━)
@@ -384,7 +384,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	// Find the line with cursor arrow and content (not borders)
 	var contentLine string
 	for _, line := range lines2 {
-		if strings.Count(line, "▶") == 1 && strings.Contains(line, "content") {
+		if strings.Count(line, "▌") == 1 && strings.Contains(line, "content") {
 			contentLine = line
 			break
 		}
@@ -393,7 +393,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 	require.NotEmpty(t, contentLine, "should find content line with cursor")
 
 	// Content line should have one arrow (in the tree gutter, not in line number columns)
-	contentArrowCount := strings.Count(contentLine, "▶")
+	contentArrowCount := strings.Count(contentLine, "▌")
 	assert.Equal(t, 1, contentArrowCount, "content line with cursor should have one arrow in tree gutter")
 
 	// Content line should have a separator (┃ box drawings heavy vertical)
@@ -884,11 +884,11 @@ func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
 
 	// Cursor row should have arrow indicator
 	cursorOutput := m.renderHeaderTopBorder(30, HeaderThreeLine, FileStatusModified, true, treeWidth(0, true), TreePath{})
-	assert.Contains(t, cursorOutput, "▶", "cursor row should have arrow indicator")
+	assert.Contains(t, cursorOutput, "▌", "cursor row should have arrow indicator")
 
 	// Non-cursor row should not have arrow
 	normalOutput := m.renderHeaderTopBorder(30, HeaderThreeLine, FileStatusModified, false, treeWidth(0, true), TreePath{})
-	assert.NotContains(t, normalOutput, "▶", "non-cursor row should not have arrow")
+	assert.NotContains(t, normalOutput, "▌", "non-cursor row should not have arrow")
 
 	// Cursor row WITH tree path should have both arrow and tree continuation
 	treePath := TreePath{
@@ -896,7 +896,7 @@ func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
 		Current:   nil,
 	}
 	cursorTreeOutput := m.renderHeaderTopBorder(30, HeaderThreeLine, FileStatusModified, true, treeWidth(1, true), treePath)
-	assert.Contains(t, cursorTreeOutput, "▶", "cursor+tree should have arrow")
+	assert.Contains(t, cursorTreeOutput, "▌", "cursor+tree should have arrow")
 	assert.Contains(t, cursorTreeOutput, "│", "cursor+tree should preserve tree continuation")
 	assert.NotContains(t, cursorTreeOutput, "░", "cursor+tree should not have shading")
 }
@@ -1788,7 +1788,7 @@ func TestBorderAlignmentWithCursor(t *testing.T) {
 
 	// Bottom border with cursor should start with arrow
 	strippedCursor := stripANSI(cursorSpacer)
-	assert.True(t, strings.HasPrefix(strippedCursor, "▶"),
+	assert.True(t, strings.HasPrefix(strippedCursor, "▌"),
 		"bottom border with cursor should start with arrow, got: %q", strippedCursor[:min(10, len(strippedCursor))])
 
 	// Bottom border should contain ┗ corner (heavy, for tree layout)

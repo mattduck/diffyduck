@@ -142,9 +142,9 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 	var prefix string
 	if isCursorRow {
 		if m.focused {
-			prefix = cursorArrowStyle.Render("▶")
+			prefix = cursorArrowStyle.Render("▌")
 		} else {
-			prefix = unfocusedCursorArrowStyle.Render("▷")
+			prefix = " "
 		}
 		// Replace first char of treeLine with arrow
 		if len(treeLine) > 0 {

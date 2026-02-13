@@ -47,11 +47,8 @@ var (
 	// Visual selection style (bg=7 silver, fg=0 black) - overrides all other styling
 	visualSelectionStyle = lipgloss.NewStyle().Background(lipgloss.Color("7")).Foreground(lipgloss.Color("0"))
 
-	// Cursor arrow style (fg=15 bright white, no background)
+	// Cursor block style (fg=15 bright white, no background) - left half block ▌
 	cursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-
-	// Unfocused cursor arrow style (fg=8 gray) - outline arrow when terminal loses focus
-	unfocusedCursorArrowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 	// Unfocused status bar style (inverted from normal: fg=8 gray on default bg)
 	unfocusedStatusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -1886,7 +1883,15 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 		// Apply visual selection highlighting (overrides all other styles)
 		if selectionStart >= 0 && i >= selectionStart && i <= selectionEnd {
-			rendered = visualSelectionStyle.Render(ansi.Strip(rendered))
+			stripped := ansi.Strip(rendered)
+			rendered = visualSelectionStyle.Render(stripped)
+			// Re-inject cursor block on the cursor row so it stays visible
+			if isCursorRow && m.focused {
+				runes := []rune(stripped)
+				if len(runes) > 0 && runes[0] == '▌' {
+					rendered = cursorArrowStyle.Render("▌") + visualSelectionStyle.Render(string(runes[1:]))
+				}
+			}
 		}
 
 		// Apply focus colour dimming to rows outside the focus area

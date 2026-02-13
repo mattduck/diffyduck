@@ -66,10 +66,10 @@ func (m Model) renderNodeBorder(headerBoxWidth int, treePrefixWidth int, style l
 		var styledGutter, arrow string
 		if m.focused {
 			styledGutter = cursorStyle.Render("─")
-			arrow = cursorArrowStyle.Render("▶")
+			arrow = cursorArrowStyle.Render("▌")
 		} else {
 			styledGutter = style.Render("─")
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+			arrow = " "
 		}
 		// Replace first char of margin with arrow
 		if TreeLeftMargin > 0 {
@@ -146,9 +146,9 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMod
 	if isCursorRow {
 		var arrow string
 		if m.focused {
-			arrow = cursorArrowStyle.Render("▶")
+			arrow = cursorArrowStyle.Render("▌")
 		} else {
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+			arrow = " "
 		}
 		if TreeLeftMargin > 0 {
 			return arrow + margin[1:] + treeCont + spacing + style.Render(corner+borderLine)
@@ -199,9 +199,9 @@ func (m Model) renderCommitBorderLine(visible bool, isTop bool, isCursorRow bool
 	if isCursorRow {
 		var arrow string
 		if m.focused {
-			arrow = cursorArrowStyle.Render("▶")
+			arrow = cursorArrowStyle.Render("▌")
 		} else {
-			arrow = unfocusedCursorArrowStyle.Render("▷")
+			arrow = " "
 		}
 		// Arrow replaces margin, then connector + border + ╝
 		return arrow + treeStyle.Render(connector) + borderStyle.Render(border)
