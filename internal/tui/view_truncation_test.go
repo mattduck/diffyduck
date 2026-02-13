@@ -25,7 +25,7 @@ func TestBuildRows_TruncationIndicator_OldSideOnly(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				Truncated:    true,
 				OldTruncated: true,
 				NewTruncated: false,
@@ -67,7 +67,7 @@ func TestBuildRows_TruncationIndicator_NewSideOnly(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				Truncated:    true,
 				OldTruncated: false,
 				NewTruncated: true,
@@ -109,7 +109,7 @@ func TestBuildRows_TruncationIndicator_BothSides(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				Truncated:    true,
 				OldTruncated: true,
 				NewTruncated: true,
@@ -151,7 +151,7 @@ func TestBuildRows_TruncationIndicator_NotTruncated(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				Truncated:    false,
 				OldTruncated: false,
 				NewTruncated: false,
@@ -184,7 +184,7 @@ func TestBuildRows_TruncationIndicator_FullFileView_OldSideOnly(t *testing.T) {
 			{
 				OldPath:             "a/test.go",
 				NewPath:             "b/test.go",
-				FoldLevel:           sidebyside.FoldExpanded,
+				FoldLevel:           sidebyside.FoldHunks,
 				ShowFullFile:        true,
 				OldContent:          []string{"line1", "line2"},
 				NewContent:          []string{"line1"},
@@ -219,7 +219,7 @@ func TestBuildRows_TruncationIndicator_FullFileView_NewSideOnly(t *testing.T) {
 			{
 				OldPath:             "a/test.go",
 				NewPath:             "b/test.go",
-				FoldLevel:           sidebyside.FoldExpanded,
+				FoldLevel:           sidebyside.FoldHunks,
 				ShowFullFile:        true,
 				OldContent:          []string{"line1"},
 				NewContent:          []string{"line1", "line2"},
@@ -255,7 +255,7 @@ func TestBuildRows_TruncationIndicator_NewFile(t *testing.T) {
 			{
 				OldPath:      "/dev/null",
 				NewPath:      "b/newfile.go",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				Truncated:    true,
 				OldTruncated: false, // Can't truncate non-existent old file
 				NewTruncated: true,
@@ -296,7 +296,7 @@ func TestBuildRows_TruncationIndicator_DeletedFile(t *testing.T) {
 			{
 				OldPath:      "a/deleted.go",
 				NewPath:      "/dev/null",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				Truncated:    true,
 				OldTruncated: true,
 				NewTruncated: false, // Can't truncate non-existent new file
@@ -337,7 +337,7 @@ func TestRenderTruncationIndicator_LeftSideOnly(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
@@ -380,7 +380,7 @@ func TestRenderTruncationIndicator_RightSideOnly(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},
@@ -419,7 +419,7 @@ func TestRenderTruncationIndicator_BothSides(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context},

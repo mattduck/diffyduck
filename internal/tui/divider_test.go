@@ -17,7 +17,7 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "measures pairs content",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "short"}},
 						{New: sidebyside.Line{Content: "longer line"}},
@@ -31,7 +31,7 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "ignores folded files",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldFolded,
+					FoldLevel: sidebyside.FoldHeader,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "this should be ignored because file is folded"}},
 					},
@@ -43,7 +43,7 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "expanded measures pairs",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "this is the longest pair"}},
 						{New: sidebyside.Line{Content: "short"}},
@@ -56,7 +56,7 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "full-file view uses NewContent",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel:    sidebyside.FoldExpanded,
+					FoldLevel:    sidebyside.FoldHunks,
 					ShowFullFile: true,
 					NewContent:   []string{"short", "this is the longest new line", "med"},
 					Pairs: []sidebyside.LinePair{
@@ -70,7 +70,7 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "expands tabs before measuring",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "\tfoo"}}, // expands to "    foo" = 7 chars
 					},
@@ -82,13 +82,13 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "multiple files takes max",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "short"}},
 					},
 				},
 				{
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: "this is longer"}},
 					},
@@ -100,7 +100,7 @@ func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {
 			name: "empty new content ignored",
 			files: []sidebyside.FilePair{
 				{
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{New: sidebyside.Line{Content: ""}},     // empty - removed line
 						{New: sidebyside.Line{Content: "real"}}, // this is the max
@@ -128,7 +128,7 @@ func TestMaxNewContentWidth_OnlyGrows(t *testing.T) {
 	m := Model{
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{New: sidebyside.Line{Content: "this is a fairly long line of content"}},
 				},
@@ -142,13 +142,13 @@ func TestMaxNewContentWidth_OnlyGrows(t *testing.T) {
 	assert.Equal(t, 37, initialWidth) // "this is a fairly long line of content"
 
 	// Fold the file - width should NOT shrink
-	m.files[0].FoldLevel = sidebyside.FoldFolded
+	m.files[0].FoldLevel = sidebyside.FoldHeader
 	m.updateMaxNewContentWidth()
 	assert.Equal(t, initialWidth, m.maxNewContentWidth, "width should not shrink when file is folded")
 
 	// Add a file with shorter content - width should NOT shrink
 	m.files = append(m.files, sidebyside.FilePair{
-		FoldLevel: sidebyside.FoldExpanded,
+		FoldLevel: sidebyside.FoldHunks,
 		Pairs: []sidebyside.LinePair{
 			{New: sidebyside.Line{Content: "short"}},
 		},
@@ -158,7 +158,7 @@ func TestMaxNewContentWidth_OnlyGrows(t *testing.T) {
 
 	// Add a file with longer content - width SHOULD grow
 	m.files = append(m.files, sidebyside.FilePair{
-		FoldLevel: sidebyside.FoldExpanded,
+		FoldLevel: sidebyside.FoldHunks,
 		Pairs: []sidebyside.LinePair{
 			{New: sidebyside.Line{Content: "this is an even longer line that exceeds the previous maximum width"}},
 		},
@@ -175,7 +175,7 @@ func TestDynamicDivider_NarrowContentUses5050(t *testing.T) {
 		height: 24,
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "this is a much longer line on the old side that goes to the right", Type: sidebyside.Removed},
@@ -218,7 +218,7 @@ func TestDynamicDivider_WideContentExpandsLeft(t *testing.T) {
 		height: 24,
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Removed},
@@ -262,7 +262,7 @@ func TestDynamicDivider_WideTerminalUses5050(t *testing.T) {
 		height: 24,
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old content", Type: sidebyside.Removed},
@@ -300,7 +300,7 @@ func TestDynamicDivider_VeryNarrowTerminal(t *testing.T) {
 		height: 24,
 		files: []sidebyside.FilePair{
 			{
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},

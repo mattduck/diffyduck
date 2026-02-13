@@ -30,14 +30,14 @@ func formatFileHeader(fp sidebyside.FilePair) string {
 }
 
 // foldLevelIcon returns the icon for a given fold level.
-// ○ = Folded (header only), ◐ = Normal (structural diff), ● = Expanded (hunks)
+// ○ = Header (header only), ◐ = Structure (structural diff), ● = Hunks (full diff)
 func (m Model) foldLevelIcon(level sidebyside.FoldLevel) string {
 	switch level {
-	case sidebyside.FoldFolded:
+	case sidebyside.FoldHeader:
 		return "○"
-	case sidebyside.FoldExpanded:
+	case sidebyside.FoldHunks:
 		return "●"
-	default: // FoldNormal
+	default: // FoldStructure
 		return "◐"
 	}
 }
@@ -160,17 +160,17 @@ func (m Model) renderHeader(header string, foldLevel sidebyside.FoldLevel, heade
 		branchConnector = treePath.Current.Style.Render("━")
 	}
 	// Trailing indicator based on fold level:
-	// - Folded: ellipsis right after content (no box padding)
-	// - Normal: box padding + short border + ellipsis
-	// - Expanded: box padding + full-width border to screen edge
+	// - Header: ellipsis right after content (no box padding)
+	// - Structure: box padding + short border + ellipsis
+	// - Hunks: box padding + full-width border to screen edge
 	result := treeLine + branchConnector + styledIcon + styledHeader + statsBar
 	switch {
-	case foldLevel == sidebyside.FoldFolded:
+	case foldLevel == sidebyside.FoldHeader:
 		// No trailing indicator
-	case foldLevel == sidebyside.FoldNormal && m.width > 0:
+	case foldLevel == sidebyside.FoldStructure && m.width > 0:
 		result += boxPadding + fileStatusStyle.Render("┏━━◐")
 	case headerMode != HeaderSingleLine && m.width > 0:
-		// FoldExpanded: full-width border to screen edge, last char is ●
+		// FoldHunks: full-width border to screen edge, last char is ●
 		result += boxPadding
 		treePrefixWidth := treeWidth(len(treePath.Ancestors), true)
 		headerLineWidth := treePrefixWidth + headerBoxWidth - 2

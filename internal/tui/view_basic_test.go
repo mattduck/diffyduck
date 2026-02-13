@@ -31,7 +31,7 @@ func TestView_BasicRender(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
@@ -81,7 +81,7 @@ func TestView_WithScroll(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 		},
 		width:   80,
 		height:  5,
@@ -111,7 +111,7 @@ func TestView_AddedAndRemovedLines(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					// Pure addition (empty left)
 					{
@@ -153,7 +153,7 @@ func TestView_MultipleFiles(t *testing.T) {
 			{
 				OldPath:   "a/one.go",
 				NewPath:   "b/one.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "file one", Type: sidebyside.Context},
@@ -164,7 +164,7 @@ func TestView_MultipleFiles(t *testing.T) {
 			{
 				OldPath:   "a/two.go",
 				NewPath:   "b/two.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "file two", Type: sidebyside.Context},
@@ -200,7 +200,7 @@ func TestView_BinaryFile_Created(t *testing.T) {
 			{
 				OldPath:   "/dev/null",
 				NewPath:   "b/image.png",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				IsBinary:  true,
 				Pairs:     nil, // Binary files have no pairs
 			},
@@ -228,7 +228,7 @@ func TestView_BinaryFile_Deleted(t *testing.T) {
 			{
 				OldPath:   "a/image.png",
 				NewPath:   "/dev/null",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				IsBinary:  true,
 				Pairs:     nil,
 			},
@@ -254,7 +254,7 @@ func TestView_BinaryFile_Changed(t *testing.T) {
 			{
 				OldPath:   "a/image.png",
 				NewPath:   "b/image.png",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				IsBinary:  true,
 				Pairs:     nil,
 			},
@@ -311,7 +311,7 @@ func TestView_HorizontalScroll(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "short", Type: sidebyside.Context},
@@ -358,7 +358,7 @@ func TestView_InlineDiffRendering(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						// This is a modified pair - should trigger inline diff
@@ -391,7 +391,7 @@ func TestView_InlineDiffSkippedForDissimilar(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						// Completely different lines - should skip inline diff
@@ -422,7 +422,7 @@ func TestView_ScrolledToMax(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
@@ -464,7 +464,7 @@ func TestView_StatusBarAlwaysAtBottom(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "only line", Type: sidebyside.Context},
@@ -524,7 +524,7 @@ func TestView_Layout_TopBarFirst_BottomBarLast(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -564,7 +564,7 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 100, Content: "line content", Type: sidebyside.Context},
@@ -589,7 +589,7 @@ func TestView_GutterAlignmentConsistency(t *testing.T) {
 	var headerLine string
 	var contentLine string
 	for _, line := range lines {
-		// FoldExpanded shows ● even when content is pending (falls through to normal rendering)
+		// FoldHunks shows ● even when content is pending (falls through to normal rendering)
 		if strings.Contains(line, "test.go") && strings.Contains(line, "●") {
 			headerLine = line
 		}
@@ -656,10 +656,10 @@ func TestView_MultiCommitLogView(t *testing.T) {
 				Date:    "Mon Jan 15 10:00:00 2024 -0500",
 				Subject: "Add feature X",
 			},
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "a/f3.go", NewPath: "b/f3.go", FoldLevel: sidebyside.FoldFolded, Pairs: makeAddedPairs(34)},
+				{OldPath: "a/f3.go", NewPath: "b/f3.go", FoldLevel: sidebyside.FoldHeader, Pairs: makeAddedPairs(34)},
 			},
 		},
 		{
@@ -670,10 +670,10 @@ func TestView_MultiCommitLogView(t *testing.T) {
 				Date:    "Tue Jan 16 14:00:00 2024 -0500",
 				Subject: "Fix bug Y",
 			},
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "a/baz.go", NewPath: "b/baz.go", FoldLevel: sidebyside.FoldFolded,
+				{OldPath: "a/baz.go", NewPath: "b/baz.go", FoldLevel: sidebyside.FoldHeader,
 					Pairs: append(makeAddedPairs(5), makeRemovedPairs(23)...)},
 			},
 		},
@@ -710,7 +710,7 @@ func TestView_StructuralDiffBorderAlignment(t *testing.T) {
 			{
 				OldPath:   "a/example.go",
 				NewPath:   "b/example.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
@@ -857,7 +857,7 @@ func TestView_StructuralDiffBoxWidthAdaptive(t *testing.T) {
 			{
 				OldPath:   "a/handler.go",
 				NewPath:   "b/handler.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "package main", Type: sidebyside.Context},
@@ -946,7 +946,7 @@ func TestView_StructuralDiffBoxWidthAdaptive_MultipleEntries(t *testing.T) {
 			{
 				OldPath:   "a/internal/tui/view.go",
 				NewPath:   "b/internal/tui/view.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "package tui", Type: sidebyside.Context}},
@@ -1062,7 +1062,7 @@ func TestView_StructuralDiffTruncation(t *testing.T) {
 			{
 				OldPath:   "a/big_file.go",
 				NewPath:   "b/big_file.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "package big", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "package big", Type: sidebyside.Context}},
@@ -1153,7 +1153,7 @@ func TestView_StructuralDiffStatsAfterSignature(t *testing.T) {
 			{
 				OldPath:   "a/stats.go",
 				NewPath:   "b/stats.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "package stats", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "package stats", Type: sidebyside.Context}},
@@ -1242,7 +1242,7 @@ func TestView_StructuralDiffSignatureUsesTerminalWidth(t *testing.T) {
 				// Short filename = narrow header box
 				OldPath:   "a/x.go",
 				NewPath:   "b/x.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "package x", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "package x", Type: sidebyside.Context}},
@@ -1318,7 +1318,7 @@ func TestView_StructuralDiffNoSymbolPrefix(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go", NewPath: "b/test.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "package test", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "package test", Type: sidebyside.Context}},
@@ -1373,7 +1373,7 @@ func TestView_StructuralDiffChangeKindOnDisplayRow(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go", NewPath: "b/test.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "package test", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "package test", Type: sidebyside.Context}},
@@ -1431,7 +1431,7 @@ func TestView_StructuralDiffChildInheritsParentChangeKind(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.py", NewPath: "b/test.py",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context}},
@@ -1484,7 +1484,7 @@ func TestView_StructuralDiffChildInheritsDeletedKind(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.py", NewPath: "b/test.py",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context}},
@@ -1542,7 +1542,7 @@ func TestView_StructuralDiffChildrenSortedByLinesChanged(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.py", NewPath: "b/test.py",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context}},
@@ -1636,7 +1636,7 @@ func TestView_StructuralDiffTruncationCountsChildRows(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/big.py", NewPath: "b/big.py",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "# big", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "# big", Type: sidebyside.Context}},
@@ -1755,7 +1755,7 @@ func TestView_StructuralDiffSmallChildrenDontStealSpots(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/big.py", NewPath: "b/big.py",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "# big", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "# big", Type: sidebyside.Context}},
@@ -1832,7 +1832,7 @@ func TestView_StructuralDiffSignatureMaxWidth(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/x.go", NewPath: "b/x.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "package x", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "package x", Type: sidebyside.Context}},
@@ -1897,7 +1897,7 @@ func TestView_StructuralDiffModifiedChildKeepsOwnKind(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.py", NewPath: "b/test.py",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "# test", Type: sidebyside.Context}},
@@ -1963,7 +1963,7 @@ func TestView_StructuralDiffNoNestingAcrossFileVersions(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/test.go", NewPath: "b/test.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "// test", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "// test", Type: sidebyside.Context}},
@@ -2021,7 +2021,7 @@ func TestView_StructuralDiffFuncContainsType(t *testing.T) {
 		files: []sidebyside.FilePair{
 			{
 				OldPath: "a/handler.go", NewPath: "b/handler.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "// test", Type: sidebyside.Context},
 						New: sidebyside.Line{Num: 1, Content: "// test", Type: sidebyside.Context}},

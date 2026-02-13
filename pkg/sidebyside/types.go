@@ -11,27 +11,34 @@ import (
 type FoldLevel int
 
 const (
-	FoldNormal   FoldLevel = iota // part-expanded: structural diff preview
-	FoldExpanded                  // full-expanded: hunk-based diff view
-	FoldFolded                    // folded: header line only
+	FoldHeader    FoldLevel = 0 // header line only
+	FoldStructure FoldLevel = 1 // structural diff preview
+	FoldHunks     FoldLevel = 2 // hunk-based diff view
 )
 
-// NextLevel returns the next fold level in the cycle.
-// Cycles: Normal -> Expanded -> Folded -> Normal
-// (structural diff -> hunks -> header only -> structural diff)
+// FileCycle defines the order of file fold level cycling.
+// Individual file Tab cycles: Header -> Structure -> Hunks -> Header.
+var FileCycle = []FoldLevel{FoldHeader, FoldStructure, FoldHunks}
+
+// NextLevel returns the next fold level in the file cycle.
 func (f FoldLevel) NextLevel() FoldLevel {
-	return (f + 1) % 3
+	for i, level := range FileCycle {
+		if level == f {
+			return FileCycle[(i+1)%len(FileCycle)]
+		}
+	}
+	return FileCycle[0]
 }
 
 // String returns the human-readable name of the fold level.
 func (f FoldLevel) String() string {
 	switch f {
-	case FoldNormal:
-		return "Normal"
-	case FoldExpanded:
-		return "Expanded"
-	case FoldFolded:
-		return "Folded"
+	case FoldHeader:
+		return "Header"
+	case FoldStructure:
+		return "Structure"
+	case FoldHunks:
+		return "Hunks"
 	default:
 		return "Unknown"
 	}
@@ -69,8 +76,8 @@ type FilePair struct {
 	OriginalPairs []LinePair // snapshot of Pairs after semantic expansion, before user context expansion
 
 	// Fold state
-	FoldLevel    FoldLevel // current fold level (zero value = FoldNormal)
-	ShowFullFile bool      // when true at FoldExpanded, show full-file content instead of hunks
+	FoldLevel    FoldLevel // current fold level (zero value = FoldHeader)
+	ShowFullFile bool      // when true at FoldHunks, show full-file content instead of hunks
 
 	// Cached full file content (populated lazily when expanded)
 	OldContent []string // full old file lines (nil until fetched)
@@ -122,18 +129,47 @@ func (fp *FilePair) ResetPairs() bool {
 }
 
 // CommitFoldLevel represents the fold state of a commit in the view.
+// Each level encodes both the file visibility state and the commit info state.
 type CommitFoldLevel int
 
 const (
-	CommitFolded   CommitFoldLevel = iota // summary line only (sha, message preview, file count)
-	CommitNormal                          // file headers visible, hunks shown per-file fold level
-	CommitExpanded                        // all files expanded (full diffs visible)
+	CommitFolded        CommitFoldLevel = 0 // summary line only
+	CommitFileHeaders   CommitFoldLevel = 1 // file headers visible, info hidden
+	CommitFileStructure CommitFoldLevel = 2 // structural diff preview, info hidden
+	CommitFileHunks     CommitFoldLevel = 3 // full diffs visible, info expanded
 )
 
-// NextLevel returns the next fold level in the cycle.
-// Cycles: Folded -> Normal -> Expanded -> Folded
+// CommitCycle defines the order of commit fold level cycling.
+// Shift-Tab / commit Tab cycles through these states.
+var CommitCycle = []CommitFoldLevel{
+	CommitFolded, CommitFileHeaders, CommitFileStructure, CommitFileHunks,
+}
+
+// CommitFileFold maps each CommitFoldLevel to the FoldLevel for its files.
+var CommitFileFold = map[CommitFoldLevel]FoldLevel{
+	CommitFolded:        FoldHeader,
+	CommitFileHeaders:   FoldHeader,
+	CommitFileStructure: FoldStructure,
+	CommitFileHunks:     FoldHunks,
+}
+
+// CommitInfoExpandedAt returns whether commit info should be expanded
+// by default at each commit fold level.
+var CommitInfoExpandedAt = map[CommitFoldLevel]bool{
+	CommitFolded:        false,
+	CommitFileHeaders:   false,
+	CommitFileStructure: false,
+	CommitFileHunks:     true,
+}
+
+// NextLevel returns the next commit fold level in the cycle.
 func (c CommitFoldLevel) NextLevel() CommitFoldLevel {
-	return (c + 1) % 3
+	for i, level := range CommitCycle {
+		if level == c {
+			return CommitCycle[(i+1)%len(CommitCycle)]
+		}
+	}
+	return CommitCycle[0]
 }
 
 // String returns the human-readable name of the commit fold level.
@@ -141,10 +177,12 @@ func (c CommitFoldLevel) String() string {
 	switch c {
 	case CommitFolded:
 		return "Folded"
-	case CommitNormal:
-		return "Normal"
-	case CommitExpanded:
-		return "Expanded"
+	case CommitFileHeaders:
+		return "FileHeaders"
+	case CommitFileStructure:
+		return "FileStructure"
+	case CommitFileHunks:
+		return "FileHunks"
 	default:
 		return "Unknown"
 	}

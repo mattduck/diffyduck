@@ -74,7 +74,7 @@ func TestCommentPersistenceRoundTrip(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	}, WithCommentStore(store))
 	m.width = 80
 	m.height = 30
@@ -96,7 +96,7 @@ func TestCommentPersistenceRoundTrip(t *testing.T) {
 
 	// Create a new model and load the comments
 	m2 := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	}, WithCommentStore(store))
 	m2.width = 80
 	m2.height = 30
@@ -146,7 +146,7 @@ func TestCommentPersistenceWithLineMoved(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: originalPairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: originalPairs},
 	}, WithCommentStore(store))
 	m.width = 80
 	m.height = 30
@@ -191,7 +191,7 @@ func TestCommentPersistenceWithLineMoved(t *testing.T) {
 
 	// Create new model with moved content
 	m2 := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: newPairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: newPairs},
 	}, WithCommentStore(store))
 	m2.width = 80
 	m2.height = 30
@@ -230,7 +230,7 @@ func TestCommentPersistenceDelete(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	}, WithCommentStore(store))
 	m.width = 80
 	m.height = 30
@@ -253,7 +253,7 @@ func TestCommentPersistenceDelete(t *testing.T) {
 
 	// Create new model and verify comment is gone
 	m2 := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	}, WithCommentStore(store))
 	m2.width = 80
 	m2.height = 30
@@ -278,7 +278,7 @@ func TestCommentPersistenceOrphaned(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: originalPairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: originalPairs},
 	}, WithCommentStore(store))
 	m.width = 80
 	m.height = 30
@@ -298,7 +298,7 @@ func TestCommentPersistenceOrphaned(t *testing.T) {
 	}
 
 	m2 := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: newPairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: newPairs},
 	}, WithCommentStore(store))
 	m2.width = 80
 	m2.height = 30
@@ -354,7 +354,7 @@ func TestCommentPersistenceWithPrefixedPaths(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	}, WithCommentStore(store))
 	m.width = 80
 	m.height = 30
@@ -377,7 +377,7 @@ func TestCommentPersistenceWithPrefixedPaths(t *testing.T) {
 
 	// Verify we can load it back with the same prefixed paths
 	m2 := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	}, WithCommentStore(store))
 	m2.width = 80
 	m2.height = 30
@@ -428,7 +428,7 @@ func TestMatchCommentsDeduplicatesIDs(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	}, WithCommentStore(store))
 	m.width = 80
 	m.height = 30
@@ -477,11 +477,11 @@ func TestPersistCommentUpdatesIndex(t *testing.T) {
 	// Two copies of the same file (simulates same file in two commits)
 	m := NewWithCommits([]sidebyside.CommitSet{
 		{Files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
-		}, FilesLoaded: true, FoldLevel: sidebyside.CommitNormal},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+		}, FilesLoaded: true, FoldLevel: sidebyside.CommitFileHeaders},
 		{Files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
-		}, FilesLoaded: true, FoldLevel: sidebyside.CommitNormal},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+		}, FilesLoaded: true, FoldLevel: sidebyside.CommitFileHeaders},
 	}, WithCommentStore(store))
 	m.width = 80
 	m.height = 30
@@ -518,11 +518,11 @@ func TestDeleteCommentUpdatesIndex(t *testing.T) {
 
 	m := NewWithCommits([]sidebyside.CommitSet{
 		{Files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
-		}, FilesLoaded: true, FoldLevel: sidebyside.CommitNormal},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+		}, FilesLoaded: true, FoldLevel: sidebyside.CommitFileHeaders},
 		{Files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
-		}, FilesLoaded: true, FoldLevel: sidebyside.CommitNormal},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+		}, FilesLoaded: true, FoldLevel: sidebyside.CommitFileHeaders},
 	}, WithCommentStore(store))
 	m.width = 80
 	m.height = 30
@@ -553,7 +553,7 @@ func TestCommentPersistenceNoStore(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	}) // No WithCommentStore
 	m.width = 80
 	m.height = 30

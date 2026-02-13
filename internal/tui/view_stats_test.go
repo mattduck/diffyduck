@@ -175,7 +175,7 @@ func TestFileHeaderWithStats_FoldedOnly(t *testing.T) {
 			{
 				OldPath:   "a/main.go",
 				NewPath:   "b/main.go",
-				FoldLevel: sidebyside.FoldExpanded, // Normal view - no stats
+				FoldLevel: sidebyside.FoldHunks, // Normal view - no stats
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old1", Type: sidebyside.Removed},
@@ -206,7 +206,7 @@ func TestFileHeaderWithStats_Folded(t *testing.T) {
 			{
 				OldPath:   "a/main.go",
 				NewPath:   "b/main.go",
-				FoldLevel: sidebyside.FoldFolded, // Folded view - show stats
+				FoldLevel: sidebyside.FoldHeader, // Folded view - show stats
 				Pairs: []sidebyside.LinePair{
 					// 3 additions, 2 deletions
 					{
@@ -272,13 +272,13 @@ func TestFileHeaderWithStats_StatsColumnAlignment(t *testing.T) {
 			{
 				OldPath:   "a/view.go",
 				NewPath:   "b/view.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs:     pairs100, // +100 additions
 			},
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs:     pairs5, // +5 additions
 			},
 		},
@@ -315,7 +315,7 @@ func TestFileHeaderWithStats_OnlyAdditions(t *testing.T) {
 			{
 				OldPath:   "/dev/null",
 				NewPath:   "b/newfile.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Type: sidebyside.Empty},
@@ -361,7 +361,7 @@ func TestFileHeaderWithStats_OnlyDeletions(t *testing.T) {
 			{
 				OldPath:   "a/deleted.go",
 				NewPath:   "/dev/null",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Removed},

@@ -189,7 +189,7 @@ func TestCommitHeaderSubject_UnicodeWidthAlignment(t *testing.T) {
 			FoldLevel: sidebyside.CommitFolded,
 			Files: []sidebyside.FilePair{{
 				OldPath: "a/test.go", NewPath: "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{{
 					Old: sidebyside.Line{Type: sidebyside.Empty},
 					New: sidebyside.Line{Type: sidebyside.Added},
@@ -205,7 +205,7 @@ func TestCommitHeaderSubject_UnicodeWidthAlignment(t *testing.T) {
 			FoldLevel: sidebyside.CommitFolded,
 			Files: []sidebyside.FilePair{{
 				OldPath: "a/test2.go", NewPath: "b/test2.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{{
 					Old: sidebyside.Line{Type: sidebyside.Empty},
 					New: sidebyside.Line{Type: sidebyside.Added},

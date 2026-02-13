@@ -25,7 +25,7 @@ func makeCommentableTestModel(numLines int) Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -64,7 +64,7 @@ func makeMixedLineTypeTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -696,7 +696,7 @@ func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
 // Test: TAB on comment row does nothing (only works on file header)
 func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	m := makeCommentableTestModel(10)
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.files[0].FoldLevel = sidebyside.FoldHunks
 	m.calculateTotalLines()
 
 	// Add a comment on a content line
@@ -726,7 +726,7 @@ func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	model := newM.(Model)
 
 	// Fold level should remain unchanged
-	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(0),
+	assert.Equal(t, sidebyside.FoldHunks, model.fileFoldLevel(0),
 		"fold level should not change when TAB pressed on comment row")
 
 	// Cursor should still be on comment row
@@ -755,8 +755,8 @@ func TestComment_MultipleFiles_Navigation(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs1},
-		{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs2},
+		{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs1},
+		{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs2},
 	})
 	m.width = 80
 	m.height = 40
@@ -803,7 +803,7 @@ func TestComment_NearHunkBoundary(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -1139,7 +1139,7 @@ func TestComment_JK_NavigationIncludesComments(t *testing.T) {
 // Test: Comments appear in expanded (hunk) view but not in folded view
 func TestComment_ExpandedVsNormalView(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.files[0].FoldLevel = sidebyside.FoldHunks
 	m.calculateTotalLines()
 
 	// Add a comment
@@ -1159,7 +1159,7 @@ func TestComment_ExpandedVsNormalView(t *testing.T) {
 	}
 
 	// Switch to folded view
-	m.files[0].FoldLevel = sidebyside.FoldFolded
+	m.files[0].FoldLevel = sidebyside.FoldHeader
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -2550,10 +2550,10 @@ func TestComment_LogMode_CommentRowsHaveTreePath(t *testing.T) {
 				Date:    "Mon Jan 1 00:00:00 2024 +0000",
 				Subject: "Test commit",
 			},
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+				{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 			},
 		},
 	}

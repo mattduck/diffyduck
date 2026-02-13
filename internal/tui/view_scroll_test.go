@@ -21,7 +21,7 @@ func TestStatusInfo_SingleFile(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 		},
 		width:   80,
 		height:  20,
@@ -56,7 +56,7 @@ func TestStatusInfo_AtEnd(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/small.go", NewPath: "b/small.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/small.go", NewPath: "b/small.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 		},
 		width:  80,
 		height: 20, // bigger than content (11 lines)
@@ -92,8 +92,8 @@ func TestStatusInfo_MultipleFiles(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs1},
-			{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs2},
+			{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs1},
+			{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs2},
 		},
 		width:   80,
 		height:  20,
@@ -132,7 +132,7 @@ func TestView_StatusBarContent(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs:     pairs,
 			},
 		},
@@ -163,7 +163,7 @@ func TestStatusInfo_DeletedFile(t *testing.T) {
 			{
 				OldPath:   "a/deleted.go",
 				NewPath:   "/dev/null",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "deleted"},
@@ -196,7 +196,7 @@ func TestStatusInfo_ScrollPastAllContent(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 		},
 		width:   80,
 		height:  10,
@@ -226,7 +226,7 @@ func TestStatusInfo_PercentageAccuracy(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 		},
 		width:  80,
 		height: 11, // 10 content lines + 1 status bar
@@ -268,8 +268,8 @@ func TestStatusInfo_FileBoundary(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
-			{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
-			{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+			{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 		},
 		width:  80,
 		height: 10,
@@ -326,7 +326,7 @@ func TestStatusBar_NonShrinkingWidth(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs:     pairs,
 			},
 		},

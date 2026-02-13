@@ -225,12 +225,9 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	// Fold icon
 	var foldIcon string
-	switch row.commitFoldLevel {
-	case sidebyside.CommitFolded:
+	if row.commitFoldLevel == sidebyside.CommitFolded {
 		foldIcon = "◯"
-	case sidebyside.CommitNormal:
-		foldIcon = "●"
-	case sidebyside.CommitExpanded:
+	} else {
 		foldIcon = "●"
 	}
 
@@ -452,7 +449,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	case sidebyside.CommitFolded:
 		// No trailing indicator
 	default:
-		// CommitNormal and CommitExpanded: pad to screen edge with ║ at last column
+		// CommitFileHeaders/FileStructure/FileHunks: pad to screen edge with ● at last column
 		if m.width > 0 {
 			headerLineWidth := row.headerBoxWidth
 			padding := m.width - headerLineWidth - 1 // -1 for ║
@@ -472,12 +469,11 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 // Layout folded: [tree prefix] [fold icon] [header text]
 // Layout expanded: [tree prefix] │ [fold icon] [header text] [padding] │
 func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
-	// Fold icon: ◯ for CommitNormal (header only), ● for CommitExpanded (full content)
+	// Fold icon: ● when info expanded, ◯ when collapsed
 	var foldIcon string
-	switch row.commitFoldLevel {
-	case sidebyside.CommitExpanded:
+	if m.isCommitInfoExpanded(row.commitIndex) {
 		foldIcon = "●"
-	default:
+	} else {
 		foldIcon = "◯"
 	}
 
@@ -783,8 +779,8 @@ func (m Model) buildCommitBodyRowsSkipFirstBlank(commit *sidebyside.CommitSet, c
 // buildCommitInfoRows creates the foldable commit info node rows.
 // This node appears as the first child under a commit, before any files.
 // - CommitFolded: returns empty (node hidden)
-// - CommitNormal: returns only header row ("commit abc1234")
-// - CommitExpanded: returns header + body rows (Author, Date, message)
+// - Info collapsed: returns only header row ("commit abc1234")
+// - Info expanded: returns header + body rows (Author, Date, message)
 // - IsSnapshot: returns empty (snapshots have no details node)
 func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) []displayRow {
 	var rows []displayRow
@@ -819,9 +815,10 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 
 	// Details level - grey style (Color 7) for subdued appearance
 	detailsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	infoExpanded := m.isCommitInfoExpanded(commitIdx)
 	detailsLevel := TreeLevel{
-		IsLast:   !hasFiles,                                  // details is last only if no files follow
-		IsFolded: commitFoldLevel == sidebyside.CommitNormal, // folded when just showing header
+		IsLast:   !hasFiles,     // details is last only if no files follow
+		IsFolded: !infoExpanded, // folded when just showing header
 		Style:    detailsStyle,
 		Depth:    0, // depth 0 since commit is the root (not in tree)
 	}
@@ -844,9 +841,9 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 	treePrefixWidth := treeWidth(0, true) + 1
 	headerBoxWidth := 3 + 1 + 1 + displayWidth(headerText) + 1 // overlap(3) + icon(1) + space(1) + text + gap(1)
 
-	// Determine header mode: expanded shows borders, normal shows single line
+	// Determine header mode: expanded shows borders, collapsed shows single line
 	infoHeaderMode := HeaderSingleLine
-	if commitFoldLevel == sidebyside.CommitExpanded {
+	if infoExpanded {
 		infoHeaderMode = HeaderThreeLine
 	}
 
@@ -865,12 +862,12 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 		treePrefixWidth:    treePrefixWidth,
 	})
 
-	// If parent is CommitNormal, only show header (info folded)
-	if commitFoldLevel == sidebyside.CommitNormal {
+	// If info is collapsed, only show header
+	if !infoExpanded {
 		return rows
 	}
 
-	// CommitExpanded: show full info body
+	// Info expanded: show full info body
 
 	// Body rows have detailsLevel as ancestor (shows continuation │)
 	bodyTreePath := TreePath{

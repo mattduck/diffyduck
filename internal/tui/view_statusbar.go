@@ -65,15 +65,17 @@ func (m *Model) renderCommitLine() string {
 	shaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
 	// Build commit line: ◐ a1b2c3d Subject line    N files +X -Y
-	// Fold level icon: ◯ = folded, ◐ = normal, ● = expanded
+	// Fold level icon: ◯ = folded, ◔ = file headers, ◐ = file structure, ● = file hunks
 	commitIdx := m.currentCommitIndex()
 	var foldIcon string
 	switch m.commitFoldLevel(commitIdx) {
 	case sidebyside.CommitFolded:
 		foldIcon = "◯"
-	case sidebyside.CommitNormal:
+	case sidebyside.CommitFileHeaders:
+		foldIcon = "◔"
+	case sidebyside.CommitFileStructure:
 		foldIcon = "◐"
-	case sidebyside.CommitExpanded:
+	case sidebyside.CommitFileHunks:
 		foldIcon = "●"
 	}
 	// Fold icon - always fg=8, no faint

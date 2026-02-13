@@ -21,7 +21,7 @@ func TestView_HunkSeparator(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					// First hunk: lines 1-3
 					{
@@ -68,7 +68,7 @@ func TestView_TreeConnectsFilesDirectly(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
@@ -79,7 +79,7 @@ func TestView_TreeConnectsFilesDirectly(t *testing.T) {
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
@@ -138,7 +138,7 @@ func TestView_FirstFileHasTreeBranch(t *testing.T) {
 			{
 				OldPath:   "a/only.go",
 				NewPath:   "b/only.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -182,7 +182,7 @@ func TestView_NoSeparatorForConsecutiveLines(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
@@ -220,7 +220,7 @@ func TestView_HunkSeparatorNoCrossInMiddle(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
@@ -273,7 +273,7 @@ func TestView_HunkSeparatorBreadcrumbs(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded, // Normal view (not expanded)
+				FoldLevel: sidebyside.FoldHunks, // Normal view (not expanded)
 				Pairs: []sidebyside.LinePair{
 					// First hunk: lines 1-3 (outside any function)
 					{
@@ -344,7 +344,7 @@ func TestView_HunkSeparatorBreadcrumbs_NoBreadcrumbWithoutStructure(t *testing.T
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line one", Type: sidebyside.Context},
@@ -409,7 +409,7 @@ func AnotherFunction() {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldExpanded, // Normal view
+			FoldLevel: sidebyside.FoldHunks, // Normal view
 			Pairs: []sidebyside.LinePair{
 				// First hunk: lines 1-2 (package declaration)
 				{
@@ -512,7 +512,7 @@ func TestView_HunkSeparatorBreadcrumbs_LeftSidePositioning(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					// First hunk
 					{
@@ -611,7 +611,7 @@ func TestView_HunkSeparatorArrowPositionsMatchContentLines(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "first", Type: sidebyside.Context},
@@ -713,7 +713,7 @@ func TestView_CursorArrowOnHunkSeparator(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "first hunk", Type: sidebyside.Context},
@@ -918,7 +918,7 @@ func TestView_HunkSeparatorBreadcrumbs_RepeatedInnermost(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					// First hunk: lines 20-22 (inside MyFunction)
 					{Old: sidebyside.Line{Num: 20, Content: "    a := 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 20, Content: "    a := 1", Type: sidebyside.Context}},
@@ -980,7 +980,7 @@ func TestView_HunkSeparatorBreadcrumbs_RepeatedInnermost_KeepsOuter(t *testing.T
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					// First hunk: lines 25-27 (inside MyType.MyMethod)
 					{Old: sidebyside.Line{Num: 25, Content: "    a := 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 25, Content: "    a := 1", Type: sidebyside.Context}},
@@ -1042,7 +1042,7 @@ func TestView_HunkSeparatorBreadcrumbs_DifferentFunctions(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					// First hunk: lines 15-17 (inside FuncA)
 					{Old: sidebyside.Line{Num: 15, Content: "    a := 1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 15, Content: "    a := 1", Type: sidebyside.Context}},

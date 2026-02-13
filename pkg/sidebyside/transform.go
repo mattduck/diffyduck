@@ -143,7 +143,7 @@ func SkeletonFilePair(path string, added, removed int) FilePair {
 		TotalAdded:   added,
 		TotalRemoved: removed,
 		IsBinary:     isBinary,
-		FoldLevel:    FoldFolded, // Start folded since no content yet
+		FoldLevel:    FoldHeader, // Start folded since no content yet
 	}
 }
 
@@ -155,6 +155,6 @@ func SkeletonFilePairNoStats(path string) FilePair {
 		NewPath:      "b/" + path,
 		TotalAdded:   0,
 		TotalRemoved: 0,
-		FoldLevel:    FoldFolded, // Start folded since no content yet
+		FoldLevel:    FoldHeader, // Start folded since no content yet
 	}
 }

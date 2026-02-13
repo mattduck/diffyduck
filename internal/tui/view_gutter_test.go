@@ -21,7 +21,7 @@ func TestView_GutterIndicators(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "context line", Type: sidebyside.Context},
@@ -83,7 +83,7 @@ func TestView_GutterIndicatorTypes(t *testing.T) {
 					{
 						OldPath:   "a/test.go",
 						NewPath:   "b/test.go",
-						FoldLevel: sidebyside.FoldExpanded,
+						FoldLevel: sidebyside.FoldHunks,
 						Pairs: []sidebyside.LinePair{
 							{
 								Old: sidebyside.Line{Num: 1, Content: "test content", Type: tt.lineType},
@@ -161,7 +161,7 @@ func TestView_LineNumberColorMatchesIndicator(t *testing.T) {
 					{
 						OldPath:   "a/test.go",
 						NewPath:   "b/test.go",
-						FoldLevel: sidebyside.FoldExpanded,
+						FoldLevel: sidebyside.FoldHunks,
 						Pairs: []sidebyside.LinePair{
 							// First line (cursor will be here)
 							{
@@ -200,7 +200,7 @@ func TestView_LargeLineNumbers(t *testing.T) {
 			{
 				OldPath:   "a/large.go",
 				NewPath:   "b/large.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 9999, Content: "line 9999", Type: sidebyside.Context},
@@ -246,7 +246,7 @@ func TestView_LargeLineNumbers_Alignment(t *testing.T) {
 			{
 				OldPath:   "a/large.go",
 				NewPath:   "b/large.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 9999, Content: "line before", Type: sidebyside.Context},
@@ -317,7 +317,7 @@ func TestView_LineNumberTruncation(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
@@ -350,7 +350,7 @@ func TestView_GutterWidthNotShrinkOnFold(t *testing.T) {
 			{
 				OldPath:   "a/small.go",
 				NewPath:   "b/small.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "small file", Type: sidebyside.Context},
@@ -361,7 +361,7 @@ func TestView_GutterWidthNotShrinkOnFold(t *testing.T) {
 			{
 				OldPath:   "a/large.go",
 				NewPath:   "b/large.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 10000, Content: "large file", Type: sidebyside.Context},
@@ -393,7 +393,7 @@ func TestView_GutterWidthNotShrinkOnFold(t *testing.T) {
 	pos1 := strings.Index(smallFileLineBeforeFold, "small file")
 
 	// Now fold the large file (hiding the 10000 line number)
-	m.files[1].FoldLevel = sidebyside.FoldFolded
+	m.files[1].FoldLevel = sidebyside.FoldHeader
 	m.calculateTotalLines()
 
 	// Gutter width should STILL be 5 (not shrink back to 4)

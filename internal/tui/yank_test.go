@@ -21,7 +21,7 @@ func makeYankTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -301,7 +301,7 @@ func TestYank_BuildDiffSnippet_FirstLine(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -330,7 +330,7 @@ func TestYank_BuildDiffSnippet_ContextLine(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 30
@@ -482,13 +482,13 @@ func makeCommitYankTestModel() Model {
 				Author:  "Test Author",
 				Subject: "Test commit subject",
 			},
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
 				{
 					OldPath:   "a/file1.go",
 					NewPath:   "b/file1.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
 					},
@@ -595,8 +595,8 @@ func makeYankAllTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/file1.go", NewPath: "b/file1.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs1},
-		{OldPath: "a/file2.go", NewPath: "b/file2.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs2},
+		{OldPath: "a/file1.go", NewPath: "b/file1.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs1},
+		{OldPath: "a/file2.go", NewPath: "b/file2.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs2},
 	})
 	m.width = 80
 	m.height = 30

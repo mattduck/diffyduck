@@ -220,7 +220,7 @@ func makeLogModeModel(files []sidebyside.FilePair) Model {
 				Date:    "Mon Jan 1 00:00:00 2024 +0000",
 				Subject: "Test commit",
 			},
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 			Files:       files,
 		},
@@ -250,13 +250,13 @@ func TestTree_LastFileHeader_WithHunkContent_UsesTBranch(t *testing.T) {
 		{
 			OldPath:   "a/first.go",
 			NewPath:   "b/first.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "y"}}},
 		},
 		{
 			OldPath:   "a/last.go",
 			NewPath:   "b/last.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 		},
 	})
@@ -275,13 +275,13 @@ func TestTree_LastFileHeader_FoldedNoPreview_UsesTBranch(t *testing.T) {
 		{
 			OldPath:   "a/first.go",
 			NewPath:   "b/first.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "y"}}},
 		},
 		{
 			OldPath:   "a/last.go",
 			NewPath:   "b/last.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 		},
 	})
@@ -303,7 +303,7 @@ func TestTree_LastFileHeader_Expanded_UsesTBranch(t *testing.T) {
 		{
 			OldPath:    "a/only.go",
 			NewPath:    "b/only.go",
-			FoldLevel:  sidebyside.FoldExpanded,
+			FoldLevel:  sidebyside.FoldHunks,
 			Pairs:      []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 			NewContent: []string{"new"},
 		},
@@ -323,13 +323,13 @@ func TestTree_NonLastFileHeader_AlwaysUsesTBranch(t *testing.T) {
 		{
 			OldPath:   "a/first.go",
 			NewPath:   "b/first.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "y"}}},
 		},
 		{
 			OldPath:   "a/last.go",
 			NewPath:   "b/last.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}}},
 		},
 	})
@@ -355,7 +355,7 @@ func TestTree_LastFileHeader_DiffMode_UsesTBranch(t *testing.T) {
 			{
 				OldPath:   "a/only.go",
 				NewPath:   "b/only.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 			},
 		},
@@ -379,7 +379,7 @@ func TestTree_LastFileContentRows_LogMode_ShowContinuation(t *testing.T) {
 		{
 			OldPath:   "a/only.go",
 			NewPath:   "b/only.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 		},
 	})
@@ -405,7 +405,7 @@ func TestTree_LastFileContentRows_DiffMode_ShowContinuation(t *testing.T) {
 			{
 				OldPath:   "a/only.go",
 				NewPath:   "b/only.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 1, Content: "new", Type: sidebyside.Added}}},
 			},
 		},
@@ -436,13 +436,13 @@ func TestTree_DiffMode_MultiFile_TerminatorOnlyLast(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x"}, New: sidebyside.Line{Num: 1, Content: "y"}}},
 			},
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}}},
 			},
 		},

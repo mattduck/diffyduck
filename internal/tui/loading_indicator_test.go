@@ -30,7 +30,7 @@ func makeMultiFileModel(numFiles, numLinesPerFile int) Model {
 		files[i] = sidebyside.FilePair{
 			OldPath:   fmt.Sprintf("a/file%d.go", i),
 			NewPath:   fmt.Sprintf("b/file%d.go", i),
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs:     makePairs(numLinesPerFile),
 		}
 	}
@@ -119,7 +119,7 @@ func TestSpinner_InitializedInNew(t *testing.T) {
 	files := []sidebyside.FilePair{{
 		OldPath:   "a/test.go",
 		NewPath:   "b/test.go",
-		FoldLevel: sidebyside.FoldExpanded,
+		FoldLevel: sidebyside.FoldHunks,
 	}}
 	m := New(files)
 
@@ -235,7 +235,7 @@ func TestHeader_NoSpinnerInMainView(t *testing.T) {
 	}
 	header := m.renderHeader(
 		"test.go",
-		sidebyside.FoldNormal,
+		sidebyside.FoldStructure,
 		HeaderThreeLine,
 		FileStatusModified,
 		5, 3,

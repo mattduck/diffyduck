@@ -108,8 +108,9 @@ type Window struct {
 	narrow NarrowScope
 
 	// Fold state - per-window so each window can have different fold levels
-	fileFoldLevels   map[int]sidebyside.FoldLevel       // file index -> fold level
-	commitFoldLevels map[int]sidebyside.CommitFoldLevel // commit index -> fold level
+	fileFoldLevels     map[int]sidebyside.FoldLevel       // file index -> fold level
+	commitFoldLevels   map[int]sidebyside.CommitFoldLevel // commit index -> fold level
+	commitInfoExpanded map[int]bool                       // commit index -> info expanded override
 
 	// Row cache - per-window since it depends on fold/narrow state
 	cachedRows     []displayRow // cached result of buildRows()
@@ -295,14 +296,15 @@ func (m Model) wv() *Window {
 // newWindow creates a new Window with default state.
 func newWindow() *Window {
 	return &Window{
-		scroll:           0,
-		hscroll:          0,
-		narrow:           NarrowScope{},
-		fileFoldLevels:   make(map[int]sidebyside.FoldLevel),
-		commitFoldLevels: make(map[int]sidebyside.CommitFoldLevel),
-		cachedRows:       nil,
-		rowsCacheValid:   false,
-		totalLines:       0,
+		scroll:             0,
+		hscroll:            0,
+		narrow:             NarrowScope{},
+		fileFoldLevels:     make(map[int]sidebyside.FoldLevel),
+		commitFoldLevels:   make(map[int]sidebyside.CommitFoldLevel),
+		commitInfoExpanded: make(map[int]bool),
+		cachedRows:         nil,
+		rowsCacheValid:     false,
+		totalLines:         0,
 	}
 }
 
@@ -320,7 +322,7 @@ func (m *Model) fileFoldLevel(fileIdx int) sidebyside.FoldLevel {
 	if fileIdx >= 0 && fileIdx < len(m.files) {
 		return m.files[fileIdx].FoldLevel
 	}
-	return sidebyside.FoldNormal
+	return sidebyside.FoldHeader
 }
 
 // setFileFoldLevel sets the fold level for a file in the active window.
@@ -346,7 +348,28 @@ func (m *Model) commitFoldLevel(commitIdx int) sidebyside.CommitFoldLevel {
 	if commitIdx >= 0 && commitIdx < len(m.commits) {
 		return m.commits[commitIdx].FoldLevel
 	}
-	return sidebyside.CommitNormal
+	return sidebyside.CommitFolded
+}
+
+// isCommitInfoExpanded returns whether commit info is expanded for a commit.
+// Falls back to the default for the commit's fold level if no override exists.
+func (m *Model) isCommitInfoExpanded(commitIdx int) bool {
+	w := m.w()
+	if w.commitInfoExpanded != nil {
+		if expanded, ok := w.commitInfoExpanded[commitIdx]; ok {
+			return expanded
+		}
+	}
+	return sidebyside.CommitInfoExpandedAt[m.commitFoldLevel(commitIdx)]
+}
+
+// setCommitInfoExpanded sets the commit info expanded state for a commit.
+func (m *Model) setCommitInfoExpanded(commitIdx int, expanded bool) {
+	w := m.w()
+	if w.commitInfoExpanded == nil {
+		w.commitInfoExpanded = make(map[int]bool)
+	}
+	w.commitInfoExpanded[commitIdx] = expanded
 }
 
 // setCommitFoldLevel sets the fold level for a commit in the active window.
@@ -558,8 +581,8 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 	// Wrap files in a CommitSet
 	commit := sidebyside.CommitSet{
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal, // Start with files visible
-		FilesLoaded: true,                    // Files are already provided
+		FoldLevel:   sidebyside.CommitFileHeaders, // Start with files visible
+		FilesLoaded: true,                         // Files are already provided
 	}
 	return NewWithCommits([]sidebyside.CommitSet{commit}, opts...)
 }
@@ -649,7 +672,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 }
 
 // estimateNormalRows calculates how many rows would be displayed if all files
-// were at FoldNormal level. Used to determine initial fold state.
+// were at FoldStructure level. Used to determine initial fold state.
 func (m Model) estimateNormalRows() int {
 	total := 0
 	for i, fp := range m.files {
@@ -1359,8 +1382,8 @@ func (m *Model) lineNumWidth() int {
 // Measures new-side content (displayed on the left).
 func (m *Model) updateMaxNewContentWidth() {
 	for fileIdx, fp := range m.files {
-		if m.fileFoldLevel(fileIdx) != sidebyside.FoldExpanded {
-			continue // only measure content width for hunk view (FoldExpanded)
+		if m.fileFoldLevel(fileIdx) != sidebyside.FoldHunks {
+			continue // only measure content width for hunk view (FoldHunks)
 		}
 
 		// In full-file view, measure full content lines instead of pairs
@@ -2173,6 +2196,7 @@ func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
 		w.narrow = NarrowScope{}
 		w.fileFoldLevels = make(map[int]sidebyside.FoldLevel)
 		w.commitFoldLevels = make(map[int]sidebyside.CommitFoldLevel)
+		w.commitInfoExpanded = make(map[int]bool)
 		w.rowsCacheValid = false
 		w.cachedRows = nil
 	}
@@ -2181,11 +2205,11 @@ func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
 	if len(m.files) > 0 && m.width > 0 {
 		if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
 			for i := range m.files {
-				m.setFileFoldLevel(i, sidebyside.FoldExpanded)
+				m.setFileFoldLevel(i, sidebyside.FoldHunks)
 			}
 		} else {
 			for i := range m.files {
-				m.setFileFoldLevel(i, sidebyside.FoldFolded)
+				m.setFileFoldLevel(i, sidebyside.FoldHeader)
 			}
 		}
 	}
@@ -2318,7 +2342,7 @@ func (m *Model) buildSnapshotHistoryCmd() tea.Cmd {
 				wtCommit := sidebyside.CommitSet{
 					Info:           sidebyside.CommitInfo{Subject: "Working tree changes"},
 					Files:          wtFiles,
-					FoldLevel:      sidebyside.CommitNormal,
+					FoldLevel:      sidebyside.CommitFileHeaders,
 					FilesLoaded:    true,
 					StatsLoaded:    true,
 					IsSnapshot:     true,

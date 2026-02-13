@@ -70,7 +70,7 @@ func TestStatusBar_NewFormat_Basic(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -123,7 +123,7 @@ func TestStatusBar_NewFormat_FoldedFile(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -155,7 +155,7 @@ func TestStatusBar_NewFormat_ExpandedFile(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -185,7 +185,7 @@ func TestStatusBar_NewFormat_AddedFile(t *testing.T) {
 			{
 				OldPath:   "/dev/null",
 				NewPath:   "b/newfile.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
@@ -216,7 +216,7 @@ func TestStatusBar_NewFormat_DeletedFile(t *testing.T) {
 			{
 				OldPath:   "a/deleted.go",
 				NewPath:   "/dev/null",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "gone", Type: sidebyside.Removed},
@@ -247,7 +247,7 @@ func TestStatusBar_NewFormat_AtEnd(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -280,7 +280,7 @@ func TestStatusBar_NewFormat_NoStats(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "context", Type: sidebyside.Context},
@@ -313,7 +313,7 @@ func TestTopBar_ContainsFileInfo(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -347,7 +347,7 @@ func TestTopBar_LeftAligned(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -380,7 +380,7 @@ func TestBottomBar_OnlyLessStyle(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -415,7 +415,7 @@ func TestTopBar_SearchMode_StillShowsFileInfo(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -446,7 +446,7 @@ func TestBottomBar_SearchMode_ShowsSearchPrompt(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line", Type: sidebyside.Context},
@@ -482,7 +482,7 @@ func TestStatusInfo_BreadcrumbsOnChunkSeparator(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					// First hunk
 					{
@@ -549,7 +549,7 @@ func TestTopBar_WithCommitInfo(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -567,7 +567,7 @@ func TestTopBar_WithCommitInfo(t *testing.T) {
 			Subject: "Fix the bug in parser",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal,
+		FoldLevel:   sidebyside.CommitFileHeaders,
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -612,7 +612,7 @@ func TestTopBar_WithoutCommitInfo(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -650,7 +650,7 @@ func TestTopBar_DynamicHeight_OnCommitSection(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -668,7 +668,7 @@ func TestTopBar_DynamicHeight_OnCommitSection(t *testing.T) {
 			Subject: "Fix the bug in parser",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal,
+		FoldLevel:   sidebyside.CommitFileHeaders,
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -706,7 +706,7 @@ func TestView_NoPaddingLineAboveBottomBar(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -722,7 +722,7 @@ func TestView_NoPaddingLineAboveBottomBar(t *testing.T) {
 			Subject: "Fix the bug",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal,
+		FoldLevel:   sidebyside.CommitFileHeaders,
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -803,7 +803,7 @@ func TestContentHeight_WithCommitInfo(t *testing.T) {
 	commit := sidebyside.CommitSet{
 		Info:        sidebyside.CommitInfo{SHA: "abc123", Author: "Test"},
 		Files:       []sidebyside.FilePair{{OldPath: "a/foo.go", NewPath: "b/foo.go"}},
-		FoldLevel:   sidebyside.CommitNormal, // Important: unfolded state
+		FoldLevel:   sidebyside.CommitFileHeaders, // Important: unfolded state
 		FilesLoaded: true,
 	}
 	m2 := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -837,7 +837,7 @@ func TestCommitHeaderRow(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -853,7 +853,7 @@ func TestCommitHeaderRow(t *testing.T) {
 			Subject: "Fix the bug",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal,
+		FoldLevel:   sidebyside.CommitFileHeaders,
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -885,7 +885,7 @@ func TestCommitFolding(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -901,7 +901,7 @@ func TestCommitFolding(t *testing.T) {
 			Subject: "Fix the bug",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal, // Start unfolded
+		FoldLevel:   sidebyside.CommitFileHeaders, // Start unfolded
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -930,7 +930,7 @@ func TestCommitFoldCycle(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
 			},
@@ -938,7 +938,7 @@ func TestCommitFoldCycle(t *testing.T) {
 		{
 			OldPath:   "a/bar.go",
 			NewPath:   "b/bar.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
 			},
@@ -960,40 +960,45 @@ func TestCommitFoldCycle(t *testing.T) {
 	m.focused = true
 	m.calculateTotalLines()
 
-	// Start at Level 1 (folded)
-	assert.Equal(t, 1, m.commitVisibilityLevel(), "should start at level 1")
+	// Start at CommitFolded
 	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
 
-	// Cycle to Level 2 (file headings with structural diff preview)
+	// Cycle 1: CommitFolded → CommitFileHeaders (files at FoldHeader)
 	m.handleCommitFoldCycle()
-	assert.Equal(t, 2, m.commitVisibilityLevel(), "should be at level 2 after first cycle")
-	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
 	for i := range m.files {
-		assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(i), "all files should be FoldNormal at level 2")
+		assert.Equal(t, sidebyside.FoldHeader, m.fileFoldLevel(i), "files should be FoldHeader at CommitFileHeaders")
 	}
 
-	// Cycle to Level 3 (file hunks visible)
+	// Cycle 2: CommitFileHeaders → CommitFileStructure (files at FoldStructure)
 	m.handleCommitFoldCycle()
-	assert.Equal(t, 3, m.commitVisibilityLevel(), "should be at level 3 after second cycle")
+	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(0))
 	for i := range m.files {
-		assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(i), "all files should be FoldExpanded at level 3")
+		assert.Equal(t, sidebyside.FoldStructure, m.fileFoldLevel(i), "files should be FoldStructure at CommitFileStructure")
 	}
 
-	// Cycle back to Level 1 (folded)
+	// Cycle 3: CommitFileStructure → CommitFileHunks (files at FoldHunks)
 	m.handleCommitFoldCycle()
-	assert.Equal(t, 1, m.commitVisibilityLevel(), "should be back at level 1 after third cycle")
+	assert.Equal(t, sidebyside.CommitFileHunks, m.commitFoldLevel(0))
+	for i := range m.files {
+		assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(i), "files should be FoldHunks at CommitFileHunks")
+	}
+
+	// Cycle 4: CommitFileHunks → CommitFolded
+	m.handleCommitFoldCycle()
 	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
 }
 
 func TestCommitFoldCycleWithMixedFiles(t *testing.T) {
-	// Test that if any file is expanded, we're at level 3
+	// When a file is individually expanded, commit fold level stays at CommitFileHeaders.
+	// Cycling advances based on the commit fold level, not individual file state.
 	files := []sidebyside.FilePair{
-		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldExpanded}, // One expanded
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldHunks}, // Individually expanded
 	}
 	commit := sidebyside.CommitSet{
 		Info:        sidebyside.CommitInfo{SHA: "abc123"},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal,
+		FoldLevel:   sidebyside.CommitFileHeaders,
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -1001,20 +1006,20 @@ func TestCommitFoldCycleWithMixedFiles(t *testing.T) {
 	m.height = 40
 	m.calculateTotalLines()
 
-	// Should be at level 3 because one file is expanded
-	assert.Equal(t, 3, m.commitVisibilityLevel(), "mixed files should be level 3")
+	// Commit fold level is CommitFileHeaders (even though file is at FoldHunks)
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
 
-	// Cycling should go back to level 1
+	// Cycling advances to CommitFileStructure
 	m.handleCommitFoldCycle()
-	assert.Equal(t, 1, m.commitVisibilityLevel(), "should collapse to level 1")
+	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(0))
 }
 
 func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
-	// Test that commit info body rows appear when commit is CommitExpanded
-	// With CommitNormal, only the commit info header shows.
-	// With CommitExpanded, the full commit info body shows.
+	// Test that commit info body rows appear when commit is CommitFileHunks
+	// With CommitFileHeaders, only the commit info header shows.
+	// With CommitFileHunks, the full commit info body shows.
 	files := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks},
 	}
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
@@ -1026,7 +1031,7 @@ func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
 			Body:    "This is the commit body.\nIt has multiple lines.",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitExpanded, // Expanded to show commit info body
+		FoldLevel:   sidebyside.CommitFileHunks, // Expanded to show commit info body
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -1050,8 +1055,8 @@ func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
 		}
 	}
 
-	// Should have info body rows when CommitExpanded
-	require.Greater(t, len(bodyRows), 0, "should have commit info body rows when CommitExpanded")
+	// Should have info body rows when CommitFileHunks
+	require.Greater(t, len(bodyRows), 0, "should have commit info body rows when CommitFileHunks")
 
 	// Check content of body rows
 	var foundSHA, foundAuthor, foundDate, foundSubject, foundBody bool
@@ -1083,7 +1088,7 @@ func TestCommitBodyRows_WhenNotFolded(t *testing.T) {
 func TestCommitBodyRow_Rendering(t *testing.T) {
 	// Test the actual rendering of commit body rows
 	files := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks},
 	}
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
@@ -1095,7 +1100,7 @@ func TestCommitBodyRow_Rendering(t *testing.T) {
 			Body:    "Details here.",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal, // Shows at level 2
+		FoldLevel:   sidebyside.CommitFileHeaders, // Shows at level 2
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -1140,7 +1145,7 @@ func TestCommitBodyRow_Rendering(t *testing.T) {
 func TestCommitBodyRows_NotShownWhenFolded(t *testing.T) {
 	// Test that commit body rows do NOT appear when commit is folded (level 1)
 	files := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks},
 	}
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
@@ -1168,9 +1173,9 @@ func TestCommitBodyRows_NotShownWhenFolded(t *testing.T) {
 
 func TestCommitBodyRows_BlankLineBetweenSubjectAndBody(t *testing.T) {
 	// Test that there's a blank line between the subject and body (traditional git log format)
-	// Requires CommitExpanded to show the commit info body
+	// Requires CommitFileHunks to show the commit info body
 	files := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks},
 	}
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
@@ -1182,7 +1187,7 @@ func TestCommitBodyRows_BlankLineBetweenSubjectAndBody(t *testing.T) {
 			Body:    "This is the first line of the body.\nThis is the second line.",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitExpanded, // Need CommitExpanded to see body rows
+		FoldLevel:   sidebyside.CommitFileHunks, // Need CommitFileHunks to see body rows
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})
@@ -1226,10 +1231,10 @@ func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
 	// Test that there's a blank separator row between commits that belongs to the first commit
 	// This ensures proper visual separation and cursor association
 	files1 := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldFolded},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHeader},
 	}
 	files2 := []sidebyside.FilePair{
-		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldFolded},
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldHeader},
 	}
 	commits := []sidebyside.CommitSet{
 		{
@@ -1239,7 +1244,7 @@ func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
 				Subject: "First commit",
 			},
 			Files:       files1,
-			FoldLevel:   sidebyside.CommitNormal, // Level 2 - file headers shown
+			FoldLevel:   sidebyside.CommitFileHeaders, // Level 2 - file headers shown
 			FilesLoaded: true,
 		},
 		{
@@ -1249,7 +1254,7 @@ func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
 				Subject: "Second commit",
 			},
 			Files:       files2,
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 		},
 	}
@@ -1283,12 +1288,12 @@ func TestCommitSeparatorRow_BetweenCommits(t *testing.T) {
 func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 	// This test verifies that currentCommit() returns the commit the cursor is currently on,
 	// including when cursor is on commit info body rows (not just the header).
-	// Requires CommitExpanded to see the commit info body.
+	// Requires CommitFileHunks to see the commit info body.
 	files1 := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldFolded},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHeader},
 	}
 	files2 := []sidebyside.FilePair{
-		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldFolded},
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldHeader},
 	}
 	commits := []sidebyside.CommitSet{
 		{
@@ -1298,7 +1303,7 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 				Subject: "First commit",
 			},
 			Files:       files1,
-			FoldLevel:   sidebyside.CommitExpanded, // Need CommitExpanded to see body rows
+			FoldLevel:   sidebyside.CommitFileHunks, // Need CommitFileHunks to see body rows
 			FilesLoaded: true,
 		},
 		{
@@ -1308,7 +1313,7 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 				Subject: "Second commit",
 			},
 			Files:       files2,
-			FoldLevel:   sidebyside.CommitExpanded, // Need CommitExpanded to see body rows
+			FoldLevel:   sidebyside.CommitFileHunks, // Need CommitFileHunks to see body rows
 			FilesLoaded: true,
 		},
 	}
@@ -1395,10 +1400,10 @@ func TestCurrentCommit_UpdatesWithCursorPosition(t *testing.T) {
 func TestTopBar_ShowsCorrectCommit_WhenCursorMoves(t *testing.T) {
 	// Verifies the top bar shows the commit that the cursor is currently on
 	files1 := []sidebyside.FilePair{
-		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldFolded},
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHeader},
 	}
 	files2 := []sidebyside.FilePair{
-		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldFolded},
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldHeader},
 	}
 	commits := []sidebyside.CommitSet{
 		{
@@ -1408,7 +1413,7 @@ func TestTopBar_ShowsCorrectCommit_WhenCursorMoves(t *testing.T) {
 				Subject: "First commit message",
 			},
 			Files:       files1,
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 		},
 		{
@@ -1418,7 +1423,7 @@ func TestTopBar_ShowsCorrectCommit_WhenCursorMoves(t *testing.T) {
 				Subject: "Second commit message",
 			},
 			Files:       files2,
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 		},
 	}
@@ -1460,7 +1465,7 @@ func TestTopBar_ShowsCorrectStats_WhenCursorMoves(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Type: sidebyside.Removed}, New: sidebyside.Line{Type: sidebyside.Added}},
 				{Old: sidebyside.Line{Type: sidebyside.Removed}, New: sidebyside.Line{Type: sidebyside.Added}},
@@ -1474,7 +1479,7 @@ func TestTopBar_ShowsCorrectStats_WhenCursorMoves(t *testing.T) {
 		{
 			OldPath:   "a/bar.go",
 			NewPath:   "b/bar.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Type: sidebyside.Removed}, New: sidebyside.Line{Type: sidebyside.Added}},
 				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
@@ -1487,7 +1492,7 @@ func TestTopBar_ShowsCorrectStats_WhenCursorMoves(t *testing.T) {
 		{
 			OldPath:   "a/baz.go",
 			NewPath:   "b/baz.go",
-			FoldLevel: sidebyside.FoldFolded,
+			FoldLevel: sidebyside.FoldHeader,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Type: sidebyside.Removed}, New: sidebyside.Line{Type: sidebyside.Added}},
 				{Old: sidebyside.Line{Type: sidebyside.Empty}, New: sidebyside.Line{Type: sidebyside.Added}},
@@ -1504,7 +1509,7 @@ func TestTopBar_ShowsCorrectStats_WhenCursorMoves(t *testing.T) {
 				Subject: "First commit",
 			},
 			Files:       files1,
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 		},
 		{
@@ -1514,7 +1519,7 @@ func TestTopBar_ShowsCorrectStats_WhenCursorMoves(t *testing.T) {
 				Subject: "Second commit",
 			},
 			Files:       files2,
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 		},
 	}
@@ -1560,7 +1565,7 @@ func TestIsOnCommitHeader(t *testing.T) {
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -1576,7 +1581,7 @@ func TestIsOnCommitHeader(t *testing.T) {
 			Subject: "Fix the bug",
 		},
 		Files:       files,
-		FoldLevel:   sidebyside.CommitNormal,
+		FoldLevel:   sidebyside.CommitFileHeaders,
 		FilesLoaded: true,
 	}
 	m := NewWithCommits([]sidebyside.CommitSet{commit})

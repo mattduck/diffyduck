@@ -32,10 +32,10 @@ func findRuneIndex(s, substr string) int {
 
 // Uses the 'update' flag from view_test.go
 
-// unfoldAll sets all files to FoldNormal so tests see the expanded diff view.
+// unfoldAll sets all files to FoldStructure so tests see the expanded diff view.
 func unfoldAll(files []sidebyside.FilePair) {
 	for i := range files {
-		files[i].FoldLevel = sidebyside.FoldNormal
+		files[i].FoldLevel = sidebyside.FoldStructure
 	}
 }
 

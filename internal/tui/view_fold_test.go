@@ -15,9 +15,9 @@ func TestFoldLevelIcon(t *testing.T) {
 		level    sidebyside.FoldLevel
 		expected string
 	}{
-		{sidebyside.FoldFolded, "○"},
-		{sidebyside.FoldNormal, "◐"},
-		{sidebyside.FoldExpanded, "●"},
+		{sidebyside.FoldHeader, "○"},
+		{sidebyside.FoldStructure, "◐"},
+		{sidebyside.FoldHunks, "●"},
 	}
 
 	for _, tt := range tests {
@@ -36,9 +36,9 @@ func TestView_FoldLevelIcons_InHeaders(t *testing.T) {
 		level    sidebyside.FoldLevel
 		wantIcon string
 	}{
-		{"folded shows empty circle", sidebyside.FoldFolded, "○"},
-		{"normal shows half circle", sidebyside.FoldNormal, "◐"},
-		{"expanded shows full circle", sidebyside.FoldExpanded, "●"},
+		{"folded shows empty circle", sidebyside.FoldHeader, "○"},
+		{"normal shows half circle", sidebyside.FoldStructure, "◐"},
+		{"expanded shows full circle", sidebyside.FoldHunks, "●"},
 	}
 
 	for _, tt := range tests {
@@ -82,7 +82,7 @@ func TestView_FoldedFile_HeaderOnly(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line content", Type: sidebyside.Context},
@@ -120,7 +120,7 @@ func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				FoldLevel: sidebyside.FoldFolded, // First file is folded
+				FoldLevel: sidebyside.FoldHeader, // First file is folded
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "first file", Type: sidebyside.Context},
@@ -131,7 +131,7 @@ func TestView_FoldedFileAbove_NoBlankAfter(t *testing.T) {
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				FoldLevel: sidebyside.FoldExpanded, // Second file is normal
+				FoldLevel: sidebyside.FoldHunks, // Second file is normal
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "second file", Type: sidebyside.Context},
@@ -176,7 +176,7 @@ func TestView_MixedFoldLevels(t *testing.T) {
 			{
 				OldPath:   "a/normal.go",
 				NewPath:   "b/normal.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "normal file content", Type: sidebyside.Context},
@@ -187,7 +187,7 @@ func TestView_MixedFoldLevels(t *testing.T) {
 			{
 				OldPath:   "a/folded.go",
 				NewPath:   "b/folded.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "folded file content", Type: sidebyside.Context},
@@ -198,7 +198,7 @@ func TestView_MixedFoldLevels(t *testing.T) {
 			{
 				OldPath:   "a/another.go",
 				NewPath:   "b/another.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "another file content", Type: sidebyside.Context},
@@ -236,13 +236,13 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 			{
 				OldPath:   "a/normal.go",
 				NewPath:   "b/normal.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs:     make([]sidebyside.LinePair, 10),
 			},
 			{
 				OldPath:   "a/folded.go",
 				NewPath:   "b/folded.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs:     make([]sidebyside.LinePair, 10),
 			},
 		},
@@ -267,7 +267,7 @@ func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {
 			{
 				OldPath:      "a/foo.go",
 				NewPath:      "b/foo.go",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				ShowFullFile: true,
 				Pairs: []sidebyside.LinePair{
 					{
@@ -324,7 +324,7 @@ func TestView_ExpandedFile_DeletedFile(t *testing.T) {
 			{
 				OldPath:      "a/deleted.go",
 				NewPath:      "/dev/null",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				ShowFullFile: true,
 				Pairs: []sidebyside.LinePair{
 					{
@@ -355,7 +355,7 @@ func TestView_ExpandedFile_NewFile(t *testing.T) {
 			{
 				OldPath:      "/dev/null",
 				NewPath:      "b/new.go",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				ShowFullFile: true,
 				Pairs: []sidebyside.LinePair{
 					{
@@ -387,7 +387,7 @@ func TestView_ExpandedFile_NoContent_FallsBackToNormal(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 5, Content: "diff context", Type: sidebyside.Context},
@@ -434,7 +434,7 @@ func TestView_ExpandedFile_AlignmentWithAddedLines(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				// Diff pairs showing the insertion
 				Pairs: []sidebyside.LinePair{
 					{
@@ -505,7 +505,7 @@ func TestView_ExpandedFile_AlignmentWithRemovedLines(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 2, Content: "line2", Type: sidebyside.Context},
@@ -554,11 +554,8 @@ func TestView_ExpandedFile_AlignmentWithRemovedLines(t *testing.T) {
 }
 
 func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
-	// When a commit is at visibility level 3 (after pressing tab twice),
-	// its header should show the full-fill icon ● instead of half-fill ◐
-	//
-	// This test simulates pressing Tab twice on a commit header to get to level 3,
-	// then verifies the fold icon is correctly updated to the full-fill style.
+	// When a commit is expanded past CommitFolded, the header icon becomes ●.
+	// This test cycles through all 4 commit fold levels and checks the icon.
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
 			SHA:     "abc1234",
@@ -569,7 +566,7 @@ func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
 				},
@@ -585,19 +582,20 @@ func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
 	m.focused = true
 	m.calculateTotalLines()
 
-	// Tab 1: Level 1 (Folded) -> Level 2 (Normal, files folded)
+	// Tab 1: CommitFolded → CommitFileHeaders
 	newM, _ := m.handleCommitFoldCycle()
 	m = newM.(Model)
-	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "after first Tab, should be at level 2")
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
 
-	// Tab 2: Level 2 -> Level 3 (files expanded)
+	// Tab 2: CommitFileHeaders → CommitFileStructure
 	newM, _ = m.handleCommitFoldCycle()
 	m = newM.(Model)
-	assert.Equal(t, 3, m.commitVisibilityLevelFor(0), "after second Tab, should be at level 3")
+	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(0))
 
-	// At level 3, the commit's FoldLevel should be CommitExpanded
-	assert.Equal(t, sidebyside.CommitExpanded, m.commitFoldLevel(0),
-		"at level 3, commit.FoldLevel should be CommitExpanded")
+	// Tab 3: CommitFileStructure → CommitFileHunks
+	newM, _ = m.handleCommitFoldCycle()
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHunks, m.commitFoldLevel(0))
 
 	output := m.View()
 	lines := strings.Split(output, "\n")
@@ -613,19 +611,14 @@ func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
 
 	require.NotEmpty(t, commitHeaderLine, "should find commit header with SHA")
 
-	// At level 3, should show full-fill icon ●, not half-fill ◐
+	// Any non-folded commit shows ● icon in the main view
 	assert.Contains(t, commitHeaderLine, "●",
-		"commit header at level 3 should show full-fill icon ●")
-	assert.NotContains(t, commitHeaderLine, "◐",
-		"commit header at level 3 should NOT show half-fill icon ◐")
+		"commit header at CommitFileHunks should show ● icon")
 }
 
-func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
-	// When a file is expanded beyond FoldNormal to FoldExpanded,
-	// the visibility level becomes 3, but the commit stays at CommitNormal.
-	// This allows file expansion without automatically expanding commit info.
-	// Level 2 means "structural diff preview" (FoldNormal) - if any file shows
-	// full diffs, the visibility level is 3 but commit fold level stays CommitNormal.
+func TestCommitHeader_ExpandingFileKeepsCommitFoldLevel(t *testing.T) {
+	// Expanding a file individually via Tab doesn't change the commit fold level.
+	// The commit stays at CommitFileHeaders even when a file is at FoldHunks.
 	commit := sidebyside.CommitSet{
 		Info: sidebyside.CommitInfo{
 			SHA:     "def5678",
@@ -636,13 +629,13 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldNormal,
+				FoldLevel: sidebyside.FoldStructure,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
 				},
 			},
 		},
-		FoldLevel:   sidebyside.CommitNormal, // Start at level 2 (structural diff preview)
+		FoldLevel:   sidebyside.CommitFileHeaders,
 		FilesLoaded: true,
 	}
 
@@ -652,53 +645,30 @@ func TestCommitHeader_ExpandingFileUpdatesCommitToLevel3(t *testing.T) {
 	m.focused = true
 	m.calculateTotalLines()
 
-	// Verify we're at level 2
-	assert.Equal(t, 2, m.commitVisibilityLevelFor(0), "should start at level 2")
-	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0), "commit should be CommitNormal")
-	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0), "file should be FoldNormal")
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldStructure, m.fileFoldLevel(0))
 
-	// Navigate to the file and expand it
-	// First, move cursor to be on the file (not the commit header)
+	// Navigate to the file header
 	m.w().scroll = m.minScroll()
 	rows := m.buildRows()
 	for i, row := range rows {
 		if row.isHeader && row.fileIndex == 0 {
-			// Position cursor on this file header
 			m.w().scroll = i
 			break
 		}
 	}
 
-	// Expand the file using handleFoldToggle (simulates pressing Tab on a file)
+	// Expand the file using handleFoldToggle (Tab on a file)
 	newM, _ := m.handleFoldToggle()
 	m = newM.(Model)
 
-	// File should now be expanded (FoldNormal → FoldExpanded)
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0),
-		"file should be FoldExpanded after toggle")
+	// File should now be at FoldHunks
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0),
+		"file should be FoldHunks after toggle")
 
-	// The commit should now be at level 3 but still CommitNormal
-	// (file expansion doesn't force commit info to expand)
-	assert.Equal(t, 3, m.commitVisibilityLevelFor(0),
-		"commit visibility should be level 3 after file expansion")
-	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0),
-		"commit.FoldLevel should stay CommitNormal when a file is expanded")
-
-	// Verify the commit header shows the half-fill icon (◐) since commit is CommitNormal
-	output := m.View()
-	lines := strings.Split(output, "\n")
-
-	var commitHeaderLine string
-	for _, line := range lines {
-		if strings.Contains(line, "def5678") {
-			commitHeaderLine = line
-			break
-		}
-	}
-
-	require.NotEmpty(t, commitHeaderLine, "should find commit header with SHA")
-	assert.Contains(t, commitHeaderLine, "◐",
-		"commit header should show half-fill icon ◐ when commit is CommitNormal")
+	// Commit fold level stays at CommitFileHeaders
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0),
+		"commit fold level should stay CommitFileHeaders when a file is expanded individually")
 }
 
 func TestCommitBorder_CursorRendersArrowOnBorderLine(t *testing.T) {
@@ -714,13 +684,13 @@ func TestCommitBorder_CursorRendersArrowOnBorderLine(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "new"}},
 				},
 			},
 		},
-		FoldLevel:   sidebyside.CommitNormal, // Unfolded so borders are visible
+		FoldLevel:   sidebyside.CommitFileHeaders, // Unfolded so borders are visible
 		FilesLoaded: true,
 	}
 

@@ -1482,7 +1482,7 @@ func buildSnapshotHistory(g *git.RealGit, snapshotInfos []git.SnapshotInfo, base
 						Subject: "Working tree changes",
 					},
 					Files:          wtFiles,
-					FoldLevel:      sidebyside.CommitNormal,
+					FoldLevel:      sidebyside.CommitFileHeaders,
 					FilesLoaded:    true,
 					StatsLoaded:    true,
 					IsSnapshot:     true,

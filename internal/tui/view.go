@@ -1078,9 +1078,9 @@ func (m Model) buildRows() []displayRow {
 		// render as border or blank based on first file's mode.
 		// Skip when narrowed to file level or commit info only (no files shown).
 		if startIdx < endIdx && commit.Info.HasMetadata() && !m.w().narrow.IsFileLevelOrBelow() && !m.w().narrow.IsCommitInfoOnly() {
-			commitInfoExpanded := m.commitFoldLevel(commitIdx) == sidebyside.CommitExpanded
+			commitInfoExpanded := m.isCommitInfoExpanded(commitIdx)
 			if commitInfoExpanded {
-				firstFileFolded := m.fileFoldLevel(startIdx) == sidebyside.FoldFolded
+				firstFileFolded := m.fileFoldLevel(startIdx) == sidebyside.FoldHeader
 				// First file's prev sibling is commit-info, not another file
 				firstFileHeaderMode := determineFileHeaderMode(firstFileFolded, false, commitInfoExpanded)
 				firstIsLastFile := startIdx == endIdx-1
@@ -1091,7 +1091,7 @@ func (m Model) buildRows() []displayRow {
 					kind:               RowKindHeaderTopBorder,
 					fileIndex:          startIdx,
 					isHeaderTopBorder:  true,
-					foldLevel:          sidebyside.FoldNormal,
+					foldLevel:          sidebyside.FoldStructure,
 					status:             fileStatusFromPair(m.files[startIdx]),
 					headerBoxWidth:     headerBoxWidth,
 					treePrefixWidth:    treeWidth(0, true) + 1, // +1 to align with fold icon
@@ -1248,11 +1248,11 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	// Check if previous sibling is unfolded (for determining header mode)
 	prevSiblingUnfolded := false
 	if fileIdx > commitStartIdx {
-		prevSiblingUnfolded = m.fileFoldLevel(fileIdx-1) != sidebyside.FoldFolded
+		prevSiblingUnfolded = m.fileFoldLevel(fileIdx-1) != sidebyside.FoldHeader
 	}
 
 	// Compute header mode based on fold state and prev sibling
-	isFolded := m.fileFoldLevel(fileIdx) == sidebyside.FoldFolded
+	isFolded := m.fileFoldLevel(fileIdx) == sidebyside.FoldHeader
 	headerMode := determineFileHeaderMode(isFolded, isFirstFile, prevSiblingUnfolded)
 
 	isLastFile := fileIdx == commitEndIdx-1
@@ -1272,7 +1272,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	if isFolded {
 		// Folded path: header (no border) → body content → margin
 		headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, true, TreeRowHeader)
-		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldFolded, status: status, header: header, added: added, removed: removed, headerBoxWidth: headerBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
+		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldHeader, status: status, header: header, added: added, removed: removed, headerBoxWidth: headerBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
 
 		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth)
 		rows = append(rows, bodyRows...)
@@ -1334,7 +1334,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			// Top border slot belongs to the NEXT file (fileIdx+1), not the current file
 			// Current file is unfolded, so next file's prev sibling is unfolded
 			// Always add this row to prevent content shift; render as border or blank based on next file's mode
-			nextFileFolded := m.fileFoldLevel(fileIdx+1) == sidebyside.FoldFolded
+			nextFileFolded := m.fileFoldLevel(fileIdx+1) == sidebyside.FoldHeader
 			nextFileHeaderMode := determineFileHeaderMode(nextFileFolded, false, true)
 			nextIsLastFile := fileIdx+1 == commitEndIdx-1
 			// Force IsLast=false so │ continuation shows on the top border row;
@@ -1352,13 +1352,13 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 func (m Model) buildFileBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool, isFolded bool, headerBoxWidth int) []displayRow {
 	foldLevel := m.fileFoldLevel(fileIdx)
 	switch foldLevel {
-	case sidebyside.FoldFolded:
+	case sidebyside.FoldHeader:
 		// Folded: header only, no content
 		return nil
-	case sidebyside.FoldNormal:
+	case sidebyside.FoldStructure:
 		// Part-expanded: structural diff preview
 		return m.buildStructuralDiffRows(fileIdx, headerBoxWidth, contentIsLast, isFolded)
-	default: // FoldExpanded
+	default: // FoldHunks
 		// Full-file content view (Shift+F) when content is available
 		if fp.ShowFullFile && fp.HasContent() {
 			return m.buildExpandedBodyRows(fp, fileIdx, contentIsLast, isLastFile)
@@ -1842,7 +1842,7 @@ func (m Model) getVisibleRows(rows []displayRow, contentHeight int) []string {
 
 		// Check if first file is unfolded and we're in diff view (no commit metadata)
 		firstFileUnfolded := len(m.files) > 0 &&
-			m.fileFoldLevel(0) != sidebyside.FoldFolded
+			m.fileFoldLevel(0) != sidebyside.FoldHeader
 		isDiffView := len(m.commits) == 0 ||
 			(len(m.commits) > 0 && !m.commits[0].Info.HasMetadata())
 

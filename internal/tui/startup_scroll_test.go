@@ -38,7 +38,7 @@ func FuncB() {
 		{
 			OldPath:    "a/test.go",
 			NewPath:    "b/test.go",
-			FoldLevel:  sidebyside.FoldNormal, // Start at structural diff view
+			FoldLevel:  sidebyside.FoldStructure, // Start at structural diff view
 			OldContent: oldLines,
 			NewContent: newLines,
 			Pairs: []sidebyside.LinePair{

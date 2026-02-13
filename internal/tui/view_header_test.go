@@ -114,35 +114,35 @@ func TestView_FileStatusIndicator_InHeaders(t *testing.T) {
 			name:      "added file - folded",
 			oldPath:   "/dev/null",
 			newPath:   "b/new.go",
-			foldLevel: sidebyside.FoldFolded,
+			foldLevel: sidebyside.FoldHeader,
 			wantFile:  "new.go",
 		},
 		{
 			name:      "deleted file - folded",
 			oldPath:   "a/old.go",
 			newPath:   "/dev/null",
-			foldLevel: sidebyside.FoldFolded,
+			foldLevel: sidebyside.FoldHeader,
 			wantFile:  "old.go",
 		},
 		{
 			name:      "modified file - folded",
 			oldPath:   "a/file.go",
 			newPath:   "b/file.go",
-			foldLevel: sidebyside.FoldFolded,
+			foldLevel: sidebyside.FoldHeader,
 			wantFile:  "file.go",
 		},
 		{
 			name:      "added file - normal",
 			oldPath:   "/dev/null",
 			newPath:   "b/new.go",
-			foldLevel: sidebyside.FoldNormal,
+			foldLevel: sidebyside.FoldStructure,
 			wantFile:  "new.go",
 		},
 		{
 			name:      "modified file - expanded",
 			oldPath:   "a/file.go",
 			newPath:   "b/file.go",
-			foldLevel: sidebyside.FoldExpanded,
+			foldLevel: sidebyside.FoldHunks,
 			wantFile:  "file.go",
 		},
 	}
@@ -202,7 +202,7 @@ func TestView_CursorArrowOnFileHeader(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -243,7 +243,7 @@ func TestView_FileHeaderNoVerticalDivider(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -285,7 +285,7 @@ func TestView_HeaderFileNumWidthMatchesLineNumWidth(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 10000, Content: "content", Type: sidebyside.Context},
@@ -335,7 +335,7 @@ func TestView_HeaderSpacerWithCursorMatchesContentLineLayout(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -413,7 +413,7 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},
@@ -447,7 +447,7 @@ func TestBuildRows_FirstFileUnfoldedHasHeaderAsFirstRow(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -477,7 +477,7 @@ func TestBuildRows_NonFirstFileNoLeadingTopBorder(t *testing.T) {
 			{
 				OldPath:   "a/one.go",
 				NewPath:   "b/one.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -488,7 +488,7 @@ func TestBuildRows_NonFirstFileNoLeadingTopBorder(t *testing.T) {
 			{
 				OldPath:   "a/two.go",
 				NewPath:   "b/two.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -527,7 +527,7 @@ func TestBuildRows_TrailingTopBorderVisibleWhenNextUnfolded(t *testing.T) {
 			{
 				OldPath:   "a/one.go",
 				NewPath:   "b/one.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -538,7 +538,7 @@ func TestBuildRows_TrailingTopBorderVisibleWhenNextUnfolded(t *testing.T) {
 			{
 				OldPath:   "a/two.go",
 				NewPath:   "b/two.go",
-				FoldLevel: sidebyside.FoldExpanded, // Next file is unfolded
+				FoldLevel: sidebyside.FoldHunks, // Next file is unfolded
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -575,7 +575,7 @@ func TestBuildRows_TrailingTopBorderHiddenWhenNextFolded(t *testing.T) {
 			{
 				OldPath:   "a/one.go",
 				NewPath:   "b/one.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -586,7 +586,7 @@ func TestBuildRows_TrailingTopBorderHiddenWhenNextFolded(t *testing.T) {
 			{
 				OldPath:   "a/two.go",
 				NewPath:   "b/two.go",
-				FoldLevel: sidebyside.FoldFolded, // Next file is folded
+				FoldLevel: sidebyside.FoldHeader, // Next file is folded
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -622,7 +622,7 @@ func TestBuildRows_HeaderBorderVisibleFirstFile(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -658,7 +658,7 @@ func TestBuildRows_HeaderBorderVisibleWhenPrevUnfolded(t *testing.T) {
 			{
 				OldPath:   "a/one.go",
 				NewPath:   "b/one.go",
-				FoldLevel: sidebyside.FoldExpanded, // Previous file unfolded
+				FoldLevel: sidebyside.FoldHunks, // Previous file unfolded
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -669,7 +669,7 @@ func TestBuildRows_HeaderBorderVisibleWhenPrevUnfolded(t *testing.T) {
 			{
 				OldPath:   "a/two.go",
 				NewPath:   "b/two.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -707,7 +707,7 @@ func TestBuildRows_UnfoldedFileHasBottomBorder(t *testing.T) {
 			{
 				OldPath:   "a/one.go",
 				NewPath:   "b/one.go",
-				FoldLevel: sidebyside.FoldFolded, // Previous file folded
+				FoldLevel: sidebyside.FoldHeader, // Previous file folded
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -718,7 +718,7 @@ func TestBuildRows_UnfoldedFileHasBottomBorder(t *testing.T) {
 			{
 				OldPath:   "a/two.go",
 				NewPath:   "b/two.go",
-				FoldLevel: sidebyside.FoldExpanded, // This file is unfolded
+				FoldLevel: sidebyside.FoldHunks, // This file is unfolded
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -756,17 +756,17 @@ func TestBuildRows_BottomBorderBasedOnOwnFoldState(t *testing.T) {
 	}{
 		{
 			name:          "both_unfolded",
-			thisFoldLevel: sidebyside.FoldExpanded,
+			thisFoldLevel: sidebyside.FoldHunks,
 			expectBottom:  true,
 		},
 		{
 			name:          "prev_folded_this_unfolded",
-			thisFoldLevel: sidebyside.FoldExpanded,
+			thisFoldLevel: sidebyside.FoldHunks,
 			expectBottom:  true, // unfolded file has bottom border regardless of prev
 		},
 		{
 			name:          "both_folded",
-			thisFoldLevel: sidebyside.FoldFolded,
+			thisFoldLevel: sidebyside.FoldHeader,
 			expectBottom:  false, // folded file has no bottom border
 		},
 	}
@@ -833,7 +833,7 @@ func TestRenderHeaderTopBorder_TreeContinuation(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -868,7 +868,7 @@ func TestRenderHeaderTopBorder_CursorRow(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -909,7 +909,7 @@ func TestRenderHeaderBottomBorder_CorrectCorner(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -937,7 +937,7 @@ func TestRenderHeaderBottomBorder_BorderVisibility(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -968,7 +968,7 @@ func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 			{
 				OldPath:   "a/one.go",
 				NewPath:   "b/one.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -979,7 +979,7 @@ func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 			{
 				OldPath:   "a/two.go",
 				NewPath:   "b/two.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -990,7 +990,7 @@ func TestBuildRows_AllFilesFolded_NoBorders(t *testing.T) {
 			{
 				OldPath:   "a/three.go",
 				NewPath:   "b/three.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -1038,7 +1038,7 @@ func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
 			{
 				OldPath:   "a/one.go",
 				NewPath:   "b/one.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -1049,7 +1049,7 @@ func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
 			{
 				OldPath:   "a/two.go",
 				NewPath:   "b/two.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -1060,7 +1060,7 @@ func TestBuildRows_AllFilesUnfolded_AllBordersVisible(t *testing.T) {
 			{
 				OldPath:   "a/three.go",
 				NewPath:   "b/three.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -1119,7 +1119,7 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 			{
 				OldPath:   "a/one.go",
 				NewPath:   "b/one.go",
-				FoldLevel: sidebyside.FoldFolded, // File 0: folded - no bottom border
+				FoldLevel: sidebyside.FoldHeader, // File 0: folded - no bottom border
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -1130,7 +1130,7 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 			{
 				OldPath:   "a/two.go",
 				NewPath:   "b/two.go",
-				FoldLevel: sidebyside.FoldExpanded, // File 1: unfolded - has bottom border
+				FoldLevel: sidebyside.FoldHunks, // File 1: unfolded - has bottom border
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -1141,7 +1141,7 @@ func TestBuildRows_MixedFoldStates(t *testing.T) {
 			{
 				OldPath:   "a/three.go",
 				NewPath:   "b/three.go",
-				FoldLevel: sidebyside.FoldFolded, // File 2: folded - no bottom border
+				FoldLevel: sidebyside.FoldHeader, // File 2: folded - no bottom border
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -1210,7 +1210,7 @@ func TestRenderHeaderBottomBorder_WidthScaling(t *testing.T) {
 			{
 				OldPath:   "a/foo.go",
 				NewPath:   "b/foo.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content", Type: sidebyside.Context},
@@ -1292,7 +1292,7 @@ func TestCommitBorder_FirstCommit_Unfolded_NoTopBorderSlot(t *testing.T) {
 					Author:  "Alice",
 					Date:    "2024-01-01",
 				},
-				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+				FoldLevel: sidebyside.CommitFileHeaders, // UNFOLDED
 			},
 		},
 		commitFileStarts: []int{0},
@@ -1373,7 +1373,7 @@ func TestCommitBorder_FirstCommit_TopBorderInFileLine(t *testing.T) {
 					Author:  "Alice",
 					Date:    "2024-01-01",
 				},
-				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+				FoldLevel: sidebyside.CommitFileHeaders, // UNFOLDED
 			},
 		},
 		commitFileStarts: []int{0},
@@ -1430,7 +1430,7 @@ func TestCommitBorder_SecondCommit_Unfolded_FirstFolded_NoShift(t *testing.T) {
 					Author:  "Bob",
 					Date:    "2024-01-02",
 				},
-				FoldLevel: sidebyside.CommitNormal, // Second commit UNFOLDED
+				FoldLevel: sidebyside.CommitFileHeaders, // Second commit UNFOLDED
 			},
 		},
 		commitFileStarts: []int{0, 0},
@@ -1495,7 +1495,7 @@ func TestCommitBorder_BothUnfolded_SeparatorBecomesTopBorder(t *testing.T) {
 					Author:  "Alice",
 					Date:    "2024-01-01",
 				},
-				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+				FoldLevel: sidebyside.CommitFileHeaders, // UNFOLDED
 			},
 			{
 				Info: sidebyside.CommitInfo{
@@ -1504,7 +1504,7 @@ func TestCommitBorder_BothUnfolded_SeparatorBecomesTopBorder(t *testing.T) {
 					Author:  "Bob",
 					Date:    "2024-01-02",
 				},
-				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+				FoldLevel: sidebyside.CommitFileHeaders, // UNFOLDED
 			},
 		},
 		commitFileStarts: []int{0, 0},
@@ -1569,12 +1569,12 @@ func TestCommitBorder_RowCountStability_FirstFolded(t *testing.T) {
 	rowsFolded := m.buildRows()
 	foldedCount := len(rowsFolded)
 
-	// Unfold second commit to CommitNormal
-	m.commits[1].FoldLevel = sidebyside.CommitNormal
+	// Unfold second commit to CommitFileHeaders
+	m.commits[1].FoldLevel = sidebyside.CommitFileHeaders
 	rowsUnfolded := m.buildRows()
 	unfoldedCount := len(rowsUnfolded)
 
-	// With CommitNormal, the commit info node is shown under the commit header.
+	// With CommitFileHeaders, the commit info node is shown under the commit header.
 	// In tree layout, the difference includes:
 	// - 1 for commit info header
 	// - 1 for commit info bottom border
@@ -1600,7 +1600,7 @@ func TestCommitBorder_WithFiles_SeparatorConversion(t *testing.T) {
 					Author:  "Alice",
 					Date:    "2024-01-01",
 				},
-				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+				FoldLevel: sidebyside.CommitFileHeaders, // UNFOLDED
 			},
 			{
 				Info: sidebyside.CommitInfo{
@@ -1609,7 +1609,7 @@ func TestCommitBorder_WithFiles_SeparatorConversion(t *testing.T) {
 					Author:  "Bob",
 					Date:    "2024-01-02",
 				},
-				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+				FoldLevel: sidebyside.CommitFileHeaders, // UNFOLDED
 			},
 		},
 		commitFileStarts: []int{0, 1},
@@ -1617,12 +1617,12 @@ func TestCommitBorder_WithFiles_SeparatorConversion(t *testing.T) {
 			{
 				OldPath:   "a/file1.go",
 				NewPath:   "b/file1.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 			},
 			{
 				OldPath:   "a/file2.go",
 				NewPath:   "b/file2.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 			},
 		},
 		width:  100,
@@ -1678,7 +1678,7 @@ func TestCommitBorder_TreeLayoutConnectsCommitsDirectly(t *testing.T) {
 					Author:  "Alice",
 					Date:    "2024-01-01",
 				},
-				FoldLevel: sidebyside.CommitNormal, // UNFOLDED
+				FoldLevel: sidebyside.CommitFileHeaders, // UNFOLDED
 			},
 			{
 				Info: sidebyside.CommitInfo{
@@ -1694,12 +1694,12 @@ func TestCommitBorder_TreeLayoutConnectsCommitsDirectly(t *testing.T) {
 			{
 				OldPath:   "a/file1.go",
 				NewPath:   "b/file1.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 			},
 			{
 				OldPath:   "a/file2.go",
 				NewPath:   "b/file2.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 			},
 		},
 		width:  100,
@@ -1753,8 +1753,8 @@ func TestBorderAlignmentWithCursor(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: makePairs(5), FoldLevel: sidebyside.FoldExpanded},
-		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: makePairs(5), FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: makePairs(5), FoldLevel: sidebyside.FoldHunks},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: makePairs(5), FoldLevel: sidebyside.FoldHunks},
 	})
 	m.width = 80
 	m.height = 40
@@ -1811,7 +1811,7 @@ func TestDiffView_CursorStartsOnFileHeader(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old line", Type: sidebyside.Removed},
@@ -1905,13 +1905,13 @@ func TestTreeLayoutAlignment(t *testing.T) {
 					OldPath:   "a/dummy.txt",
 					NewPath:   "b/dummy.txt",
 					Pairs:     []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "x", Type: sidebyside.Context}}},
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 				},
 				{
 					OldPath:   tt.oldPath,
 					NewPath:   tt.newPath,
 					Pairs:     pairs,
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 				},
 			})
 			m.width = 100

@@ -134,7 +134,7 @@ func TestBuildRows_NarrowToFile(t *testing.T) {
 		{
 			OldPath:   "a/first.go",
 			NewPath:   "b/first.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 				{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
@@ -143,7 +143,7 @@ func TestBuildRows_NarrowToFile(t *testing.T) {
 		{
 			OldPath:   "a/second.go",
 			NewPath:   "b/second.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "other1"}, New: sidebyside.Line{Num: 1, Content: "other1"}},
 			},
@@ -186,7 +186,7 @@ func TestToggleNarrow_EnterAndExit(t *testing.T) {
 		{
 			OldPath:   "a/first.go",
 			NewPath:   "b/first.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 				{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
@@ -195,7 +195,7 @@ func TestToggleNarrow_EnterAndExit(t *testing.T) {
 		{
 			OldPath:   "a/second.go",
 			NewPath:   "b/second.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "other1"}, New: sidebyside.Line{Num: 1, Content: "other1"}},
 			},
@@ -245,7 +245,7 @@ func TestToggleNarrow_ShiftN_WithNoSearch(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line"}, New: sidebyside.Line{Num: 1, Content: "line"}},
 			},
@@ -273,7 +273,7 @@ func TestNarrowMode_StatusBarIndicator(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line"}, New: sidebyside.Line{Num: 1, Content: "line"}},
 			},
@@ -303,7 +303,7 @@ func TestToggleNarrow_ShiftN_WithActiveSearch(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "match"}, New: sidebyside.Line{Num: 1, Content: "match"}},
 				{Old: sidebyside.Line{Num: 2, Content: "other"}, New: sidebyside.Line{Num: 2, Content: "other"}},
@@ -331,12 +331,12 @@ func TestToggleNarrow_ShiftN_WithActiveSearch(t *testing.T) {
 }
 
 func TestFoldToggleAll_NarrowedToFile(t *testing.T) {
-	// Create a model with 2 files at FoldExpanded level
+	// Create a model with 2 files at FoldHunks level
 	files := []sidebyside.FilePair{
 		{
 			OldPath:   "a/first.go",
 			NewPath:   "b/first.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 			},
@@ -344,7 +344,7 @@ func TestFoldToggleAll_NarrowedToFile(t *testing.T) {
 		{
 			OldPath:   "a/second.go",
 			NewPath:   "b/second.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line2"}, New: sidebyside.Line{Num: 1, Content: "line2"}},
 			},
@@ -363,17 +363,17 @@ func TestFoldToggleAll_NarrowedToFile(t *testing.T) {
 		HunkIdx:   -1,
 	}
 
-	// Both files start at FoldExpanded
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(1))
+	// Both files start at FoldHunks
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(1))
 
 	// Fold-toggle-all while narrowed to file 0
 	newM, _ := m.handleFoldToggleAllFiles()
 	model := newM.(Model)
 
-	// Only file 0 should change (to FoldFolded, next in cycle)
-	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0), "narrowed file should toggle")
-	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(1), "other file should NOT change")
+	// Only file 0 should change (to FoldHeader, next in cycle)
+	assert.Equal(t, sidebyside.FoldHeader, model.fileFoldLevel(0), "narrowed file should toggle")
+	assert.Equal(t, sidebyside.FoldHunks, model.fileFoldLevel(1), "other file should NOT change")
 }
 
 func TestNarrow_NavigationBounds(t *testing.T) {
@@ -382,7 +382,7 @@ func TestNarrow_NavigationBounds(t *testing.T) {
 		{
 			OldPath:   "a/first.go",
 			NewPath:   "b/first.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 				{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
@@ -392,7 +392,7 @@ func TestNarrow_NavigationBounds(t *testing.T) {
 		{
 			OldPath:   "a/second.go",
 			NewPath:   "b/second.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "other"}, New: sidebyside.Line{Num: 1, Content: "other"}},
 			},
@@ -430,7 +430,7 @@ func TestNarrow_FoldWithinNarrowMode(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line1"}, New: sidebyside.Line{Num: 1, Content: "line1"}},
 				{Old: sidebyside.Line{Num: 2, Content: "line2"}, New: sidebyside.Line{Num: 2, Content: "line2"}},
@@ -471,7 +471,7 @@ func TestNarrow_SearchScopedToNarrowedView(t *testing.T) {
 		{
 			OldPath:   "a/first.go",
 			NewPath:   "b/first.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "match here"}, New: sidebyside.Line{Num: 1, Content: "match here"}},
 			},
@@ -479,7 +479,7 @@ func TestNarrow_SearchScopedToNarrowedView(t *testing.T) {
 		{
 			OldPath:   "a/second.go",
 			NewPath:   "b/second.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "match there"}, New: sidebyside.Line{Num: 1, Content: "match there"}},
 			},
@@ -526,7 +526,7 @@ func TestNarrow_BlankRowBelongsToFile(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line"}, New: sidebyside.Line{Num: 1, Content: "line"}},
 			},
@@ -568,13 +568,13 @@ func TestNarrow_OnCommitInfoHeader(t *testing.T) {
 				Author:  "Test Author",
 				Subject: "Test commit subject",
 			},
-			FoldLevel:   sidebyside.CommitExpanded, // Expanded so info is visible
+			FoldLevel:   sidebyside.CommitFileHunks, // Expanded so info is visible
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
 				{
 					OldPath:   "a/file1.go",
 					NewPath:   "b/file1.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}},
 					},
@@ -629,8 +629,8 @@ func TestNarrow_OnCommitInfoHeader(t *testing.T) {
 }
 
 func TestNarrow_OnCommitInfoHeader_NormalFoldLevel(t *testing.T) {
-	// Test that commit info header row exists and is narrowable even at CommitNormal level
-	// (CommitNormal shows the info header but not the body)
+	// Test that commit info header row exists and is narrowable even at CommitFileHeaders level
+	// (CommitFileHeaders shows the info header but not the body)
 	commits := []sidebyside.CommitSet{
 		{
 			Info: sidebyside.CommitInfo{
@@ -638,13 +638,13 @@ func TestNarrow_OnCommitInfoHeader_NormalFoldLevel(t *testing.T) {
 				Author:  "Test Author",
 				Subject: "Test commit subject",
 			},
-			FoldLevel:   sidebyside.CommitNormal, // Normal level - header visible, body hidden
+			FoldLevel:   sidebyside.CommitFileHeaders, // Normal level - header visible, body hidden
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
 				{
 					OldPath:   "a/file1.go",
 					NewPath:   "b/file1.go",
-					FoldLevel: sidebyside.FoldFolded,
+					FoldLevel: sidebyside.FoldHeader,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}},
 					},
@@ -668,7 +668,7 @@ func TestNarrow_OnCommitInfoHeader_NormalFoldLevel(t *testing.T) {
 		}
 	}
 
-	require.GreaterOrEqual(t, infoRowIdx, 0, "should find a commit info header row even at CommitNormal level")
+	require.GreaterOrEqual(t, infoRowIdx, 0, "should find a commit info header row even at CommitFileHeaders level")
 
 	// Move cursor to commit info row and toggle narrow
 	m.w().scroll = infoRowIdx
@@ -703,13 +703,13 @@ func TestBuildRows_NarrowToCommit(t *testing.T) {
 				Author:  "Test Author",
 				Subject: "First commit",
 			},
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
 				{
 					OldPath:   "a/file1.go",
 					NewPath:   "b/file1.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}},
 					},
@@ -722,13 +722,13 @@ func TestBuildRows_NarrowToCommit(t *testing.T) {
 				Author:  "Test Author",
 				Subject: "Second commit",
 			},
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
 				{
 					OldPath:   "a/file2.go",
 					NewPath:   "b/file2.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}},
 					},
@@ -780,10 +780,10 @@ func TestNarrow_ShouldNotLoadMoreCommits(t *testing.T) {
 				SHA:     "abc123",
 				Subject: "First commit",
 			},
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "file1.go", NewPath: "file1.go", FoldLevel: sidebyside.FoldNormal},
+				{OldPath: "file1.go", NewPath: "file1.go", FoldLevel: sidebyside.FoldStructure},
 			},
 		},
 	}
@@ -815,10 +815,10 @@ func TestNarrow_HidesPaginationIndicator(t *testing.T) {
 				SHA:     "abc123",
 				Subject: "First commit",
 			},
-			FoldLevel:   sidebyside.CommitNormal,
+			FoldLevel:   sidebyside.CommitFileHeaders,
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "file1.go", NewPath: "file1.go", FoldLevel: sidebyside.FoldNormal},
+				{OldPath: "file1.go", NewPath: "file1.go", FoldLevel: sidebyside.FoldStructure},
 			},
 		},
 	}

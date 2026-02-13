@@ -10,9 +10,9 @@ func TestFoldLevel_NextLevel(t *testing.T) {
 		current  FoldLevel
 		expected FoldLevel
 	}{
-		{"Normal -> Expanded", FoldNormal, FoldExpanded},
-		{"Expanded -> Folded", FoldExpanded, FoldFolded},
-		{"Folded -> Normal", FoldFolded, FoldNormal},
+		{"Header -> Structure", FoldHeader, FoldStructure},
+		{"Structure -> Hunks", FoldStructure, FoldHunks},
+		{"Hunks -> Header", FoldHunks, FoldHeader},
 	}
 
 	for _, tt := range tests {
@@ -30,9 +30,9 @@ func TestFoldLevel_String(t *testing.T) {
 		level    FoldLevel
 		expected string
 	}{
-		{FoldNormal, "Normal"},
-		{FoldExpanded, "Expanded"},
-		{FoldFolded, "Folded"},
+		{FoldHeader, "Header"},
+		{FoldStructure, "Structure"},
+		{FoldHunks, "Hunks"},
 		{FoldLevel(99), "Unknown"},
 	}
 
@@ -46,11 +46,54 @@ func TestFoldLevel_String(t *testing.T) {
 	}
 }
 
+func TestCommitFoldLevel_NextLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  CommitFoldLevel
+		expected CommitFoldLevel
+	}{
+		{"Folded -> FileHeaders", CommitFolded, CommitFileHeaders},
+		{"FileHeaders -> FileStructure", CommitFileHeaders, CommitFileStructure},
+		{"FileStructure -> FileHunks", CommitFileStructure, CommitFileHunks},
+		{"FileHunks -> Folded", CommitFileHunks, CommitFolded},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.current.NextLevel()
+			if got != tt.expected {
+				t.Errorf("CommitFoldLevel(%d).NextLevel() = %d, want %d", tt.current, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestCommitFileFold(t *testing.T) {
+	tests := []struct {
+		commit   CommitFoldLevel
+		expected FoldLevel
+	}{
+		{CommitFolded, FoldHeader},
+		{CommitFileHeaders, FoldHeader},
+		{CommitFileStructure, FoldStructure},
+		{CommitFileHunks, FoldHunks},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.commit.String(), func(t *testing.T) {
+			got := CommitFileFold[tt.commit]
+			if got != tt.expected {
+				t.Errorf("CommitFileFold[%v] = %v, want %v", tt.commit, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestFilePair_FoldLevel_Default(t *testing.T) {
-	// Zero value should be FoldNormal
+	// Zero value should be FoldHeader
 	fp := FilePair{}
-	if fp.FoldLevel != FoldNormal {
-		t.Errorf("FilePair zero value FoldLevel = %v, want FoldNormal", fp.FoldLevel)
+	if fp.FoldLevel != FoldHeader {
+		t.Errorf("FilePair zero value FoldLevel = %v, want FoldHeader", fp.FoldLevel)
 	}
 }
 
@@ -58,13 +101,13 @@ func TestFilePair_ContentFields(t *testing.T) {
 	fp := FilePair{
 		OldPath:    "a/foo.go",
 		NewPath:    "b/foo.go",
-		FoldLevel:  FoldExpanded,
+		FoldLevel:  FoldHunks,
 		OldContent: []string{"line1", "line2"},
 		NewContent: []string{"line1", "line2", "line3"},
 	}
 
-	if fp.FoldLevel != FoldExpanded {
-		t.Errorf("FoldLevel = %v, want FoldExpanded", fp.FoldLevel)
+	if fp.FoldLevel != FoldHunks {
+		t.Errorf("FoldLevel = %v, want FoldHunks", fp.FoldLevel)
 	}
 	if len(fp.OldContent) != 2 {
 		t.Errorf("OldContent len = %d, want 2", len(fp.OldContent))

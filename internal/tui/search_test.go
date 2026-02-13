@@ -108,7 +108,7 @@ func TestFindNextMatchRow_OldSideFiltering(t *testing.T) {
 	}
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 		},
 		width:  80,
 		height: 20,
@@ -135,7 +135,7 @@ func TestFindNextMatchRow_InHeader(t *testing.T) {
 			{
 				OldPath:   "a/searchable.go",
 				NewPath:   "b/searchable.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "content"},
@@ -630,7 +630,7 @@ func makeSearchTestModel(lines []string) Model {
 
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 		},
 		width:       80,
 		height:      20,
@@ -649,7 +649,7 @@ func TestSearch_FoldedContent(t *testing.T) {
 	})
 
 	// Fold the file
-	m.files[0].FoldLevel = sidebyside.FoldFolded
+	m.files[0].FoldLevel = sidebyside.FoldHeader
 	m.calculateTotalLines()
 
 	// Search for "hello" - shouldn't find in folded view
@@ -658,7 +658,7 @@ func TestSearch_FoldedContent(t *testing.T) {
 	assert.False(t, found, "should not find 'hello' when file is folded")
 
 	// Unfold to hunks view
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.files[0].FoldLevel = sidebyside.FoldHunks
 	m.calculateTotalLines()
 
 	// Should find the match again
@@ -673,7 +673,7 @@ func TestSearch_FullFileViewWithMoreContent(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 2, Content: "hello", Type: sidebyside.Context},
@@ -712,7 +712,7 @@ func TestFindMatchColsOnRowSide(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old foo bar", Type: sidebyside.Removed},
@@ -777,7 +777,7 @@ func TestSearch_CyclesBetweenSides(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old foo", Type: sidebyside.Removed},
@@ -819,7 +819,7 @@ func TestSearch_NextMatch_DoesNotCycleForeverBetweenSides(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old foo", Type: sidebyside.Removed},
@@ -866,7 +866,7 @@ func TestSearch_PrevMatch_DoesNotCycleForeverBetweenSides(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "old foo", Type: sidebyside.Removed},
@@ -996,7 +996,7 @@ func makeSearchCommitModel(commitInfo sidebyside.CommitInfo, foldLevel sidebysid
 		{
 			OldPath:   "a/foo.go",
 			NewPath:   "b/foo.go",
-			FoldLevel: sidebyside.FoldNormal,
+			FoldLevel: sidebyside.FoldStructure,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old line", Type: sidebyside.Removed},
@@ -1024,7 +1024,7 @@ func TestSearch_FindsSubjectInCommitHeader(t *testing.T) {
 		SHA:     "abc123def4567890",
 		Author:  "Alice",
 		Subject: "Fix parser bug",
-	}, sidebyside.CommitNormal)
+	}, sidebyside.CommitFileHeaders)
 
 	m.searchQuery = "parser"
 	row, found := m.findNextMatchRow(0, true)
@@ -1039,7 +1039,7 @@ func TestSearch_FindsAuthorInCommitHeader(t *testing.T) {
 		SHA:     "abc123def4567890",
 		Author:  "Alice",
 		Subject: "Fix parser bug",
-	}, sidebyside.CommitNormal)
+	}, sidebyside.CommitFileHeaders)
 
 	m.searchQuery = "alice"
 	row, found := m.findNextMatchRow(0, true)
@@ -1054,7 +1054,7 @@ func TestSearch_FindsSHAInCommitHeader(t *testing.T) {
 		SHA:     "abc123def4567890",
 		Author:  "Alice",
 		Subject: "Fix parser bug",
-	}, sidebyside.CommitNormal)
+	}, sidebyside.CommitFileHeaders)
 
 	m.searchQuery = "abc123d"
 	row, found := m.findNextMatchRow(0, true)
@@ -1069,7 +1069,7 @@ func TestSearch_CommitHeaderSearchText_ContainsSHAAuthorSubject(t *testing.T) {
 		SHA:     "abc123def4567890",
 		Author:  "Alice",
 		Subject: "Fix parser bug",
-	}, sidebyside.CommitNormal)
+	}, sidebyside.CommitFileHeaders)
 
 	rows := m.buildRows()
 	var headerRow displayRow
@@ -1091,7 +1091,7 @@ func TestSearch_DoesNotSearchCommitInfoHeader(t *testing.T) {
 		Author:  "Alice",
 		Date:    "2024-01-15T10:30:00+00:00",
 		Subject: "Fix parser bug",
-	}, sidebyside.CommitNormal)
+	}, sidebyside.CommitFileHeaders)
 
 	// The commit info header shows the formatted date. Search for a date fragment
 	// and verify it does NOT match the commit info header row.
@@ -1112,7 +1112,7 @@ func TestSearch_FindsTextInCommitInfoBody(t *testing.T) {
 		Date:    "2024-01-15T10:30:00+00:00",
 		Subject: "Fix parser bug",
 		Body:    "Detailed description of the fix",
-	}, sidebyside.CommitExpanded)
+	}, sidebyside.CommitFileHunks)
 
 	// Search for text in the commit body message
 	m.searchQuery = "Detailed"
@@ -1130,7 +1130,7 @@ func TestSearch_FindsAuthorInCommitInfoBody(t *testing.T) {
 		Email:   "alice@example.com",
 		Date:    "2024-01-15T10:30:00+00:00",
 		Subject: "Fix parser bug",
-	}, sidebyside.CommitExpanded)
+	}, sidebyside.CommitFileHunks)
 
 	// Search for the email which only appears in the commit info body Author line
 	m.searchQuery = "alice@example"
@@ -1148,7 +1148,7 @@ func TestSearch_FindsSHAInCommitInfoBody(t *testing.T) {
 		Author:  "Alice",
 		Date:    "2024-01-15T10:30:00+00:00",
 		Subject: "Fix parser bug",
-	}, sidebyside.CommitExpanded)
+	}, sidebyside.CommitFileHunks)
 
 	// The full SHA appears in the commit info body "commit abc123def4567890" line
 	m.searchQuery = "abc123def"
@@ -1170,7 +1170,7 @@ func TestSearch_CommitBodyNotSearchedOnSide1(t *testing.T) {
 		SHA:     "abc123def4567890",
 		Author:  "Alice",
 		Subject: "Fix parser bug",
-	}, sidebyside.CommitExpanded)
+	}, sidebyside.CommitFileHunks)
 
 	rows := m.buildRows()
 	for i, r := range rows {
@@ -1187,7 +1187,7 @@ func TestSearch_CommitInfoBodyBlankLinesNotSearchable(t *testing.T) {
 		Author:  "Alice",
 		Date:    "2024-01-15T10:30:00+00:00",
 		Subject: "Fix parser bug",
-	}, sidebyside.CommitExpanded)
+	}, sidebyside.CommitFileHunks)
 
 	// Blank commit info body lines should return empty searchable text
 	rows := m.buildRows()
@@ -1215,7 +1215,7 @@ func makeSearchWithCommentsTestModel(lines []string, comments map[commentKey]str
 
 	m := Model{
 		files: []sidebyside.FilePair{
-			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+			{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 		},
 		width:       80,
 		height:      30,
@@ -1472,7 +1472,7 @@ func TestSearch_FoldedFile_NoCommentMatches(t *testing.T) {
 	}, comments)
 
 	// Fold the file
-	m.files[0].FoldLevel = sidebyside.FoldFolded
+	m.files[0].FoldLevel = sidebyside.FoldHeader
 	m.calculateTotalLines()
 
 	m.searchQuery = "searchterm"

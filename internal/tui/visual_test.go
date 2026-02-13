@@ -123,7 +123,7 @@ func TestVisualMode_StatusBarIndicator(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{Old: sidebyside.Line{Num: 1, Content: "line"}, New: sidebyside.Line{Num: 1, Content: "line"}},
 			},
@@ -346,7 +346,7 @@ func TestVisualMode_DoesNotInterfereWithCommentMode(t *testing.T) {
 		{
 			OldPath:   "a/test.go",
 			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldExpanded,
+			FoldLevel: sidebyside.FoldHunks,
 			Pairs: []sidebyside.LinePair{
 				{
 					Old: sidebyside.Line{Num: 1, Content: "old", Type: sidebyside.Removed},

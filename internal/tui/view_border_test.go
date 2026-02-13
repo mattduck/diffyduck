@@ -14,11 +14,11 @@ import (
 // --- File header border connector tests ---
 
 func TestFileHeader_NormalHasShortTrailingConnector(t *testing.T) {
-	// FoldNormal file headers should have short ┏━━◐ trailing indicator
+	// FoldStructure file headers should have short ┏━━◐ trailing indicator
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/world.go", NewPath: "b/world.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldNormal},
+		{OldPath: "a/world.go", NewPath: "b/world.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldStructure},
 	})
 	m.width = 80
 	m.height = 40
@@ -44,15 +44,15 @@ func TestFileHeader_NormalHasShortTrailingConnector(t *testing.T) {
 	)
 	stripped := stripANSI(rendered)
 
-	assert.Contains(t, stripped, "┏━━◐", "FoldNormal header should have short ┏━━◐ trailing indicator")
+	assert.Contains(t, stripped, "┏━━◐", "FoldStructure header should have short ┏━━◐ trailing indicator")
 }
 
 func TestFileHeader_ExpandedHasFullTrailingConnector(t *testing.T) {
-	// FoldExpanded file headers should have full-width ┏━━━ trailing fill to screen edge
+	// FoldHunks file headers should have full-width ┏━━━ trailing fill to screen edge
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/hello.go", NewPath: "b/hello.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/hello.go", NewPath: "b/hello.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldHunks},
 	})
 	m.width = 80
 	m.height = 40
@@ -91,7 +91,7 @@ func TestFileHeader_FoldedHasNoTrailingConnector(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/hello.go", NewPath: "b/hello.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldFolded},
+		{OldPath: "a/hello.go", NewPath: "b/hello.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldHeader},
 	})
 	m.width = 80
 	m.height = 40
@@ -127,8 +127,8 @@ func TestFileBottomBorder_HasClosingCorner(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/one.go", NewPath: "b/one.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
-		{OldPath: "a/two.go", NewPath: "b/two.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/one.go", NewPath: "b/one.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldHunks},
+		{OldPath: "a/two.go", NewPath: "b/two.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldHunks},
 	})
 	m.width = 80
 	m.height = 40
@@ -166,8 +166,8 @@ func TestFileHeader_ConnectorAlignsBetweenHeaderAndBorder(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/one.go", NewPath: "b/one.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
-		{OldPath: "a/two.go", NewPath: "b/two.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/one.go", NewPath: "b/one.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldHunks},
+		{OldPath: "a/two.go", NewPath: "b/two.go", Pairs: makePairsN(3), FoldLevel: sidebyside.FoldHunks},
 	})
 	m.width = 100
 	m.height = 40
@@ -218,7 +218,7 @@ func TestCommitHeader_UnfoldedHasNoTrailingConnector(t *testing.T) {
 		commitSpec{sha: "abc1234", subject: "Add feature X", author: "Alice", date: "2024-01-01", fileCount: 1},
 		commitSpec{sha: "def5678", subject: "Fix bug Y", author: "Bob", date: "2024-01-02", fileCount: 1},
 	)
-	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.commits[0].FoldLevel = sidebyside.CommitFileHeaders
 	m.width = 100
 	m.w().rowsCacheValid = false
 
@@ -275,7 +275,7 @@ func TestCommitBottomBorder_ExtendsFullWidthWithCorner(t *testing.T) {
 	m := makeCommitModel(
 		commitSpec{sha: "abc1234", subject: "Add feature X", author: "Alice", date: "2024-01-01", fileCount: 1},
 	)
-	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.commits[0].FoldLevel = sidebyside.CommitFileHeaders
 	m.width = 100
 	m.w().rowsCacheValid = false
 
@@ -307,7 +307,7 @@ func TestCommitHeader_VerticalAndCornerAligned(t *testing.T) {
 	m := makeCommitModel(
 		commitSpec{sha: "abc1234", subject: "Add feature X", author: "Alice", date: "2024-01-01", fileCount: 2},
 	)
-	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.commits[0].FoldLevel = sidebyside.CommitFileHeaders
 	m.width = 100
 	m.w().rowsCacheValid = false
 
@@ -363,7 +363,7 @@ func TestCommitHeader_TruncatedSubjectAlignsWithBorder(t *testing.T) {
 	m := makeCommitModel(
 		commitSpec{sha: "abc1234", subject: longSubject, author: "Alice", date: "2024-01-01", fileCount: 3},
 	)
-	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.commits[0].FoldLevel = sidebyside.CommitFileHeaders
 	m.width = 120
 	m.w().rowsCacheValid = false
 
@@ -442,12 +442,12 @@ func TestFileHeader_UnfoldedUsesPerFileWidth(t *testing.T) {
 	m := New([]sidebyside.FilePair{
 		{
 			OldPath: "a/short.go", NewPath: "b/short.go",
-			Pairs: makePairsN(2), FoldLevel: sidebyside.FoldExpanded,
+			Pairs: makePairsN(2), FoldLevel: sidebyside.FoldHunks,
 		},
 		{
 			OldPath: "a/very_long_filename_that_is_much_wider.go",
 			NewPath: "b/very_long_filename_that_is_much_wider.go",
-			Pairs:   makePairsN(2), FoldLevel: sidebyside.FoldExpanded,
+			Pairs:   makePairsN(2), FoldLevel: sidebyside.FoldHunks,
 		},
 	})
 	m.width = 120
@@ -488,8 +488,8 @@ func TestCommitHeader_UnfoldedUsesPerCommitSubjectWidth(t *testing.T) {
 		commitSpec{sha: "abc1234", subject: "Short", author: "Alice", date: "2024-01-01", fileCount: 1},
 		commitSpec{sha: "def5678", subject: "A much longer commit subject line here", author: "Bob", date: "2024-01-02", fileCount: 1},
 	)
-	m.commits[0].FoldLevel = sidebyside.CommitNormal
-	m.commits[1].FoldLevel = sidebyside.CommitNormal
+	m.commits[0].FoldLevel = sidebyside.CommitFileHeaders
+	m.commits[1].FoldLevel = sidebyside.CommitFileHeaders
 	m.width = 120
 	m.w().rowsCacheValid = false
 
@@ -522,7 +522,7 @@ func TestCommitInfoHeader_ExpandedHasTrailingConnector(t *testing.T) {
 	m := makeCommitModel(
 		commitSpec{sha: "abc1234", subject: "Add feature X", author: "Alice", date: "2024-01-01", fileCount: 1},
 	)
-	m.commits[0].FoldLevel = sidebyside.CommitExpanded
+	m.commits[0].FoldLevel = sidebyside.CommitFileHunks
 	m.width = 100
 	m.w().rowsCacheValid = false
 
@@ -551,13 +551,13 @@ func TestCommitInfoHeader_ExpandedHasTrailingConnector(t *testing.T) {
 }
 
 func TestCommitInfoHeader_NormalHasNoTrailingConnector(t *testing.T) {
-	// CommitNormal info header should NOT have ┏ trailing fill (info is folded)
+	// CommitFileHeaders info header should NOT have ┏ trailing fill (info is folded)
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	m := makeCommitModel(
 		commitSpec{sha: "abc1234", subject: "Add feature X", author: "Alice", date: "2024-01-01", fileCount: 1},
 	)
-	m.commits[0].FoldLevel = sidebyside.CommitNormal
+	m.commits[0].FoldLevel = sidebyside.CommitFileHeaders
 	m.width = 100
 	m.w().rowsCacheValid = false
 
@@ -587,7 +587,7 @@ func TestCommitInfoHeader_ConnectorAlignsBetweenHeaderAndBorder(t *testing.T) {
 	m := makeCommitModel(
 		commitSpec{sha: "abc1234", subject: "Add feature X", author: "Alice", date: "2024-01-01", fileCount: 1},
 	)
-	m.commits[0].FoldLevel = sidebyside.CommitExpanded
+	m.commits[0].FoldLevel = sidebyside.CommitFileHunks
 	m.width = 100
 	m.w().rowsCacheValid = false
 
@@ -623,7 +623,7 @@ func TestCommitInfoBottomBorder_HasClosingCorner(t *testing.T) {
 	m := makeCommitModel(
 		commitSpec{sha: "abc1234", subject: "Add feature X", author: "Alice", date: "2024-01-01", fileCount: 1},
 	)
-	m.commits[0].FoldLevel = sidebyside.CommitExpanded
+	m.commits[0].FoldLevel = sidebyside.CommitFileHunks
 	m.width = 100
 	m.w().rowsCacheValid = false
 
@@ -695,7 +695,7 @@ func makeCommitModel(specs ...commitSpec) Model {
 				OldPath:   "a/file.go",
 				NewPath:   "b/file.go",
 				Pairs:     makePairsN(2),
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 			})
 		}
 	}

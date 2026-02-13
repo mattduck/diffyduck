@@ -26,7 +26,7 @@ func makeTestModel(numLines int) Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	})
 	m.width = 80
 	m.height = 20
@@ -216,9 +216,9 @@ func makeMultiFileTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldExpanded, Pairs: makePairs(5)},
-		{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldExpanded, Pairs: makePairs(5)},
-		{OldPath: "a/third.go", NewPath: "b/third.go", FoldLevel: sidebyside.FoldExpanded, Pairs: makePairs(5)},
+		{OldPath: "a/first.go", NewPath: "b/first.go", FoldLevel: sidebyside.FoldHunks, Pairs: makePairs(5)},
+		{OldPath: "a/second.go", NewPath: "b/second.go", FoldLevel: sidebyside.FoldHunks, Pairs: makePairs(5)},
+		{OldPath: "a/third.go", NewPath: "b/third.go", FoldLevel: sidebyside.FoldHunks, Pairs: makePairs(5)},
 	})
 	m.width = 80
 	m.height = 40           // tall enough to see all content
@@ -352,11 +352,11 @@ func makeMultiCommitTestModel() Model {
 				Author:  "Author",
 				Subject: "First commit",
 			},
-			FoldLevel:   sidebyside.CommitNormal, // Expanded to show files
+			FoldLevel:   sidebyside.CommitFileHeaders, // Expanded to show files
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "a/file1.go", NewPath: "b/file1.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldExpanded},
-				{OldPath: "a/file2.go", NewPath: "b/file2.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldExpanded},
+				{OldPath: "a/file1.go", NewPath: "b/file1.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldHunks},
+				{OldPath: "a/file2.go", NewPath: "b/file2.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldHunks},
 			},
 		},
 		{
@@ -365,10 +365,10 @@ func makeMultiCommitTestModel() Model {
 				Author:  "Author",
 				Subject: "Second commit",
 			},
-			FoldLevel:   sidebyside.CommitNormal, // Expanded to show files
+			FoldLevel:   sidebyside.CommitFileHeaders, // Expanded to show files
 			FilesLoaded: true,
 			Files: []sidebyside.FilePair{
-				{OldPath: "a/file3.go", NewPath: "b/file3.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldExpanded},
+				{OldPath: "a/file3.go", NewPath: "b/file3.go", Pairs: makePairs(3), FoldLevel: sidebyside.FoldHunks},
 			},
 		},
 	}
@@ -554,10 +554,10 @@ func TestUpdate_WindowResize_BottomMarginBlanks(t *testing.T) {
 			marginBlanks = append(marginBlanks, i)
 		}
 	}
-	// Count unfolded files (FoldNormal has content)
+	// Count unfolded files (FoldStructure has content)
 	unfoldedCount := 0
 	for _, fp := range m.files {
-		if fp.FoldLevel != sidebyside.FoldFolded {
+		if fp.FoldLevel != sidebyside.FoldHeader {
 			unfoldedCount++
 		}
 	}
@@ -706,8 +706,8 @@ func TestUpdate_MouseEvent_SetsFocused(t *testing.T) {
 
 func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
 	m := makeTestModel(10)
-	// Initially at FoldExpanded (set by makeTestModel)
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
+	// Initially at FoldHunks (set by makeTestModel)
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
 
 	// Position cursor on file header (line 0 in diff view: no top border)
 	m.w().scroll = 0
@@ -716,19 +716,19 @@ func TestUpdate_FoldToggle_SingleFile(t *testing.T) {
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHeader, model.fileFoldLevel(0))
 
 	// Press Tab again to cycle to Normal (structural diff)
 	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model2 := newM2.(Model)
 
-	assert.Equal(t, sidebyside.FoldNormal, model2.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldStructure, model2.fileFoldLevel(0))
 
 	// Press Tab again to cycle back to Expanded (hunks)
 	newM3, _ := model2.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model3 := newM3.(Model)
 
-	assert.Equal(t, sidebyside.FoldExpanded, model3.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHunks, model3.fileFoldLevel(0))
 }
 
 func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
@@ -755,36 +755,36 @@ func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
 	m.width = 80
 	m.height = 20
 
-	// Both files at FoldNormal, commit at CommitNormal = level 2
-	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0))
-	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(1))
-	assert.Equal(t, sidebyside.CommitNormal, m.commitFoldLevel(0))
+	// Files at FoldHeader (zero value), commit at CommitFileHeaders (set by New)
+	assert.Equal(t, sidebyside.FoldHeader, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHeader, m.fileFoldLevel(1))
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
 
-	// Press Shift+Tab - should cycle from level 2 to level 3 (all expanded)
+	// Press Shift+Tab - should cycle CommitFileHeaders → CommitFileStructure
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(0))
-	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(1))
-	assert.Equal(t, sidebyside.CommitExpanded, model.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldStructure, model.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldStructure, model.fileFoldLevel(1))
+	assert.Equal(t, sidebyside.CommitFileStructure, model.commitFoldLevel(0))
 }
 
 func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
-	// When expanding from FoldNormal to FoldExpanded, should return a fetch command
+	// When expanding from FoldStructure to FoldHunks, should return a fetch command
 	m := makeTestModel(10)
-	m.files[0].FoldLevel = sidebyside.FoldNormal // start at structural diff
+	m.files[0].FoldLevel = sidebyside.FoldStructure // start at structural diff
 	m.calculateTotalLines()
 
 	// Position cursor on file header (line 0 in diff view)
 	m.w().scroll = 0
 
-	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldStructure, m.fileFoldLevel(0))
 
-	// Press Tab to advance to FoldExpanded
+	// Press Tab to advance to FoldHunks
 	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldExpanded, model.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHunks, model.fileFoldLevel(0))
 	// Without a fetcher, cmd should be nil
 	assert.Nil(t, cmd, "without fetcher, cmd should be nil")
 }
@@ -798,7 +798,7 @@ func TestUpdate_FoldToggle_SkipsFetch_WhenContentLoaded(t *testing.T) {
 	// Position cursor on file header (line 0 in diff view)
 	m.w().scroll = 0
 
-	// Press Tab to advance to FoldExpanded
+	// Press Tab to advance to FoldHunks
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
 	// Content already loaded, so no fetch needed
@@ -823,28 +823,30 @@ func TestUpdate_FoldToggleAll_DifferentLevels(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1, FoldLevel: sidebyside.FoldNormal},
-		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2, FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs1, FoldLevel: sidebyside.FoldStructure},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs2, FoldLevel: sidebyside.FoldHunks},
 	})
 	m.width = 80
 	m.height = 20
 
-	// Files at different levels = mixed state
-	assert.Equal(t, sidebyside.FoldNormal, m.fileFoldLevel(0))
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(1))
+	// Files at different levels, but commit is at CommitFileHeaders
+	assert.Equal(t, sidebyside.FoldStructure, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(1))
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
 
-	// Press Shift+Tab - mixed state resets to level 1 (all folded)
+	// Press Shift+Tab - advances commit level (CommitFileHeaders → CommitFileStructure)
+	// Individual file overrides are reset to the commit's target fold level
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
-	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(0))
-	assert.Equal(t, sidebyside.FoldFolded, model.fileFoldLevel(1))
-	assert.Equal(t, sidebyside.CommitFolded, model.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldStructure, model.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldStructure, model.fileFoldLevel(1))
+	assert.Equal(t, sidebyside.CommitFileStructure, model.commitFoldLevel(0))
 }
 
 func TestUpdate_FileContentLoadedMsg(t *testing.T) {
 	m := makeTestModel(10)
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.files[0].FoldLevel = sidebyside.FoldHunks
 
 	// Simulate receiving content loaded message
 	msg := FileContentLoadedMsg{
@@ -862,7 +864,7 @@ func TestUpdate_FileContentLoadedMsg(t *testing.T) {
 
 func TestUpdate_FileContentLoadedMsg_OldTruncatedOnly(t *testing.T) {
 	m := makeTestModel(10)
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.files[0].FoldLevel = sidebyside.FoldHunks
 
 	// Simulate receiving content where only old side was truncated
 	msg := FileContentLoadedMsg{
@@ -882,7 +884,7 @@ func TestUpdate_FileContentLoadedMsg_OldTruncatedOnly(t *testing.T) {
 
 func TestUpdate_FileContentLoadedMsg_NewTruncatedOnly(t *testing.T) {
 	m := makeTestModel(10)
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.files[0].FoldLevel = sidebyside.FoldHunks
 
 	// Simulate receiving content where only new side was truncated
 	msg := FileContentLoadedMsg{
@@ -902,7 +904,7 @@ func TestUpdate_FileContentLoadedMsg_NewTruncatedOnly(t *testing.T) {
 
 func TestUpdate_FileContentLoadedMsg_BothTruncated(t *testing.T) {
 	m := makeTestModel(10)
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.files[0].FoldLevel = sidebyside.FoldHunks
 
 	// Simulate receiving content where both sides were truncated
 	msg := FileContentLoadedMsg{
@@ -922,7 +924,7 @@ func TestUpdate_FileContentLoadedMsg_BothTruncated(t *testing.T) {
 
 func TestUpdate_FileContentLoadedMsg_NeitherTruncated(t *testing.T) {
 	m := makeTestModel(10)
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	m.files[0].FoldLevel = sidebyside.FoldHunks
 
 	// Simulate receiving content where neither side was truncated
 	msg := FileContentLoadedMsg{
@@ -950,8 +952,8 @@ func TestUpdate_AllContentLoadedMsg(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs, FoldLevel: sidebyside.FoldExpanded},
-		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs, FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs, FoldLevel: sidebyside.FoldHunks},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs, FoldLevel: sidebyside.FoldHunks},
 	})
 	m.width = 80
 	m.height = 20
@@ -983,8 +985,8 @@ func TestUpdate_AllContentLoadedMsg_PerSideTruncation(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs, FoldLevel: sidebyside.FoldExpanded},
-		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs, FoldLevel: sidebyside.FoldExpanded},
+		{OldPath: "a/first.go", NewPath: "b/first.go", Pairs: pairs, FoldLevel: sidebyside.FoldHunks},
+		{OldPath: "a/second.go", NewPath: "b/second.go", Pairs: pairs, FoldLevel: sidebyside.FoldHunks},
 	})
 	m.width = 80
 	m.height = 20
@@ -1013,19 +1015,19 @@ func TestNextFoldLevel(t *testing.T) {
 	m := Model{}
 
 	// Normal -> Expanded
-	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevel(sidebyside.FoldNormal))
+	assert.Equal(t, sidebyside.FoldHunks, m.nextFoldLevel(sidebyside.FoldStructure))
 
 	// Expanded -> Folded
-	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevel(sidebyside.FoldExpanded))
+	assert.Equal(t, sidebyside.FoldHeader, m.nextFoldLevel(sidebyside.FoldHunks))
 
 	// Folded -> Normal
-	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevel(sidebyside.FoldFolded))
+	assert.Equal(t, sidebyside.FoldStructure, m.nextFoldLevel(sidebyside.FoldHeader))
 }
 
 func TestNextFoldLevelForFile_BinaryFile(t *testing.T) {
 	m := Model{}
 
-	// Binary file should skip FoldNormal (no structural diff for binary files)
+	// Binary file should skip FoldStructure (no structural diff for binary files)
 	binaryFile := sidebyside.FilePair{
 		OldPath:  "a/image.png",
 		NewPath:  "b/image.png",
@@ -1033,10 +1035,10 @@ func TestNextFoldLevelForFile_BinaryFile(t *testing.T) {
 	}
 
 	// Expanded -> Folded
-	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevelForFile(sidebyside.FoldExpanded, binaryFile))
+	assert.Equal(t, sidebyside.FoldHeader, m.nextFoldLevelForFile(sidebyside.FoldHunks, binaryFile))
 
 	// Folded -> Expanded (skip Normal)
-	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevelForFile(sidebyside.FoldFolded, binaryFile))
+	assert.Equal(t, sidebyside.FoldHunks, m.nextFoldLevelForFile(sidebyside.FoldHeader, binaryFile))
 }
 
 func TestNextFoldLevelForFile_NonBinaryFile(t *testing.T) {
@@ -1050,13 +1052,13 @@ func TestNextFoldLevelForFile_NonBinaryFile(t *testing.T) {
 	}
 
 	// Normal -> Expanded
-	assert.Equal(t, sidebyside.FoldExpanded, m.nextFoldLevelForFile(sidebyside.FoldNormal, normalFile))
+	assert.Equal(t, sidebyside.FoldHunks, m.nextFoldLevelForFile(sidebyside.FoldStructure, normalFile))
 
 	// Expanded -> Folded
-	assert.Equal(t, sidebyside.FoldFolded, m.nextFoldLevelForFile(sidebyside.FoldExpanded, normalFile))
+	assert.Equal(t, sidebyside.FoldHeader, m.nextFoldLevelForFile(sidebyside.FoldHunks, normalFile))
 
 	// Folded -> Normal
-	assert.Equal(t, sidebyside.FoldNormal, m.nextFoldLevelForFile(sidebyside.FoldFolded, normalFile))
+	assert.Equal(t, sidebyside.FoldStructure, m.nextFoldLevelForFile(sidebyside.FoldHeader, normalFile))
 }
 
 func TestFetchFileContent_SkipsBinaryFiles(t *testing.T) {
@@ -1221,8 +1223,8 @@ func makeMultiHunkTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/multi.go", NewPath: "b/multi.go", FoldLevel: sidebyside.FoldExpanded, Pairs: file0Pairs, NewContent: newContent},
-		{OldPath: "a/single.go", NewPath: "b/single.go", FoldLevel: sidebyside.FoldExpanded, Pairs: file1Pairs},
+		{OldPath: "a/multi.go", NewPath: "b/multi.go", FoldLevel: sidebyside.FoldHunks, Pairs: file0Pairs, NewContent: newContent},
+		{OldPath: "a/single.go", NewPath: "b/single.go", FoldLevel: sidebyside.FoldHunks, Pairs: file1Pairs},
 	})
 	m.width = 80
 	m.height = 80 // tall enough to see all content
@@ -1387,8 +1389,8 @@ func TestUpdate_gj_SkipsHunksInSingleHunkFile(t *testing.T) {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/one.go", NewPath: "b/one.go", FoldLevel: sidebyside.FoldExpanded, Pairs: makePairs(5)},
-		{OldPath: "a/two.go", NewPath: "b/two.go", FoldLevel: sidebyside.FoldExpanded, Pairs: makePairs(5)},
+		{OldPath: "a/one.go", NewPath: "b/one.go", FoldLevel: sidebyside.FoldHunks, Pairs: makePairs(5)},
+		{OldPath: "a/two.go", NewPath: "b/two.go", FoldLevel: sidebyside.FoldHunks, Pairs: makePairs(5)},
 	})
 	m.width = 80
 	m.height = 60
@@ -1426,7 +1428,7 @@ func createTwoCommitModelForIdentityTests() Model {
 			{
 				OldPath:   "a/file1.go",
 				NewPath:   "b/file1.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "old1"}, New: sidebyside.Line{Num: 1, Content: "new1"}},
 				},
@@ -1445,7 +1447,7 @@ func createTwoCommitModelForIdentityTests() Model {
 			{
 				OldPath:   "a/file2.go",
 				NewPath:   "b/file2.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "old2"}, New: sidebyside.Line{Num: 1, Content: "new2"}},
 				},
@@ -1524,7 +1526,7 @@ func TestFindRowOrNearestAbove_CommitRow_FallbackToCommitHeader(t *testing.T) {
 	m := createTwoCommitModelForIdentityTests()
 
 	// Expand second commit to get more row types
-	m.commits[1].FoldLevel = sidebyside.CommitNormal
+	m.commits[1].FoldLevel = sidebyside.CommitFileHeaders
 	m.calculateTotalLines()
 
 	// Create identity for a row type that might not exist after rebuild
@@ -1575,8 +1577,8 @@ func TestFileContentLoaded_SkipsScrollPreservation_WhenFileNotExpanded(t *testin
 	m := createTwoCommitModelForIdentityTests()
 
 	// Expand first commit but keep file folded
-	m.commits[0].FoldLevel = sidebyside.CommitNormal
-	m.files[0].FoldLevel = sidebyside.FoldFolded // file is folded, not expanded
+	m.commits[0].FoldLevel = sidebyside.CommitFileHeaders
+	m.files[0].FoldLevel = sidebyside.FoldHeader // file is folded, not expanded
 	m.calculateTotalLines()
 
 	// Position cursor somewhere
@@ -1593,7 +1595,7 @@ func TestFileContentLoaded_SkipsScrollPreservation_WhenFileNotExpanded(t *testin
 	newM, _ := m.Update(msg)
 	model := newM.(Model)
 
-	// Scroll should be unchanged because file is not in FoldExpanded mode
+	// Scroll should be unchanged because file is not in FoldHunks mode
 	assert.Equal(t, initialScroll, model.w().scroll,
 		"scroll should be unchanged when loading content for non-expanded file")
 }
@@ -1601,9 +1603,9 @@ func TestFileContentLoaded_SkipsScrollPreservation_WhenFileNotExpanded(t *testin
 func TestFileContentLoaded_PreservesScroll_WhenFileExpanded(t *testing.T) {
 	m := createTwoCommitModelForIdentityTests()
 
-	// Expand first commit and its file to FoldExpanded
-	m.commits[0].FoldLevel = sidebyside.CommitNormal
-	m.files[0].FoldLevel = sidebyside.FoldExpanded
+	// Expand first commit and its file to FoldHunks
+	m.commits[0].FoldLevel = sidebyside.CommitFileHeaders
+	m.files[0].FoldLevel = sidebyside.FoldHunks
 	m.calculateTotalLines()
 
 	// Get initial cursor identity
@@ -1658,7 +1660,7 @@ func makeHunkedTestModel() Model {
 	}
 
 	m := New([]sidebyside.FilePair{
-		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldExpanded, Pairs: pairs},
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
 	})
 	m.width = 100
 	m.height = 40
@@ -1724,7 +1726,7 @@ func TestFullFileToggle_Basic(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
@@ -1749,7 +1751,7 @@ func TestFullFileToggle_Basic(t *testing.T) {
 	m = result.(Model)
 
 	assert.True(t, m.files[0].ShowFullFile, "ShowFullFile should be true after toggle")
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0), "FoldLevel should remain FoldExpanded")
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0), "FoldLevel should remain FoldHunks")
 
 	// Toggle off
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
@@ -1764,7 +1766,7 @@ func TestFullFileToggle_ExpandsFromFolded(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldFolded,
+				FoldLevel: sidebyside.FoldHeader,
 				Pairs: []sidebyside.LinePair{
 					{
 						Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context},
@@ -1785,7 +1787,7 @@ func TestFullFileToggle_ExpandsFromFolded(t *testing.T) {
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
 	m = result.(Model)
 
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0), "should auto-expand to FoldExpanded")
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0), "should auto-expand to FoldHunks")
 	assert.True(t, m.files[0].ShowFullFile, "ShowFullFile should be true")
 }
 
@@ -1796,7 +1798,7 @@ func TestFullFileToggle_TabClearsShowFullFile(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				ShowFullFile: true,
 				Pairs: []sidebyside.LinePair{
 					{
@@ -1812,11 +1814,11 @@ func TestFullFileToggle_TabClearsShowFullFile(t *testing.T) {
 	}
 	m.calculateTotalLines()
 
-	// Tab cycles away from FoldExpanded to FoldFolded
+	// Tab cycles away from FoldHunks to FoldHeader
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
 
-	assert.False(t, m.files[0].ShowFullFile, "Tab should clear ShowFullFile when cycling away from FoldExpanded")
+	assert.False(t, m.files[0].ShowFullFile, "Tab should clear ShowFullFile when cycling away from FoldHunks")
 }
 
 func TestFullFileToggle_SeparatorTop_GoesToLineAbove(t *testing.T) {
@@ -1827,7 +1829,7 @@ func TestFullFileToggle_SeparatorTop_GoesToLineAbove(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
 					{Old: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}},
@@ -1879,7 +1881,7 @@ func TestFullFileToggle_SeparatorBottom_GoesToLineBelow(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
 					{Old: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}},
@@ -1928,7 +1930,7 @@ func TestFullFileToggle_SeparatorMiddle_WithBreadcrumb(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
 					{Old: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}},
@@ -1995,7 +1997,7 @@ func TestFullFileToggle_SeparatorMiddle_NoBreadcrumb(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
 					{Old: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "b", Type: sidebyside.Context}},
@@ -2044,7 +2046,7 @@ func TestFullFileToggle_OffFromFullFile_PreservesPosition(t *testing.T) {
 			{
 				OldPath:      "a/test.go",
 				NewPath:      "b/test.go",
-				FoldLevel:    sidebyside.FoldExpanded,
+				FoldLevel:    sidebyside.FoldHunks,
 				ShowFullFile: true,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "a", Type: sidebyside.Context}},
@@ -2090,7 +2092,7 @@ func TestFullFileToggle_NarrowsWhenNotNarrowed(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}},
 				},
@@ -2100,7 +2102,7 @@ func TestFullFileToggle_NarrowsWhenNotNarrowed(t *testing.T) {
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}},
 				},
@@ -2154,7 +2156,7 @@ func TestFullFileToggle_DoesNotRenarrowWhenAlreadyNarrowed(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}},
 				},
@@ -2164,7 +2166,7 @@ func TestFullFileToggle_DoesNotRenarrowWhenAlreadyNarrowed(t *testing.T) {
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}},
 				},
@@ -2206,7 +2208,7 @@ func TestFullFileToggle_OffDoesNotClearNarrow(t *testing.T) {
 			{
 				OldPath:   "a/first.go",
 				NewPath:   "b/first.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "line1", Type: sidebyside.Context}},
 				},
@@ -2216,7 +2218,7 @@ func TestFullFileToggle_OffDoesNotClearNarrow(t *testing.T) {
 			{
 				OldPath:   "a/second.go",
 				NewPath:   "b/second.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "other1", Type: sidebyside.Context}},
 				},
@@ -2253,7 +2255,7 @@ func makeEnterTestModel() Model {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -2417,7 +2419,7 @@ func TestTab_RepeatedExpansion_MergesHunks(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -2516,7 +2518,7 @@ func TestTab_CursorAfterMerge(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -2567,7 +2569,7 @@ func TestTab_SmallGap_CursorPositioning(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -2613,7 +2615,7 @@ func TestTab_SmallGap_CursorPositioning(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -2663,7 +2665,7 @@ func TestTab_ExpandNearFileBoundary(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -2713,7 +2715,7 @@ func TestTab_ExpandNearFileBoundary(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}, New: sidebyside.Line{Num: 3, Content: "3", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 4, Content: "4", Type: sidebyside.Context}, New: sidebyside.Line{Num: 4, Content: "4", Type: sidebyside.Context}},
@@ -2764,7 +2766,7 @@ func TestTab_MultipleSeparators_LastBottom(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -2818,7 +2820,7 @@ func TestFoldToggle_ResetsMultipleExpansions(t *testing.T) {
 			{
 				OldPath:   "a/test.go",
 				NewPath:   "b/test.go",
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 				Pairs: []sidebyside.LinePair{
 					{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 					{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -2885,14 +2887,14 @@ func TestFoldToggle_ResetsMultipleExpansions(t *testing.T) {
 	require.True(t, headerIdx >= 0)
 	m.w().scroll = headerIdx
 
-	// FoldExpanded → FoldFolded → FoldNormal → FoldExpanded
+	// FoldHunks → FoldHeader → FoldStructure → FoldHunks
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
 	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "both expansions should be reset after fold cycle")
 }
 
@@ -2920,7 +2922,7 @@ func TestFoldToggle_ResetsPairsAfterExpansion(t *testing.T) {
 	m = result.(Model)
 	assert.Greater(t, len(m.files[0].Pairs), originalPairsLen, "Pairs should grow after expansion")
 
-	// Now fold the file (cycle: FoldExpanded → FoldFolded)
+	// Now fold the file (cycle: FoldHunks → FoldHeader)
 	// Position cursor on file header first
 	rows = m.buildRows()
 	fileHeaderIdx := -1
@@ -2935,14 +2937,14 @@ func TestFoldToggle_ResetsPairsAfterExpansion(t *testing.T) {
 
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
-	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHeader, m.fileFoldLevel(0))
 
-	// Unfold back (FoldFolded → FoldNormal → FoldExpanded requires two presses)
+	// Unfold back (FoldHeader → FoldStructure → FoldHunks requires two presses)
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
 
 	// Pairs should be back to original length
 	assert.Equal(t, originalPairsLen, len(m.files[0].Pairs), "Pairs should reset to original after fold cycle")
@@ -2962,7 +2964,7 @@ func TestTab_ExpandWithMixedDiffTypes(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}, New: sidebyside.Line{Num: 2, Content: "added", Type: sidebyside.Added}},
@@ -3011,7 +3013,7 @@ func TestTab_ExpandWithMixedDiffTypes(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 2, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "ctx", Type: sidebyside.Context}},
@@ -3060,7 +3062,7 @@ func TestTab_ExpandWithMixedDiffTypes(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "ctx", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 2, Content: "deleted", Type: sidebyside.Removed}, New: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty}},
@@ -3109,7 +3111,7 @@ func TestTab_TrailingSeparator(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -3153,7 +3155,7 @@ func TestTab_TrailingSeparator(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -3183,7 +3185,7 @@ func TestTab_TrailingSeparator(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}, New: sidebyside.Line{Num: 5, Content: "5", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}, New: sidebyside.Line{Num: 6, Content: "6", Type: sidebyside.Context}},
@@ -3212,7 +3214,7 @@ func TestTab_TrailingSeparator(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -3256,7 +3258,7 @@ func TestTab_TrailingSeparator(t *testing.T) {
 				{
 					OldPath:   "a/test.go",
 					NewPath:   "b/test.go",
-					FoldLevel: sidebyside.FoldExpanded,
+					FoldLevel: sidebyside.FoldHunks,
 					Pairs: []sidebyside.LinePair{
 						{Old: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}, New: sidebyside.Line{Num: 1, Content: "1", Type: sidebyside.Context}},
 						{Old: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}, New: sidebyside.Line{Num: 2, Content: "2", Type: sidebyside.Context}},
@@ -3305,7 +3307,7 @@ func TestTab_TrailingSeparator(t *testing.T) {
 func TestWindowSplit_CreatesSecondWindow(t *testing.T) {
 	m := makeTestModel(20)
 	m.w().scroll = 5
-	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.setFileFoldLevel(0, sidebyside.FoldHunks)
 
 	// Should start with 1 window
 	assert.Equal(t, 1, len(m.windows))
@@ -3326,7 +3328,7 @@ func TestWindowSplit_CreatesSecondWindow(t *testing.T) {
 	// New window should have same scroll position
 	assert.Equal(t, 5, m.windows[1].scroll)
 	// New window should have same fold state
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
 }
 
 func TestWindowSplit_MaxTwoWindows(t *testing.T) {
@@ -3455,23 +3457,23 @@ func TestWindowIndependentFoldState(t *testing.T) {
 
 	// Set different fold states in each window
 	m.activeWindowIdx = 0
-	m.setFileFoldLevel(0, sidebyside.FoldFolded)
+	m.setFileFoldLevel(0, sidebyside.FoldHeader)
 
 	m.activeWindowIdx = 1
-	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.setFileFoldLevel(0, sidebyside.FoldHunks)
 
 	// Verify fold states are independent
 	m.activeWindowIdx = 0
-	assert.Equal(t, sidebyside.FoldFolded, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHeader, m.fileFoldLevel(0))
 
 	m.activeWindowIdx = 1
-	assert.Equal(t, sidebyside.FoldExpanded, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
 }
 
 func TestWindowCommentSync(t *testing.T) {
 	// When a comment is added in one window, it should appear in both windows
 	m := makeTestModel(20)
-	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.setFileFoldLevel(0, sidebyside.FoldHunks)
 	m.calculateTotalLines()
 
 	// Split into two windows
@@ -3515,7 +3517,7 @@ func TestWindowCommentSync(t *testing.T) {
 func TestWindowCursorPreservedOnCommentAdd(t *testing.T) {
 	// When a comment is added, both windows should preserve cursor on same logical row
 	m := makeTestModel(20)
-	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.setFileFoldLevel(0, sidebyside.FoldHunks)
 	m.rebuildRowsCache()
 
 	// Split into two windows
@@ -3579,7 +3581,7 @@ func TestWindowCursorPreservedOnCommentAdd(t *testing.T) {
 func TestWindowSearchNavigationIndependent(t *testing.T) {
 	// Search navigation (n/N) should operate independently per window
 	m := makeTestModel(20)
-	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.setFileFoldLevel(0, sidebyside.FoldHunks)
 	m.calculateTotalLines()
 
 	// Set up a search query (shared state)
@@ -3607,7 +3609,7 @@ func TestWindowSearchNavigationIndependent(t *testing.T) {
 func TestWindowCloseWhileInCommentMode(t *testing.T) {
 	// Closing a window while in comment mode should work (comment is lost)
 	m := makeTestModel(20)
-	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.setFileFoldLevel(0, sidebyside.FoldHunks)
 	m.calculateTotalLines()
 
 	// Split into two windows
@@ -3639,7 +3641,7 @@ func TestWindowCloseWhileInCommentMode(t *testing.T) {
 func TestWindowSplitWhileInCommentMode(t *testing.T) {
 	// Splitting while in comment mode: original stays in comment mode, new window doesn't
 	m := makeTestModel(20)
-	m.setFileFoldLevel(0, sidebyside.FoldExpanded)
+	m.setFileFoldLevel(0, sidebyside.FoldHunks)
 	m.calculateTotalLines()
 
 	// Enter comment mode
@@ -4531,10 +4533,10 @@ func TestLoadCommitDiff_ShiftsHighlightMaps(t *testing.T) {
 				},
 				OldContent: []string{"package beta"},
 				NewContent: []string{"package beta", "func Hello() {}"},
-				FoldLevel:  sidebyside.FoldExpanded,
+				FoldLevel:  sidebyside.FoldHunks,
 			},
 		},
-		FoldLevel:   sidebyside.CommitNormal,
+		FoldLevel:   sidebyside.CommitFileHeaders,
 		FilesLoaded: true,
 	}
 
@@ -4626,10 +4628,10 @@ func TestLoadCommitDiff_NegativeDelta_ShiftsCorrectly(t *testing.T) {
 						New: sidebyside.Line{Num: 1, Content: "package delta", Type: sidebyside.Context},
 					},
 				},
-				FoldLevel: sidebyside.FoldExpanded,
+				FoldLevel: sidebyside.FoldHunks,
 			},
 		},
-		FoldLevel:   sidebyside.CommitNormal,
+		FoldLevel:   sidebyside.CommitFileHeaders,
 		FilesLoaded: true,
 	}
 
