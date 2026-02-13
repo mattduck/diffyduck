@@ -1318,16 +1318,20 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 			rows = append(rows, bodyRows...)
 
 			// Bottom margin: one blank row after content.
-			// The next file's HeaderTopBorder or next commit's top border provides a second line of spacing.
-			marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
-			rows = append(rows, displayRow{
-				kind:               RowKindBlank,
-				fileIndex:          fileIdx,
-				isBlank:            true,
-				isLastFileInCommit: isLastFile,
-				treeTerminator:     isLastFile,
-				treePath:           marginTreePath,
-			})
+			// The next file's HeaderTopBorder provides a second line of spacing for FoldHunks,
+			// but for FoldStructure the top border also renders as a plain blank line,
+			// so we skip the margin to avoid a double gap (the top border alone suffices).
+			if foldLevel != sidebyside.FoldStructure || isLastFile {
+				marginTreePath := m.buildFileTreePath(fileIdx, false, false, TreeRowContent)
+				rows = append(rows, displayRow{
+					kind:               RowKindBlank,
+					fileIndex:          fileIdx,
+					isBlank:            true,
+					isLastFileInCommit: isLastFile,
+					treeTerminator:     isLastFile,
+					treePath:           marginTreePath,
+				})
+			}
 
 			// Skip next file's top border if next file is outside narrow scope
 			if !isLastFile && m.w().narrow.IncludesFile(fileIdx+1) {
