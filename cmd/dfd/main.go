@@ -162,13 +162,7 @@ func expandAlias(s string) string {
 // parseArgs parses command line arguments into structured fields.
 // Unknown flags produce an error. No arguments are passed through to git verbatim.
 func parseArgs(args []string) (parsedArgs, error) {
-	// Default to status when invoked with no arguments, diff otherwise
-	// (so bare refs/flags like "dfd HEAD" or "dfd --cached" still diff).
-	defaultCmd := "diff"
-	if len(args) == 0 {
-		defaultCmd = "status"
-	}
-	result := parsedArgs{cmd: defaultCmd, symbols: -1, untrackedFiles: "all"}
+	result := parsedArgs{cmd: "status", symbols: -1, untrackedFiles: "all"}
 
 	// Consume subcommand if present
 	remaining := args

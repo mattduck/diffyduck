@@ -35,7 +35,7 @@ func TestParseArgs_SubcommandDetection(t *testing.T) {
 	}{
 		{"diff explicit", []string{"diff"}, "diff"},
 		{"diff alias", []string{"d"}, "diff"},
-		{"diff default", []string{"HEAD"}, "diff"},
+		{"diff default", []string{"diff", "HEAD"}, "diff"},
 		{"show", []string{"show"}, "show"},
 		{"log", []string{"log"}, "log"},
 		{"log alias", []string{"l"}, "log"},
@@ -53,7 +53,7 @@ func TestParseArgs_SubcommandDetection(t *testing.T) {
 }
 
 func TestParseArgs_DiffWithCached(t *testing.T) {
-	result, err := parseArgs([]string{"--cached"})
+	result, err := parseArgs([]string{"diff", "--cached"})
 	require.NoError(t, err)
 	assert.Equal(t, "diff", result.cmd)
 	assert.True(t, result.cached)
@@ -109,7 +109,7 @@ func TestParseArgs_ShowWithPaths(t *testing.T) {
 }
 
 func TestParseArgs_UnknownArgDefaultsToDiff(t *testing.T) {
-	result, err := parseArgs([]string{"HEAD~3"})
+	result, err := parseArgs([]string{"diff", "HEAD~3"})
 	require.NoError(t, err)
 	assert.Equal(t, "diff", result.cmd)
 	assert.Equal(t, content.ModeDiffRefs, result.mode)
