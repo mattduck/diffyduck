@@ -1163,6 +1163,10 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// In diff view (no commit metadata), CommitFolded is meaningless —
+	// there's no commit header to collapse to. Skip it in the cycle.
+	skipFolded := !m.hasCommitInfo()
+
 	var newLevel sidebyside.CommitFoldLevel
 	if allConsistent {
 		// All same and consistent — advance to next level in the cycle
@@ -1170,6 +1174,9 @@ func (m Model) handleFoldToggleAll() (tea.Model, tea.Cmd) {
 	} else {
 		// Mixed or inconsistent — reset all to folded
 		newLevel = sidebyside.CommitFolded
+	}
+	if skipFolded && newLevel == sidebyside.CommitFolded {
+		newLevel = newLevel.NextLevel()
 	}
 
 	// Apply the new level to commits in scope
@@ -1924,11 +1931,15 @@ func (m Model) handleCommitFoldCycle() (tea.Model, tea.Cmd) {
 	// If files have been individually changed and don't match any known
 	// commit level, fold up. Otherwise advance from the effective level.
 	effective, consistent := m.effectiveCommitLevel(commitIdx)
+	skipFolded := !commit.Info.HasMetadata()
 	var newLevel sidebyside.CommitFoldLevel
 	if !consistent {
 		newLevel = sidebyside.CommitFolded
 	} else {
 		newLevel = effective.NextLevel()
+	}
+	if skipFolded && newLevel == sidebyside.CommitFolded {
+		newLevel = newLevel.NextLevel()
 	}
 
 	// Load diff content on demand when expanding from folded

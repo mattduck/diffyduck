@@ -769,6 +769,43 @@ func TestUpdate_FoldToggleAll_AllSameLevel(t *testing.T) {
 	assert.Equal(t, sidebyside.CommitFileStructure, model.commitFoldLevel(0))
 }
 
+func TestUpdate_FoldToggleAll_DiffView_SkipsCommitFolded(t *testing.T) {
+	// In diff view (no commit metadata), Shift-Tab should cycle through
+	// 3 states (FileHeaders → FileStructure → FileHunks) and skip CommitFolded.
+	pairs := make([]sidebyside.LinePair, 5)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i + 1, Content: "x"},
+			New: sidebyside.Line{Num: i + 1, Content: "x"},
+		}
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", Pairs: pairs},
+	})
+	m.width = 80
+	m.height = 20
+
+	// Start: CommitFileHeaders
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
+
+	// 1st Shift+Tab: → CommitFileStructure
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(0))
+
+	// 2nd Shift+Tab: → CommitFileHunks
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHunks, m.commitFoldLevel(0))
+
+	// 3rd Shift+Tab: wraps to CommitFileHeaders (skips CommitFolded)
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = newM.(Model)
+	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0),
+		"should skip CommitFolded in diff view and wrap to CommitFileHeaders")
+}
+
 func TestUpdate_FoldToggle_ReturnsCmd_WhenExpanding(t *testing.T) {
 	// When expanding from FoldStructure to FoldHunks, should return a fetch command
 	m := makeTestModel(10)
@@ -834,13 +871,14 @@ func TestUpdate_FoldToggleAll_DifferentLevels(t *testing.T) {
 	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(1))
 	assert.Equal(t, sidebyside.CommitFileHeaders, m.commitFoldLevel(0))
 
-	// Press Shift+Tab - inconsistent files → fold up to CommitFolded
+	// Press Shift+Tab - inconsistent files → would fold to CommitFolded,
+	// but no commit metadata so CommitFolded is skipped → CommitFileHeaders
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	model := newM.(Model)
 
 	assert.Equal(t, sidebyside.FoldHeader, model.fileFoldLevel(0))
 	assert.Equal(t, sidebyside.FoldHeader, model.fileFoldLevel(1))
-	assert.Equal(t, sidebyside.CommitFolded, model.commitFoldLevel(0))
+	assert.Equal(t, sidebyside.CommitFileHeaders, model.commitFoldLevel(0))
 }
 
 func TestUpdate_FileContentLoadedMsg(t *testing.T) {
