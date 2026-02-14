@@ -114,7 +114,8 @@ func GenerateExample(defaultKeys KeysConfig) string {
 		writeKeys("search_fwd", "search forward", s.SearchFwd)
 		writeKeys("search_back", "search backward", s.SearchBack)
 		writeKeys("next_match", "", s.NextMatch)
-		writeKeys("prev_match", "also toggles narrow mode when no search active", s.PrevMatch)
+		writeKeys("prev_match", "", s.PrevMatch)
+		writeKeys("narrow_toggle", "key sequence", s.NarrowToggle)
 		b.WriteString("\n")
 	}
 

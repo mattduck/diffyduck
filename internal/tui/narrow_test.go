@@ -3,7 +3,6 @@ package tui
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/pkg/sidebyside"
@@ -240,7 +239,7 @@ func TestToggleNarrow_EnterAndExit(t *testing.T) {
 	assert.InDelta(t, initialScroll, m.w().scroll, 3, "scroll should be close to original position")
 }
 
-func TestToggleNarrow_ShiftN_WithNoSearch(t *testing.T) {
+func TestToggleNarrow_SpaceSequence(t *testing.T) {
 	files := []sidebyside.FilePair{
 		{
 			OldPath:   "a/test.go",
@@ -257,15 +256,17 @@ func TestToggleNarrow_ShiftN_WithNoSearch(t *testing.T) {
 	m.height = 40
 	m.w().scroll = 2 // on file content
 
-	// No search query - N should toggle narrow mode
-	assert.Empty(t, m.searchQuery)
 	assert.False(t, m.w().narrow.Active)
 
-	// Press N (Shift+N)
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
-	model := newM.(Model)
+	// Press space, n, f
+	m = sendKey(m, " ")
+	assert.Equal(t, "space", m.pendingKey)
+	m = sendKey(m, "n")
+	assert.Equal(t, "space n", m.pendingKey)
+	m = sendKey(m, "f")
+	assert.Equal(t, "", m.pendingKey)
 
-	assert.True(t, model.w().narrow.Active, "N should toggle narrow mode when no search query")
+	assert.True(t, m.w().narrow.Active, "space n f should toggle narrow mode")
 }
 
 func TestNarrowMode_StatusBarIndicator(t *testing.T) {
@@ -296,38 +297,6 @@ func TestNarrowMode_StatusBarIndicator(t *testing.T) {
 	// In narrow mode - view should contain <N>
 	view = m.View()
 	assert.Contains(t, view, "<N>", "should show <N> indicator when in narrow mode")
-}
-
-func TestToggleNarrow_ShiftN_WithActiveSearch(t *testing.T) {
-	files := []sidebyside.FilePair{
-		{
-			OldPath:   "a/test.go",
-			NewPath:   "b/test.go",
-			FoldLevel: sidebyside.FoldHunks,
-			Pairs: []sidebyside.LinePair{
-				{Old: sidebyside.Line{Num: 1, Content: "match"}, New: sidebyside.Line{Num: 1, Content: "match"}},
-				{Old: sidebyside.Line{Num: 2, Content: "other"}, New: sidebyside.Line{Num: 2, Content: "other"}},
-			},
-		},
-	}
-
-	m := New(files)
-	m.width = 120
-	m.height = 40
-	m.searchQuery = "match"
-	m.searchForward = true
-	m.w().scroll = 3 // on second content row
-
-	// With active search query - N should do prevMatch, not narrow
-	assert.NotEmpty(t, m.searchQuery)
-	assert.False(t, m.w().narrow.Active)
-
-	// Press N (Shift+N) - should do search, not narrow
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
-	model := newM.(Model)
-
-	// Should NOT enter narrow mode
-	assert.False(t, model.w().narrow.Active, "N should do prevMatch when search query is active")
 }
 
 func TestFoldToggleAll_NarrowedToFile(t *testing.T) {

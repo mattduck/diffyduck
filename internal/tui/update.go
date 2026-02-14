@@ -452,11 +452,6 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case matchesKey(msg, keys.PrevMatch):
-		// When no active search, N toggles narrow mode instead
-		if m.searchQuery == "" {
-			m.toggleNarrow()
-			return m, nil
-		}
 		m.prevMatch()
 		return m, nil
 
@@ -1454,6 +1449,10 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if matchesSequence(prefix, msg, keys.PrevComment) {
 		m.goToPrevComment()
 		m.resetSearchMatchForRow()
+		return m, nil
+	}
+	if matchesSequence(prefix, msg, keys.NarrowToggle) {
+		m.toggleNarrow()
 		return m, nil
 	}
 

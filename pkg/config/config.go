@@ -54,10 +54,11 @@ type NavigationKeys struct {
 
 // SearchKeys configures search bindings.
 type SearchKeys struct {
-	SearchFwd  []string `toml:"search_fwd"`
-	SearchBack []string `toml:"search_back"`
-	NextMatch  []string `toml:"next_match"`
-	PrevMatch  []string `toml:"prev_match"` // also toggles narrow mode when no search active
+	SearchFwd    []string `toml:"search_fwd"`
+	SearchBack   []string `toml:"search_back"`
+	NextMatch    []string `toml:"next_match"`
+	PrevMatch    []string `toml:"prev_match"`
+	NarrowToggle []string `toml:"narrow_toggle"` // default: ["space n f"]
 }
 
 // FoldKeys configures fold/expand bindings.

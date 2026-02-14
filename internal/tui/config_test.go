@@ -46,16 +46,17 @@ func TestApplyKeysConfig_MultipleSubsections(t *testing.T) {
 	assert.Equal(t, DefaultKeyMap().PageUp, km.PageUp)
 }
 
-func TestApplyKeysConfig_PrevMatchUpdatesNarrowToggle(t *testing.T) {
+func TestApplyKeysConfig_NarrowToggleIndependent(t *testing.T) {
 	cfg := config.KeysConfig{
 		Search: &config.SearchKeys{
-			PrevMatch: []string{"P"},
+			PrevMatch:    []string{"P"},
+			NarrowToggle: []string{"space n"},
 		},
 	}
 	km := ApplyKeysConfig(cfg)
 
 	assert.Equal(t, []string{"P"}, km.PrevMatch)
-	assert.Equal(t, []string{"P"}, km.NarrowToggle, "NarrowToggle should track PrevMatch")
+	assert.Equal(t, []string{"space n"}, km.NarrowToggle, "NarrowToggle should be independent of PrevMatch")
 }
 
 func TestApplyKeysConfig_NilSubsectionKeepsDefaults(t *testing.T) {

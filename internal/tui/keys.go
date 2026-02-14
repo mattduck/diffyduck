@@ -34,7 +34,7 @@ type KeyMap struct {
 	SearchBack    []string
 	NextMatch     []string
 	PrevMatch     []string
-	NarrowToggle  []string // toggle narrow mode (shares key with PrevMatch when no search active)
+	NarrowToggle  []string // toggle narrow mode: "space n f"
 
 	// Folds
 	FoldToggle     []string
@@ -99,7 +99,7 @@ func DefaultKeyMap() KeyMap {
 		SearchBack:     []string{"?"},
 		NextMatch:      []string{"n"},
 		PrevMatch:      []string{"N"},
-		NarrowToggle:   []string{"N"}, // same key as PrevMatch; active when no search query
+		NarrowToggle:   []string{"space n f"},
 		FoldToggle:     []string{"tab"},
 		FoldToggleAll:  []string{"shift+tab"},
 		FullFileToggle: []string{"F"},
@@ -160,7 +160,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 		{Name: "Search", Bindings: []Binding{
 			{Keys: km.SearchForward, Desc: "Search forward", Keys2: km.SearchBack, Desc2: "backward"},
 			{Keys: km.NextMatch, Desc: "Next match", Keys2: km.PrevMatch, Desc2: "previous"},
-			{Keys: km.NarrowToggle, Desc: "Toggle narrow mode (no active search)"},
+			{Keys: km.NarrowToggle, Desc: "Toggle narrow mode"},
 			{Keys: []string{"Enter"}, Desc: "Execute search"},
 			{Keys: []string{"Esc"}, Desc: "Cancel search"},
 			{Keys: []string{"Backspace"}, Desc: "Delete character"},
@@ -300,7 +300,6 @@ func ValidateBindings(km KeyMap) error {
 }
 
 // allBindings returns all binding slices from the KeyMap.
-// NarrowToggle is omitted because it always tracks PrevMatch.
 func allBindings(km KeyMap) [][]string {
 	return [][]string{
 		km.Up, km.Down, km.PageUp, km.PageDown,
@@ -309,6 +308,7 @@ func allBindings(km KeyMap) [][]string {
 		km.NextComment, km.PrevComment,
 		km.NarrowNext, km.NarrowPrev,
 		km.SearchForward, km.SearchBack, km.NextMatch, km.PrevMatch,
+		km.NarrowToggle,
 		km.FoldToggle, km.FoldToggleAll, km.FullFileToggle,
 		km.Quit, km.Enter, km.Yank, km.YankAll,
 		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help,
@@ -391,7 +391,9 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		}
 		if s.PrevMatch != nil {
 			km.PrevMatch = s.PrevMatch
-			km.NarrowToggle = s.PrevMatch // NarrowToggle tracks PrevMatch
+		}
+		if s.NarrowToggle != nil {
+			km.NarrowToggle = s.NarrowToggle
 		}
 	}
 
@@ -509,10 +511,11 @@ func DefaultKeysConfig() config.KeysConfig {
 			NarrowPrev:  km.NarrowPrev,
 		},
 		Search: &config.SearchKeys{
-			SearchFwd:  km.SearchForward,
-			SearchBack: km.SearchBack,
-			NextMatch:  km.NextMatch,
-			PrevMatch:  km.PrevMatch,
+			SearchFwd:    km.SearchForward,
+			SearchBack:   km.SearchBack,
+			NextMatch:    km.NextMatch,
+			PrevMatch:    km.PrevMatch,
+			NarrowToggle: km.NarrowToggle,
 		},
 		Folds: &config.FoldKeys{
 			Fold:     km.FoldToggle,
