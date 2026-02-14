@@ -220,6 +220,7 @@ func (m Model) renderBreadcrumbLine(info StatusInfo) string {
 	if availableWidth < 0 {
 		availableWidth = 0
 	}
+
 	if len(info.BreadcrumbEntries) > 0 && m.highlighter != nil {
 		theme := m.highlighter.Theme()
 		return formatBreadcrumbsStyled(info.BreadcrumbEntries, theme, availableWidth)

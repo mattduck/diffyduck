@@ -125,6 +125,7 @@ type ThemeConfig struct {
 	LocalRef        string `toml:"local_ref"`
 	RemoteRef       string `toml:"remote_ref"`
 	ConflictMarker  string `toml:"conflict_marker"`
+	CommentCheckbox string `toml:"comment_checkbox"`
 
 	Syntax *SyntaxConfig `toml:"syntax"`
 }

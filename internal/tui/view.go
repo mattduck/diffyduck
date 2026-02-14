@@ -3,9 +3,11 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/config"
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/sidebyside"
@@ -66,6 +68,8 @@ var (
 	commentBorderStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for borders
 	commentTextStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for text
 	commentRightDimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
+	commentCheckboxStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow for checkbox
+	commentDateStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // dim for date
 
 	// Tree hierarchy styles
 	commitTreeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow for commit level
@@ -175,6 +179,9 @@ func ApplyTheme(cfg config.ThemeConfig) {
 	}
 	if cfg.ConflictMarker != "" {
 		conflictMarkerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.ConflictMarker)).Bold(true)
+	}
+	if cfg.CommentCheckbox != "" {
+		commentCheckboxStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.CommentCheckbox))
 	}
 }
 
@@ -714,11 +721,16 @@ type displayRow struct {
 	commitInfoLine     string               // text content for info body lines
 	dateParts          sidebyside.DateParts // structured date parts for styled rendering
 	// Comment fields (for RowKindComment rows)
-	commentText      string // text of the comment (for rendering)
-	commentLineNum   int    // line number this comment belongs to (for association)
-	commentRowIndex  int    // index within the comment box (0=top border, 1..n-2=content, n-1=bottom border)
-	commentRowCount  int    // total rows in this comment box
-	commentLineIndex int    // which line of comment content this is (for content rows, -1 for borders)
+	commentText      string    // text of the comment (for rendering)
+	commentLineNum   int       // line number this comment belongs to (for association)
+	commentRowIndex  int       // index within the comment box (0=top border, 1..n-2=content, n-1=bottom border)
+	commentRowCount  int       // total rows in this comment box
+	commentLineIndex int       // which line of comment content this is (for content rows, -1 for borders)
+	commentCreated   time.Time // when the comment was created
+	commentResolved  bool      // whether the comment is resolved
+	commentCommitSHA string    // commit SHA when comment was created
+	commentHeadSHA   string    // HEAD SHA when comment was created
+	commentBranch    string    // branch when comment was created
 	// Conflict block fields
 	conflictZone conflictZone // which part of a conflict block this row is in (zero = not in conflict)
 	// Structural diff fields (for RowKindStructuralDiff rows)
@@ -731,60 +743,104 @@ type displayRow struct {
 	structuralDiffIsTruncated bool                 // true if this is a "...N more" overflow row
 }
 
+// formatCommentMeta returns the metadata line for a comment row.
+// Format: "[ ] Feb 14 @ abc1234, main" (with optional parts omitted when empty).
+func formatCommentMeta(row displayRow) string {
+	checkbox := "[ ]"
+	if row.commentResolved {
+		checkbox = "[X]"
+	}
+
+	cbStyle := commentCheckboxStyle
+	dtStyle := commentDateStyle
+	if row.commentResolved {
+		cbStyle = cbStyle.Strikethrough(true)
+		dtStyle = dtStyle.Strikethrough(true)
+	}
+
+	meta := cbStyle.Render(checkbox)
+
+	// Date
+	if !row.commentCreated.IsZero() {
+		var dateStr string
+		if row.commentCreated.Year() == time.Now().Year() {
+			dateStr = row.commentCreated.Format("Jan 2")
+		} else {
+			dateStr = row.commentCreated.Format("Jan 2 '06")
+		}
+		meta += " " + dtStyle.Render(dateStr)
+	}
+
+	// Commit ref + branch: "@ abc1234, main"
+	sha := row.commentCommitSHA
+	if sha == "" {
+		sha = row.commentHeadSHA
+	}
+	if sha != "" || row.commentBranch != "" {
+		var refParts []string
+		if sha != "" {
+			if len(sha) > 7 {
+				sha = sha[:7]
+			}
+			refParts = append(refParts, sha)
+		}
+		if row.commentBranch != "" {
+			refParts = append(refParts, row.commentBranch)
+		}
+		meta += " " + dtStyle.Render("@ "+strings.Join(refParts, ", "))
+	}
+
+	return meta
+}
+
 // buildCommentRows creates displayRow entries for a comment box.
 // contentWidth is the text width available inside the box; lines are word-wrapped to fit.
-func buildCommentRows(fileIndex int, lineNum int, comment string, contentWidth int, treePath TreePath) []displayRow {
-	if comment == "" {
+func buildCommentRows(fileIndex int, lineNum int, c *comments.Comment, contentWidth int, treePath TreePath) []displayRow {
+	if c == nil || c.Text == "" {
 		return nil
 	}
 
-	// Word-wrap each paragraph to fit inside the comment box
-	var wrappedLines []string
-	for _, para := range strings.Split(comment, "\n") {
-		wrappedLines = append(wrappedLines, wrapComment(para, contentWidth)...)
+	// Count content lines: metadata line + blank separator + wrapped comment text
+	textLineCount := 0
+	for _, para := range strings.Split(c.Text, "\n") {
+		textLineCount += len(wrapComment(para, contentWidth))
 	}
+	contentLineCount := 2 + textLineCount // 2 = metadata line + blank separator
 
-	rowCount := len(wrappedLines) + 2 // content lines + top border + bottom border
+	rowCount := contentLineCount + 2 // + top border + bottom border
 
 	rows := make([]displayRow, rowCount)
 
-	// Top border
-	rows[0] = displayRow{
+	base := displayRow{
 		kind:             RowKindComment,
 		fileIndex:        fileIndex,
-		commentText:      comment,
+		commentText:      c.Text,
 		commentLineNum:   lineNum,
-		commentRowIndex:  0,
 		commentRowCount:  rowCount,
-		commentLineIndex: -1, // border, not content
+		commentCreated:   c.Created,
+		commentResolved:  c.Resolved,
+		commentCommitSHA: c.CommitSHA,
+		commentHeadSHA:   c.HeadSHA,
+		commentBranch:    c.Branch,
 		treePath:         treePath,
 	}
 
-	// Content lines
-	for i := range wrappedLines {
-		rows[i+1] = displayRow{
-			kind:             RowKindComment,
-			fileIndex:        fileIndex,
-			commentText:      comment,
-			commentLineNum:   lineNum,
-			commentRowIndex:  i + 1,
-			commentRowCount:  rowCount,
-			commentLineIndex: i,
-			treePath:         treePath,
-		}
+	// Top border
+	rows[0] = base
+	rows[0].commentRowIndex = 0
+	rows[0].commentLineIndex = -1
+
+	// Content lines (index 0=metadata, 1=blank, 2+=text)
+	for i := 0; i < contentLineCount; i++ {
+		rows[i+1] = base
+		rows[i+1].commentRowIndex = i + 1
+		rows[i+1].commentLineIndex = i
 	}
 
 	// Bottom border
-	rows[rowCount-1] = displayRow{
-		kind:             RowKindComment,
-		fileIndex:        fileIndex,
-		commentText:      comment,
-		commentLineNum:   lineNum,
-		commentRowIndex:  rowCount - 1,
-		commentRowCount:  rowCount,
-		commentLineIndex: -1, // border, not content
-		treePath:         treePath,
-	}
+	rows[rowCount-1] = base
+	rows[rowCount-1].commentRowIndex = rowCount - 1
+	rows[rowCount-1].commentLineIndex = -1
 
 	return rows
 }
@@ -1458,8 +1514,8 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 		// Add comment rows if this line has a comment
 		if pair.New.Num > 0 {
 			key := commentKey{fileIndex: fileIdx, newLineNum: pair.New.Num}
-			if comment, ok := m.comments[key]; ok {
-				commentRows := buildCommentRows(fileIdx, pair.New.Num, comment, m.commentContentWidth(), contentTreePath)
+			if c, ok := m.comments[key]; ok {
+				commentRows := buildCommentRows(fileIdx, pair.New.Num, c, m.commentContentWidth(), contentTreePath)
 				rows = append(rows, commentRows...)
 			}
 		}
@@ -1523,8 +1579,8 @@ func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, conten
 		// Add comment rows if this is a content row with a comment
 		if expRow.kind == RowKindContent && expRow.pair.New.Num > 0 {
 			key := commentKey{fileIndex: fileIdx, newLineNum: expRow.pair.New.Num}
-			if comment, ok := m.comments[key]; ok {
-				commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, comment, m.commentContentWidth(), contentTreePath)
+			if c, ok := m.comments[key]; ok {
+				commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, c, m.commentContentWidth(), contentTreePath)
 				rows = append(rows, commentRows...)
 			}
 		}

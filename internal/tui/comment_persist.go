@@ -125,7 +125,7 @@ func (m *Model) matchCommentsForFiles(startIdx, endIdx int) int {
 				fileIndex:  mapping.fileIdx,
 				newLineNum: result.Line,
 			}
-			m.comments[key] = c.Text
+			m.comments[key] = c
 			m.persistedCommentIDs[key] = c.ID
 			loaded++
 		}
@@ -173,22 +173,22 @@ func getFileLinesForMatching(file sidebyside.FilePair) []string {
 }
 
 // persistComment saves a comment to the git store.
-// Returns the comment ID on success.
-func (m *Model) persistComment(key commentKey, text string) string {
+// Returns the full comment object on success, or nil on error.
+func (m *Model) persistComment(key commentKey, text string) *comments.Comment {
 	if m.commentStore == nil {
-		return ""
+		return nil
 	}
 
 	// Get file info
 	if key.fileIndex < 0 || key.fileIndex >= len(m.files) {
-		return ""
+		return nil
 	}
 	file := m.files[key.fileIndex]
 
 	// Get context for the line
 	fileLines := getFileLinesForMatching(file)
 	if key.newLineNum < 1 || key.newLineNum > len(fileLines) {
-		return ""
+		return nil
 	}
 
 	ctx := comments.ExtractContextForLine(fileLines, key.newLineNum)
@@ -207,9 +207,11 @@ func (m *Model) persistComment(key commentKey, text string) string {
 		Updated: now,
 	}
 
-	// Set created time only for new comments
+	// Preserve created time from existing comment, or set for new
 	if existingID == "" {
 		c.Created = now
+	} else if existing, ok := m.comments[key]; ok {
+		c.Created = existing.Created
 	}
 
 	// Get current git state for metadata
@@ -227,8 +229,9 @@ func (m *Model) persistComment(key commentKey, text string) string {
 	// Write to store
 	id, err := m.commentStore.WriteComment(c)
 	if err != nil {
-		return ""
+		return nil
 	}
+	c.ID = id
 
 	// Keep in-memory index in sync so the comment can be matched
 	// against other commits' versions of the same file.
@@ -236,7 +239,7 @@ func (m *Model) persistComment(key commentKey, text string) string {
 		m.commentIndex.Add(c.File, id)
 	}
 
-	return id
+	return c
 }
 
 // deletePersistedComment removes a comment from the git store.

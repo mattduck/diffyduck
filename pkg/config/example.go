@@ -29,6 +29,7 @@ var DefaultTheme = ThemeConfig{
 	LocalRef:        "6",
 	RemoteRef:       "8",
 	ConflictMarker:  "3",
+	CommentCheckbox: "3",
 }
 
 // Default syntax highlighting colors (matching highlight.DefaultTheme()).
@@ -196,6 +197,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 	writeColor("local_ref", d.LocalRef, "cyan — local branch decorations")
 	writeColor("remote_ref", d.RemoteRef, "gray — remote branch decorations")
 	writeColor("conflict_marker", d.ConflictMarker, "yellow — merge conflict markers")
+	writeColor("comment_checkbox", d.CommentCheckbox, "yellow — comment checkbox indicator")
 
 	// Syntax highlighting subsection
 	b.WriteString("\n[theme.syntax]\n")

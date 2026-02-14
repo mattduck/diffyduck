@@ -247,33 +247,48 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 		return treeContinuation + leftGutter + commentBorderStyle.Render(bottomBorder) + sep + rightGutter + rightContent
 	}
 
-	// Content line - wrap the comment text the same way buildCommentRows does,
-	// then index into the wrapped lines.
-	var wrappedLines []string
-	for _, para := range strings.Split(row.commentText, "\n") {
-		wrappedLines = append(wrappedLines, wrapComment(para, contentWidth)...)
-	}
+	// Content lines: index 0 = metadata (checkbox+date), index 1 = blank separator,
+	// index 2+ = wrapped comment text.
 	lineIdx := row.commentLineIndex
-	var lineText string
-	if lineIdx >= 0 && lineIdx < len(wrappedLines) {
-		lineText = wrappedLines[lineIdx]
+
+	var renderedContent string
+	if lineIdx == 0 {
+		// Metadata line: pre-styled by formatCommentMeta, just pad to fill
+		meta := formatCommentMeta(row)
+		metaWidth := ansi.StringWidth(meta)
+		padding := contentWidth - metaWidth
+		if padding < 0 {
+			padding = 0
+		}
+		renderedContent = meta + strings.Repeat(" ", padding)
+	} else if lineIdx == 1 {
+		// Blank separator line
+		renderedContent = strings.Repeat(" ", contentWidth)
+	} else {
+		// Comment text line — re-wrap and index (offset by 2 for metadata+blank)
+		var wrappedLines []string
+		for _, para := range strings.Split(row.commentText, "\n") {
+			wrappedLines = append(wrappedLines, wrapComment(para, contentWidth)...)
+		}
+		textIdx := lineIdx - 2
+		var lineText string
+		if textIdx >= 0 && textIdx < len(wrappedLines) {
+			lineText = wrappedLines[textIdx]
+		}
+
+		// Apply search highlighting to the comment text
+		// Comments are always on side 0 (new/left side)
+		highlightedText := m.highlightSearchInVisible(lineText, isCursorRow, m.w().searchMatchIdx, 0, m.w().searchMatchSide)
+
+		lineWidth := displayWidth(lineText)
+		padding := contentWidth - lineWidth
+		if padding < 0 {
+			padding = 0
+		}
+		renderedContent = highlightedText + strings.Repeat(" ", padding)
 	}
 
-	// Apply search highlighting to the comment text
-	// Comments are always on side 0 (new/left side)
-	highlightedText := m.highlightSearchInVisible(lineText, isCursorRow, m.w().searchMatchIdx, 0, m.w().searchMatchSide)
-
-	lineWidth := displayWidth(lineText)
-	padding := contentWidth - lineWidth
-	if padding < 0 {
-		padding = 0
-	}
-
-	// Build the content with highlighting and padding
-	// Note: padding must be added after highlighting to maintain box alignment
-	paddedText := highlightedText + strings.Repeat(" ", padding)
-
-	return treeContinuation + leftGutter + commentBorderStyle.Render("║ ") + paddedText + " " + commentBorderStyle.Render("║") + sep + rightGutter + rightContent
+	return treeContinuation + leftGutter + commentBorderStyle.Render("║ ") + renderedContent + " " + commentBorderStyle.Render("║") + sep + rightGutter + rightContent
 }
 
 // wrapComment wraps a single line of text to fit within maxWidth using

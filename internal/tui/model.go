@@ -221,11 +221,11 @@ type Model struct {
 	clipboard Clipboard // clipboard interface for copy/paste
 
 	// Comment data - shared across windows (the actual stored comments)
-	comments            map[commentKey]string // stored comments (text only, for display)
-	commentStore        *comments.Store       // git-backed persistent storage
-	persistedCommentIDs map[commentKey]string // maps in-memory comment to persisted comment ID
-	commentIndex        *comments.Index       // full index loaded once at startup
-	loadedCommentIDs    map[string]bool       // tracks fetched comment IDs to avoid re-reads
+	comments            map[commentKey]*comments.Comment // stored comments (full objects with metadata)
+	commentStore        *comments.Store                  // git-backed persistent storage
+	persistedCommentIDs map[commentKey]string            // maps in-memory comment to persisted comment ID
+	commentIndex        *comments.Index                  // full index loaded once at startup
+	loadedCommentIDs    map[string]bool                  // tracks fetched comment IDs to avoid re-reads
 
 	// Conflict state
 	hasConflicts bool // true when repo is in a merge/rebase/cherry-pick conflict state
@@ -624,7 +624,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		focused:             true,
 		focusColour:         false,
 		clipboard:           &SystemClipboard{},
-		comments:            make(map[commentKey]string),
+		comments:            make(map[commentKey]*comments.Comment),
 		persistedCommentIDs: make(map[commentKey]string),
 		loadedCommentIDs:    make(map[string]bool),
 		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
@@ -2732,7 +2732,7 @@ func (m *Model) shiftFileIndexMapsFrom(fromIdx, delta int) {
 
 	// Shift comments
 	if len(m.comments) > 0 {
-		newMap := make(map[commentKey]string, len(m.comments))
+		newMap := make(map[commentKey]*comments.Comment, len(m.comments))
 		for k, v := range m.comments {
 			if k.fileIndex >= fromIdx {
 				newMap[commentKey{fileIndex: k.fileIndex + delta, newLineNum: k.newLineNum}] = v
@@ -2793,7 +2793,7 @@ func (m *Model) shiftFileIndexMaps(offset int) {
 
 	// Shift comments and persistedCommentIDs (commentKey includes fileIndex)
 	if len(m.comments) > 0 {
-		newMap := make(map[commentKey]string, len(m.comments))
+		newMap := make(map[commentKey]*comments.Comment, len(m.comments))
 		for k, v := range m.comments {
 			newMap[commentKey{fileIndex: k.fileIndex + offset, newLineNum: k.newLineNum}] = v
 		}

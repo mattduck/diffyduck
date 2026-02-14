@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -25,7 +26,7 @@ func makeYankTestModel() Model {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey]string)
+	m.comments = make(map[commentKey]*comments.Comment)
 	m.clipboard = &MemoryClipboard{}
 	return m
 }
@@ -49,7 +50,7 @@ func TestYank_FindCommentForCursor_OnCommentedLine(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = "test comment"
+	m.comments[key] = &comments.Comment{Text: "test comment"}
 	m.rebuildRowsCache()
 
 	// Find the row index for line 3
@@ -77,7 +78,7 @@ func TestYank_FindCommentForCursor_OnCommentRow(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = "test comment"
+	m.comments[key] = &comments.Comment{Text: "test comment"}
 	m.rebuildRowsCache()
 
 	// Find the comment row index
@@ -164,7 +165,7 @@ func TestYank_HandleYank_SetsStatusMessage(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = "test comment"
+	m.comments[key] = &comments.Comment{Text: "test comment"}
 	m.rebuildRowsCache()
 
 	// Find and position on the commented line (scroll = rowIdx - cursorOffset)
@@ -305,7 +306,7 @@ func TestYank_BuildDiffSnippet_FirstLine(t *testing.T) {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey]string)
+	m.comments = make(map[commentKey]*comments.Comment)
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 1}
@@ -334,7 +335,7 @@ func TestYank_BuildDiffSnippet_ContextLine(t *testing.T) {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey]string)
+	m.comments = make(map[commentKey]*comments.Comment)
 	m.calculateTotalLines()
 
 	// Comment on context line 3
@@ -396,7 +397,7 @@ func TestYank_KeyPress_Integration(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = "integration test comment"
+	m.comments[key] = &comments.Comment{Text: "integration test comment"}
 	m.rebuildRowsCache()
 
 	// Position cursor on the commented line
@@ -600,7 +601,7 @@ func makeYankAllTestModel() Model {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey]string)
+	m.comments = make(map[commentKey]*comments.Comment)
 	m.clipboard = &MemoryClipboard{}
 	return m
 }
@@ -622,7 +623,7 @@ func TestYankAll_SingleComment(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "only comment"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "only comment"}
 
 	snippet := m.buildAllCommentsSnippet()
 
@@ -637,8 +638,8 @@ func TestYankAll_MultipleFiles_GlobalNumbering(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "first comment"
-	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = "second comment"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "first comment"}
+	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = &comments.Comment{Text: "second comment"}
 
 	snippet := m.buildAllCommentsSnippet()
 
@@ -665,8 +666,8 @@ func TestYankAll_MergedHunks(t *testing.T) {
 
 	// Lines 3 and 4 are adjacent — with 2 context lines before each,
 	// their ranges overlap so they should merge into one hunk
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "comment on 3"
-	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = "comment on 4"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "comment on 3"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{Text: "comment on 4"}
 
 	snippet := m.buildAllCommentsSnippet()
 
@@ -690,8 +691,8 @@ func TestYankAll_SeparateHunks(t *testing.T) {
 	// Line 3: range [1,3], Line 6: range [4,6] — actually these are adjacent (endIdx=3, startIdx=4)
 	// so they'd merge. Let me use line 7 instead which has range [5,7]
 	// Line 3: range [1,3], Line 7: range [5,7] — startIdx(5) > endIdx(3)+1, separate
-	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = "comment on 1"
-	m.comments[commentKey{fileIndex: 0, newLineNum: 7}] = "comment on 7"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = &comments.Comment{Text: "comment on 1"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 7}] = &comments.Comment{Text: "comment on 7"}
 
 	snippet := m.buildAllCommentsSnippet()
 
@@ -705,7 +706,7 @@ func TestYankAll_MultilineComment(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "line one\nline two"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "line one\nline two"}
 
 	snippet := m.buildAllCommentsSnippet()
 
@@ -719,8 +720,8 @@ func TestYankAll_StatusMessage(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "a"
-	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = "b"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "a"}
+	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = &comments.Comment{Text: "b"}
 
 	newModel, _ := m.handleYankAll()
 	m2 := newModel.(Model)
@@ -733,8 +734,8 @@ func TestYankAll_SkipsEmptyComments(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "real comment"
-	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = ""
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "real comment"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{Text: ""}
 
 	snippet := m.buildAllCommentsSnippet()
 
@@ -747,7 +748,7 @@ func TestYankAll_KeyPress_Integration(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = "test"
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "test"}
 	m.rebuildRowsCache()
 
 	// Simulate pressing 'Y'

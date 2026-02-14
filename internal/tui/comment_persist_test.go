@@ -81,13 +81,13 @@ func TestCommentPersistenceRoundTrip(t *testing.T) {
 
 	// Add a comment via the persistence layer
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = "Test comment on added line"
+	m.comments[key] = &comments.Comment{Text: "Test comment on added line"}
 
 	id := m.persistComment(key, "Test comment on added line")
-	if id == "" {
+	if id == nil {
 		t.Fatal("persistComment returned empty ID")
 	}
-	m.persistedCommentIDs[key] = id
+	m.persistedCommentIDs[key] = id.ID
 
 	// Verify it was stored
 	if !store.Exists() {
@@ -111,8 +111,8 @@ func TestCommentPersistenceRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("comment not found in loaded model")
 	}
-	if loadedComment != "Test comment on added line" {
-		t.Errorf("comment text mismatch: got %q", loadedComment)
+	if loadedComment.Text != "Test comment on added line" {
+		t.Errorf("comment text mismatch: got %q", loadedComment.Text)
 	}
 }
 
@@ -153,9 +153,9 @@ func TestCommentPersistenceWithLineMoved(t *testing.T) {
 
 	// Add comment on line 3 ("target line")
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = "Comment on target"
+	m.comments[key] = &comments.Comment{Text: "Comment on target"}
 	id := m.persistComment(key, "Comment on target")
-	m.persistedCommentIDs[key] = id
+	m.persistedCommentIDs[key] = id.ID
 
 	// New file content - line moved down by 2 (new lines inserted at top)
 	newPairs := []sidebyside.LinePair{
@@ -212,8 +212,8 @@ func TestCommentPersistenceWithLineMoved(t *testing.T) {
 			t.Fatal("comment not found at new position")
 		}
 	}
-	if loadedComment != "Comment on target" {
-		t.Errorf("comment text mismatch: got %q", loadedComment)
+	if loadedComment.Text != "Comment on target" {
+		t.Errorf("comment text mismatch: got %q", loadedComment.Text)
 	}
 }
 
@@ -237,9 +237,9 @@ func TestCommentPersistenceDelete(t *testing.T) {
 
 	// Add and persist a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.comments[key] = "To be deleted"
+	m.comments[key] = &comments.Comment{Text: "To be deleted"}
 	id := m.persistComment(key, "To be deleted")
-	m.persistedCommentIDs[key] = id
+	m.persistedCommentIDs[key] = id.ID
 
 	// Delete it
 	delete(m.comments, key)
@@ -285,9 +285,9 @@ func TestCommentPersistenceOrphaned(t *testing.T) {
 
 	// Add comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.comments[key] = "Orphaned comment"
+	m.comments[key] = &comments.Comment{Text: "Orphaned comment"}
 	id := m.persistComment(key, "Orphaned comment")
-	m.persistedCommentIDs[key] = id
+	m.persistedCommentIDs[key] = id.ID
 
 	// New file with completely different content
 	newPairs := []sidebyside.LinePair{
@@ -361,9 +361,9 @@ func TestCommentPersistenceWithPrefixedPaths(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.comments[key] = "Test comment"
+	m.comments[key] = &comments.Comment{Text: "Test comment"}
 	id := m.persistComment(key, "Test comment")
-	m.persistedCommentIDs[key] = id
+	m.persistedCommentIDs[key] = id.ID
 
 	// Verify the stored path is clean (no b/ prefix)
 	idx, _ := store.ReadIndex()
@@ -435,13 +435,13 @@ func TestMatchCommentsDeduplicatesIDs(t *testing.T) {
 
 	// Add and persist a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.comments[key] = "Test comment"
+	m.comments[key] = &comments.Comment{Text: "Test comment"}
 	id := m.persistComment(key, "Test comment")
-	m.persistedCommentIDs[key] = id
+	m.persistedCommentIDs[key] = id.ID
 
 	// Clear in-memory state and force-reload index (it was loaded empty at construction
 	// time before the comment was persisted)
-	m.comments = make(map[commentKey]string)
+	m.comments = make(map[commentKey]*comments.Comment)
 	m.persistedCommentIDs = make(map[commentKey]string)
 	m.commentIndex = nil
 	m.loadCommentIndex()
@@ -453,7 +453,7 @@ func TestMatchCommentsDeduplicatesIDs(t *testing.T) {
 	}
 
 	// Clear in-memory again but keep loadedCommentIDs
-	m.comments = make(map[commentKey]string)
+	m.comments = make(map[commentKey]*comments.Comment)
 	m.persistedCommentIDs = make(map[commentKey]string)
 
 	// Second match should not re-fetch (ID already in loadedCommentIDs)
@@ -488,9 +488,9 @@ func TestPersistCommentUpdatesIndex(t *testing.T) {
 
 	// Persist a comment on file 0 (commit A's copy)
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.comments[key] = "cross-commit comment"
+	m.comments[key] = &comments.Comment{Text: "cross-commit comment"}
 	id := m.persistComment(key, "cross-commit comment")
-	m.persistedCommentIDs[key] = id
+	m.persistedCommentIDs[key] = id.ID
 
 	// matchCommentsForFiles on file 1 (commit B's copy) should find it
 	// via the updated in-memory index
@@ -500,8 +500,8 @@ func TestPersistCommentUpdatesIndex(t *testing.T) {
 	}
 
 	key2 := commentKey{fileIndex: 1, newLineNum: 1}
-	if m.comments[key2] != "cross-commit comment" {
-		t.Errorf("comment text mismatch on second file: %q", m.comments[key2])
+	if m.comments[key2].Text != "cross-commit comment" {
+		t.Errorf("comment text mismatch on second file: %q", m.comments[key2].Text)
 	}
 }
 
@@ -529,9 +529,9 @@ func TestDeleteCommentUpdatesIndex(t *testing.T) {
 
 	// Persist then delete
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.comments[key] = "will be deleted"
+	m.comments[key] = &comments.Comment{Text: "will be deleted"}
 	id := m.persistComment(key, "will be deleted")
-	m.persistedCommentIDs[key] = id
+	m.persistedCommentIDs[key] = id.ID
 
 	delete(m.comments, key)
 	m.deletePersistedComment(key)
@@ -566,8 +566,8 @@ func TestCommentPersistenceNoStore(t *testing.T) {
 
 	key := commentKey{fileIndex: 0, newLineNum: 1}
 	id := m.persistComment(key, "test")
-	if id != "" {
-		t.Error("persistComment should return empty ID without store")
+	if id != nil {
+		t.Error("persistComment should return nil without store")
 	}
 
 	m.deletePersistedComment(key) // Should not panic

@@ -2,10 +2,12 @@ package tui
 
 import (
 	"strings"
+	"time"
 	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/user/diffyduck/pkg/comments"
 )
 
 // handleCommentInput handles keypresses while in comment input mode.
@@ -155,8 +157,8 @@ func (m *Model) startComment() bool {
 
 	// Load existing comment if any
 	if existing, ok := m.comments[m.w().commentKey]; ok {
-		m.w().commentInput = existing
-		m.w().commentCursor = len(existing)
+		m.w().commentInput = existing.Text
+		m.w().commentCursor = len(existing.Text)
 	} else {
 		m.w().commentInput = ""
 		m.w().commentCursor = 0
@@ -178,10 +180,18 @@ func (m *Model) submitComment() {
 		delete(m.comments, key)
 		m.deletePersistedComment(key)
 	} else {
-		m.comments[key] = text
-		// Persist to git store
-		if id := m.persistComment(key, text); id != "" {
-			m.persistedCommentIDs[key] = id
+		// Persist to git store (returns full comment object with metadata)
+		if c := m.persistComment(key, text); c != nil {
+			m.comments[key] = c
+			m.persistedCommentIDs[key] = c.ID
+		} else {
+			// No store available — create a minimal in-memory comment
+			now := time.Now()
+			m.comments[key] = &comments.Comment{
+				Text:    text,
+				Created: now,
+				Updated: now,
+			}
 		}
 	}
 

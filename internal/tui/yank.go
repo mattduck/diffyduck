@@ -42,11 +42,11 @@ func (m Model) handleYank() (tea.Model, tea.Cmd) {
 	if !found {
 		return m, nil
 	}
-	comment := m.comments[ck]
-	if comment == "" {
+	c := m.comments[ck]
+	if c == nil || c.Text == "" {
 		return m, nil
 	}
-	return m.yankComment(ck, comment)
+	return m.yankComment(ck, c.Text)
 }
 
 // yankCommitSHA copies the full commit SHA to the clipboard.
@@ -228,8 +228,8 @@ type commentWithKey struct {
 func (m Model) buildAllCommentsSnippet() string {
 	// Collect and sort all comments by (fileIndex, newLineNum)
 	var sorted []commentWithKey
-	for ck, comment := range m.comments {
-		if comment == "" {
+	for ck, c := range m.comments {
+		if c == nil || c.Text == "" {
 			continue
 		}
 		sorted = append(sorted, commentWithKey{key: ck})
@@ -350,9 +350,9 @@ func (m Model) writeFileCommentHunks(sb *strings.Builder, fp sidebyside.FilePair
 			m.writeDiffLines(sb, pair)
 
 			if cwk, ok := commentsByLine[pair.New.Num]; ok {
-				comment := m.comments[cwk.key]
+				c := m.comments[cwk.key]
 				sb.WriteString(fmt.Sprintf("# MSG %d:\n", cwk.msgNum))
-				for _, line := range strings.Split(comment, "\n") {
+				for _, line := range strings.Split(c.Text, "\n") {
 					sb.WriteString("# " + line + "\n")
 				}
 				sb.WriteString("#\n#\n")
