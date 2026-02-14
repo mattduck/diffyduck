@@ -24,6 +24,8 @@ type KeyMap struct {
 	GoToTop     []string // sequence: "g g"
 	NextHeading []string // sequence: "g j"
 	PrevHeading []string // sequence: "g k"
+	NarrowNext  []string // next node while narrowed
+	NarrowPrev  []string // previous node while narrowed
 
 	// Search
 	SearchForward []string
@@ -85,6 +87,8 @@ func DefaultKeyMap() KeyMap {
 		GoToTop:        []string{"g g"},
 		NextHeading:    []string{"g j"},
 		PrevHeading:    []string{"g k"},
+		NarrowNext:     []string{"ctrl+j"},
+		NarrowPrev:     []string{"ctrl+k"},
 		Quit:           []string{"q", "ctrl+c"},
 		SearchForward:  []string{"/"},
 		SearchBack:     []string{"?"},
@@ -144,6 +148,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.Bottom, Desc: "Go to bottom", Keys2: km.Top, Desc2: "top"},
 			{Keys: km.GoToTop, Desc: "Go to top"},
 			{Keys: km.NextHeading, Desc: "Next heading", Keys2: km.PrevHeading, Desc2: "previous"},
+			{Keys: km.NarrowNext, Desc: "Narrow next", Keys2: km.NarrowPrev, Desc2: "previous"},
 			{Keys: km.Right, Desc: "Scroll right", Keys2: km.Left, Desc2: "left"},
 		}},
 		{Name: "Search", Bindings: []Binding{
@@ -278,6 +283,7 @@ func allBindings(km KeyMap) [][]string {
 		km.Up, km.Down, km.PageUp, km.PageDown,
 		km.HalfUp, km.HalfDown, km.Top, km.Bottom,
 		km.Left, km.Right, km.GoToTop, km.NextHeading, km.PrevHeading,
+		km.NarrowNext, km.NarrowPrev,
 		km.SearchForward, km.SearchBack, km.NextMatch, km.PrevMatch,
 		km.FoldToggle, km.FoldToggleAll, km.FullFileToggle,
 		km.Quit, km.Enter, km.Yank, km.YankAll,
@@ -334,6 +340,12 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		}
 		if nav.PrevHeading != nil {
 			km.PrevHeading = nav.PrevHeading
+		}
+		if nav.NarrowNext != nil {
+			km.NarrowNext = nav.NarrowNext
+		}
+		if nav.NarrowPrev != nil {
+			km.NarrowPrev = nav.NarrowPrev
 		}
 	}
 
@@ -461,6 +473,8 @@ func DefaultKeysConfig() config.KeysConfig {
 			GoToTop:     km.GoToTop,
 			NextHeading: km.NextHeading,
 			PrevHeading: km.PrevHeading,
+			NarrowNext:  km.NarrowNext,
+			NarrowPrev:  km.NarrowPrev,
 		},
 		Search: &config.SearchKeys{
 			SearchFwd:  km.SearchForward,

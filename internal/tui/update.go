@@ -458,6 +458,16 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.prevMatch()
 		return m, nil
 
+	case matchesKey(msg, keys.NarrowNext):
+		if m.narrowNext() && m.shouldPaginateForNarrowNav() {
+			return m, m.fetchMoreCommits()
+		}
+		return m, nil
+
+	case matchesKey(msg, keys.NarrowPrev):
+		m.narrowPrev()
+		return m, nil
+
 	case matchesKey(msg, keys.Up):
 		m.w().scroll--
 		m.clampScroll()

@@ -858,3 +858,520 @@ func TestNarrow_HidesPaginationIndicator(t *testing.T) {
 	}
 	assert.False(t, hasPaginationIndicator, "pagination indicator should NOT appear when narrowed")
 }
+
+func TestNarrowNext_WalksThroughNodes(t *testing.T) {
+	// Two commits, each with 2 files
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "aaa",
+				Author:  "Author",
+				Subject: "First commit",
+			},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+				{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}}}},
+			},
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "bbb",
+				Author:  "Author",
+				Subject: "Second commit",
+			},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f3.go", NewPath: "b/f3.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "c"}, New: sidebyside.Line{Num: 1, Content: "c"}}}},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+
+	// Start narrowed to commit 0
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: -1}
+	m.unfoldNarrowTarget()
+	m.rebuildRowsCache()
+
+	// Walk: commit₀ → message₀ → file₀ → file₁ → commit₁ → message₁ → file₂
+	type step struct {
+		commitIdx      int
+		fileIdx        int
+		commitInfoOnly bool
+	}
+	expected := []step{
+		{0, -1, true},  // message₀
+		{0, 0, false},  // file₀ (global index 0)
+		{0, 1, false},  // file₁ (global index 1)
+		{1, -1, false}, // commit₁
+		{1, -1, true},  // message₁
+		{1, 2, false},  // file₂ (global index 2)
+	}
+
+	for i, exp := range expected {
+		moved := m.narrowNext()
+		assert.True(t, moved, "step %d should move", i)
+		ns := m.w().narrow
+		assert.Equal(t, exp.commitIdx, ns.CommitIdx, "step %d commitIdx", i)
+		assert.Equal(t, exp.fileIdx, ns.FileIdx, "step %d fileIdx", i)
+		assert.Equal(t, exp.commitInfoOnly, ns.CommitInfoOnly, "step %d commitInfoOnly", i)
+	}
+
+	// One more should be a no-op (at the end)
+	moved := m.narrowNext()
+	assert.False(t, moved, "should not move past last node")
+}
+
+func TestNarrowPrev_WalksThroughNodes(t *testing.T) {
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "aaa",
+				Author:  "Author",
+				Subject: "First commit",
+			},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+			},
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "bbb",
+				Author:  "Author",
+				Subject: "Second commit",
+			},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}}}},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+
+	// Start narrowed to file₁ (last file of second commit, global index 1)
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 1, FileIdx: 1}
+	m.unfoldNarrowTarget()
+	m.rebuildRowsCache()
+
+	// Walk backward: file₁ → message₁ → commit₁ → file₀ → message₀ → commit₀
+	type step struct {
+		commitIdx      int
+		fileIdx        int
+		commitInfoOnly bool
+	}
+	expected := []step{
+		{1, -1, true},  // message₁
+		{1, -1, false}, // commit₁
+		{0, 0, false},  // file₀ (last file of commit₀)
+		{0, -1, true},  // message₀
+		{0, -1, false}, // commit₀
+	}
+
+	for i, exp := range expected {
+		moved := m.narrowPrev()
+		assert.True(t, moved, "step %d should move", i)
+		ns := m.w().narrow
+		assert.Equal(t, exp.commitIdx, ns.CommitIdx, "step %d commitIdx", i)
+		assert.Equal(t, exp.fileIdx, ns.FileIdx, "step %d fileIdx", i)
+		assert.Equal(t, exp.commitInfoOnly, ns.CommitInfoOnly, "step %d commitInfoOnly", i)
+	}
+
+	// One more should be a no-op
+	moved := m.narrowPrev()
+	assert.False(t, moved, "should not move past first node")
+}
+
+func TestNarrowNext_BoundaryNoOp(t *testing.T) {
+	commits := []sidebyside.CommitSet{
+		{
+			Info:        sidebyside.CommitInfo{SHA: "aaa", Subject: "only commit"},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+
+	// Narrow to the last node (file 0)
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: 0}
+	m.rebuildRowsCache()
+
+	moved := m.narrowNext()
+	assert.False(t, moved, "should not move past last node")
+	assert.Equal(t, 0, m.w().narrow.FileIdx, "should stay on file 0")
+}
+
+func TestNarrowPrev_BoundaryNoOp(t *testing.T) {
+	commits := []sidebyside.CommitSet{
+		{
+			Info:        sidebyside.CommitInfo{SHA: "aaa", Subject: "only commit"},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+
+	// Narrow to the first node (commit 0)
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: -1}
+	m.rebuildRowsCache()
+
+	moved := m.narrowPrev()
+	assert.False(t, moved, "should not move before first node")
+	assert.Equal(t, 0, m.w().narrow.CommitIdx, "should stay on commit 0")
+	assert.Equal(t, -1, m.w().narrow.FileIdx, "should not be on a file")
+}
+
+func TestNarrowNext_DiffMode(t *testing.T) {
+	// Diff mode: no commit metadata, just files
+	files := []sidebyside.FilePair{
+		{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+		{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}}}},
+		{OldPath: "a/f3.go", NewPath: "b/f3.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "c"}, New: sidebyside.Line{Num: 1, Content: "c"}}}},
+	}
+
+	m := New(files)
+	m.width = 120
+	m.height = 40
+
+	// Narrow to file 0
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: 0}
+	m.rebuildRowsCache()
+
+	// file₀ → file₁ → file₂ → no-op
+	moved := m.narrowNext()
+	assert.True(t, moved)
+	assert.Equal(t, 1, m.w().narrow.FileIdx)
+
+	moved = m.narrowNext()
+	assert.True(t, moved)
+	assert.Equal(t, 2, m.w().narrow.FileIdx)
+
+	moved = m.narrowNext()
+	assert.False(t, moved, "should stop at last file")
+	assert.Equal(t, 2, m.w().narrow.FileIdx)
+
+	// And backward
+	moved = m.narrowPrev()
+	assert.True(t, moved)
+	assert.Equal(t, 1, m.w().narrow.FileIdx)
+
+	moved = m.narrowPrev()
+	assert.True(t, moved)
+	assert.Equal(t, 0, m.w().narrow.FileIdx)
+
+	moved = m.narrowPrev()
+	assert.False(t, moved, "should stop at first file")
+	assert.Equal(t, 0, m.w().narrow.FileIdx)
+}
+
+func TestNarrowNext_FromUnnarrowed(t *testing.T) {
+	files := []sidebyside.FilePair{
+		{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+		{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}}}},
+	}
+
+	m := New(files)
+	m.width = 120
+	m.height = 40
+	m.w().scroll = 2 // On first file's content
+
+	assert.False(t, m.w().narrow.Active)
+
+	// C-j from un-narrowed should enter narrow mode (like N)
+	moved := m.narrowNext()
+	assert.True(t, moved)
+	assert.True(t, m.w().narrow.Active, "should enter narrow mode")
+}
+
+func TestNarrowNext_TriggersPagination(t *testing.T) {
+	commits := []sidebyside.CommitSet{
+		{
+			Info:        sidebyside.CommitInfo{SHA: "aaa", Subject: "First"},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files:       []sidebyside.FilePair{{OldPath: "f1.go", NewPath: "f1.go", FoldLevel: sidebyside.FoldHeader}},
+		},
+		{
+			Info:        sidebyside.CommitInfo{SHA: "bbb", Subject: "Second"},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files:       []sidebyside.FilePair{{OldPath: "f2.go", NewPath: "f2.go", FoldLevel: sidebyside.FoldHeader}},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+	m.loadedCommitCount = 2
+	m.totalCommitCount = 100 // Many more available
+
+	// Narrow to last commit — within threshold of end
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 1, FileIdx: -1}
+	m.rebuildRowsCache()
+
+	// Should want to paginate (within 3 commits of end, has more to load)
+	// Note: shouldPaginateForNarrowNav also requires m.git != nil
+	assert.True(t, m.hasMoreCommitsToLoad(), "should have more commits")
+	// Can't fully test pagination trigger without git mock, but verify the threshold logic
+	assert.LessOrEqual(t, len(m.commits)-m.w().narrow.CommitIdx, NarrowPaginationCommitThreshold)
+}
+
+func TestNarrowNext_UnfoldsCommit(t *testing.T) {
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "aaa",
+				Author:  "Author",
+				Subject: "First commit",
+			},
+			FoldLevel:   sidebyside.CommitFolded, // starts folded
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+			},
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "bbb",
+				Author:  "Author",
+				Subject: "Second commit",
+			},
+			FoldLevel:   sidebyside.CommitFolded, // starts folded
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}}}},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+
+	// Narrow to last file of commit 0
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: 0}
+	m.rebuildRowsCache()
+
+	// Navigate to commit 1 (which is currently folded)
+	m.narrowNext() // → commit₁
+
+	assert.Equal(t, 1, m.w().narrow.CommitIdx)
+	assert.Equal(t, -1, m.w().narrow.FileIdx)
+	assert.False(t, m.w().narrow.CommitInfoOnly)
+
+	// Commit 1 should now be unfolded to CommitFileStructure
+	assert.Equal(t, sidebyside.CommitFileStructure, m.commitFoldLevel(1),
+		"navigating to a commit should unfold it to CommitFileStructure")
+
+	// File in commit 1 should be unfolded to FoldStructure (matching CommitFileStructure)
+	assert.Equal(t, sidebyside.FoldStructure, m.fileFoldLevel(1),
+		"files in navigated commit should be unfolded to FoldStructure")
+}
+
+func TestNarrowNext_UnfoldsFile(t *testing.T) {
+	files := []sidebyside.FilePair{
+		{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+		{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldHeader, // starts folded
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}}}},
+	}
+
+	m := New(files)
+	m.width = 120
+	m.height = 40
+
+	// Narrow to file 0
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: 0}
+	m.rebuildRowsCache()
+
+	// Navigate to file 1 (which starts at FoldHeader)
+	m.narrowNext()
+
+	assert.Equal(t, 1, m.w().narrow.FileIdx)
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(1),
+		"navigating to a file should unfold it to FoldHunks")
+}
+
+func TestNarrowNext_SkipsMessageNodeForSnapshots(t *testing.T) {
+	// Snapshot commits have no message/commit-info node
+	commits := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "snap1",
+				Subject: "Diff 1",
+			},
+			IsSnapshot:  true,
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+			},
+		},
+		{
+			Info: sidebyside.CommitInfo{
+				SHA:     "snap2",
+				Subject: "Diff 2",
+			},
+			IsSnapshot:  true,
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}}}},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+
+	// Start narrowed to commit 0
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: -1}
+	m.unfoldNarrowTarget()
+	m.rebuildRowsCache()
+
+	// Forward: commit₀ → file₀ (skip message) → commit₁ → file₁ (skip message)
+	type step struct {
+		commitIdx      int
+		fileIdx        int
+		commitInfoOnly bool
+	}
+	expected := []step{
+		{0, 0, false},  // file₀ — message skipped
+		{1, -1, false}, // commit₁
+		{1, 1, false},  // file₁ — message skipped
+	}
+
+	for i, exp := range expected {
+		moved := m.narrowNext()
+		assert.True(t, moved, "step %d should move", i)
+		ns := m.w().narrow
+		assert.Equal(t, exp.commitIdx, ns.CommitIdx, "step %d commitIdx", i)
+		assert.Equal(t, exp.fileIdx, ns.FileIdx, "step %d fileIdx", i)
+		assert.Equal(t, exp.commitInfoOnly, ns.CommitInfoOnly, "step %d commitInfoOnly", i)
+	}
+
+	// At end
+	assert.False(t, m.narrowNext(), "should not move past last node")
+
+	// Backward: file₁ → commit₁ → file₀ → commit₀
+	expectedBack := []step{
+		{1, -1, false}, // commit₁ — message skipped
+		{0, 0, false},  // file₀
+		{0, -1, false}, // commit₀ — message skipped
+	}
+
+	for i, exp := range expectedBack {
+		moved := m.narrowPrev()
+		assert.True(t, moved, "back step %d should move", i)
+		ns := m.w().narrow
+		assert.Equal(t, exp.commitIdx, ns.CommitIdx, "back step %d commitIdx", i)
+		assert.Equal(t, exp.fileIdx, ns.FileIdx, "back step %d fileIdx", i)
+		assert.Equal(t, exp.commitInfoOnly, ns.CommitInfoOnly, "back step %d commitInfoOnly", i)
+	}
+
+	// At start
+	assert.False(t, m.narrowPrev(), "should not move before first node")
+}
+
+func TestNarrowNext_CommitWithNoFiles(t *testing.T) {
+	// A commit with no files (e.g. filtered by pathspec) should be traversed correctly
+	commits := []sidebyside.CommitSet{
+		{
+			Info:        sidebyside.CommitInfo{SHA: "aaa", Author: "A", Subject: "has files"},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f1.go", NewPath: "b/f1.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}}}},
+			},
+		},
+		{
+			Info:        sidebyside.CommitInfo{SHA: "bbb", Author: "B", Subject: "no files"},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files:       []sidebyside.FilePair{}, // empty
+		},
+		{
+			Info:        sidebyside.CommitInfo{SHA: "ccc", Author: "C", Subject: "also has files"},
+			FoldLevel:   sidebyside.CommitFolded,
+			FilesLoaded: true,
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/f2.go", NewPath: "b/f2.go", FoldLevel: sidebyside.FoldHeader,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}}}},
+			},
+		},
+	}
+
+	m := NewWithCommits(commits)
+	m.width = 120
+	m.height = 40
+
+	// Start at commit 0
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: -1}
+	m.unfoldNarrowTarget()
+	m.rebuildRowsCache()
+
+	// Forward: commit₀ → msg₀ → file₀ → commit₁ → msg₁ → commit₂ → msg₂ → file₁
+	type step struct {
+		commitIdx      int
+		fileIdx        int
+		commitInfoOnly bool
+	}
+	expected := []step{
+		{0, -1, true},  // msg₀
+		{0, 0, false},  // file₀
+		{1, -1, false}, // commit₁
+		{1, -1, true},  // msg₁ (no files, so next is...)
+		{2, -1, false}, // commit₂
+		{2, -1, true},  // msg₂
+		{2, 1, false},  // file₁ (global index 1)
+	}
+
+	for i, exp := range expected {
+		moved := m.narrowNext()
+		assert.True(t, moved, "step %d should move", i)
+		ns := m.w().narrow
+		assert.Equal(t, exp.commitIdx, ns.CommitIdx, "step %d commitIdx", i)
+		assert.Equal(t, exp.fileIdx, ns.FileIdx, "step %d fileIdx", i)
+		assert.Equal(t, exp.commitInfoOnly, ns.CommitInfoOnly, "step %d commitInfoOnly", i)
+	}
+}

@@ -1727,6 +1727,260 @@ func (m *Model) toggleNarrow() {
 	m.clampScroll()
 }
 
+// narrowNext navigates to the next node in the narrow traversal order.
+// If not narrowed, enters narrow mode at the cursor (like toggleNarrow).
+// Returns true if a navigation occurred.
+func (m *Model) narrowNext() bool {
+	if !m.w().narrow.Active {
+		m.toggleNarrow()
+		if m.w().narrow.Active {
+			m.unfoldNarrowTarget()
+			m.rebuildRowsCache()
+			m.w().scroll = 0
+			m.clampScroll()
+		}
+		return m.w().narrow.Active
+	}
+
+	next, ok := m.nextNarrowNode()
+	if !ok {
+		return false
+	}
+
+	m.w().narrow = next
+	m.unfoldNarrowTarget()
+	m.rebuildRowsCache()
+	m.w().scroll = 0
+	m.clampScroll()
+	return true
+}
+
+// narrowPrev navigates to the previous node in the narrow traversal order.
+// If not narrowed, enters narrow mode at the cursor (like toggleNarrow).
+// Returns true if a navigation occurred.
+func (m *Model) narrowPrev() bool {
+	if !m.w().narrow.Active {
+		m.toggleNarrow()
+		if m.w().narrow.Active {
+			m.unfoldNarrowTarget()
+			m.rebuildRowsCache()
+			m.w().scroll = 0
+			m.clampScroll()
+		}
+		return m.w().narrow.Active
+	}
+
+	prev, ok := m.prevNarrowNode()
+	if !ok {
+		return false
+	}
+
+	m.w().narrow = prev
+	m.unfoldNarrowTarget()
+	m.rebuildRowsCache()
+	m.w().scroll = 0
+	m.clampScroll()
+	return true
+}
+
+// nextNarrowNode computes the next node in the narrow traversal order.
+// Traversal: commit → message → file₀ → file₁ → … → next commit → …
+// In diff mode (no metadata): file₀ → file₁ → …
+func (m Model) nextNarrowNode() (NarrowScope, bool) {
+	ns := m.w().narrow
+
+	// Diff mode: no commit metadata, just walk files
+	if !m.hasCommitMetadata(ns.CommitIdx) {
+		if ns.FileIdx < 0 {
+			// Shouldn't happen in diff mode, but handle it
+			if len(m.files) > 0 {
+				return NarrowScope{Active: true, CommitIdx: ns.CommitIdx, FileIdx: m.commitFileStarts[ns.CommitIdx]}, true
+			}
+			return ns, false
+		}
+		nextFile := ns.FileIdx + 1
+		if nextFile < len(m.files) {
+			return NarrowScope{Active: true, CommitIdx: m.commitForFile(nextFile), FileIdx: nextFile}, true
+		}
+		return ns, false
+	}
+
+	// Log mode: commit → message → files → next commit
+	if ns.FileIdx >= 0 {
+		// On a file → next file in same commit, or next commit
+		nextFile := ns.FileIdx + 1
+		endIdx := m.commitFileEnd(ns.CommitIdx)
+		if nextFile < endIdx {
+			return NarrowScope{Active: true, CommitIdx: ns.CommitIdx, FileIdx: nextFile}, true
+		}
+		// Last file in commit → next commit
+		nextCommit := ns.CommitIdx + 1
+		if nextCommit < len(m.commits) {
+			return NarrowScope{Active: true, CommitIdx: nextCommit, FileIdx: -1}, true
+		}
+		return ns, false
+	}
+
+	if ns.CommitInfoOnly {
+		// On message → first file of this commit
+		startIdx := m.commitFileStarts[ns.CommitIdx]
+		endIdx := m.commitFileEnd(ns.CommitIdx)
+		if startIdx < endIdx {
+			return NarrowScope{Active: true, CommitIdx: ns.CommitIdx, FileIdx: startIdx}, true
+		}
+		// No files → next commit
+		nextCommit := ns.CommitIdx + 1
+		if nextCommit < len(m.commits) {
+			return NarrowScope{Active: true, CommitIdx: nextCommit, FileIdx: -1}, true
+		}
+		return ns, false
+	}
+
+	// On commit node → message node (skip if snapshot — no message to show)
+	if m.hasMessageNode(ns.CommitIdx) {
+		return NarrowScope{Active: true, CommitIdx: ns.CommitIdx, FileIdx: -1, CommitInfoOnly: true}, true
+	}
+	// No message node → first file
+	startIdx := m.commitFileStarts[ns.CommitIdx]
+	endIdx := m.commitFileEnd(ns.CommitIdx)
+	if startIdx < endIdx {
+		return NarrowScope{Active: true, CommitIdx: ns.CommitIdx, FileIdx: startIdx}, true
+	}
+	// No files either → next commit
+	nextCommit := ns.CommitIdx + 1
+	if nextCommit < len(m.commits) {
+		return NarrowScope{Active: true, CommitIdx: nextCommit, FileIdx: -1}, true
+	}
+	return ns, false
+}
+
+// prevNarrowNode computes the previous node in the narrow traversal order.
+func (m Model) prevNarrowNode() (NarrowScope, bool) {
+	ns := m.w().narrow
+
+	// Diff mode: no commit metadata, just walk files backward
+	if !m.hasCommitMetadata(ns.CommitIdx) {
+		if ns.FileIdx < 0 {
+			return ns, false
+		}
+		prevFile := ns.FileIdx - 1
+		if prevFile >= 0 {
+			return NarrowScope{Active: true, CommitIdx: m.commitForFile(prevFile), FileIdx: prevFile}, true
+		}
+		return ns, false
+	}
+
+	// Log mode: reverse of next
+	if ns.FileIdx >= 0 {
+		// On a file → previous file, or message/commit node if first file
+		startIdx := m.commitFileStarts[ns.CommitIdx]
+		if ns.FileIdx > startIdx {
+			return NarrowScope{Active: true, CommitIdx: ns.CommitIdx, FileIdx: ns.FileIdx - 1}, true
+		}
+		// First file → message node (skip if snapshot)
+		if m.hasMessageNode(ns.CommitIdx) {
+			return NarrowScope{Active: true, CommitIdx: ns.CommitIdx, FileIdx: -1, CommitInfoOnly: true}, true
+		}
+		// No message node → commit node
+		return NarrowScope{Active: true, CommitIdx: ns.CommitIdx, FileIdx: -1}, true
+	}
+
+	if ns.CommitInfoOnly {
+		// On message → commit node of same commit
+		return NarrowScope{Active: true, CommitIdx: ns.CommitIdx, FileIdx: -1}, true
+	}
+
+	// On commit node → last file of previous commit, or message, or commit
+	prevCommit := ns.CommitIdx - 1
+	if prevCommit < 0 {
+		return ns, false
+	}
+	// Go to last file of previous commit
+	startIdx := m.commitFileStarts[prevCommit]
+	endIdx := m.commitFileEnd(prevCommit)
+	if startIdx < endIdx {
+		return NarrowScope{Active: true, CommitIdx: prevCommit, FileIdx: endIdx - 1}, true
+	}
+	// Previous commit has no files → its message node (skip if snapshot)
+	if m.hasMessageNode(prevCommit) {
+		return NarrowScope{Active: true, CommitIdx: prevCommit, FileIdx: -1, CommitInfoOnly: true}, true
+	}
+	// Fallback to commit node
+	return NarrowScope{Active: true, CommitIdx: prevCommit, FileIdx: -1}, true
+}
+
+// unfoldNarrowTarget ensures the current narrow target is unfolded and its
+// content is loaded. Commits unfold to CommitFileStructure (showing structural
+// changes); files unfold to FoldHunks.
+func (m *Model) unfoldNarrowTarget() {
+	ns := m.w().narrow
+	if !ns.Active {
+		return
+	}
+
+	if ns.FileIdx >= 0 {
+		// File scope: ensure parent commit's diff is loaded first
+		commitIdx := m.commitForFile(ns.FileIdx)
+		if commitIdx >= 0 && commitIdx < len(m.commits) {
+			if !m.commits[commitIdx].FilesLoaded && m.git != nil {
+				m.loadCommitDiff(commitIdx)
+			}
+		}
+		// Unfold to FoldHunks and load content
+		m.setFileFoldLevel(ns.FileIdx, sidebyside.FoldHunks)
+		m.loadAndHighlightFileSync(ns.FileIdx)
+		return
+	}
+
+	if ns.CommitInfoOnly {
+		// Message scope: ensure commit info is expanded
+		if ns.CommitIdx >= 0 && ns.CommitIdx < len(m.commits) {
+			m.setCommitInfoExpanded(ns.CommitIdx, true)
+		}
+		return
+	}
+
+	// Commit scope: load diff content, unfold to CommitFileStructure
+	if ns.CommitIdx >= 0 && ns.CommitIdx < len(m.commits) {
+		commit := &m.commits[ns.CommitIdx]
+		if !commit.FilesLoaded && m.git != nil {
+			m.loadCommitDiff(ns.CommitIdx)
+		}
+		m.setCommitsToLevel(ns.CommitIdx, ns.CommitIdx+1, sidebyside.CommitFileStructure)
+		// Load content + highlighting for structure preview
+		startIdx := m.commitFileStarts[ns.CommitIdx]
+		endIdx := m.commitFileEnd(ns.CommitIdx)
+		for i := startIdx; i < endIdx; i++ {
+			m.loadAndHighlightFileSync(i)
+		}
+	}
+}
+
+// commitFileEnd returns the exclusive end index of files for a commit.
+func (m Model) commitFileEnd(commitIdx int) int {
+	if commitIdx+1 < len(m.commits) {
+		return m.commitFileStarts[commitIdx+1]
+	}
+	return len(m.files)
+}
+
+// hasCommitMetadata returns true if the given commit has metadata (SHA, author, etc).
+func (m Model) hasCommitMetadata(commitIdx int) bool {
+	if commitIdx < 0 || commitIdx >= len(m.commits) {
+		return false
+	}
+	return m.commits[commitIdx].Info.HasMetadata()
+}
+
+// hasMessageNode returns true if the given commit has a renderable message node.
+// Snapshots have metadata but no commit info rows, so they don't have a message node.
+func (m Model) hasMessageNode(commitIdx int) bool {
+	if commitIdx < 0 || commitIdx >= len(m.commits) {
+		return false
+	}
+	return m.commits[commitIdx].Info.HasMetadata() && !m.commits[commitIdx].IsSnapshot
+}
+
 // findFileHeaderRow returns the row index of the header for the given file.
 // Returns -1 if not found.
 func (m Model) findFileHeaderRow(fileIdx int) int {

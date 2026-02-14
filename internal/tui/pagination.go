@@ -33,6 +33,26 @@ func (m Model) shouldLoadMoreCommits() bool {
 	return m.maxScroll()-m.w().scroll < PaginationScrollThreshold
 }
 
+// NarrowPaginationCommitThreshold is the number of commits from the end
+// that triggers loading more commits during narrow navigation.
+const NarrowPaginationCommitThreshold = 3
+
+// shouldPaginateForNarrowNav returns true if we should fetch more commits
+// during narrow node navigation (C-j/C-k). Unlike shouldLoadMoreCommits,
+// this works while narrowed.
+func (m Model) shouldPaginateForNarrowNav() bool {
+	if m.loadingMoreCommits || m.git == nil || m.loadedCommitCount == 0 {
+		return false
+	}
+	if !m.hasMoreCommitsToLoad() {
+		return false
+	}
+	if !m.w().narrow.Active {
+		return false
+	}
+	return len(m.commits)-m.w().narrow.CommitIdx <= NarrowPaginationCommitThreshold
+}
+
 // hasMoreCommitsToLoad returns true if there are more commits available to load.
 func (m Model) hasMoreCommitsToLoad() bool {
 	// Pagination not enabled (no WithPagination option set)

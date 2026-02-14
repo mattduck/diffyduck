@@ -45,6 +45,8 @@ type NavigationKeys struct {
 	GoToTop     []string `toml:"go_to_top"`    // default: ["g g"]
 	NextHeading []string `toml:"next_heading"` // default: ["g j"]
 	PrevHeading []string `toml:"prev_heading"` // default: ["g k"]
+	NarrowNext  []string `toml:"narrow_next"`  // default: ["ctrl+j"]
+	NarrowPrev  []string `toml:"narrow_prev"`  // default: ["ctrl+k"]
 }
 
 // SearchKeys configures search bindings.
