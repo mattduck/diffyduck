@@ -30,7 +30,8 @@ type KeysConfig struct {
 }
 
 // NavigationKeys configures movement bindings.
-// Key sequences use space-separated strings: "g g", "g j".
+// Key sequences use space-separated strings: "g g", "space c j".
+// The literal space key uses the token "space" in sequences.
 type NavigationKeys struct {
 	Up          []string `toml:"up"`
 	Down        []string `toml:"down"`
@@ -45,6 +46,8 @@ type NavigationKeys struct {
 	GoToTop     []string `toml:"go_to_top"`    // default: ["g g"]
 	NextHeading []string `toml:"next_heading"` // default: ["g j"]
 	PrevHeading []string `toml:"prev_heading"` // default: ["g k"]
+	NextComment []string `toml:"next_comment"` // default: ["space c j"]
+	PrevComment []string `toml:"prev_comment"` // default: ["space c k"]
 	NarrowNext  []string `toml:"narrow_next"`  // default: ["ctrl+j"]
 	NarrowPrev  []string `toml:"narrow_prev"`  // default: ["ctrl+k"]
 }

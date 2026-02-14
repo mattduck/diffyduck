@@ -344,7 +344,7 @@ func formatBindingKeys(keys []string) string {
 
 // formatKeyForDisplay converts an internal key name to a human-readable form.
 // For sequences (space-separated tokens like "g g"), each token is formatted
-// individually and rejoined without spaces (e.g. "g g" → "gg", "ctrl+w %" → "C-w%").
+// individually and rejoined with spaces (e.g. "g g" → "g g", "space c j" → "Space c j").
 func formatKeyForDisplay(key string) string {
 	// Handle sequences (2+ tokens separated by spaces)
 	if parts := strings.Fields(key); len(parts) > 1 {
@@ -352,7 +352,7 @@ func formatKeyForDisplay(key string) string {
 		for i, p := range parts {
 			formatted[i] = formatKeyForDisplay(p)
 		}
-		return strings.Join(formatted, "")
+		return strings.Join(formatted, " ")
 	}
 
 	switch key {
@@ -378,7 +378,7 @@ func formatKeyForDisplay(key string) string {
 		return "S-Tab"
 	case "enter":
 		return "Enter"
-	case " ":
+	case " ", "space":
 		return "Space"
 	case "esc":
 		return "Esc"

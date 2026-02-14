@@ -169,6 +169,7 @@ func TestFormatKeyForDisplay(t *testing.T) {
 		{"ctrl+h", "C-h"},
 		{"ctrl+c", "C-c"},
 		{" ", "Space"},
+		{"space", "Space"},
 		{"tab", "Tab"},
 		{"shift+tab", "S-Tab"},
 		{"enter", "Enter"},
@@ -182,6 +183,17 @@ func TestFormatKeyForDisplay(t *testing.T) {
 			assert.Equal(t, tt.expected, formatKeyForDisplay(tt.input))
 		})
 	}
+}
+
+func TestFormatKeyForDisplay_Sequences(t *testing.T) {
+	// 2-key sequences
+	assert.Equal(t, "g g", formatKeyForDisplay("g g"))
+	assert.Equal(t, "g j", formatKeyForDisplay("g j"))
+	assert.Equal(t, "C-w %", formatKeyForDisplay("ctrl+w %"))
+
+	// 3-key sequences with space token
+	assert.Equal(t, "Space c j", formatKeyForDisplay("space c j"))
+	assert.Equal(t, "Space c k", formatKeyForDisplay("space c k"))
 }
 
 func TestFormatBindingKeys(t *testing.T) {
@@ -238,7 +250,14 @@ func TestAllBindingGroups_GSequencesInNavigation(t *testing.T) {
 		if b.Desc == "Go to top" {
 			assert.Equal(t, []string{"g g"}, b.Keys)
 		}
+		if b.Desc == "Next comment" {
+			assert.Equal(t, []string{"space c j"}, b.Keys)
+			assert.Equal(t, []string{"space c k"}, b.Keys2)
+			assert.Equal(t, "previous", b.Desc2)
+		}
 	}
+
+	assert.Contains(t, descs, "Next comment")
 }
 
 func TestAllBindingGroups_SearchInputMerged(t *testing.T) {

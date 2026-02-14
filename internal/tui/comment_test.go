@@ -2592,3 +2592,133 @@ func TestCommentVisualLinesEmpty(t *testing.T) {
 	lines := commentVisualLines("", 20)
 	assert.Equal(t, []string{""}, lines)
 }
+
+// =============================================================================
+// Comment Navigation Tests
+// =============================================================================
+
+func TestGoToNextComment(t *testing.T) {
+	m := makeCommentableTestModel(10)
+
+	// Add comments on lines 3 and 7
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "Comment A"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 7}] = &comments.Comment{Text: "Comment B"}
+	m.w().rowsCacheValid = false
+	m.calculateTotalLines()
+
+	// Position at top
+	m.w().scroll = 0
+
+	// Navigate to first comment
+	m.goToNextComment()
+	rows := m.getRows()
+	cursor := m.cursorLine()
+	assert.Equal(t, RowKindComment, rows[cursor].kind)
+	assert.Equal(t, 3, rows[cursor].commentLineNum)
+	assert.Equal(t, 0, rows[cursor].commentRowIndex, "should land on top border")
+
+	// Navigate to second comment
+	m.goToNextComment()
+	cursor = m.cursorLine()
+	assert.Equal(t, RowKindComment, rows[cursor].kind)
+	assert.Equal(t, 7, rows[cursor].commentLineNum)
+
+	// No more comments — should stay put
+	prevCursor := m.cursorLine()
+	m.goToNextComment()
+	assert.Equal(t, prevCursor, m.cursorLine(), "should not wrap")
+}
+
+func TestGoToPrevComment(t *testing.T) {
+	m := makeCommentableTestModel(10)
+
+	// Add comments on lines 3 and 7
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "Comment A"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 7}] = &comments.Comment{Text: "Comment B"}
+	m.w().rowsCacheValid = false
+	m.calculateTotalLines()
+
+	// Position at bottom
+	m.w().scroll = m.maxScroll()
+
+	// Navigate to last comment
+	m.goToPrevComment()
+	rows := m.getRows()
+	cursor := m.cursorLine()
+	assert.Equal(t, RowKindComment, rows[cursor].kind)
+	assert.Equal(t, 7, rows[cursor].commentLineNum)
+
+	// Navigate to first comment
+	m.goToPrevComment()
+	cursor = m.cursorLine()
+	assert.Equal(t, RowKindComment, rows[cursor].kind)
+	assert.Equal(t, 3, rows[cursor].commentLineNum)
+
+	// No more comments — should stay put
+	prevCursor := m.cursorLine()
+	m.goToPrevComment()
+	assert.Equal(t, prevCursor, m.cursorLine(), "should not wrap")
+}
+
+func TestCommentNavigation_SpaceSequence(t *testing.T) {
+	m := makeCommentableTestModel(10)
+
+	// Add a comment on line 5
+	m.comments[commentKey{fileIndex: 0, newLineNum: 5}] = &comments.Comment{Text: "Test comment"}
+	m.w().rowsCacheValid = false
+	m.calculateTotalLines()
+	m.w().scroll = 0
+
+	// Simulate pressing space, c, j
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	m = newM.(Model)
+	assert.Equal(t, "space", m.pendingKey)
+
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	m = newM.(Model)
+	assert.Equal(t, "space c", m.pendingKey)
+
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = newM.(Model)
+	assert.Equal(t, "", m.pendingKey)
+
+	// Should have moved to the comment
+	rows := m.getRows()
+	cursor := m.cursorLine()
+	assert.Equal(t, RowKindComment, rows[cursor].kind)
+	assert.Equal(t, 5, rows[cursor].commentLineNum)
+}
+
+func TestGoToNextComment_FoldedFile(t *testing.T) {
+	m := makeCommentableTestModel(10)
+
+	// Add a comment and fold the file to header-only
+	m.comments[commentKey{fileIndex: 0, newLineNum: 5}] = &comments.Comment{Text: "Hidden comment"}
+	m.setFileFoldLevel(0, sidebyside.FoldHeader)
+	m.w().rowsCacheValid = false
+	m.calculateTotalLines()
+	m.w().scroll = 0
+
+	// Navigate should unfold the file and land on the comment
+	m.goToNextComment()
+	rows := m.getRows()
+	cursor := m.cursorLine()
+	assert.Equal(t, RowKindComment, rows[cursor].kind)
+	assert.Equal(t, 5, rows[cursor].commentLineNum)
+	// File should now be unfolded to hunks
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
+}
+
+func TestGoToNextComment_NoComments(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+	m.w().scroll = 0
+	prevScroll := m.w().scroll
+
+	// Should be a no-op when no comments exist
+	m.goToNextComment()
+	assert.Equal(t, prevScroll, m.w().scroll, "scroll should not change")
+
+	m.goToPrevComment()
+	assert.Equal(t, prevScroll, m.w().scroll, "scroll should not change")
+}

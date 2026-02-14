@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -418,8 +420,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Check for prefix keys that start multi-key sequences
-	if m.keys.prefixSet[msg.String()] {
-		m.pendingKey = msg.String()
+	if token := keyToken(msg); m.keys.prefixSet[token] {
+		m.pendingKey = token
 		return m, nil
 	}
 
@@ -1391,12 +1393,22 @@ func (m Model) handleSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handlePendingKey handles the second key of a multi-key sequence.
-// This replaces the per-prefix handlers (handlePendingG, handlePendingCtrlW)
-// with a single generic handler that uses matchesSequence.
+// handlePendingKey handles the next key in a multi-key sequence.
+// Accumulates keys: if the accumulated sequence is still a prefix of a
+// longer binding, it stays pending. Otherwise it tries to match a
+// complete binding or cancels.
 func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	accumulated := m.pendingKey + " " + keyToken(msg)
+
+	// If the accumulated sequence is still a prefix, stay pending
+	if m.keys.prefixSet[accumulated] {
+		m.pendingKey = accumulated
+		return m, nil
+	}
+
+	// Not a prefix — try to dispatch as a complete binding
 	prefix := m.pendingKey
-	m.pendingKey = "" // Always clear pending state
+	m.pendingKey = "" // Clear pending state
 
 	keys := m.keys
 
@@ -1431,6 +1443,16 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if matchesSequence(prefix, msg, keys.PrevHeading) {
 		m.goToPrevHeading()
+		m.resetSearchMatchForRow()
+		return m, nil
+	}
+	if matchesSequence(prefix, msg, keys.NextComment) {
+		m.goToNextComment()
+		m.resetSearchMatchForRow()
+		return m, nil
+	}
+	if matchesSequence(prefix, msg, keys.PrevComment) {
+		m.goToPrevComment()
 		m.resetSearchMatchForRow()
 		return m, nil
 	}
@@ -1726,6 +1748,232 @@ func (m *Model) goToPrevHeading() {
 
 	for i := cursorPos - 1; i >= 0; i-- {
 		if isNavigationTarget(rows, i) {
+			m.adjustScrollToRow(i)
+			return
+		}
+	}
+}
+
+// goToNextComment moves the cursor to the next comment, even if the
+// containing file or commit is folded. Unfolds as needed. Does not wrap.
+func (m *Model) goToNextComment() {
+	target, ok := m.findNextCommentTarget(true)
+	if !ok {
+		return
+	}
+	m.navigateToComment(target)
+}
+
+// goToPrevComment moves the cursor to the previous comment, even if the
+// containing file or commit is folded. Unfolds as needed. Does not wrap.
+func (m *Model) goToPrevComment() {
+	target, ok := m.findNextCommentTarget(false)
+	if !ok {
+		return
+	}
+	m.navigateToComment(target)
+}
+
+// cursorFilePosition returns the file index and line number at the cursor.
+// For non-content rows, lineNum is 0. For commit headers, fileIndex is
+// the first file in the commit (or -1 if no files).
+func (m *Model) cursorFilePosition() (fileIndex, lineNum int) {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return -1, 0
+	}
+	row := rows[cursorPos]
+	fi := row.fileIndex
+	ln := 0
+	if row.kind == RowKindContent {
+		ln = row.pair.New.Num
+	} else if row.kind == RowKindComment {
+		ln = row.commentLineNum
+	}
+	// For commit-level rows (fileIndex == -1), use the first file in the commit
+	if fi < 0 && row.commitIndex >= 0 && row.commitIndex < len(m.commitFileStarts) {
+		fi = m.commitFileStarts[row.commitIndex]
+	}
+	return fi, ln
+}
+
+// sortedCommentKeys returns all comment keys from m.comments sorted by
+// fileIndex then newLineNum.
+func (m *Model) sortedCommentKeys() []commentKey {
+	keys := make([]commentKey, 0, len(m.comments))
+	for k := range m.comments {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].fileIndex != keys[j].fileIndex {
+			return keys[i].fileIndex < keys[j].fileIndex
+		}
+		return keys[i].newLineNum < keys[j].newLineNum
+	})
+	return keys
+}
+
+// findNextCommentTarget finds the next (or previous) comment target,
+// checking both loaded comments (m.comments) and skeleton files
+// (m.commentIndex). Returns the target commentKey and true, or false
+// if no comment found.
+func (m *Model) findNextCommentTarget(forward bool) (commentKey, bool) {
+	curFileIdx, curLineNum := m.cursorFilePosition()
+
+	// On non-content rows (lineNum == 0), going backward means the cursor is
+	// at a structural position (header, blank, separator). Treat it as "after
+	// all content in this file" so any comment in the same file is found.
+	if !forward && curLineNum == 0 && curFileIdx >= 0 {
+		curLineNum = math.MaxInt
+	}
+
+	// Phase 1: Check loaded comments
+	sorted := m.sortedCommentKeys()
+	if forward {
+		for _, k := range sorted {
+			if k.fileIndex > curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum > curLineNum) {
+				return k, true
+			}
+		}
+	} else {
+		for i := len(sorted) - 1; i >= 0; i-- {
+			k := sorted[i]
+			if k.fileIndex < curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum < curLineNum) {
+				return k, true
+			}
+		}
+	}
+
+	// Phase 2: Check skeleton files for comments via the index
+	if m.commentIndex == nil || m.git == nil {
+		return commentKey{}, false
+	}
+
+	if forward {
+		return m.findSkeletonComment(curFileIdx, true)
+	}
+	return m.findSkeletonComment(curFileIdx, false)
+}
+
+// findSkeletonComment scans skeleton (unloaded) files for comments via
+// m.commentIndex. If found, loads the commit diff and returns the first
+// matching comment from m.comments.
+func (m *Model) findSkeletonComment(curFileIdx int, forward bool) (commentKey, bool) {
+	if forward {
+		for i := curFileIdx + 1; i < len(m.files); i++ {
+			if target, ok := m.tryLoadSkeletonForComment(i, true); ok {
+				return target, true
+			}
+		}
+	} else {
+		for i := curFileIdx - 1; i >= 0; i-- {
+			if target, ok := m.tryLoadSkeletonForComment(i, false); ok {
+				return target, true
+			}
+		}
+	}
+	return commentKey{}, false
+}
+
+// tryLoadSkeletonForComment checks if a file's path has comments in the
+// index and its commit hasn't been loaded yet. If so, loads the commit
+// diff and returns the first/last comment in the newly loaded range.
+func (m *Model) tryLoadSkeletonForComment(fileIdx int, first bool) (commentKey, bool) {
+	commitIdx := m.commitForFile(fileIdx)
+	if commitIdx < 0 || commitIdx >= len(m.commits) {
+		return commentKey{}, false
+	}
+	if m.commits[commitIdx].FilesLoaded {
+		return commentKey{}, false // Already loaded — comments already in m.comments
+	}
+
+	// Check if this file's path has comments in the index
+	f := m.files[fileIdx]
+	paths := []string{cleanFilePath(f.NewPath)}
+	if f.OldPath != "" && f.OldPath != f.NewPath {
+		paths = append(paths, cleanFilePath(f.OldPath))
+	}
+
+	hasComments := false
+	for _, path := range paths {
+		if len(m.commentIndex.Get(path)) > 0 {
+			hasComments = true
+			break
+		}
+	}
+	if !hasComments {
+		return commentKey{}, false
+	}
+
+	// Load the commit diff — this also calls matchCommentsForFiles
+	m.loadCommitDiff(commitIdx)
+
+	// Get the file range for this commit (may have changed after loading)
+	startIdx := m.commitFileStarts[commitIdx]
+	endIdx := len(m.files)
+	if commitIdx+1 < len(m.commits) {
+		endIdx = m.commitFileStarts[commitIdx+1]
+	}
+
+	// Find the first/last comment in the loaded range
+	if first {
+		for _, k := range m.sortedCommentKeys() {
+			if k.fileIndex >= startIdx && k.fileIndex < endIdx {
+				return k, true
+			}
+		}
+	} else {
+		sorted := m.sortedCommentKeys()
+		for i := len(sorted) - 1; i >= 0; i-- {
+			k := sorted[i]
+			if k.fileIndex >= startIdx && k.fileIndex < endIdx {
+				return k, true
+			}
+		}
+	}
+
+	return commentKey{}, false
+}
+
+// navigateToComment unfolds the target file/commit if needed and scrolls
+// to the comment row.
+func (m *Model) navigateToComment(key commentKey) {
+	if key.fileIndex < 0 || key.fileIndex >= len(m.files) {
+		return
+	}
+
+	// Ensure the commit is visible
+	if len(m.commits) > 0 {
+		commitIdx := m.commitForFile(key.fileIndex)
+		if commitIdx >= 0 && commitIdx < len(m.commits) {
+			// Load diff if skeleton
+			if !m.commits[commitIdx].FilesLoaded && m.git != nil {
+				m.loadCommitDiff(commitIdx)
+			}
+			// Unfold commit to at least file headers
+			if m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded {
+				m.setCommitFoldLevel(commitIdx, sidebyside.CommitFileHeaders)
+			}
+		}
+	}
+
+	// Unfold the target file to show hunks
+	if m.fileFoldLevel(key.fileIndex) != sidebyside.FoldHunks {
+		m.setFileFoldLevel(key.fileIndex, sidebyside.FoldHunks)
+	}
+
+	// Ensure content and highlighting are loaded
+	m.loadAndHighlightFileSync(key.fileIndex)
+
+	// Rebuild rows
+	m.calculateTotalLines()
+
+	// Find the comment row and navigate to it
+	rows := m.getRows()
+	for i, row := range rows {
+		if row.kind == RowKindComment && row.fileIndex == key.fileIndex &&
+			row.commentLineNum == key.newLineNum && row.commentRowIndex == 0 {
 			m.adjustScrollToRow(i)
 			return
 		}

@@ -125,14 +125,16 @@ func TestUpdate_PageUp(t *testing.T) {
 	assert.Equal(t, 20, model.w().scroll) // 40 - 20
 }
 
-func TestUpdate_PageDown_Space(t *testing.T) {
+func TestUpdate_Space_IsLeaderPrefix(t *testing.T) {
 	m := makeTestModel(100)
 	m.w().scroll = 0
 
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	model := newM.(Model)
 
-	assert.Equal(t, 20, model.w().scroll) // 0 + height (20)
+	// Space is now a leader prefix, not PageDown — scroll unchanged, pending set
+	assert.Equal(t, 0, model.w().scroll)
+	assert.Equal(t, "space", model.pendingKey)
 }
 
 func TestUpdate_PageDown_F(t *testing.T) {

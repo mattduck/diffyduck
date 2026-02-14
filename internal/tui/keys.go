@@ -24,6 +24,8 @@ type KeyMap struct {
 	GoToTop     []string // sequence: "g g"
 	NextHeading []string // sequence: "g j"
 	PrevHeading []string // sequence: "g k"
+	NextComment []string // sequence: "space c j"
+	PrevComment []string // sequence: "space c k"
 	NarrowNext  []string // next node while narrowed
 	NarrowPrev  []string // previous node while narrowed
 
@@ -67,7 +69,8 @@ type KeyMap struct {
 	VisualExit []string // exit visual mode: "esc", "ctrl+g"
 
 	// prefixSet is built automatically from all bindings.
-	// Contains first tokens of multi-key sequences (e.g. "g", "ctrl+w").
+	// Contains all proper prefixes of multi-key sequences.
+	// For "g j": {"g"}. For "space c j": {"space", "space c"}.
 	prefixSet map[string]bool
 }
 
@@ -77,7 +80,7 @@ func DefaultKeyMap() KeyMap {
 		Up:             []string{"up", "k"},
 		Down:           []string{"down", "j"},
 		PageUp:         []string{"pgup", "ctrl+b", "b"},
-		PageDown:       []string{"pgdown", "ctrl+f", " ", "f"},
+		PageDown:       []string{"pgdown", "ctrl+f", "f"},
 		HalfUp:         []string{"ctrl+u", "u"},
 		HalfDown:       []string{"ctrl+d", "d"},
 		Top:            []string{"home"},
@@ -87,6 +90,8 @@ func DefaultKeyMap() KeyMap {
 		GoToTop:        []string{"g g"},
 		NextHeading:    []string{"g j"},
 		PrevHeading:    []string{"g k"},
+		NextComment:    []string{"space c j"},
+		PrevComment:    []string{"space c k"},
 		NarrowNext:     []string{"ctrl+j"},
 		NarrowPrev:     []string{"ctrl+k"},
 		Quit:           []string{"q", "ctrl+c"},
@@ -148,6 +153,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.Bottom, Desc: "Go to bottom", Keys2: km.Top, Desc2: "top"},
 			{Keys: km.GoToTop, Desc: "Go to top"},
 			{Keys: km.NextHeading, Desc: "Next heading", Keys2: km.PrevHeading, Desc2: "previous"},
+			{Keys: km.NextComment, Desc: "Next comment", Keys2: km.PrevComment, Desc2: "previous"},
 			{Keys: km.NarrowNext, Desc: "Narrow next", Keys2: km.NarrowPrev, Desc2: "previous"},
 			{Keys: km.Right, Desc: "Scroll right", Keys2: km.Left, Desc2: "left"},
 		}},
@@ -215,24 +221,36 @@ func parseBinding(s string) []string {
 	return strings.Fields(s)
 }
 
-// buildPrefixSet scans all bindings and collects the first tokens of
-// multi-key sequences (bindings with 2+ tokens).
+// keyToken normalizes a tea.KeyMsg to its canonical token string.
+// The literal space key " " maps to "space" so it can appear in
+// space-separated binding strings like "space c j".
+func keyToken(msg tea.KeyMsg) string {
+	if msg.String() == " " {
+		return "space"
+	}
+	return msg.String()
+}
+
+// buildPrefixSet scans all bindings and collects ALL proper prefixes of
+// multi-key sequences. For "g j": adds "g". For "space c j": adds
+// "space" and "space c".
 func buildPrefixSet(km KeyMap) map[string]bool {
 	set := make(map[string]bool)
 	for _, keys := range allBindings(km) {
 		for _, k := range keys {
 			parts := parseBinding(k)
-			if len(parts) > 1 {
-				set[parts[0]] = true
+			// Add every proper prefix (all but the full sequence)
+			for i := 1; i < len(parts); i++ {
+				set[strings.Join(parts[:i], " ")] = true
 			}
 		}
 	}
 	return set
 }
 
-// matchesSequence checks if prefix + " " + msg.String() matches any binding in keys.
+// matchesSequence checks if prefix + " " + keyToken(msg) matches any binding in keys.
 func matchesSequence(prefix string, msg tea.KeyMsg, keys []string) bool {
-	seq := prefix + " " + msg.String()
+	seq := prefix + " " + keyToken(msg)
 	for _, k := range keys {
 		if k == seq {
 			return true
@@ -263,8 +281,13 @@ func ValidateBindings(km KeyMap) error {
 	singleKeys := make(map[string]bool)
 	for _, keys := range allBindings(km) {
 		for _, k := range keys {
-			if !strings.Contains(k, " ") {
-				singleKeys[k] = true
+			if len(parseBinding(k)) <= 1 {
+				// Normalize " " → "space" to match prefix set convention
+				token := k
+				if token == " " {
+					token = "space"
+				}
+				singleKeys[token] = true
 			}
 		}
 	}
@@ -283,6 +306,7 @@ func allBindings(km KeyMap) [][]string {
 		km.Up, km.Down, km.PageUp, km.PageDown,
 		km.HalfUp, km.HalfDown, km.Top, km.Bottom,
 		km.Left, km.Right, km.GoToTop, km.NextHeading, km.PrevHeading,
+		km.NextComment, km.PrevComment,
 		km.NarrowNext, km.NarrowPrev,
 		km.SearchForward, km.SearchBack, km.NextMatch, km.PrevMatch,
 		km.FoldToggle, km.FoldToggleAll, km.FullFileToggle,
@@ -340,6 +364,12 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		}
 		if nav.PrevHeading != nil {
 			km.PrevHeading = nav.PrevHeading
+		}
+		if nav.NextComment != nil {
+			km.NextComment = nav.NextComment
+		}
+		if nav.PrevComment != nil {
+			km.PrevComment = nav.PrevComment
 		}
 		if nav.NarrowNext != nil {
 			km.NarrowNext = nav.NarrowNext
@@ -473,6 +503,8 @@ func DefaultKeysConfig() config.KeysConfig {
 			GoToTop:     km.GoToTop,
 			NextHeading: km.NextHeading,
 			PrevHeading: km.PrevHeading,
+			NextComment: km.NextComment,
+			PrevComment: km.PrevComment,
 			NarrowNext:  km.NarrowNext,
 			NarrowPrev:  km.NarrowPrev,
 		},
