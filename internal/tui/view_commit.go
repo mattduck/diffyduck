@@ -447,22 +447,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	result := fixedPart + dynamicPart
 
-	// Trailing indicator based on commit fold level:
-	// - Folded: no trailing indicator
-	// - Unfolded: ════...● extending to screen edge (circle matches fold icon)
-	switch row.commitFoldLevel {
-	case sidebyside.CommitFolded:
-		// No trailing indicator
-	default:
-		// Unfolded commit: fill with ═ to screen edge, end with matching circle
-		resultWidth := lipgloss.Width(result)
-		fill := m.width - resultWidth - 1 - 1 // -1 for space, -1 for end cap
-		if fill > 0 {
-			result += " " + treeStyle.Render(strings.Repeat("═", fill)+foldIcon)
-		} else {
-			result += " " + treeStyle.Render(foldIcon)
-		}
-	}
+	// No trailing indicator for any fold level
 
 	return result
 }
@@ -522,12 +507,11 @@ func (m Model) renderCommitInfoHeader(row displayRow, isCursorRow bool) string {
 	result := treeLine + branchConnector + styledIcon + " " + styledHeader
 
 	// Trailing indicator: nothing when folded, corner turning down when expanded
-	greyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	if row.headerMode == HeaderSingleLine {
 		// Folded commit info: no trailing indicator
 	} else if m.width > 0 {
-		// Expanded: ━━━━┓ after content, border continues on next line
-		result += " " + greyStyle.Render("━━━━┓")
+		// Expanded: ━━━━┓ after content, yellow matching commit tree
+		result += " " + commitTreeStyle.Render("━━━━┓")
 	}
 
 	return result
@@ -567,14 +551,15 @@ func (m Model) renderCommitInfoBottomBorder(row displayRow, isCursorRow bool) st
 	spacing := strings.Repeat(" ", spacesBeforeCorner)
 
 	// Extend to screen edge with ● end cap
+	// Branch lines (┗━━━) in yellow, circle (●) stays grey
 	borderFill := m.width - cornerColumn - 1 // -1 for corner char
-	var content string
+	var styledContent string
 	if borderFill > 1 {
-		content = "┗" + strings.Repeat("━", borderFill-1) + "●"
+		styledContent = commitTreeStyle.Render("┗"+strings.Repeat("━", borderFill-1)) + greyStyle.Render("●")
 	} else if borderFill > 0 {
-		content = "┗●"
+		styledContent = commitTreeStyle.Render("┗") + greyStyle.Render("●")
 	} else {
-		content = "┗"
+		styledContent = commitTreeStyle.Render("┗")
 	}
 
 	if isCursorRow {
@@ -585,12 +570,12 @@ func (m Model) renderCommitInfoBottomBorder(row displayRow, isCursorRow bool) st
 			arrow = " "
 		}
 		if TreeLeftMargin > 0 {
-			return arrow + margin[1:] + treeCont + spacing + greyStyle.Render(content)
+			return arrow + margin[1:] + treeCont + spacing + styledContent
 		}
-		return arrow + treeCont + spacing + greyStyle.Render(content)
+		return arrow + treeCont + spacing + styledContent
 	}
 
-	return margin + treeCont + spacing + greyStyle.Render(content)
+	return margin + treeCont + spacing + styledContent
 }
 
 // renderCommitInfoBody renders a commit info body row (Author, Date, message content).
@@ -804,8 +789,8 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 	}
 	hasFiles := startIdx < endIdx
 
-	// Details level - grey style (Color 7) for subdued appearance
-	detailsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	// Details level - yellow style matching commit tree
+	detailsStyle := commitTreeStyle
 	infoExpanded := m.isCommitInfoExpanded(commitIdx)
 	detailsLevel := TreeLevel{
 		IsLast:   !hasFiles,     // details is last only if no files follow

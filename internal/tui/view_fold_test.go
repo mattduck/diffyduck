@@ -616,12 +616,12 @@ func TestCommitHeader_ExpandedShowsFullFillIcon(t *testing.T) {
 
 	require.NotEmpty(t, commitHeaderLine, "should find commit header with SHA in content area")
 
-	// Any non-folded commit shows ═══● fill to screen edge
-	assert.Contains(t, commitHeaderLine, "═",
-		"commit header at CommitFileHunks should have ═ fill")
+	// No trailing ═ fill or end cap on commit headers
+	assert.NotContains(t, commitHeaderLine, "═",
+		"commit header should not have ═ fill")
 	trimmedHeader := strings.TrimRight(commitHeaderLine, " ")
-	assert.True(t, strings.HasSuffix(trimmedHeader, "●"),
-		"commit header should end with ● end cap")
+	assert.False(t, strings.HasSuffix(trimmedHeader, "●"),
+		"commit header should not end with ● end cap")
 }
 
 func TestCommitHeader_ExpandingFileKeepsCommitFoldLevel(t *testing.T) {

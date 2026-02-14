@@ -325,12 +325,11 @@ func TestCommitHeader_FillExtendsToScreenEdge(t *testing.T) {
 
 	header := stripANSI(m.renderCommitHeaderRow(*headerRow, false))
 
-	assert.Contains(t, header, "═", "header should have ═ fill")
+	// No trailing ═ fill or end cap — commit header is just the content
+	assert.NotContains(t, header, "═", "header should not have ═ fill")
 	trimmed := strings.TrimRight(header, " ")
-	assert.True(t, strings.HasSuffix(trimmed, "◑"),
-		"header should end with ◑ end cap, got: %q", trimmed[max(0, len(trimmed)-10):])
-	assert.Equal(t, 100, displayWidth(trimmed),
-		"header fill should extend to screen width")
+	assert.False(t, strings.HasSuffix(trimmed, "◑"),
+		"header should not end with ◑ end cap")
 }
 
 // --- Width calculation tests ---
@@ -362,13 +361,12 @@ func TestCommitHeader_TruncatedSubjectFillsToEdge(t *testing.T) {
 	require.NotNil(t, headerRow, "should find commit header")
 
 	header := stripANSI(m.renderCommitHeaderRow(*headerRow, false))
-	trimmed := strings.TrimRight(header, " ")
 
-	assert.Contains(t, header, "═", "header should have ═ fill")
-	assert.True(t, strings.HasSuffix(trimmed, "◑"),
-		"header should end with ◑ end cap, got: %q", trimmed[max(0, len(trimmed)-10):])
-	assert.Equal(t, 160, displayWidth(trimmed),
-		"header fill should extend to screen width even with long subject")
+	// No trailing ═ fill or end cap — commit header is just the content
+	assert.NotContains(t, header, "═", "header should not have ═ fill")
+	trimmed := strings.TrimRight(header, " ")
+	assert.False(t, strings.HasSuffix(trimmed, "◑"),
+		"header should not end with ◑ end cap")
 }
 
 func TestFileHeaderBoxWidth_MatchesRenderedWidth(t *testing.T) {

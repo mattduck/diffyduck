@@ -262,7 +262,20 @@ func (m Model) renderCommitBorderLine(visible bool, isTop bool, isCursorRow bool
 // renderCommitHeaderTopBorder renders the top border of the commit header.
 func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) string {
 	isSnapshot := row.commitIndex < len(m.commits) && m.commits[row.commitIndex].IsSnapshot
-	return m.renderCommitBorderLine(row.headerMode == HeaderThreeLine, true, isCursorRow, row.treePath, isSnapshot)
+	result := m.renderCommitBorderLine(row.headerMode == HeaderThreeLine, true, isCursorRow, row.treePath, isSnapshot)
+
+	// When the border line is empty (no tree content), draw a horizontal
+	// divider to visually separate unfolded commits.
+	if result == "" {
+		dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
+		w := m.width
+		if w <= 0 {
+			w = 80
+		}
+		return dividerStyle.Render(strings.Repeat("═", w))
+	}
+
+	return result
 }
 
 // renderCommitHeaderBottomBorder renders the bottom border of the commit header.
