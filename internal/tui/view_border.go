@@ -266,11 +266,22 @@ func (m Model) renderCommitHeaderTopBorder(row displayRow, isCursorRow bool) str
 
 	// When the border line is empty (no tree content), draw a horizontal
 	// divider to visually separate unfolded commits.
-	if result == "" {
+	// Also check cursor rows: renderEmptyTreeRow returns a non-empty arrow
+	// even with no tree ancestors, so the divider would be skipped.
+	if result == "" || (isCursorRow && len(row.treePath.Ancestors) == 0) {
 		dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
 		w := m.width
 		if w <= 0 {
 			w = 80
+		}
+		if isCursorRow {
+			var arrow string
+			if m.focused {
+				arrow = cursorArrowStyle.Render("▌")
+			} else {
+				arrow = " "
+			}
+			return arrow + dividerStyle.Render(strings.Repeat("═", w-1))
 		}
 		return dividerStyle.Render(strings.Repeat("═", w))
 	}
