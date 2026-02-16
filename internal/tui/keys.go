@@ -26,6 +26,8 @@ type KeyMap struct {
 	PrevHeading []string // sequence: "g k"
 	NextComment []string // sequence: "space c j"
 	PrevComment []string // sequence: "space c k"
+	NextChange  []string // sequence: "space g j"
+	PrevChange  []string // sequence: "space g k"
 	NarrowNext  []string // next node while narrowed
 	NarrowPrev  []string // previous node while narrowed
 
@@ -93,6 +95,8 @@ func DefaultKeyMap() KeyMap {
 		PrevHeading:    []string{"g k"},
 		NextComment:    []string{"space c j"},
 		PrevComment:    []string{"space c k"},
+		NextChange:     []string{"space g j"},
+		PrevChange:     []string{"space g k"},
 		NarrowNext:     []string{"ctrl+j"},
 		NarrowPrev:     []string{"ctrl+k"},
 		Quit:           []string{"q"},
@@ -156,6 +160,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.GoToTop, Desc: "Go to top"},
 			{Keys: km.NextHeading, Desc: "Next heading", Keys2: km.PrevHeading, Desc2: "previous"},
 			{Keys: km.NextComment, Desc: "Next comment", Keys2: km.PrevComment, Desc2: "previous"},
+			{Keys: km.NextChange, Desc: "Next change", Keys2: km.PrevChange, Desc2: "previous"},
 			{Keys: km.NarrowNext, Desc: "Narrow next", Keys2: km.NarrowPrev, Desc2: "previous"},
 			{Keys: km.Right, Desc: "Scroll right", Keys2: km.Left, Desc2: "left"},
 		}},
@@ -309,6 +314,7 @@ func allBindings(km KeyMap) [][]string {
 		km.HalfUp, km.HalfDown, km.Top, km.Bottom,
 		km.Left, km.Right, km.GoToTop, km.NextHeading, km.PrevHeading,
 		km.NextComment, km.PrevComment,
+		km.NextChange, km.PrevChange,
 		km.NarrowNext, km.NarrowPrev,
 		km.SearchForward, km.SearchBack, km.NextMatch, km.PrevMatch,
 		km.NarrowToggle,
@@ -373,6 +379,12 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		}
 		if nav.PrevComment != nil {
 			km.PrevComment = nav.PrevComment
+		}
+		if nav.NextChange != nil {
+			km.NextChange = nav.NextChange
+		}
+		if nav.PrevChange != nil {
+			km.PrevChange = nav.PrevChange
 		}
 		if nav.NarrowNext != nil {
 			km.NarrowNext = nav.NarrowNext
@@ -513,6 +525,8 @@ func DefaultKeysConfig() config.KeysConfig {
 			PrevHeading: km.PrevHeading,
 			NextComment: km.NextComment,
 			PrevComment: km.PrevComment,
+			NextChange:  km.NextChange,
+			PrevChange:  km.PrevChange,
 			NarrowNext:  km.NarrowNext,
 			NarrowPrev:  km.NarrowPrev,
 		},

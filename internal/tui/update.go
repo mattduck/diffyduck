@@ -1471,6 +1471,16 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.resetSearchMatchForRow()
 		return m, nil
 	}
+	if matchesSequence(prefix, msg, keys.NextChange) {
+		m.goToNextChange()
+		m.resetSearchMatchForRow()
+		return m, nil
+	}
+	if matchesSequence(prefix, msg, keys.PrevChange) {
+		m.goToPrevChange()
+		m.resetSearchMatchForRow()
+		return m, nil
+	}
 	if matchesSequence(prefix, msg, keys.NarrowToggle) {
 		m.toggleNarrow()
 		return m, nil
@@ -1777,6 +1787,81 @@ func (m *Model) goToPrevHeading() {
 			return
 		}
 	}
+}
+
+// isChangedContentRow returns true if the row is a content row with
+// non-context changes (Added, Removed, or Empty on one side).
+func isChangedContentRow(row displayRow) bool {
+	if row.kind != RowKindContent {
+		return false
+	}
+	return !(row.pair.Old.Type == sidebyside.Context && row.pair.New.Type == sidebyside.Context)
+}
+
+// goToNextChange moves the cursor to the start of the next change block.
+// A change block is a contiguous run of non-context content rows.
+// If currently inside a change block, skips past it first.
+func (m *Model) goToNextChange() {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return
+	}
+
+	i := cursorPos
+	// Skip past current change block if inside one.
+	for i < len(rows) && isChangedContentRow(rows[i]) {
+		i++
+	}
+	// Skip past non-change rows to find the next block.
+	for i < len(rows) && !isChangedContentRow(rows[i]) {
+		i++
+	}
+	if i < len(rows) {
+		m.adjustScrollToRow(i)
+	}
+}
+
+// goToPrevChange moves the cursor to the start of the previous change block.
+// If inside a block but not at the start, goes to the start of the current block.
+// If at the start of a block, goes to the start of the previous one.
+func (m *Model) goToPrevChange() {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return
+	}
+
+	i := cursorPos
+	if isChangedContentRow(rows[i]) {
+		// Find start of current block.
+		blockStart := i
+		for blockStart > 0 && isChangedContentRow(rows[blockStart-1]) {
+			blockStart--
+		}
+		if blockStart < i {
+			// Inside block but not at start: go to start.
+			m.adjustScrollToRow(blockStart)
+			return
+		}
+		// At start of block: look for previous block.
+		i = blockStart - 1
+	} else {
+		i = cursorPos - 1
+	}
+
+	// Skip backwards past non-change rows.
+	for i >= 0 && !isChangedContentRow(rows[i]) {
+		i--
+	}
+	if i < 0 {
+		return
+	}
+	// Back up to the start of this block.
+	for i > 0 && isChangedContentRow(rows[i-1]) {
+		i--
+	}
+	m.adjustScrollToRow(i)
 }
 
 // goToNextComment moves the cursor to the next comment, even if the

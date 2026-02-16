@@ -103,6 +103,8 @@ func GenerateExample(defaultKeys KeysConfig) string {
 		writeKeys("prev_heading", "key sequence", nav.PrevHeading)
 		writeKeys("next_comment", "key sequence", nav.NextComment)
 		writeKeys("prev_comment", "key sequence", nav.PrevComment)
+		writeKeys("next_change", "key sequence", nav.NextChange)
+		writeKeys("prev_change", "key sequence", nav.PrevChange)
 		writeKeys("narrow_next", "next node in narrow mode", nav.NarrowNext)
 		writeKeys("narrow_prev", "previous node in narrow mode", nav.NarrowPrev)
 		b.WriteString("\n")

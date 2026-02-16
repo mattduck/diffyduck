@@ -171,6 +171,12 @@ right = ["right"]
 go_to_top = ["g g"]
 next_heading = ["g j"]
 prev_heading = ["g k"]
+next_comment = ["space c j"]
+prev_comment = ["space c k"]
+next_change = ["space g j"]
+prev_change = ["space g k"]
+narrow_next = ["ctrl+j"]
+narrow_prev = ["ctrl+k"]
 
 [keys.search]
 search_fwd = ["/"]
@@ -250,6 +256,8 @@ show_snapshots = false
 	require.NotNil(t, cfg.Keys.Navigation)
 	assert.Equal(t, []string{"up", "k"}, cfg.Keys.Navigation.Up)
 	assert.Equal(t, []string{"g g"}, cfg.Keys.Navigation.GoToTop)
+	assert.Equal(t, []string{"space g j"}, cfg.Keys.Navigation.NextChange)
+	assert.Equal(t, []string{"space g k"}, cfg.Keys.Navigation.PrevChange)
 	require.NotNil(t, cfg.Keys.Actions)
 	assert.Equal(t, []string{"V"}, cfg.Keys.Actions.Visual)
 	assert.Equal(t, []string{"ctrl+h"}, cfg.Keys.Actions.Help)

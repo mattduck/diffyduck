@@ -5511,3 +5511,152 @@ func TestFoldToggleAll_UnderBudgetFullCycle(t *testing.T) {
 	m = newM.(Model)
 	assert.Equal(t, sidebyside.CommitFolded, m.commitFoldLevel(0))
 }
+
+// makeChangeNavModel creates a model with a specific pattern of context and
+// changed lines for testing goToNextChange / goToPrevChange.
+// The pattern string uses 'c' for Context and 'x' for changed (Added) lines.
+// Example: "ccxxcxc" creates 7 lines: 2 context, 2 changed, 1 context, 1 changed, 1 context.
+func makeChangeNavModel(pattern string) Model {
+	pairs := make([]sidebyside.LinePair, len(pattern))
+	for i, ch := range pattern {
+		lt := sidebyside.Added
+		if ch == 'c' {
+			lt = sidebyside.Context
+		}
+		pairs[i] = sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i + 1, Content: "old", Type: lt},
+			New: sidebyside.Line{Num: i + 1, Content: "new", Type: lt},
+		}
+	}
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	})
+	m.width = 80
+	m.height = 40
+	return m
+}
+
+// findContentRowIndex returns the row index of the nth (0-based) content row.
+func findContentRowIndex(rows []displayRow, n int) int {
+	count := 0
+	for i, row := range rows {
+		if row.kind == RowKindContent {
+			if count == n {
+				return i
+			}
+			count++
+		}
+	}
+	return -1
+}
+
+func TestGoToNextChange_FromContext(t *testing.T) {
+	// Pattern: context, context, changed, changed, context
+	m := makeChangeNavModel("ccxxc")
+	rows := m.getRows()
+
+	// Start on first context row
+	contextRow := findContentRowIndex(rows, 0) // first content row = 'c'
+	m.adjustScrollToRow(contextRow)
+
+	m.goToNextChange()
+
+	// Should land on first changed row (index 2 in pattern)
+	expectedRow := findContentRowIndex(rows, 2)
+	assert.Equal(t, expectedRow, m.cursorLine())
+}
+
+func TestGoToNextChange_FromInsideBlock(t *testing.T) {
+	// Pattern: changed, changed, context, changed, context
+	m := makeChangeNavModel("xxcxc")
+	rows := m.getRows()
+
+	// Start on first changed row
+	changedRow := findContentRowIndex(rows, 0)
+	m.adjustScrollToRow(changedRow)
+
+	m.goToNextChange()
+
+	// Should skip block 1 and land on second block (index 3)
+	expectedRow := findContentRowIndex(rows, 3)
+	assert.Equal(t, expectedRow, m.cursorLine())
+}
+
+func TestGoToNextChange_NoMore(t *testing.T) {
+	// Pattern: context, changed, context
+	m := makeChangeNavModel("cxc")
+	rows := m.getRows()
+
+	// Start on the changed row
+	changedRow := findContentRowIndex(rows, 1)
+	m.adjustScrollToRow(changedRow)
+	beforeScroll := m.cursorLine()
+
+	m.goToNextChange()
+
+	// No next change block — cursor should not move
+	assert.Equal(t, beforeScroll, m.cursorLine())
+}
+
+func TestGoToPrevChange_FromContext(t *testing.T) {
+	// Pattern: changed, changed, context, context
+	m := makeChangeNavModel("xxcc")
+	rows := m.getRows()
+
+	// Start on last context row
+	contextRow := findContentRowIndex(rows, 3)
+	m.adjustScrollToRow(contextRow)
+
+	m.goToPrevChange()
+
+	// Should land on start of change block (index 0)
+	expectedRow := findContentRowIndex(rows, 0)
+	assert.Equal(t, expectedRow, m.cursorLine())
+}
+
+func TestGoToPrevChange_InsideBlock(t *testing.T) {
+	// Pattern: context, changed, changed, context
+	m := makeChangeNavModel("cxxc")
+	rows := m.getRows()
+
+	// Start on second changed row (inside block, not at start)
+	secondChanged := findContentRowIndex(rows, 2)
+	m.adjustScrollToRow(secondChanged)
+
+	m.goToPrevChange()
+
+	// Should go to start of current block (index 1)
+	blockStart := findContentRowIndex(rows, 1)
+	assert.Equal(t, blockStart, m.cursorLine())
+}
+
+func TestGoToPrevChange_AtBlockStart(t *testing.T) {
+	// Pattern: context, changed, changed, context
+	m := makeChangeNavModel("cxxc")
+	rows := m.getRows()
+
+	// Start at the start of the change block (index 1)
+	blockStart := findContentRowIndex(rows, 1)
+	m.adjustScrollToRow(blockStart)
+
+	m.goToPrevChange()
+
+	// No previous change block — cursor should not move
+	assert.Equal(t, blockStart, m.cursorLine())
+}
+
+func TestGoToPrevChange_FromSecondBlock(t *testing.T) {
+	// Pattern: changed, context, changed, context
+	m := makeChangeNavModel("xcxc")
+	rows := m.getRows()
+
+	// Start at second change block (index 2)
+	secondBlock := findContentRowIndex(rows, 2)
+	m.adjustScrollToRow(secondBlock)
+
+	m.goToPrevChange()
+
+	// Should go to start of first block (index 0)
+	firstBlock := findContentRowIndex(rows, 0)
+	assert.Equal(t, firstBlock, m.cursorLine())
+}

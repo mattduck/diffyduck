@@ -48,6 +48,8 @@ type NavigationKeys struct {
 	PrevHeading []string `toml:"prev_heading"` // default: ["g k"]
 	NextComment []string `toml:"next_comment"` // default: ["space c j"]
 	PrevComment []string `toml:"prev_comment"` // default: ["space c k"]
+	NextChange  []string `toml:"next_change"`  // default: ["space g j"]
+	PrevChange  []string `toml:"prev_change"`  // default: ["space g k"]
 	NarrowNext  []string `toml:"narrow_next"`  // default: ["ctrl+j"]
 	NarrowPrev  []string `toml:"narrow_prev"`  // default: ["ctrl+k"]
 }

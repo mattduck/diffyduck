@@ -26,12 +26,19 @@ func sampleDefaultKeys() KeysConfig {
 			GoToTop:     []string{"g g"},
 			NextHeading: []string{"g j"},
 			PrevHeading: []string{"g k"},
+			NextComment: []string{"space c j"},
+			PrevComment: []string{"space c k"},
+			NextChange:  []string{"space g j"},
+			PrevChange:  []string{"space g k"},
+			NarrowNext:  []string{"ctrl+j"},
+			NarrowPrev:  []string{"ctrl+k"},
 		},
 		Search: &SearchKeys{
-			SearchFwd:  []string{"/"},
-			SearchBack: []string{"?"},
-			NextMatch:  []string{"n"},
-			PrevMatch:  []string{"N"},
+			SearchFwd:    []string{"/"},
+			SearchBack:   []string{"?"},
+			NextMatch:    []string{"n"},
+			PrevMatch:    []string{"N"},
+			NarrowToggle: []string{"space n f"},
 		},
 		Folds: &FoldKeys{
 			Fold:     []string{"tab"},
@@ -140,6 +147,8 @@ func TestGenerateExample_ContainsKeyDefaults(t *testing.T) {
 	assert.Contains(t, output, `["g g"]`)
 	assert.Contains(t, output, `["ctrl+w %"]`)
 	assert.Contains(t, output, `["esc", "ctrl+g"]`)
+	assert.Contains(t, output, `["space g j"]`)
+	assert.Contains(t, output, `["space g k"]`)
 }
 
 func TestGenerateExample_ContainsThemeDefaults(t *testing.T) {

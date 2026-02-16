@@ -94,6 +94,21 @@ func TestApplyKeysConfig_SequenceBindings(t *testing.T) {
 	assert.Equal(t, []string{"z k"}, km.PrevHeading)
 }
 
+func TestApplyKeysConfig_ChangeNavigation(t *testing.T) {
+	cfg := config.KeysConfig{
+		Navigation: &config.NavigationKeys{
+			NextChange: []string{"space d j"},
+			PrevChange: []string{"space d k"},
+		},
+	}
+	km := ApplyKeysConfig(cfg)
+
+	assert.Equal(t, []string{"space d j"}, km.NextChange)
+	assert.Equal(t, []string{"space d k"}, km.PrevChange)
+	// Other nav defaults unchanged
+	assert.Equal(t, DefaultKeyMap().NextHeading, km.NextHeading)
+}
+
 func TestApplyKeysConfig_WindowBindings(t *testing.T) {
 	cfg := config.KeysConfig{
 		Window: &config.WindowKeys{

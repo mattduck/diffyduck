@@ -143,6 +143,38 @@ func TestThreeKeySequence_CancelOnInvalidKey(t *testing.T) {
 	assert.Equal(t, "", m.pendingKey, "invalid key should cancel pending state")
 }
 
+func TestDefaultKeyMap_SpaceGIsPrefix(t *testing.T) {
+	km := DefaultKeyMap()
+	assert.True(t, km.prefixSet["space g"], "space g should be in prefix set (for space g j / space g k)")
+}
+
+func TestMatchesSequence_SpaceGJ(t *testing.T) {
+	bindings := []string{"space g j"}
+	jMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}
+	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")}
+
+	assert.True(t, matchesSequence("space g", jMsg, bindings))
+	assert.False(t, matchesSequence("space g", kMsg, bindings))
+	assert.False(t, matchesSequence("space", jMsg, bindings))
+}
+
+func TestThreeKeySequence_SpaceGJ_Flow(t *testing.T) {
+	m := makeTestModel(100)
+	m.w().scroll = 0
+
+	// Press space
+	m = sendKey(m, " ")
+	assert.Equal(t, "space", m.pendingKey)
+
+	// Press g — should stay pending (intermediate prefix)
+	m = sendKey(m, "g")
+	assert.Equal(t, "space g", m.pendingKey)
+
+	// Press j — should clear pending (complete sequence)
+	m = sendKey(m, "j")
+	assert.Equal(t, "", m.pendingKey)
+}
+
 func TestTwoKeySequences_StillWork(t *testing.T) {
 	m := makeTestModel(100)
 	m.w().scroll = 5
