@@ -477,6 +477,111 @@ func TestComment_CursorFallsToContentLineOnDelete(t *testing.T) {
 		"cursor should be on the line the comment was attached to")
 }
 
+// Test: toggleResolveComment toggles resolved state from content line
+func TestComment_ResolveToggleFromContentLine(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Add a comment on line 3
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.comments[key] = &comments.Comment{Text: "Unresolved comment"}
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Position cursor on the content line (line 3)
+	rows := m.getRows()
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Num == 3 {
+			m.w().scroll = i
+			break
+		}
+	}
+
+	// Toggle resolve
+	toggled := m.toggleResolveComment()
+	require.True(t, toggled, "should toggle from content line")
+	assert.True(t, m.comments[key].Resolved, "comment should now be resolved")
+
+	// Toggle again to unresolve
+	toggled = m.toggleResolveComment()
+	require.True(t, toggled)
+	assert.False(t, m.comments[key].Resolved, "comment should now be unresolved")
+}
+
+// Test: toggleResolveComment toggles resolved state from comment row
+func TestComment_ResolveToggleFromCommentRow(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Add a comment on line 5
+	key := commentKey{fileIndex: 0, newLineNum: 5}
+	m.comments[key] = &comments.Comment{Text: "Another comment"}
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Position cursor on a comment row
+	rows := m.getRows()
+	for i, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 5 {
+			m.w().scroll = i
+			break
+		}
+	}
+
+	toggled := m.toggleResolveComment()
+	require.True(t, toggled, "should toggle from comment row")
+	assert.True(t, m.comments[key].Resolved, "comment should now be resolved")
+}
+
+// Test: toggleResolveComment returns false when no comment at cursor
+func TestComment_ResolveToggleNoComment(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Position cursor on a content line with no comment
+	rows := m.getRows()
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Num == 1 {
+			m.w().scroll = i
+			break
+		}
+	}
+
+	toggled := m.toggleResolveComment()
+	assert.False(t, toggled, "should not toggle when no comment at cursor")
+}
+
+// Test: resolved comment displays with checkbox checked
+func TestComment_ResolveToggleUpdatesDisplay(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.comments[key] = &comments.Comment{Text: "Test comment"}
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Toggle to resolved
+	rows := m.getRows()
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Num == 3 {
+			m.w().scroll = i
+			break
+		}
+	}
+	m.toggleResolveComment()
+
+	// Verify resolved flag on comment rows
+	rows = m.getRows()
+	for _, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 3 {
+			assert.True(t, r.commentResolved,
+				"comment row should show resolved after toggle")
+			break
+		}
+	}
+}
+
 // Test: submitComment should invalidate the row cache
 func TestComment_SubmitInvalidatesCache(t *testing.T) {
 	m := makeCommentableTestModel(5)

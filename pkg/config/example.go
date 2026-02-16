@@ -133,6 +133,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 		b.WriteString("[keys.actions]\n")
 		writeKeys("quit", "", a.Quit)
 		writeKeys("enter", "add/edit comment", a.Enter)
+		writeKeys("resolve_toggle", "toggle comment resolved", a.ResolveToggle)
 		writeKeys("yank", "copy item (SHA / path / comment)", a.Yank)
 		writeKeys("yank_all", "copy all comments", a.YankAll)
 		writeKeys("refresh", "recalculate layout", a.Refresh)

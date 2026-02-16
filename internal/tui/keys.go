@@ -44,6 +44,7 @@ type KeyMap struct {
 	// Actions
 	Quit           []string
 	Enter          []string // used for comment mode
+	ResolveToggle  []string // toggle comment resolved: "ctrl+c ctrl+c"
 	Yank           []string
 	YankAll        []string
 	RefreshLayout  []string // recalculate dynamic column widths
@@ -94,7 +95,7 @@ func DefaultKeyMap() KeyMap {
 		PrevComment:    []string{"space c k"},
 		NarrowNext:     []string{"ctrl+j"},
 		NarrowPrev:     []string{"ctrl+k"},
-		Quit:           []string{"q", "ctrl+c"},
+		Quit:           []string{"q"},
 		SearchForward:  []string{"/"},
 		SearchBack:     []string{"?"},
 		NextMatch:      []string{"n"},
@@ -104,6 +105,7 @@ func DefaultKeyMap() KeyMap {
 		FoldToggleAll:  []string{"shift+tab"},
 		FullFileToggle: []string{"F"},
 		Enter:          []string{"enter"},
+		ResolveToggle:  []string{"ctrl+c ctrl+c"},
 		Yank:           []string{"y"},
 		YankAll:        []string{"Y"},
 		RefreshLayout:  []string{"r"},
@@ -172,6 +174,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 		}},
 		{Name: "Actions", Bindings: []Binding{
 			{Keys: km.Enter, Desc: "Add comment"},
+			{Keys: km.ResolveToggle, Desc: "Toggle comment resolved"},
 			{Keys: km.Yank, Desc: "Copy item (SHA / path / comment)"},
 			{Keys: km.YankAll, Desc: "Copy all comments"},
 			{Keys: km.RefreshLayout, Desc: "Refresh layout"},
@@ -198,7 +201,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 		{Name: "Comment Editing", Bindings: []Binding{
 			{Keys: km.Enter, Desc: "Start editing comment"},
 			{Keys: []string{"C-j"}, Desc: "Submit comment"},
-			{Keys: []string{"C-c", "C-g", "Esc"}, Desc: "Cancel comment"},
+			{Keys: []string{"C-g", "Esc"}, Desc: "Cancel comment"},
 			{Keys: []string{"Enter"}, Desc: "Insert newline"},
 			{Keys: []string{"C-a"}, Desc: "Start of line", Keys2: []string{"C-e"}, Desc2: "end"},
 			{Keys: []string{"C-f"}, Desc: "Forward char", Keys2: []string{"C-b"}, Desc2: "backward"},
@@ -310,7 +313,7 @@ func allBindings(km KeyMap) [][]string {
 		km.SearchForward, km.SearchBack, km.NextMatch, km.PrevMatch,
 		km.NarrowToggle,
 		km.FoldToggle, km.FoldToggleAll, km.FullFileToggle,
-		km.Quit, km.Enter, km.Yank, km.YankAll,
+		km.Quit, km.Enter, km.ResolveToggle, km.Yank, km.YankAll,
 		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help,
 		km.WinSplitV, km.WinSplitH, km.WinClose,
 		km.WinFocusLeft, km.WinFocusRight, km.WinFocusUp, km.WinFocusDown,
@@ -415,6 +418,9 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		}
 		if a.Enter != nil {
 			km.Enter = a.Enter
+		}
+		if a.ResolveToggle != nil {
+			km.ResolveToggle = a.ResolveToggle
 		}
 		if a.Yank != nil {
 			km.Yank = a.Yank
@@ -525,6 +531,7 @@ func DefaultKeysConfig() config.KeysConfig {
 		Actions: &config.ActionKeys{
 			Quit:           km.Quit,
 			Enter:          km.Enter,
+			ResolveToggle:  km.ResolveToggle,
 			Yank:           km.Yank,
 			YankAll:        km.YankAll,
 			Refresh:        km.RefreshLayout,

@@ -177,6 +177,34 @@ func (m *Model) startComment() bool {
 	return true
 }
 
+// toggleResolveComment toggles the resolved state of the comment at cursor.
+// Works on content lines with comments and on comment rows.
+// Returns true if a comment was toggled.
+func (m *Model) toggleResolveComment() bool {
+	key, found := m.findCommentForCursor()
+	if !found {
+		return false
+	}
+
+	c, ok := m.comments[key]
+	if !ok {
+		return false
+	}
+
+	c.Resolved = !c.Resolved
+	c.Updated = time.Now()
+
+	// Re-persist to git store
+	if m.commentStore != nil {
+		if id, ok := m.persistedCommentIDs[key]; ok && id != "" {
+			_, _ = m.commentStore.WriteComment(c)
+		}
+	}
+
+	m.rebuildAllRowCachesPreservingCursor()
+	return true
+}
+
 // submitComment saves the comment (or deletes if empty) and exits comment mode.
 func (m *Model) submitComment() {
 	text := strings.TrimSpace(m.w().commentInput)

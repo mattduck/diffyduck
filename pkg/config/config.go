@@ -72,6 +72,7 @@ type FoldKeys struct {
 type ActionKeys struct {
 	Quit           []string `toml:"quit"`
 	Enter          []string `toml:"enter"`
+	ResolveToggle  []string `toml:"resolve_toggle"`
 	Yank           []string `toml:"yank"`
 	YankAll        []string `toml:"yank_all"`
 	Refresh        []string `toml:"refresh"`

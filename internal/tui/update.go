@@ -1511,6 +1511,12 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.windowResizeDown()
 	}
 
+	// Comment resolve toggle
+	if matchesSequence(prefix, msg, keys.ResolveToggle) {
+		m.toggleResolveComment()
+		return m, nil
+	}
+
 	// Visual exit (supports sequence bindings)
 	if matchesSequence(prefix, msg, keys.VisualExit) {
 		if m.w().visualSelection.Active {
