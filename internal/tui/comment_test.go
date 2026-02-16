@@ -361,6 +361,122 @@ func TestComment_MultipleCommentsCorrectlyPositioned(t *testing.T) {
 	assert.Contains(t, m.comments, key5, "should have comment on line 5")
 }
 
+// Test: startComment from a comment row opens that comment for editing
+func TestComment_StartFromCommentRow(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Add a comment on line 3
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.comments[key] = &comments.Comment{Text: "Existing comment"}
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Find a comment row for this comment
+	rows := m.getRows()
+	commentRowIdx := -1
+	for i, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 3 {
+			commentRowIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, commentRowIdx, "should find a comment row")
+
+	// Position cursor on the comment row
+	m.w().scroll = commentRowIdx
+
+	// Start a comment from the comment row
+	success := m.startComment()
+	require.True(t, success, "should be able to start editing from a comment row")
+
+	assert.True(t, m.w().commentMode, "should be in comment mode")
+	assert.Equal(t, key, m.w().commentKey, "should edit the correct comment")
+	assert.Equal(t, "Existing comment", m.w().commentInput, "should load existing text")
+}
+
+// Test: Cursor stays on the same comment row after editing and submitting
+func TestComment_CursorPreservedOnCommentRowAfterSubmit(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Add a comment on line 3
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.comments[key] = &comments.Comment{Text: "Original"}
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Find a content row within the comment box (not a border)
+	rows := m.getRows()
+	commentContentIdx := -1
+	for i, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 3 && r.commentLineIndex >= 0 {
+			commentContentIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, commentContentIdx, "should find comment content row")
+
+	// Position cursor on the comment content row and start editing
+	m.w().scroll = commentContentIdx
+	success := m.startComment()
+	require.True(t, success)
+
+	// Edit and submit
+	m.w().commentInput = "Updated"
+	m.submitComment()
+
+	// Cursor should still be on the same comment content row
+	rows = m.getRows()
+	cursorPos := m.cursorLine()
+	require.True(t, cursorPos >= 0 && cursorPos < len(rows))
+	assert.Equal(t, RowKindComment, rows[cursorPos].kind,
+		"cursor should still be on a comment row after submit")
+	assert.Equal(t, 3, rows[cursorPos].commentLineNum,
+		"cursor should be on the same comment")
+}
+
+// Test: When comment is deleted, cursor falls back to the content line above
+func TestComment_CursorFallsToContentLineOnDelete(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	// Add a comment on line 3
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.comments[key] = &comments.Comment{Text: "Will be deleted"}
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Find a comment row
+	rows := m.getRows()
+	commentRowIdx := -1
+	for i, r := range rows {
+		if r.kind == RowKindComment && r.commentLineNum == 3 {
+			commentRowIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, commentRowIdx, "should find a comment row")
+
+	// Position cursor on the comment row and start editing
+	m.w().scroll = commentRowIdx
+	success := m.startComment()
+	require.True(t, success)
+
+	// Delete by submitting empty
+	m.w().commentInput = ""
+	m.submitComment()
+
+	// Cursor should fall back to the content line the comment was on
+	rows = m.getRows()
+	cursorPos := m.cursorLine()
+	require.True(t, cursorPos >= 0 && cursorPos < len(rows))
+	assert.Equal(t, RowKindContent, rows[cursorPos].kind,
+		"cursor should fall back to content line after comment deletion")
+	assert.Equal(t, 3, rows[cursorPos].pair.New.Num,
+		"cursor should be on the line the comment was attached to")
+}
+
 // Test: submitComment should invalidate the row cache
 func TestComment_SubmitInvalidatesCache(t *testing.T) {
 	m := makeCommentableTestModel(5)

@@ -579,6 +579,9 @@ type cursorRowIdentity struct {
 	commitInfoBodyIndex int
 	// For structural diff rows, which row within the file's structural diff area (0-indexed)
 	structuralDiffIndex int
+	// For comment rows, identify by the line they belong to and position within the box
+	commentLineNum  int
+	commentRowIndex int
 	// For content rows, the line numbers to match
 	oldNum int
 	newNum int
@@ -662,6 +665,8 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 		commitBodyIndex:     commitBodyIndex,
 		commitInfoBodyIndex: commitInfoBodyIndex,
 		structuralDiffIndex: structuralDiffIndex,
+		commentLineNum:      row.commentLineNum,
+		commentRowIndex:     row.commentRowIndex,
 		oldNum:              row.pair.Old.Num,
 		newNum:              row.pair.New.Num,
 	}
@@ -746,8 +751,19 @@ func (m Model) findRowOrNearestAbove(identity cursorRowIdentity) int {
 		}
 	}
 
-	// No exact match - find the nearest header or separator above the original position
-	// For commit rows, find the commit header; for file rows, find the file header
+	// No exact match — for comment rows, fall back to the content line
+	// the comment was attached to (e.g. when the comment was deleted or shortened).
+	if identity.kind == RowKindComment {
+		for i, row := range rows {
+			if row.kind == RowKindContent && row.fileIndex == identity.fileIndex &&
+				row.pair.New.Num == identity.commentLineNum {
+				return i
+			}
+		}
+	}
+
+	// For other rows, find the nearest header or separator above the original position.
+	// For commit rows, find the commit header; for file rows, find the file header.
 	lastHeaderOrSep := 0
 	for i, row := range rows {
 		// For commit-related rows (fileIndex == -1), stop when we pass the target commit
@@ -818,6 +834,10 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 	case RowKindStructuralDiff:
 		// Match the specific structural diff row by index within the file
 		return row.kind == RowKindStructuralDiff && structuralDiffSeen == identity.structuralDiffIndex
+	case RowKindComment:
+		// Match by the line the comment belongs to and position within the box
+		return row.kind == RowKindComment && row.commentLineNum == identity.commentLineNum &&
+			row.commentRowIndex == identity.commentRowIndex
 	case RowKindContent:
 		// For content rows, match by line numbers
 		// Handle cases where one side might be 0 (added/removed lines)

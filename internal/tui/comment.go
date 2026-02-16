@@ -145,14 +145,21 @@ func (m *Model) startComment() bool {
 	}
 
 	row := rows[cursorRow]
-	if !m.canComment(row) {
-		return false
-	}
 
-	// Set up comment key for this line
-	m.w().commentKey = commentKey{
-		fileIndex:  row.fileIndex,
-		newLineNum: row.pair.New.Num,
+	// If cursor is on a comment row, edit that comment
+	if row.kind == RowKindComment {
+		m.w().commentKey = commentKey{
+			fileIndex:  row.fileIndex,
+			newLineNum: row.commentLineNum,
+		}
+	} else if m.canComment(row) {
+		// Set up comment key for this content line
+		m.w().commentKey = commentKey{
+			fileIndex:  row.fileIndex,
+			newLineNum: row.pair.New.Num,
+		}
+	} else {
+		return false
 	}
 
 	// Load existing comment if any
