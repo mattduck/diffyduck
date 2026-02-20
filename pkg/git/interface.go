@@ -9,6 +9,12 @@ type SnapshotInfo struct {
 	Date    string // commit date in "Jan 2 15:04" format
 }
 
+// WorktreeInfo describes a single git worktree.
+type WorktreeInfo struct {
+	Path   string // filesystem path of the worktree
+	Branch string // branch name (empty for detached HEAD)
+}
+
 // BranchInfo contains metadata about a local branch.
 type BranchInfo struct {
 	Name           string // branch name (e.g. "main", "feature/foo")
@@ -143,6 +149,13 @@ type Git interface {
 
 	// WorktreeBranches returns branch names that have associated worktrees.
 	WorktreeBranches() ([]string, error)
+
+	// WorktreeDetails returns path and branch info for all worktrees.
+	WorktreeDetails() ([]WorktreeInfo, error)
+
+	// IsWorktreeDirty returns true if the worktree at the given path has
+	// uncommitted changes (staged, unstaged, or untracked files).
+	IsWorktreeDirty(path string) (bool, error)
 
 	// Tags returns all tag names.
 	Tags() ([]string, error)

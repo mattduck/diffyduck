@@ -1324,6 +1324,44 @@ func (g *RealGit) WorktreeBranches() ([]string, error) {
 	return branches, nil
 }
 
+// WorktreeDetails returns path and branch info for all worktrees.
+func (g *RealGit) WorktreeDetails() ([]WorktreeInfo, error) {
+	cmd := g.command("worktree", "list", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var result []WorktreeInfo
+	var current WorktreeInfo
+	for _, line := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			if current.Path != "" {
+				result = append(result, current)
+			}
+			current = WorktreeInfo{Path: strings.TrimPrefix(line, "worktree ")}
+		case strings.HasPrefix(line, "branch refs/heads/"):
+			current.Branch = strings.TrimPrefix(line, "branch refs/heads/")
+		}
+	}
+	if current.Path != "" {
+		result = append(result, current)
+	}
+	return result, nil
+}
+
+// IsWorktreeDirty returns true if the worktree at the given path has
+// uncommitted changes (staged, unstaged, or untracked files).
+func (g *RealGit) IsWorktreeDirty(path string) (bool, error) {
+	wt := NewWithDir(path)
+	cmd := wt.command("status", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return false, err
+	}
+	return len(strings.TrimSpace(string(out))) > 0, nil
+}
+
 // Tags returns all tag names.
 func (g *RealGit) Tags() ([]string, error) {
 	cmd := g.command("tag", "--list")

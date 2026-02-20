@@ -22,13 +22,15 @@ const (
 )
 
 // Render formats a forest of BranchNodes as a tree-view string.
-func Render(roots []*BranchNode, verbose bool) string {
-	return RenderAt(roots, verbose, time.Now())
+// dirtyBranches marks branch names whose worktrees have uncommitted changes.
+func Render(roots []*BranchNode, verbose bool, dirtyBranches map[string]bool) string {
+	return RenderAt(roots, verbose, time.Now(), dirtyBranches)
 }
 
 // RenderAt formats a forest of BranchNodes as a tree-view string,
 // using the given time as "now" for relative date calculation.
-func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
+// dirtyBranches marks branch names whose worktrees have uncommitted changes.
+func RenderAt(roots []*BranchNode, verbose bool, now time.Time, dirtyBranches map[string]bool) string {
 	if len(roots) == 0 {
 		return ""
 	}
@@ -67,6 +69,9 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time) string {
 
 		if node.IsHead {
 			displayName = insertStarBeforeBranch(displayName, node.HeadRef)
+		}
+		if len(dirtyBranches) > 0 && !node.Virtual {
+			displayName = insertTildeForDirty(displayName, dirtyBranches)
 		}
 
 		if isRoot {
@@ -304,6 +309,28 @@ func insertStarBeforeBranch(displayName, headRef string) string {
 		}
 	}
 	return "*" + displayName
+}
+
+// insertTildeForDirty appends "~" to each branch name in a possibly
+// comma-separated display name that appears in the dirty set.
+// Handles names already prefixed with "*" (HEAD marker).
+func insertTildeForDirty(displayName string, dirty map[string]bool) string {
+	if len(dirty) == 0 {
+		return displayName
+	}
+	names := strings.Split(displayName, ", ")
+	changed := false
+	for i, name := range names {
+		clean := strings.TrimPrefix(name, "*")
+		if dirty[clean] {
+			names[i] = name + "~"
+			changed = true
+		}
+	}
+	if !changed {
+		return displayName
+	}
+	return strings.Join(names, ", ")
 }
 
 // underlineInString inserts underline ANSI codes around the first

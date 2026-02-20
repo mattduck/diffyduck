@@ -1292,6 +1292,31 @@ func filterBranchList(g git.Git, branchList []git.BranchInfo, dur time.Duration)
 	return branches.FilterBranches(branchList, since, defaultBranch, worktrees)
 }
 
+// gatherDirtyWorktrees returns branch names whose worktrees have uncommitted changes.
+func gatherDirtyWorktrees(g git.Git) map[string]bool {
+	details, err := g.WorktreeDetails()
+	if err != nil {
+		return nil
+	}
+	result := make(map[string]bool)
+	for _, wt := range details {
+		if wt.Branch == "" {
+			continue
+		}
+		dirty, err := g.IsWorktreeDirty(wt.Path)
+		if err != nil {
+			continue
+		}
+		if dirty {
+			result[wt.Branch] = true
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 // runBranches prints a tree view of local branch dependencies.
 func runBranches(verbose bool, sinceStr string) error {
 	g := git.New()
@@ -1318,11 +1343,13 @@ func runBranches(verbose bool, sinceStr string) error {
 		return nil
 	}
 
+	dirtyBranches := gatherDirtyWorktrees(g)
+
 	roots, err := branches.BuildTree(branchList, g)
 	if err != nil {
 		return fmt.Errorf("build branch tree: %w", err)
 	}
-	fmt.Print(branches.Render(roots, verbose))
+	fmt.Print(branches.Render(roots, verbose, dirtyBranches))
 	return nil
 }
 
@@ -1340,9 +1367,10 @@ func runStatus(untrackedMode string, maxSymbols int, showBranches bool) error {
 		if err == nil && len(branchList) > 0 {
 			branchList = filterBranchList(g, branchList, 30*24*time.Hour)
 			if len(branchList) > 0 {
+				dirtyBranches := gatherDirtyWorktrees(g)
 				roots, err := branches.BuildTree(branchList, g)
 				if err == nil {
-					branchTree = branches.Render(roots, false)
+					branchTree = branches.Render(roots, false, dirtyBranches)
 				}
 			}
 		}

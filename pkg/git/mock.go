@@ -25,12 +25,14 @@ type MockGit struct {
 	RepoStateDetail string // detail for RepoState (e.g. "3/5")
 
 	// Branch-related mock data
-	Branches          []BranchInfo
-	MergeBases        map[string]string // key: "a\x00b" (sorted), value: SHA
-	AheadBehinds      map[string][2]int // key: "a\x00b", value: [ahead, behind]
-	DefaultBranchVal  string            // return value for DefaultBranch
-	WorktreeBranchVal []string          // return value for WorktreeBranches
-	TagNames          []string          // return value for Tags
+	Branches           []BranchInfo
+	MergeBases         map[string]string // key: "a\x00b" (sorted), value: SHA
+	AheadBehinds       map[string][2]int // key: "a\x00b", value: [ahead, behind]
+	DefaultBranchVal   string            // return value for DefaultBranch
+	WorktreeBranchVal  []string          // return value for WorktreeBranches
+	WorktreeDetailsVal []WorktreeInfo    // return value for WorktreeDetails
+	WorktreeDirtyVal   map[string]bool   // path → dirty for IsWorktreeDirty
+	TagNames           []string          // return value for Tags
 }
 
 // Show returns the preconfigured output or error.
@@ -232,6 +234,19 @@ func (m *MockGit) DefaultBranch() (string, error) {
 // WorktreeBranches returns the preconfigured worktree branch names.
 func (m *MockGit) WorktreeBranches() ([]string, error) {
 	return m.WorktreeBranchVal, nil
+}
+
+// WorktreeDetails returns the preconfigured worktree details.
+func (m *MockGit) WorktreeDetails() ([]WorktreeInfo, error) {
+	return m.WorktreeDetailsVal, nil
+}
+
+// IsWorktreeDirty returns whether the given path is dirty per the mock config.
+func (m *MockGit) IsWorktreeDirty(path string) (bool, error) {
+	if m.WorktreeDirtyVal == nil {
+		return false, nil
+	}
+	return m.WorktreeDirtyVal[path], nil
 }
 
 // Tags returns the preconfigured tag names.

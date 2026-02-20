@@ -73,7 +73,7 @@ func TestRender_LinearChain(t *testing.T) {
 		},
 	}
 
-	got := RenderAt(roots, false, now)
+	got := RenderAt(roots, false, now, nil)
 
 	// Non-verbose: should have tree structure, counts, SHA, date — but not subject
 	assert.Contains(t, got, "main")
@@ -89,12 +89,12 @@ func TestRender_LinearChain(t *testing.T) {
 	assert.NotContains(t, got, "refactor: extract parser")
 
 	// Verbose: should include subject and author
-	verbose := RenderAt(roots, true, now)
+	verbose := RenderAt(roots, true, now, nil)
 	assert.Contains(t, verbose, "refactor: extract parser")
 }
 
 func TestRender_Empty(t *testing.T) {
-	assert.Equal(t, "", RenderAt(nil, false, time.Now()))
+	assert.Equal(t, "", RenderAt(nil, false, time.Now(), nil))
 }
 
 func TestRender_SingleBranch(t *testing.T) {
@@ -109,7 +109,7 @@ func TestRender_SingleBranch(t *testing.T) {
 		},
 	}
 
-	got := RenderAt(roots, false, now)
+	got := RenderAt(roots, false, now, nil)
 	assert.Contains(t, got, "*")
 	assert.Contains(t, got, "main")
 	assert.Contains(t, got, "a1b2c3d")
@@ -137,7 +137,7 @@ func TestRender_MultipleTrees(t *testing.T) {
 		},
 	}
 
-	got := RenderAt(roots, false, now)
+	got := RenderAt(roots, false, now, nil)
 	// Should have a blank line between trees
 	assert.Contains(t, got, "\n\n")
 	assert.Contains(t, got, "main")
@@ -190,7 +190,7 @@ func TestRender_UpstreamTracking(t *testing.T) {
 		},
 	}
 
-	got := RenderAt(roots, false, now)
+	got := RenderAt(roots, false, now, nil)
 
 	// Synced upstream shows "="
 	assert.Contains(t, got, "origin/main =")
@@ -222,7 +222,7 @@ func TestRender_MultipleUpstreams(t *testing.T) {
 		},
 	}
 
-	got := RenderAt(roots, false, now)
+	got := RenderAt(roots, false, now, nil)
 	// Each upstream is individually colored, so check them separately
 	assert.Contains(t, got, "origin/main =")
 	assert.Contains(t, got, "origin/release ↑1")
@@ -249,7 +249,7 @@ func TestRender_HeadRefUnderline(t *testing.T) {
 		},
 	}
 
-	got := RenderAt(roots, false, now)
+	got := RenderAt(roots, false, now, nil)
 	// Asterisk should be before the HEAD branch, not the first name
 	assert.Contains(t, got, "*\033[4msecond\033[24m")
 	assert.NotContains(t, got, "*main")
@@ -288,7 +288,7 @@ func TestRender_ColumnAlignment(t *testing.T) {
 		},
 	}
 
-	got := RenderAt(roots, false, now)
+	got := RenderAt(roots, false, now, nil)
 
 	// Strip ANSI escape codes for alignment checking
 	stripped := stripANSI(got)
@@ -316,6 +316,74 @@ func TestRender_ColumnAlignment(t *testing.T) {
 		assert.Equal(t, shaPositions[0], shaPositions[i],
 			"SHA column misaligned between lines %d and %d", 0, i)
 	}
+}
+
+func TestInsertTildeForDirty(t *testing.T) {
+	tests := []struct {
+		name    string
+		display string
+		dirty   map[string]bool
+		want    string
+	}{
+		{"single dirty", "main", map[string]bool{"main": true}, "main~"},
+		{"not dirty", "main", map[string]bool{"other": true}, "main"},
+		{"merged one dirty", "alpha, beta, gamma", map[string]bool{"beta": true}, "alpha, beta~, gamma"},
+		{"merged all dirty", "alpha, beta", map[string]bool{"alpha": true, "beta": true}, "alpha~, beta~"},
+		{"nil map", "main", nil, "main"},
+		{"empty map", "main", map[string]bool{}, "main"},
+		{"starred head dirty", "*main", map[string]bool{"main": true}, "*main~"},
+		{"merged starred dirty", "alpha, *beta", map[string]bool{"alpha": true, "beta": true}, "alpha~, *beta~"},
+		{"merged starred only head dirty", "alpha, *beta", map[string]bool{"beta": true}, "alpha, *beta~"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, insertTildeForDirty(tt.display, tt.dirty))
+		})
+	}
+}
+
+func TestRender_DirtyBranch(t *testing.T) {
+	now := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+	roots := []*BranchNode{
+		{
+			Name: "main",
+			SHA:  "a1b2c3d",
+			Date: now.Add(-2 * time.Hour),
+			Children: []*BranchNode{
+				{
+					Name:   "feature",
+					SHA:    "e4f5g6h",
+					Date:   now.Add(-30 * time.Minute),
+					Ahead:  3,
+					IsHead: true,
+				},
+			},
+		},
+	}
+	dirty := map[string]bool{"feature": true, "main": true}
+	got := RenderAt(roots, false, now, dirty)
+	assert.Contains(t, got, "*feature~")
+	assert.Contains(t, got, "main~")
+}
+
+func TestRender_DirtyMergedNode(t *testing.T) {
+	now := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+	roots := []*BranchNode{
+		{
+			Name:    "alpha, beta",
+			SHA:     "a1b2c3d",
+			Date:    now.Add(-1 * time.Hour),
+			IsHead:  true,
+			HeadRef: "beta",
+		},
+	}
+	dirty := map[string]bool{"alpha": true}
+	got := RenderAt(roots, false, now, dirty)
+	stripped := stripANSI(got)
+	// alpha should get ~, beta should get * but not ~
+	assert.Contains(t, stripped, "alpha~")
+	assert.Contains(t, stripped, "*beta")
+	assert.NotContains(t, stripped, "beta~")
 }
 
 func stripANSI(s string) string {
