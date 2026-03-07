@@ -1,0 +1,485 @@
+#+TITLE: Comment Persistence via Git Refs
+#+DATE: 2026-02-05
+
+* Current Status
+
+V1 implementation complete (2026-02-05). Basic functionality works:
+- Create/edit/delete comments → persisted to =refs/dfd/comments=
+- Restart dfd → comments load and appear at matched positions
+- Code moves → comments follow content via anchor-based matching
+- Code deleted → comments become orphaned (hidden but kept in storage)
+
+Known issues:
+- [X] BUG: File paths stored with =b/= prefix from diff format (e.g., =b/cmd/dfd/main.go=
+  instead of =cmd/dfd/main.go=). FIXED: =cleanFilePath()= strips prefix.
+
+* Overview
+
+Persist comments across dfd sessions using git refs, similar to how git notes works.
+Comments are stored in a tree structure under =refs/dfd/comments= and loaded on
+program startup. Comments anchor to lines via content matching, allowing them to
+survive code movement, rebases, and other history changes.
+
+* Mental Model
+
+- Comments are stored as git objects (blobs) in a tree pointed to by a single ref
+- An index blob maps file paths to comment IDs for efficient lookup
+- Each comment stores: original content + context, file path, line number, metadata
+- On load: look up comments by file path, match to current code by content
+- If content moved: comment follows the content to new line
+- If content gone: comment is orphaned (not displayed in v1)
+
+* Storage Design
+
+** Git Ref Structure
+
+Single ref pointing to a tree (like git notes):
+
+#+BEGIN_EXAMPLE
+refs/dfd/comments  ->  tree object
+                        ├── index           (blob: file path -> comment IDs)
+                        └── data/           (subtree)
+                             ├── 1705312200000  (blob: comment content)
+                             ├── 1705312300000  (blob: comment content)
+                             └── ...
+#+END_EXAMPLE
+
+Benefits:
+- Single ref, no pollution of refs namespace
+- Can read tree entries selectively (don't load all comments at once)
+- Git's tree manipulation handles complexity
+- Similar to established git notes pattern
+
+** Index Format
+
+Optimized for parsing and querying (not git-merge-friendly for now):
+
+#+BEGIN_EXAMPLE
+# File path mappings
+file:src/foo.go:1705312200000
+file:src/foo.go:1705312300000
+file:src/bar.go:1705312400000
+#+END_EXAMPLE
+
+Simple line-based format: =file:<path>:<comment-id>=
+
+** Comment Blob Format
+
+Patch format with metadata after the diff section:
+
+#+BEGIN_EXAMPLE
+--- a/src/foo.go
++++ b/src/foo.go
+@@ -10,5 +10,5 @@
+ context line above 2
+ context line above 1
++the commented line
+ context line below 1
+ context line below 2
+# COMMENT:
+# This is the actual comment text
+# which can span multiple lines
+# CREATED: 2026-01-15T10:30:00Z
+# UPDATED: 2026-01-15T11:00:00Z
+# COMMIT: abc123def456
+# BRANCH: feature-branch
+# HEAD: xyz789 (HEAD at comment creation, for pre-commit association)
+# FILE: src/foo.go
+# LINE: 12
+# ANCHOR: <hash of line content + 2 above + 2 below>
+#+END_EXAMPLE
+
+Notes:
+- All custom lines use # prefix (comment syntax in patch format)
+- Metadata comes after diff section for consistency
+- COMMENT section contains the actual comment text
+- MSG numbering not stored (generated on export)
+
+** Comment ID
+
+Unix timestamp in milliseconds: =1705312200000=
+
+Simple, unique enough (sub-second collisions unlikely for manual comments),
+sortable, human-readable as approximate time.
+
+* Anchor Mechanism
+
+** Content-Based Anchoring
+
+Primary anchor: hash of (line content + 2 lines above + 2 lines below)
+
+This approach:
+- Survives insertions/deletions elsewhere in file
+- Survives rebases (same code = same anchor)
+- Handles line movement within file
+- More granular than file-level anchoring
+
+** Lookup Flow
+
+1. User opens file =src/foo.go= in diff view
+2. Index lookup: =file:src/foo.go= -> comment IDs =[c1, c2]=
+3. Load comment =c1=: stored line content + context
+4. Search current file content for matching content
+5. Found at line 45? Display comment at line 45
+6. Not found? Comment is orphaned, don't display (v1)
+
+** Anchor Hash Verification
+
+The stored anchor hash is for verification:
+- Compute hash of current line + context at matched position
+- If matches stored anchor: high confidence match
+- If doesn't match: content may have changed, treat as orphaned
+
+* Comment States
+
+** V1: Simple Model
+
+- Comments exist or don't exist
+- No explicit state field
+- Delete comment = remove from storage
+- Orphaned comments = not displayed but kept in storage
+
+** Future States (TODO)
+
+- =active= / =archived= - toggle visibility without deletion
+- =resolved= / =unresolved= - for code review workflows
+- Per-file/per-hunk resolution (generic concept, not comment-specific)
+
+* Query Operations
+
+| Operation | Input | Lookup |
+|-----------+-------+--------|
+| Diff view load | Files in diff | Index by file path |
+| Log view load | Commit SHA | Index by file path (all files in commit) |
+| File expansion | File path | Index by file path |
+| Comment creation | File + line + content | Write to tree |
+| Comment update | Comment ID | Read blob, modify, write back |
+| Comment deletion | Comment ID | Remove from tree + index |
+
+* Views & Visibility
+
+** Diff View
+
+Show all comments that match visible files, regardless of commit association.
+Comments appear wherever their anchor content matches.
+
+** Log View
+
+Show comments relevant to each commit:
+- Primary: comments created while viewing that commit
+- Secondary: comments whose anchor matches lines in that commit
+- Future: filter by commit SHA stored in comment metadata
+
+** Branch Context
+
+Store original branch name in comment metadata for context:
+- Helps user understand where comment came from
+- "This comment was made on feature-branch"
+- V1: informational only, doesn't affect visibility
+
+* Pre-Commit Comments
+
+When user comments on uncommitted changes:
+- Store current HEAD in comment metadata
+- When loading later, if HEAD has advanced and anchor matches new commit's content,
+  the comment naturally appears on the new code
+- No explicit "association" step needed - content matching handles it
+
+* Implementation Plan
+
+** Phase 1: Storage Package [DONE]
+
+- [X] Create =pkg/comments/= package
+- [X] Implement tree reading:
+  - ReadIndex(repoPath) -> map[filePath][]commentID
+  - ReadComment(repoPath, commentID) -> Comment struct
+- [X] Implement tree writing:
+  - WriteComment(repoPath, comment) -> commentID
+  - DeleteComment(repoPath, commentID)
+  - UpdateIndex(repoPath, filePath, commentIDs)
+- [X] Low-level git operations:
+  - git mktree, git hash-object -w, git update-ref
+  - git ls-tree, git cat-file blob
+- [X] Comment struct with all metadata fields
+- [X] Parse/serialize comment blob format
+- [X] Unit tests for all components
+
+** Phase 2: Content Matching [DONE]
+
+- [X] Implement anchor hash computation:
+  - LineContext.ComputeAnchor() -> SHA-256 hash
+- [X] Implement content search:
+  - FindCommentPosition(comment, fileLines) -> MatchResult{Found, Line, Exact}
+- [X] Handle edge cases:
+  - Line at start of file (fewer context lines above)
+  - Line at end of file (fewer context lines below)
+  - Multiple matches (prefer exact anchor match, then closest to original line)
+- [X] Helper functions:
+  - ExtractContextForLine(fileLines, lineNum) -> LineContext
+  - SplitLines(content) -> []string
+- [X] Unit tests for all matching scenarios
+
+** Phase 3: Load Integration [DONE]
+
+- [X] On program start, read index (Init calls loadPersistedComments)
+- [X] For each visible file, load relevant comments
+- [X] Match comments to current line positions via content search
+- [X] Store matched positions in Model for rendering
+- [X] Handle orphaned comments (silently skip for now)
+- [X] WithCommentStore option to inject store
+- [X] cmd/dfd/main.go creates and passes store
+
+** Phase 4: Save Integration [DONE]
+
+- [X] On comment submit, persist to git tree
+- [X] Compute anchor hash from current file content
+- [X] Extract context lines (2 above, 2 below)
+- [X] Store commit SHA from current view
+- [X] Update index
+- [X] Track persisted comment IDs in persistedCommentIDs map
+
+** Phase 5: Delete Integration [DONE]
+
+- [X] On comment delete (empty submit), remove from git tree
+- [X] Update index
+- [X] Remove from persistedCommentIDs map
+
+** Phase 6: Testing [DONE]
+
+- [X] Unit tests for storage package (pkg/comments/store_test.go)
+- [X] Unit tests for content matching (pkg/comments/matcher_test.go)
+- [X] Integration tests: create comment, reload, verify position (internal/tui/comment_persist_test.go)
+- [X] Tests for line movement scenarios (TestCommentPersistenceWithLineMoved)
+- [X] Tests for orphaned comment handling (TestCommentPersistenceOrphaned)
+- [X] Tests for no-store scenario (TestCommentPersistenceNoStore)
+
+* Edge Cases
+
+** File Renamed
+
+V1: Comment orphaned (old path doesn't exist)
+TODO: Detect renames via git, search under old paths
+
+** Multiple Content Matches
+
+If same line content appears multiple times in file:
+- Use closest match to original line number
+- Or use first match
+- Document which strategy we choose
+
+** Concurrent Access
+
+Multiple dfd instances modifying comments:
+- Git ref update is atomic
+- Possible race on index updates
+- V1: accept potential conflicts (rare in practice)
+- TODO: consider locking or CAS-style updates
+
+** Refs Changed Externally
+
+User manually deletes or modifies refs:
+- Handle gracefully with error logging
+- Don't crash on missing refs or malformed data
+
+** Format Evolution
+
+Comment blob format may change during development:
+- V1: no version field, handle parse errors gracefully
+- TODO: consider adding version field if format changes significantly
+
+* Export Format (Copy-Out)
+
+Separate from storage format, optimized for human readability:
+
+#+BEGIN_EXAMPLE
+--- a/src/foo.go
++++ b/src/foo.go
+@@ -10,5 +10,5 @@
+ context line 1
+ context line 2
++the line
+# MSG 1:
+# Comment text here
+#+END_EXAMPLE
+
+Differences from storage format:
+- No metadata headers (CREATED, UPDATED, COMMIT, etc.)
+- MSG numbering added (MSG 1, MSG 2, etc.)
+- Multiple comments combined into single output
+- Designed for pasting into PR reviews, etc.
+
+* Future Enhancements (TODO)
+
+** Bugs Fixed
+- [X] Strip =a/= and =b/= prefix from file paths when storing/loading comments.
+  Fixed via =cleanFilePath()= in =comment_persist.go=.
+
+** Feature Enhancements
+- [ ] Orphaned comments UI: show indication, expandable section per file/commit
+- [ ] File rename detection: search under old paths
+- [ ] Remote fetch/merge support for refs (collaboration)
+- [ ] State filtering: show/hide by state (active/archived/resolved)
+- [ ] Commit association refinement: better pre-commit -> committed matching
+- [ ] Performance: lazy comment loading per-file as expanded
+- [ ] Index optimization: secondary indices for other query patterns
+
+* Q&A Log
+
+** Identity & Anchoring
+
+Q1: How should we uniquely identify what a comment is attached to?
+
+A: Content-based anchoring using hash of (line content + 2 lines above + 2 lines
+below). This is resilient to insertions elsewhere and survives rebases. Also store
+file path + line number at creation time for context.
+
+Q2: For ref naming (refs/dfd/comments/$some_stuff), what should $some_stuff be?
+
+A: Single ref pointing to a tree (like git notes). Comment IDs are timestamp-based.
+Readable, includes implicit ordering.
+
+** Scope & Visibility
+
+Q3: When running dfd on different commit ranges, should comments show on any line
+that matches (global) or only for specific commits?
+
+A: Global visibility - show comments wherever anchor matches. Don't use strict commit
+SHA matching as rebases would break it. Store commit SHA as metadata for context, not
+for filtering.
+
+Q4: Should same comments appear in both diff view and log view?
+
+A: Yes, show everywhere they match. Future: add toggles for filtering approaches.
+In log view, primarily want comments for that commit, but handle rebases and
+pre-commit scenarios gracefully.
+
+** Lifecycle
+
+Q5: When should comments be garbage collected?
+
+A: Never (for now). Manual deletion only.
+
+Q6: Should there be resolved/archived states?
+
+A: Future work. V1 has no explicit states - comments either exist or don't.
+Resolution may come later as a generic concept for files/hunks/comments.
+
+** Edge Cases
+
+Q7: Same line content appears multiple times - which gets the comment?
+
+A: If we can't reliably match, treat as "content changed" state (orphaned). Don't
+display, but keep in storage for future recovery.
+
+Q8: Should comments track creation commit?
+
+A: Yes. Store commit SHA, branch name, HEAD at creation, timestamps. Helps with
+pre-commit association and provides context for where comment originated.
+
+** Storage Format
+
+Q9: How many context lines for anchor?
+
+A: Line content + 2 lines above + 2 lines below. Similar to git blame's approach
+but with content hashing.
+
+Q10: What happens to orphaned comments?
+
+A: V1: Don't show, keep in storage. Future: Show indication with expandable section
+per file or commit.
+
+Q11: For pre-commit comments, when to associate with new commit?
+
+A: Don't explicitly re-associate. Content matching handles it naturally - if anchor
+matches new commit's content, comment appears there.
+
+Q12: Should comments be branch-specific?
+
+A: Store original branch for context, but show comments everywhere they match.
+
+Q13: Storage format schema?
+
+A: Patch format with # KEY: VALUE metadata after diff section. Two representations:
+storage (full metadata) and copy-out (human-friendly, no metadata).
+
+** Git Implementation
+
+Q14: How many comments expected?
+
+A: Up to a couple hundred for a big PR. Load in batches, possibly with limits for
+huge commit ranges.
+
+Q15: Load pattern?
+
+A: Options: batch alongside file structure, separate load operations per commit/file,
+or hybrid with fast stuff automatic and slower stuff on-demand. Start simple, optimize
+if needed.
+
+Q16: Refs changeable externally?
+
+A: Yes, handle gracefully with error handling. Don't crash.
+
+Q17: Is copy-out pasteable back in?
+
+A: No, export-only for V1.
+
+** Git Notes Comparison
+
+Q18-21: How does git notes work?
+
+A: Git notes uses ONE ref pointing to a tree. Tree entries are named by commit SHA,
+containing note blobs. This avoids ref pollution. We use same approach: single ref,
+tree structure, selective reading.
+
+** Index Design
+
+Q22: Index format - text, JSON, other?
+
+A: Whatever is best for efficient parsing/querying. Don't worry about merge
+friendliness for now. TODO: future support for remote fetch/merge.
+
+Q23: Comment IDs?
+
+A: Unix timestamp in milliseconds. Simple, unique enough.
+
+Q24: New package?
+
+A: Yes, =pkg/comments/= exposing key functionality.
+
+Q25: Async position updates visible to user?
+
+A: Silent. May not even need startup async work - content matching at read time
+may be sufficient.
+
+Q26: Initial states?
+
+A: None for V1. Just show all comments, delete to remove.
+
+** Tree Mechanics
+
+Q27: Single-ref-with-tree approach?
+
+A: Yes, mirrors git notes, avoids ref pollution.
+
+Q28: With anchor hash, how do we decide what hashes to compute?
+
+A: Don't use anchor hash for lookup. Use file path for lookup (index maps file path
+to comment IDs). Anchor hash is for verification after content matching.
+
+Q29: Index by file path?
+
+A: Yes, primary lookup key. Avoids computing hashes for every line.
+
+Q30: Flow confirmation?
+
+A: File path for lookup, content matching for positioning, anchor hash for verification.
+
+Q31: Renamed files?
+
+A: Future TODO - detect renames and search under old paths.
+
+Q32: What are trees used for in git?
+
+A: Fundamental to git - every commit points to a tree (directory structure). Git
+notes cleverly points a ref directly at a tree to use it as key-value storage.
+We do the same.

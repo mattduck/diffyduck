@@ -1,0 +1,236 @@
+* CLI Argument Restructuring
+
+** Problem
+
+DFD currently strips a few known flags (--debug, --all, --unstaged, etc.) and
+passes everything else verbatim to git. This causes several problems:
+
+1. Users can pass flags (--stat, --name-only, --raw, --color) that corrupt DFD's
+   diff parser
+2. The isPath/isFlag heuristics are fragile — =main.go= looks like a path but
+   could be a ref
+3. =--all= in git diff means something different than DFD's =--all=
+4. File excludes in git require obscure =':!pattern'= pathspec magic
+5. Log mode doesn't accept any args at all (ref ranges, -n count are ignored)
+6. Unknown flags silently pass through with no error
+
+** Design: Explicit DFD Flags, No Passthrough
+
+All arguments are parsed by DFD. Unknown flags produce an error. DFD translates
+its own flags into the appropriate git arguments internally.
+
+** Flag Specification
+
+*** Global Flags (all commands)
+
+| Flag               | Description                 |
+|--------------------+-----------------------------|
+| =--debug=          | Enable debug mode           |
+| =--cpuprofile=<p>= | Write CPU profile to =<p>=  |
+
+*** =dfd diff= Flags
+
+| Flag                  | Short | Description                                  |
+|-----------------------+-------+----------------------------------------------|
+| =--cached= / =--staged= |       | Diff HEAD vs index (same semantics as git)   |
+| =--all=               | =-a=  | Include untracked files                      |
+| =--unstaged=          |       | Index vs working tree (old default behavior) |
+| =--exclude=<glob>=    | =-e=  | Exclude files matching glob (repeatable)     |
+| =--snapshots=         |       | Force enable snapshots                       |
+| =--no-snapshots=      |       | Disable snapshot persistence                 |
+
+Positional args:
+- Before =--=: 0-2 refs (branches, commits, tags, ranges)
+- After =--=: file paths (glob patterns supported)
+
+Examples:
+#+begin_example
+dfd diff                              # HEAD vs working tree (current default)
+dfd diff --cached                     # HEAD vs index
+dfd diff main feature                 # compare two refs
+dfd diff main -- '*.go'               # diff main vs working tree, only .go files
+dfd diff -e 'vendor/**' -e '*.test.ts'  # exclude patterns
+dfd diff --all                        # include untracked files
+#+end_example
+
+*** =dfd show= Flags
+
+| Flag               | Short | Description                              |
+|--------------------+-------+------------------------------------------|
+| =--exclude=<glob>= | =-e=  | Exclude files matching glob (repeatable) |
+
+Positional args:
+- Before =--=: 0-1 ref (defaults to HEAD)
+- After =--=: file paths (glob patterns supported)
+
+Examples:
+#+begin_example
+dfd show                    # show HEAD
+dfd show abc123             # show specific commit
+dfd show HEAD -- src/       # show HEAD, only src/ files
+dfd show -e '*.md' HEAD     # show HEAD, exclude markdown
+#+end_example
+
+*** =dfd log= Flags
+
+| Flag               | Short | Description                              |
+|--------------------+-------+------------------------------------------|
+| =-n <count>=       |       | Limit number of commits                  |
+| =--exclude=<glob>= | =-e=  | Exclude files matching glob (repeatable) |
+
+Positional args:
+- Before =--=: 0-1 ref range (e.g., =main..feature=, =HEAD~5..=)
+- After =--=: file paths (glob patterns supported)
+
+Examples:
+#+begin_example
+dfd log                         # log of current branch
+dfd log -n 20                   # last 20 commits
+dfd log main..feature           # commits in feature not in main
+dfd log -- src/                 # log filtered to src/ directory
+dfd log -n 10 -e 'vendor/**'   # last 10 commits, exclude vendor
+#+end_example
+
+*** =dfd pager= / =dfd clean=
+
+No changes needed. Pager reads from stdin, clean takes no args.
+
+** How Excludes/Includes Are Translated to Git
+
+*** Includes (file paths after --)
+Passed directly to git as pathspec arguments after =--=.
+Globs work natively with git pathspec.
+
+#+begin_example
+dfd diff main -- '*.go' src/
+→ git diff -U8 HEAD main -- '*.go' src/
+#+end_example
+
+*** Excludes (--exclude / -e)
+Translated to git pathspec magic exclude syntax.
+
+#+begin_example
+dfd diff -e 'vendor/**' -e '*.test.ts'
+→ git diff -U8 HEAD -- ':!vendor/**' ':!*.test.ts'
+#+end_example
+
+*** Combined includes + excludes
+Both get combined into the pathspec portion of the git command.
+
+#+begin_example
+dfd diff -e 'vendor/**' -- src/ '*.go'
+→ git diff -U8 HEAD -- src/ '*.go' ':!vendor/**'
+#+end_example
+
+*** --all mode
+Excludes also filter the untracked file list from =git ls-files=. DFD applies
+glob matching on the untracked file paths before generating diffs.
+
+** Ref/Path Disambiguation
+
+We keep git's =--= convention:
+- Everything before =--= that isn't a recognized flag is treated as a ref
+- Everything after =--= is treated as a file path
+- If there's no =--=, all non-flag args are treated as refs
+
+This eliminates the fragile =isPath()= heuristic entirely.
+
+** Error Handling
+
+- Unknown flag → error with message: =unknown flag: --foo (run dfd --help for usage)=
+- Too many refs → error: =too many arguments: diff accepts at most 2 refs=
+- Invalid combinations → error: e.g., =--cached and --unstaged cannot be used together=
+
+** What This Replaces
+
+Current ad-hoc extraction functions that get deleted:
+- =extractDebugFlag()=
+- =extractAllFlag()=
+- =extractCPUProfileFlag()=
+- =extractUnstagedFlag()=
+- =extractSnapshotsFlag()=
+- =isFlag()= / =isPath()= heuristics
+- The =gitArgs []string= field in =parsedArgs= (replaced by structured fields)
+
+** New =parsedArgs= Structure
+
+#+begin_src go
+type parsedArgs struct {
+    cmd       string   // "diff", "show", "log", "pager", "clean"
+    refs      []string // 0-2 refs for diff, 0-1 for show/log (or range)
+    paths     []string // file paths (after --)
+    excludes  []string // exclude glob patterns
+
+    // diff-specific
+    cached    bool     // --cached/--staged
+    allMode   bool     // --all/-a
+    unstaged  bool     // --unstaged
+    snapshots *bool    // nil=default, true=--snapshots, false=--no-snapshots
+
+    // log-specific
+    count     int      // -n <count>, 0 = unlimited
+
+    // global
+    debug     bool
+    cpuProfile string
+}
+#+end_src
+
+** Impact on =pkg/git= Interface
+
+The =Diff()= and =Show()= methods currently accept =args ...string=. We have two
+options:
+
+1. Keep the =...string= interface — =cmd/dfd= constructs the git args from the
+   parsed struct
+2. Change the interface to accept structured args
+
+Option 1 is simpler and keeps the change localized to =cmd/dfd=. The git package
+doesn't need to know about DFD's flag semantics — it just runs commands. The
+translation from DFD flags to git args happens in =cmd/dfd= at the boundary.
+
+** Implementation Notes
+
+- No new dependencies needed — the flag set is small enough for manual parsing
+- Parsing can be done in a single pass: scan for flags, collect refs, split on --
+- The -e flag needs to handle both =-e <arg>= (space-separated) and =-e<arg>=
+  (attached) forms; likewise =--exclude=<arg>= and =--exclude <arg>=
+- For --exclude with globs, the shell will expand unquoted globs before DFD sees
+  them. Users need to quote: =-e '*.go'=. This is standard behavior.
+
+** Snapshots and File Filters
+
+Filters (paths, excludes) are a *view concern*, not a *storage concern*.
+
+*** Taking snapshots (CreateSnapshot)
+Always captures the full working tree. No path/exclude filters are applied.
+The snapshot is a complete point-in-time record regardless of which files the
+user is currently viewing.
+
+*** Viewing snapshot history (DiffSnapshots)
+Path filters and excludes are passed through to the =git diff= calls that
+reconstruct historical diffs between snapshots. So if the user runs:
+
+#+begin_example
+dfd diff -e 'vendor/**' -- src/
+#+end_example
+
+Then the current diff *and* all historical snapshot diffs (S0→S1, S1→S2, etc.)
+are filtered the same way. The git commands become:
+
+#+begin_example
+# Current diff (last snapshot → working tree)
+git diff -U8 <snapshot-sha> -- src/ ':!vendor/**'
+
+# Historical snapshot diffs
+git diff -U8 <sha-old> <sha-new> -- src/ ':!vendor/**'
+#+end_example
+
+This means you can change your view filters between sessions and see a different
+slice of the same complete snapshots.
+
+** Open Questions
+
+- Should we add =--help= / =-h= per subcommand? Currently there's no usage output.
+- Do we want =-n= for log to also accept =--count= or =-<number>= (like git's
+  =-3= shorthand)?

@@ -1,0 +1,164 @@
+* Progressive Loading for Log Mode
+
+** Overview
+
+Load data incrementally to minimize startup time and memory usage.
+Two orthogonal dimensions:
+
+1. *Progressive loading* - controls HOW MUCH detail loads for each item
+2. *Pagination* - gates WHAT items load at all
+
+** Current State (as of 2026-01-25)
+
+Implemented:
+- Phase 1 DONE: Fast startup using =--name-only=, stats load async
+- Phase 2 DONE: Pagination with scroll-triggered loading
+  - Initial batch: 100 commits (configurable via DefaultCommitBatchSize)
+  - Scroll threshold: 20 rows from end triggers next batch load
+  - G key: first press jumps to end + shows message, double-G loads all
+  - Total commit count fetched async on startup
+- Full diff loads on-demand when commit is unfolded
+- File content loads on-demand when file is expanded
+
+Original problem (solved):
+- =git log --numstat -n500= takes ~750ms (computing stats requires diffing)
+- =git log --name-only -n500= takes ~48ms (just file paths, no stats)
+- =git log -n500= takes ~31ms (metadata only)
+
+** Progressive Loading Stages
+
+*** Commit Stages
+
+| Stage | Data | Source | When |
+|-------|------|--------|------|
+| 1 | Metadata + file paths | =git log --name-only= | Sync on startup (~48ms) |
+| 2 | Per-file stats | =git log --numstat= or from diff | Async background |
+| 3 | Full diff (hunks/LinePairs) | =git show -p <sha>= | On unfold |
+
+Stage 1 enables: SHA, author, date, subject, file count
+Stage 2 enables: +added/-removed totals (shown in folded commit header)
+Stage 3 enables: actual diff content for viewing
+
+*** File Stages
+
+| Stage | Data | Source | When |
+|-------|------|--------|------|
+| 1 | Path only | From commit stage 1 | With commit |
+| 2 | Stats (TotalAdded/TotalRemoved) | From commit stage 2 | With commit stats |
+| 3 | Pairs (LinePair[]) | From commit stage 3 | On commit unfold |
+| 4 | Pairs highlighted | Tree-sitter | Async after unfold |
+| 5 | Full content (OldContent/NewContent) | =git show <ref>:<path>= | On file expand |
+| 6 | Content highlighted | Tree-sitter | Async after expand |
+
+** Pagination
+
+*** Concept
+
+Not all commits need data at all. Pagination gates which commits enter
+the progressive loading pipeline.
+
+| Zone | Commits | Loading |
+|------|---------|---------|
+| Loaded | 0 to N-1 | Full progressive loading |
+| Stub | N to end | Just position markers, no data |
+
+*** Behavior
+
+- Initial load: First N commits (e.g., 100) go through stages 1-2
+- Scroll near end: Load next batch, start their async stage 2
+- Unfold any loaded commit: Load stage 3 for that commit
+- Unfold a stub: Load it first (becomes loaded), then unfold
+
+*** Scroll-triggered Loading
+
+When cursor approaches the pagination boundary:
+#+begin_src
+if cursorRow > (lastLoadedCommitRow - bufferRows):
+    loadNextBatch()
+#+end_src
+
+** Implementation Phases
+
+*** Phase 1: Fast Startup with Async Stats
+
+Change stage 1 from =--numstat= to =--name-only=:
+
+1. Startup uses =git log --name-only= (~48ms for 500 commits)
+2. UI renders immediately with file counts, "..." for stats
+3. Background goroutine fetches stats (=--numstat= or per-commit)
+4. UI updates as stats arrive
+
+*UI Changes:*
+- Folded commit shows: =◯ abc1234 [3 files] ... 2d ago author Subject=
+- Stats column shows "..." until stage 2 completes
+- When stats load: =◯ abc1234 [3 files] +45 -12 2d ago author Subject=
+
+*Code Changes:*
+- Add =LogPathsOnly()= to pkg/git/git.go (parses =--name-only= output)
+- Modify =runLogMode()= to use =LogPathsOnly()= + async stats fetch
+- Add =CommitStatsLoadedMsg= message type
+- Update =renderCommitHeaderRow()= to show "..." when stats missing
+
+*** Phase 2: Pagination
+
+Add commit pagination to limit initial data:
+
+1. Only load first N commits through progressive loading
+2. Commits beyond N are stubs (index only, no data)
+3. Load more batches as user scrolls
+
+*Data Structures:*
+#+begin_src go
+type Model struct {
+    // Loaded commits with full data
+    commits []sidebyside.CommitSet
+
+    // Total commit count (including unloaded)
+    totalCommitCount int
+
+    // How many are currently loaded
+    loadedCommitCount int
+}
+#+end_src
+
+*Code Changes:*
+- Modify =LogPathsOnly()= to accept offset/limit or use =--skip=
+- Add scroll-triggered loading in =handleScroll()=
+- Handle loading indicator for "loading more commits..."
+
+*** Phase 3: Background Prefetch (Optional)
+
+While idle, prefetch data for nearby commits:
+- Stats for visible folded commits
+- Diffs for commits near cursor
+
+Low priority, cancellable if user scrolls away.
+
+** Related Files
+
+| File | Role |
+|------|------|
+| pkg/git/git.go | Git commands (LogPathsOnly, LogMetaOnly, etc.) |
+| pkg/git/interface.go | Git interface |
+| cmd/diffyduck/main.go | Startup loading orchestration |
+| internal/tui/model.go | Model state, loading flags |
+| internal/tui/update.go | Message handling, async loading triggers |
+| internal/tui/view.go | Rendering with loading states |
+| pkg/sidebyside/types.go | CommitSet, FilePair with loading flags |
+
+** Performance Targets
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| Time to first render | ~800ms | <100ms |
+| Time to full stats | ~800ms | ~800ms (but async) |
+| Memory (500 commits) | All upfront | Progressive |
+
+** Testing Notes
+
+- Test folded commit display with missing stats
+- Test stats appearing async (no visual glitch)
+- Test unfold before stats loaded → should still work
+- Test pagination boundary scrolling
+- Test jump to end (G) with pagination
+

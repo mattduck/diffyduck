@@ -1,0 +1,114 @@
+#+TITLE: Inline Comments Feature
+#+DATE: 2026-01-23
+
+* MVP [DONE]
+
+** Scope
+- [X] Comments on add/delete/changed lines on the NEW side only (left column)
+- [X] One comment per line
+- [X] Comments are ephemeral (lost on exit)
+- [X] Comment editing happens at bottom of screen (multi-line prompt)
+- [X] Box border around inline comments
+
+** UX Flow
+1. [X] User presses Enter on a commentable line
+2. [X] Status bar area becomes a multi-line text input prompt
+3. [X] User types comment (multi-line supported via Enter for newlines)
+4. [X] Submit: C-j
+5. [X] Cancel: C-c or C-g
+6. [X] Edit existing: Press Enter on line with comment to edit it
+7. [X] Delete: Remove all text and submit
+
+** Keybindings in Comment Mode
+- [X] Normal typing: Insert characters
+- [X] Enter: Insert newline
+- [X] C-j: Submit comment
+- [X] C-a: Beginning of line
+- [X] C-e: End of line
+- [X] C-f / Right: Forward char
+- [X] C-b / Left: Backward char
+- [X] C-p / Up: Move up one line
+- [X] C-n / Down: Move down one line
+- [X] C-k: Kill to end of line
+- [X] C-u: Kill to beginning of line
+- [X] C-v: Paste from clipboard
+- [X] C-c / C-g: Cancel comment
+- [X] Backspace: Delete backward
+- [X] Delete: Delete forward
+- [X] Space: Insert space
+
+** Display
+- [X] Comment appears inline in the diff, under the commented line
+- [X] Spans only the new/left side (right side shows shading)
+- [X] Has a visible box border (┌─┐ │ │ └─┘)
+- [X] Bright white text and borders (fg=15)
+- [X] When file is folded, comments are hidden (no indicator for MVP)
+
+* Next Actions
+
+** Cursor Integration
+- [X] Cursor should track through comment rows when scrolling
+- [X] Comment rows should count as belonging to the line above for file position
+- [X] Line caches may need refreshing on comment submit
+- [X] Tests for cursor behavior with comments
+
+*** Additional Tests to Add
+- [X] Resize preserves cursor on comment row
+- [X] Fold toggle with comments: cursor on comment row when file folds
+- [X] Comments in expanded view vs normal view
+- [X] Multiple files with comments - navigation between them
+- [X] Comment on line near hunk boundary
+- [X] Very long comment (wrapping behavior, box width)
+- [X] Unicode characters in comments
+- [X] Breadcrumb shows correctly when cursor on comment row
+- [X] StatusInfo reports correct position with comments above cursor
+- [X] Go to top (gg) / bottom (G) with comments present
+- [X] Page up/down through comment rows
+
+** Search Integration
+- [X] Search should match text within comments
+- [X] Highlight matches in comment text
+- [X] Tests for search within comments
+
+*** Test Cases for Search
+- [X] Basic search finds text in comment content
+- [X] Search highlights match within comment box
+- [X] n/N navigation visits matches in comments
+- [X] Search match count includes comment matches
+- [X] Cursor moves to comment row when match is in comment
+- [X] Multiple matches in same comment
+- [X] Match spans comment and code (e.g., variable name in both)
+- [X] Clear search removes highlight from comments
+- [X] Case-insensitive search in comments
+
+* Future Enhancements
+
+** Navigation
+- [ ] Keybind to jump to next/previous comment (e.g., ]c / [c)
+
+** Yank (Copy to Clipboard)
+- [X] Press "y" on commented line or comment row to copy diff snippet
+- [X] Output format: unified diff with 2 lines context before, # prefixed comment
+- [X] Status message shows "Copied comment for $file" (auto-clears after 3s)
+- [X] Error message if clipboard unavailable
+- [ ] Support Linux (xclip/xsel) and Windows (clip.exe)
+
+** Persistence & Export
+- [ ] Export comments to a file (JSON, markdown, or patch notes format)
+- [ ] Export as GitHub PR review comments format
+- [ ] Save/load comment sessions
+
+** Display
+- [ ] Show indicator on folded files that have comments
+- [ ] Different styling for resolved vs unresolved comments
+- [ ] Collapse/expand individual comments
+- [ ] Render comment text as markdown (bold, italic, code blocks, etc.)
+
+** Editing
+- [ ] Use bubbles/textarea for richer editing experience
+- [X] Paste from clipboard support (C-v)
+- [ ] Undo/redo within comment
+
+** Multi-comment
+- [ ] Multiple comments per line
+- [ ] Reply threads

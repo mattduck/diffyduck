@@ -1,0 +1,94 @@
+#+TITLE: Focus Colour Mode
+#+DATE: 2026-01-24
+
+* Overview
+
+Focus colour mode dims content outside the current focus area to reduce visual clutter.
+When enabled (=focusColour = true=), content outside the focus area is stripped of
+ANSI styling and rendered with dim/faint terminal attribute.
+
+Current implementation:
+- When cursor is on content or hunk separator, dims other hunks and files
+- Nearby hunks (within 15 source lines) are included in focus
+- File headers, structural diffs, and all hunk separators in current file stay visible
+- Uses predicate-based approach for extensibility
+
+* Follow-up Tasks
+
+** TODO Support cursor on file header
+When cursor is on a file header (RowKindHeader, RowKindHeaderTopBorder, RowKindHeaderSpacer):
+- Show all file headers across all files (siblings)
+- Dim all content rows
+- This helps when navigating between files
+
+** TODO Support cursor on commit header
+When cursor is on a commit header (RowKindCommitHeader, etc.):
+- Show all commit headers (siblings)
+- Dim all file content
+- Useful in log/show view for scanning commits
+
+** TODO Support cursor on structural diff row
+When cursor is on RowKindStructuralDiff:
+- Keep all structural diff rows in file visible
+- Maybe also keep file header visible
+- Dim actual code content
+
+** TODO Support cursor on blank/inter-file rows
+When cursor is on RowKindBlank (between files):
+- Possibly show adjacent file headers
+- Or disable focus mode entirely
+
+** TODO Support cursor on comment rows
+When cursor is on RowKindComment:
+- Keep the commented line and surrounding context visible
+- Dim other hunks
+
+** TODO Add toggle keybinding
+- Add key (e.g., 'F') to toggle focusColour on/off at runtime
+- Show status message when toggled
+
+** TODO Test coverage
+Write tests for each cursor position scenario:
+- [ ] Cursor on content row (existing test)
+- [ ] Cursor on SeparatorTop (belongs to hunk above)
+- [ ] Cursor on Separator/SeparatorBottom (belongs to hunk below)
+- [ ] Cursor on file header
+- [ ] Cursor on commit header
+- [ ] Cursor on structural diff
+- [ ] Cursor on blank row
+- [ ] Cursor on comment row
+- [ ] Proximity expansion with source line numbers
+- [ ] Multiple files - ensure other files are dimmed
+- [ ] Expanded file mode (no hunks, full content)
+
+** TODO Consider expanded file mode
+When file is in FoldExpanded (showing full content):
+- Currently treats whole file as one "hunk"
+- May want different behavior, e.g., dim based on viewport distance
+
+** TODO Performance verification
+- Verify ansi.Strip() cost is negligible
+- Profile with large diffs (many hunks, many files)
+- Consider caching stripped versions if needed
+
+* Implementation Notes
+
+** Key files
+- =internal/tui/model.go=: getFocusPredicate(), getHunkBounds(), expandToNearbyHunks()
+- =internal/tui/view.go=: getVisibleRows() applies dimming
+
+** Predicate pattern
+To add new cursor position support, add a case to the switch in getFocusPredicate():
+#+BEGIN_SRC go
+case RowKindHeader, RowKindHeaderTopBorder, RowKindHeaderSpacer:
+    return func(rowIdx int, row displayRow) bool {
+        // Return true for rows that should stay visible
+        return row.kind == RowKindHeader ||
+               row.kind == RowKindHeaderTopBorder ||
+               row.kind == RowKindHeaderSpacer
+    }
+#+END_SRC
+
+** Proximity threshold
+Defined as =focusProximityThreshold = 15= in model.go.
+Uses source code line numbers, not display row indices.

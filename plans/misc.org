@@ -1,0 +1,34 @@
+* Miscellaneous notes and future improvements
+
+** LATER Simplify cursor identity tracking during fold operations
+
+The current implementation in update.go tracks cursor position across fold
+changes using per-type indices: blankIndex, commitBodyIndex, structuralDiffIndex.
+Each requires separate counting logic in getCursorRowIdentity(),
+findRowOrNearestAbove(), and rowMatchesIdentity().
+
+This evolved from handling blank rows (which can appear/disappear), and the
+pattern got applied to commit body and structural diff rows.
+
+Potential simplification: use a single "row anchor" concept that tracks the
+nearest identifiable element (file header, commit header, line number) plus an
+offset. For rows that persist across fold states (like structural diff), the
+relative position within that section doesn't change, so we don't need all the
+type-specific counting.
+
+Alternatively: for content rows use line numbers (already done), for everything
+else just track "Nth row of type X in file/commit Y" as a single generic
+mechanism rather than type-specific fields.
+
+See commit 960d7e7 for the current implementation.
+
+** LATER Per-file header box width instead of global max
+
+Currently, headerBoxWidth is calculated as the max width needed across ALL files,
+so every file header and structural diff row uses the same box width. This means
+a file with a long signature pushes out the borders for files with short content.
+
+Consider calculating headerBoxWidth per-file instead, so each file's header box
+is sized to fit its own content (filename + stats + structural diff signatures).
+This would make the UI more compact when viewing multiple files with varying
+content widths.
