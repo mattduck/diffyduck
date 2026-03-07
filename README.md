@@ -1,13 +1,15 @@
+# diffyduck
+
 git side-by-side terminal diff + log + review tool.
 
-#+html: <video src="Kapture 2026-03-07 at 14.39.14.mp4" autoplay loop muted playsinline width="100%"></video>
+<video src="Kapture 2026-03-07 at 14.39.14.mp4" autoplay loop muted playsinline width="100%"></video>
 
-* Purpose and features
+## Purpose and features
 
 Diffyduck provides a git terminal diff/log view and some other miscellaneous
 tools, with the goal of making it easier for me to read and review code
 changes. I'm aiming for something faster to use than Github's PR interface, but
-more advanced than a basic git pager like [[https://github.com/dandavison/delta][delta]] (I want it to feel like a pager,
+more advanced than a basic git pager like [delta](https://github.com/dandavison/delta) (I want it to feel like a pager,
 but it's a TUI that triggers its own git commands).
 
 Beyond a usual diff view, features include:
@@ -17,23 +19,23 @@ Beyond a usual diff view, features include:
 - Fold/expand inspired by org-mode
 - Split windows to look at two different locations at once
 
-* Install
+## Install
 
 No binaries yet. It's Go but we use tree-sitter, so you'll need both Go and a C compiler.
 
-#+begin_src sh
+```sh
 make bootstrap  # Pull some required tree-sitter code
 make install  # Compile and install
-#+end_src
+```
 
-* Usage
+## Usage
 
-For the most part I'm trying to stick to git-replacement commands like ~dfd
-status~, ~dfd diff~, ~dfd log~, etc.
+For the most part I'm trying to stick to git-replacement commands like `dfd
+status`, `dfd diff`, `dfd log`, etc.
 
-Run ~dfd --help~ to see usage and help output, which once looked like this:
+Run `dfd --help` to see usage and help output, which once looked like this:
 
-#+begin_example
+```
 $ dfd --help
 dfd - terminal side-by-side diff viewer
 
@@ -58,13 +60,12 @@ Global flags:
 
 Use "dfd help <command>" for more about a command.
 Press C-h inside dfd for keybinding help.
-#+end_example
+```
 
-If you're in an interactive command, use ~ctrl+h~ to show the help view and see
+If you're in an interactive command, use `ctrl+h` to show the help view and see
 keybindings.
 
-
-* Status
+## Status
 
 Liable to change based on whatever I find useful, and has only been tested on my
 own machine and preferred tools.
@@ -73,7 +74,6 @@ It does include a config feature where you can customise settings, theme and
 keybindings, so somebody might find it useful as a starting point to customise
 or fork.
 
-
-* Code
+## Code
 
 99.9% generated, which was the only reason I could get time to do it.
