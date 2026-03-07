@@ -74,5 +74,4 @@ or fork.
 
 * Code
 
-99.9% generated, which was the only reason I could get time to do it. This
-README is slop-free though.
+99.9% generated, which was the only reason I could get time to do it.
