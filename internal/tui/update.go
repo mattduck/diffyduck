@@ -2420,10 +2420,35 @@ func (m *Model) loadCommitDiff(commitIdx int) {
 		return
 	}
 
-	// Fetch the diff for this commit, filtered by pathspec if set
-	showArgs := []string{commit.Info.SHA}
-	showArgs = append(showArgs, m.logPathspec...)
-	diffStr, err := m.git.Show(showArgs...)
+	var diffStr string
+	var err error
+
+	if commit.Info.ParentCount >= 2 {
+		// Merge commit: git show produces combined diff (diff --cc) which
+		// our parser can't handle. Get conflict-resolution files and
+		// generate a standard unified diff against the first parent.
+		if commit.Info.ParentCount >= 3 {
+			// Octopus merge: can't display in two-pane view
+			commit.FilesLoaded = true
+			return
+		}
+		conflictFiles, cfErr := m.git.MergeConflictFiles(commit.Info.SHA)
+		if cfErr != nil || len(conflictFiles) == 0 {
+			// Clean merge or error: no conflict-resolution files
+			commit.FilesLoaded = true
+			return
+		}
+		diffArgs := []string{commit.Info.SHA + "^", commit.Info.SHA, "--"}
+		diffArgs = append(diffArgs, conflictFiles...)
+		diffArgs = append(diffArgs, m.logPathspec...)
+		diffStr, err = m.git.Diff(diffArgs...)
+	} else {
+		// Normal commit: use git show
+		showArgs := []string{commit.Info.SHA}
+		showArgs = append(showArgs, m.logPathspec...)
+		diffStr, err = m.git.Show(showArgs...)
+	}
+
 	if err != nil {
 		// On error, mark as loaded to avoid retrying
 		commit.FilesLoaded = true

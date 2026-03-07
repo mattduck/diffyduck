@@ -254,13 +254,14 @@ func ParseRefs(raw string) []Ref {
 // All fields are optional - for plain diffs without commit context,
 // this will be empty.
 type CommitInfo struct {
-	SHA     string // full commit hash (empty for plain diffs)
-	Author  string // author name
-	Email   string // author email
-	Date    string // commit date as string (format varies)
-	Subject string // first line of commit message
-	Body    string // rest of commit message (may be empty)
-	Refs    []Ref  // branch refs pointing to this commit
+	SHA         string // full commit hash (empty for plain diffs)
+	Author      string // author name
+	Email       string // author email
+	Date        string // commit date as string (format varies)
+	Subject     string // first line of commit message
+	Body        string // rest of commit message (may be empty)
+	Refs        []Ref  // branch refs pointing to this commit
+	ParentCount int    // number of parents (0=root, 1=normal, 2+=merge)
 }
 
 // ShortSHA returns the first 7 characters of the SHA, or empty if no SHA.

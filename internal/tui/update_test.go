@@ -4767,6 +4767,97 @@ func TestLoadCommitDiff_NegativeDelta_ShiftsCorrectly(t *testing.T) {
 	assert.False(t, hasOld, "old index 3 should no longer have highlight data")
 }
 
+func TestLoadCommitDiff_MergeCommit_UsesConflictFiles(t *testing.T) {
+	// For 2-parent merge commits, loadCommitDiff should call MergeConflictFiles
+	// and Diff instead of Show, to get a standard unified diff for conflict files only.
+	conflictDiff := "diff --git a/conflict.go b/conflict.go\n--- a/conflict.go\n+++ b/conflict.go\n@@ -1,3 +1,3 @@\n package main\n-var x = 1\n+var x = 2\n func main() {}\n"
+	mock := &git.MockGit{
+		DiffOutput:            conflictDiff,
+		MergeConflictFilesVal: []string{"conflict.go"},
+	}
+
+	c := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:         "merge111",
+			Author:      "Jane",
+			Subject:     "Merge branch 'feature'",
+			ParentCount: 2,
+		},
+		Files:       nil, // No skeleton files for merge commits
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: false,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{c}, WithGit(mock))
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	require.False(t, m.commits[0].FilesLoaded)
+	require.Equal(t, 0, len(m.files))
+
+	m.loadCommitDiff(0)
+
+	assert.True(t, m.commits[0].FilesLoaded)
+	require.Equal(t, 1, len(m.files), "should have 1 conflict-resolution file")
+	assert.NotEmpty(t, m.files[0].Pairs, "file should have real diff pairs")
+}
+
+func TestLoadCommitDiff_CleanMerge_NoFiles(t *testing.T) {
+	// A clean merge (no conflict resolutions) should result in no files.
+	mock := &git.MockGit{
+		MergeConflictFilesVal: nil, // No conflict files
+	}
+
+	c := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:         "merge222",
+			Author:      "Jane",
+			Subject:     "Merge branch 'feature'",
+			ParentCount: 2,
+		},
+		Files:       nil,
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: false,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{c}, WithGit(mock))
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	m.loadCommitDiff(0)
+
+	assert.True(t, m.commits[0].FilesLoaded)
+	assert.Equal(t, 0, len(m.files), "clean merge should have no files")
+}
+
+func TestLoadCommitDiff_OctopusMerge_Skipped(t *testing.T) {
+	// Octopus merges (3+ parents) should be marked as loaded immediately
+	// with no files (can't display in two-pane view).
+	c := sidebyside.CommitSet{
+		Info: sidebyside.CommitInfo{
+			SHA:         "octopus333",
+			Author:      "Jane",
+			Subject:     "Merge branches",
+			ParentCount: 3,
+		},
+		Files:       nil,
+		FoldLevel:   sidebyside.CommitFolded,
+		FilesLoaded: false,
+	}
+
+	m := NewWithCommits([]sidebyside.CommitSet{c}, WithGit(&git.MockGit{}))
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	m.loadCommitDiff(0)
+
+	assert.True(t, m.commits[0].FilesLoaded)
+	assert.Equal(t, 0, len(m.files), "octopus merge should have no files")
+}
+
 func TestFoldToggleAll_LoadsCommitDiff_WhenExpandingToStructure(t *testing.T) {
 	// Shift-tab from CommitFolded through to CommitFileStructure should
 	// trigger loadCommitDiff for unloaded commits so that subsequent

@@ -290,12 +290,20 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	// For snapshots, show SHA only if available (may arrive async from background)
 	shaText := commitInfo.ShortSHA()
+	// Merge commits with no files loaded yet: show "?" since we don't
+	// know the conflict-resolution file count until expanded.
+	mergeUnloaded := commit.Info.ParentCount >= 2 && !commit.FilesLoaded
 	filesText := "-"
 	if fileCount > 0 {
 		filesText = fmt.Sprintf("%d", fileCount)
+	} else if mergeUnloaded {
+		filesText = "?"
 	}
 	var addedText, removedText string
-	if statsLoaded {
+	if mergeUnloaded {
+		addedText = "+?"
+		removedText = "-?"
+	} else if statsLoaded {
 		addedText = fmt.Sprintf("+%d", totalAdded)
 		removedText = fmt.Sprintf("-%d", totalRemoved)
 	} else {
@@ -342,20 +350,26 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 
 	// Build the fixed part with styling
 	// For zero counts, show just +/- right-aligned (no number)
+	// For unknown counts (merge commits), show +?/-? in dim grey
 	var styledAdded, styledRemoved string
-	if totalAdded == 0 {
+	if mergeUnloaded {
+		styledAdded = dimStyle.Render(addedText)
+		styledRemoved = dimStyle.Render(removedText)
+	} else if totalAdded == 0 {
 		// Right-align just the + in dim grey (no additions)
 		padding := strings.TrimSuffix(addedText, "+0")
 		styledAdded = padding + " " + dimStyle.Render("+")
 	} else {
 		styledAdded = addedStyle.Render(addedText)
 	}
-	if totalRemoved == 0 {
-		// Right-align just the - in dim grey (no removals)
-		padding := strings.TrimSuffix(removedText, "-0")
-		styledRemoved = padding + " " + dimStyle.Render("-")
-	} else {
-		styledRemoved = removedStyle.Render(removedText)
+	if !mergeUnloaded {
+		if totalRemoved == 0 {
+			// Right-align just the - in dim grey (no removals)
+			padding := strings.TrimSuffix(removedText, "-0")
+			styledRemoved = padding + " " + dimStyle.Render("-")
+		} else {
+			styledRemoved = removedStyle.Render(removedText)
+		}
 	}
 	// Build fixed part based on whether this is a snapshot or regular commit
 	var fixedPart string

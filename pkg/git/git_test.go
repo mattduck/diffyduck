@@ -259,6 +259,88 @@ diff --git a/foo.go b/foo.go
 	assert.Equal(t, "", meta.Refs)
 }
 
+func TestParseShowOutput_WithParents(t *testing.T) {
+	input := `DIFFYDUCK_SHA:abc123
+DIFFYDUCK_AUTHOR:John
+DIFFYDUCK_EMAIL:john@example.com
+DIFFYDUCK_DATE:2024-01-15
+DIFFYDUCK_SUBJECT:Merge branch 'feature'
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+DIFFYDUCK_REFS:HEAD -> main
+DIFFYDUCK_PARENTS:aaa111 bbb222
+`
+
+	meta, _ := parseShowOutput(input)
+
+	assert.Equal(t, "abc123", meta.SHA)
+	assert.Equal(t, "aaa111 bbb222", meta.Parents)
+	assert.Equal(t, 2, meta.ParentCount())
+	assert.Equal(t, []string{"aaa111", "bbb222"}, meta.ParentSHAs())
+}
+
+func TestParseShowOutput_SingleParent(t *testing.T) {
+	input := `DIFFYDUCK_SHA:abc123
+DIFFYDUCK_AUTHOR:John
+DIFFYDUCK_EMAIL:john@example.com
+DIFFYDUCK_DATE:2024-01-15
+DIFFYDUCK_SUBJECT:Normal commit
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+DIFFYDUCK_REFS:
+DIFFYDUCK_PARENTS:aaa111
+diff --git a/foo.go b/foo.go
+`
+
+	meta, diff := parseShowOutput(input)
+
+	assert.Equal(t, 1, meta.ParentCount())
+	assert.Equal(t, []string{"aaa111"}, meta.ParentSHAs())
+	assert.Contains(t, diff, "diff --git")
+}
+
+func TestParseShowOutput_RootCommit(t *testing.T) {
+	input := `DIFFYDUCK_SHA:abc123
+DIFFYDUCK_AUTHOR:John
+DIFFYDUCK_EMAIL:john@example.com
+DIFFYDUCK_DATE:2024-01-15
+DIFFYDUCK_SUBJECT:Initial commit
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+DIFFYDUCK_REFS:
+DIFFYDUCK_PARENTS:
+`
+
+	meta, _ := parseShowOutput(input)
+
+	assert.Equal(t, 0, meta.ParentCount())
+	assert.Nil(t, meta.ParentSHAs())
+}
+
+func TestParseShowOutput_OctopusMerge(t *testing.T) {
+	input := `DIFFYDUCK_SHA:abc123
+DIFFYDUCK_AUTHOR:John
+DIFFYDUCK_EMAIL:john@example.com
+DIFFYDUCK_DATE:2024-01-15
+DIFFYDUCK_SUBJECT:Octopus merge
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+DIFFYDUCK_REFS:
+DIFFYDUCK_PARENTS:aaa111 bbb222 ccc333
+`
+
+	meta, _ := parseShowOutput(input)
+
+	assert.Equal(t, 3, meta.ParentCount())
+	assert.Equal(t, []string{"aaa111", "bbb222", "ccc333"}, meta.ParentSHAs())
+}
+
+func TestCommitMeta_ParentCount_NilMeta(t *testing.T) {
+	var meta *CommitMeta
+	assert.Equal(t, 0, meta.ParentCount())
+	assert.Nil(t, meta.ParentSHAs())
+}
+
 // =============================================================================
 // parseLogOutput Tests (Multi-Commit Parsing)
 // =============================================================================
@@ -612,6 +694,50 @@ DIFFYDUCK_BODY_END
 
 	require.Equal(t, 1, len(commits), "should parse 1 commit")
 	assert.Equal(t, 0, len(commits[0].Files), "commit should have no files")
+}
+
+func TestParseLogPathsOnly_WithParents(t *testing.T) {
+	input := `DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:merge111
+DIFFYDUCK_AUTHOR:Jane
+DIFFYDUCK_EMAIL:jane@example.com
+DIFFYDUCK_DATE:2024-01-10
+DIFFYDUCK_SUBJECT:Merge branch 'feature'
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+DIFFYDUCK_REFS:HEAD -> main
+DIFFYDUCK_PARENTS:aaa111 bbb222
+
+file1.go
+file2.go
+DIFFYDUCK_COMMIT_START
+DIFFYDUCK_SHA:normal222
+DIFFYDUCK_AUTHOR:Bob
+DIFFYDUCK_EMAIL:bob@example.com
+DIFFYDUCK_DATE:2024-01-09
+DIFFYDUCK_SUBJECT:Normal commit
+DIFFYDUCK_BODY_START
+DIFFYDUCK_BODY_END
+DIFFYDUCK_REFS:
+DIFFYDUCK_PARENTS:aaa111
+
+file3.go
+`
+
+	commits := parseLogPathsOnly(input)
+
+	require.Equal(t, 2, len(commits))
+
+	// Merge commit
+	assert.Equal(t, "merge111", commits[0].Meta.SHA)
+	assert.Equal(t, 2, commits[0].Meta.ParentCount())
+	assert.Equal(t, []string{"aaa111", "bbb222"}, commits[0].Meta.ParentSHAs())
+	assert.Equal(t, 2, len(commits[0].Files))
+
+	// Normal commit
+	assert.Equal(t, "normal222", commits[1].Meta.SHA)
+	assert.Equal(t, 1, commits[1].Meta.ParentCount())
+	assert.Equal(t, 1, len(commits[1].Files))
 }
 
 func TestMockGit_LogPathsOnly(t *testing.T) {

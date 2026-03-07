@@ -1161,13 +1161,36 @@ func run() error {
 		}
 		if meta != nil {
 			commitInfo = sidebyside.CommitInfo{
-				SHA:     meta.SHA,
-				Author:  meta.Author,
-				Email:   meta.Email,
-				Date:    meta.Date,
-				Subject: meta.Subject,
-				Body:    meta.Body,
-				Refs:    sidebyside.ParseRefs(meta.Refs),
+				SHA:         meta.SHA,
+				Author:      meta.Author,
+				Email:       meta.Email,
+				Date:        meta.Date,
+				Subject:     meta.Subject,
+				Body:        meta.Body,
+				Refs:        sidebyside.ParseRefs(meta.Refs),
+				ParentCount: meta.ParentCount(),
+			}
+
+			// Merge commits: git show produces combined diff (diff --cc) which
+			// our parser can't handle. For 2-parent merges, get the list of
+			// conflict-resolution files and generate a standard unified diff.
+			if meta.ParentCount() == 2 {
+				conflictFiles, cfErr := g.MergeConflictFiles(meta.SHA)
+				if cfErr == nil && len(conflictFiles) > 0 {
+					parents := meta.ParentSHAs()
+					diffArgs := []string{parents[0], meta.SHA, "--"}
+					diffArgs = append(diffArgs, conflictFiles...)
+					output, err = g.Diff(diffArgs...)
+					if err != nil {
+						return fmt.Errorf("git diff (merge): %w", err)
+					}
+				} else {
+					// Clean merge or error: no conflict-resolution files
+					output = ""
+				}
+			} else if meta.ParentCount() >= 3 {
+				// Octopus merge: can't display in two-pane view
+				output = ""
 			}
 		}
 	}
@@ -2078,37 +2101,45 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 		var files []sidebyside.FilePair
 		var totalAdded, totalRemoved int
 		statsLoaded := false
+		parentCount := c.Meta.ParentCount()
+		isMerge := parentCount >= 2
 
-		if stats, ok := statsMap[c.Meta.SHA]; ok && i < initialLimit {
-			for _, f := range stats.Files {
-				files = append(files, sidebyside.SkeletonFilePair(f.Path, f.Added, f.Removed))
-				if f.Added > 0 {
-					totalAdded += f.Added
+		// For merge commits, skip skeleton files — git log --name-only
+		// lists all files changed across any parent, but we only want
+		// conflict-resolution files (populated by loadCommitDiff).
+		if !isMerge {
+			if stats, ok := statsMap[c.Meta.SHA]; ok && i < initialLimit {
+				for _, f := range stats.Files {
+					files = append(files, sidebyside.SkeletonFilePair(f.Path, f.Added, f.Removed))
+					if f.Added > 0 {
+						totalAdded += f.Added
+					}
+					if f.Removed > 0 {
+						totalRemoved += f.Removed
+					}
 				}
-				if f.Removed > 0 {
-					totalRemoved += f.Removed
+				statsLoaded = true
+			} else {
+				for _, f := range c.Files {
+					files = append(files, sidebyside.SkeletonFilePairNoStats(f.Path))
 				}
-			}
-			statsLoaded = true
-		} else {
-			for _, f := range c.Files {
-				files = append(files, sidebyside.SkeletonFilePairNoStats(f.Path))
 			}
 		}
 
 		commitSet := sidebyside.CommitSet{
 			Info: sidebyside.CommitInfo{
-				SHA:     c.Meta.SHA,
-				Author:  c.Meta.Author,
-				Email:   c.Meta.Email,
-				Date:    c.Meta.Date,
-				Subject: c.Meta.Subject,
-				Body:    c.Meta.Body,
-				Refs:    sidebyside.ParseRefs(c.Meta.Refs),
+				SHA:         c.Meta.SHA,
+				Author:      c.Meta.Author,
+				Email:       c.Meta.Email,
+				Date:        c.Meta.Date,
+				Subject:     c.Meta.Subject,
+				Body:        c.Meta.Body,
+				Refs:        sidebyside.ParseRefs(c.Meta.Refs),
+				ParentCount: parentCount,
 			},
 			Files:        files,
 			FoldLevel:    sidebyside.CommitFolded,
-			FilesLoaded:  false,
+			FilesLoaded:  isMerge && parentCount >= 3, // Octopus merges: nothing to show
 			StatsLoaded:  statsLoaded,
 			TotalAdded:   totalAdded,
 			TotalRemoved: totalRemoved,

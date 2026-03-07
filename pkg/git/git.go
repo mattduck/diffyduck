@@ -76,6 +76,24 @@ type CommitMeta struct {
 	Subject string // first line of commit message
 	Body    string // rest of commit message
 	Refs    string // raw ref decorations from %D (e.g., "HEAD -> main, origin/main")
+	Parents string // space-separated parent SHAs from %P (empty for root commits)
+}
+
+// ParentCount returns the number of parent commits.
+// 0 = root commit, 1 = normal commit, 2+ = merge commit.
+func (c *CommitMeta) ParentCount() int {
+	if c == nil || c.Parents == "" {
+		return 0
+	}
+	return len(strings.Fields(c.Parents))
+}
+
+// ParentSHAs returns the parent commit SHAs as a slice.
+func (c *CommitMeta) ParentSHAs() []string {
+	if c == nil || c.Parents == "" {
+		return nil
+	}
+	return strings.Fields(c.Parents)
 }
 
 // Delimiters used in custom format output for reliable parsing.
@@ -89,6 +107,7 @@ const (
 	metaBodyStart   = "DIFFYDUCK_BODY_START"
 	metaBodyEnd     = "DIFFYDUCK_BODY_END"
 	metaRefs        = "DIFFYDUCK_REFS:"
+	metaParents     = "DIFFYDUCK_PARENTS:"
 )
 
 // showMetaFormat is the git format string for extracting commit metadata.
@@ -102,6 +121,7 @@ var showMetaFormat = strings.Join([]string{
 	"%b",
 	metaBodyEnd,
 	metaRefs + "%D",
+	metaParents + "%P",
 }, "%n") + "%n"
 
 // logMetaFormat is the git format string for log with commit boundary markers.
@@ -116,6 +136,7 @@ var logMetaFormat = strings.Join([]string{
 	"%b",
 	metaBodyEnd,
 	metaRefs + "%D",
+	metaParents + "%P",
 }, "%n") + "%n"
 
 // Show returns the diff output for a given commit reference.
@@ -136,6 +157,31 @@ func (g *RealGit) Show(args ...string) (string, error) {
 	}
 
 	return string(out), nil
+}
+
+// MergeConflictFiles returns files from the combined diff of a merge commit.
+// These are files modified relative to all parents (typically conflict resolutions).
+// For non-merge commits this returns the same files as a normal show.
+func (g *RealGit) MergeConflictFiles(sha string) ([]string, error) {
+	cmd := g.command("show", "--name-only", "--format=", sha)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git show --name-only",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+
+	var files []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	return files, nil
 }
 
 // ShowWithMeta returns both commit metadata and diff output for a given commit.
@@ -357,6 +403,8 @@ func parsePathsOnlyOutput(output string) (*CommitMeta, []FilePath) {
 			inBody = false
 		case strings.HasPrefix(line, metaRefs):
 			meta.Refs = strings.TrimPrefix(line, metaRefs)
+		case strings.HasPrefix(line, metaParents):
+			meta.Parents = strings.TrimPrefix(line, metaParents)
 		case inBody:
 			bodyLines = append(bodyLines, line)
 		default:
@@ -423,6 +471,8 @@ func parseMetaOnlyOutput(output string) (*CommitMeta, []FileStats) {
 			inBody = false
 		case strings.HasPrefix(line, metaRefs):
 			meta.Refs = strings.TrimPrefix(line, metaRefs)
+		case strings.HasPrefix(line, metaParents):
+			meta.Parents = strings.TrimPrefix(line, metaParents)
 		case inBody:
 			bodyLines = append(bodyLines, line)
 		default:
@@ -555,6 +605,8 @@ func parseShowOutput(output string) (*CommitMeta, string) {
 			inBody = false
 		case strings.HasPrefix(line, metaRefs):
 			meta.Refs = strings.TrimPrefix(line, metaRefs)
+		case strings.HasPrefix(line, metaParents):
+			meta.Parents = strings.TrimPrefix(line, metaParents)
 		case inBody:
 			bodyLines = append(bodyLines, line)
 		}

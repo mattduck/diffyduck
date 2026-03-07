@@ -159,4 +159,9 @@ type Git interface {
 
 	// Tags returns all tag names.
 	Tags() ([]string, error)
+
+	// MergeConflictFiles returns files from the combined diff of a merge commit.
+	// These are files that were modified relative to all parents (conflict resolutions).
+	// Returns nil for non-merge commits or clean merges with no conflict files.
+	MergeConflictFiles(sha string) ([]string, error)
 }

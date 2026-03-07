@@ -157,27 +157,40 @@ func (m *Model) appendCommits(commits []sidebyside.CommitSet) {
 
 // convertToCommitSets converts git commits to sidebyside CommitSets.
 // Creates skeleton files without stats (stats are loaded separately).
+// For merge commits (2+ parents), skeleton files are omitted because
+// git log --name-only lists all files changed across any parent,
+// but we only want to show conflict-resolution files.
 func convertToCommitSets(commits []git.CommitWithPaths) []sidebyside.CommitSet {
 	var result []sidebyside.CommitSet
 	for _, c := range commits {
+		parentCount := c.Meta.ParentCount()
+
 		var files []sidebyside.FilePair
-		for _, f := range c.Files {
-			files = append(files, sidebyside.SkeletonFilePairNoStats(f.Path))
+		isMerge := parentCount >= 2
+
+		if !isMerge {
+			// Normal commit: create skeleton files from --name-only output
+			for _, f := range c.Files {
+				files = append(files, sidebyside.SkeletonFilePairNoStats(f.Path))
+			}
 		}
+		// For merge commits: leave files nil. loadCommitDiff will populate
+		// the correct conflict-resolution files when the commit is expanded.
 
 		commitSet := sidebyside.CommitSet{
 			Info: sidebyside.CommitInfo{
-				SHA:     c.Meta.SHA,
-				Author:  c.Meta.Author,
-				Email:   c.Meta.Email,
-				Date:    c.Meta.Date,
-				Subject: c.Meta.Subject,
-				Body:    c.Meta.Body,
-				Refs:    sidebyside.ParseRefs(c.Meta.Refs),
+				SHA:         c.Meta.SHA,
+				Author:      c.Meta.Author,
+				Email:       c.Meta.Email,
+				Date:        c.Meta.Date,
+				Subject:     c.Meta.Subject,
+				Body:        c.Meta.Body,
+				Refs:        sidebyside.ParseRefs(c.Meta.Refs),
+				ParentCount: parentCount,
 			},
 			Files:       files,
-			FoldLevel:   sidebyside.CommitFolded, // Start folded
-			FilesLoaded: false,
+			FoldLevel:   sidebyside.CommitFolded,     // Start folded
+			FilesLoaded: isMerge && parentCount >= 3, // Octopus merges are pre-loaded (nothing to show)
 			StatsLoaded: false,
 		}
 		result = append(result, commitSet)
