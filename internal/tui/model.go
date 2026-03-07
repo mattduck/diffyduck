@@ -179,7 +179,10 @@ type Model struct {
 	searchQuery   string // executed search query
 
 	// Multi-key sequence state
-	pendingKey string // first key of a multi-key sequence (e.g., "g" waiting for second key)
+	pendingKey       string        // accumulated prefix of a multi-key sequence (e.g., "g", "space c")
+	pendingKeyMsg    tea.KeyMsg    // the original KeyMsg that started the pending state (for solo dispatch)
+	prefixTimeoutGen int           // generation counter: stale prefix timeouts are discarded
+	chordTimeout     time.Duration // dual-use prefix timeout (0 disables solo fallback)
 
 	// Initial state tracking
 	initialFoldSet bool // true once initial fold levels have been determined
@@ -582,6 +585,9 @@ func WithConfig(cfg config.Config) Option {
 		if cfg.Features.ExpandAllBudget != nil {
 			m.expandAllBudget = *cfg.Features.ExpandAllBudget
 		}
+		if cfg.Features.ChordTimeoutMs != nil {
+			m.chordTimeout = time.Duration(*cfg.Features.ChordTimeoutMs) * time.Millisecond
+		}
 	}
 }
 
@@ -614,6 +620,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		windowSplitV:        true, // default to vertical split when created
 		keys:                DefaultKeyMap(),
 		hscrollStep:         DefaultHScrollStep,
+		chordTimeout:        time.Duration(config.DefaultChordTimeoutMs) * time.Millisecond,
 		expandAllBudget:     config.DefaultExpandAllBudget,
 		highlighter:         highlight.New(),
 		highlightSpans:      make(map[int]*FileHighlight),

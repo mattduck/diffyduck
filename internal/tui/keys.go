@@ -75,6 +75,11 @@ type KeyMap struct {
 	// Contains all proper prefixes of multi-key sequences.
 	// For "g j": {"g"}. For "space c j": {"space", "space c"}.
 	prefixSet map[string]bool
+
+	// soloSet contains single-token keys that are both a prefix AND a
+	// single-key binding. These get dual-use behavior: a timeout fires the
+	// solo (single-key) binding, while a fast follow-up continues the chord.
+	soloSet map[string]bool
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -83,7 +88,7 @@ func DefaultKeyMap() KeyMap {
 		Up:             []string{"up", "k"},
 		Down:           []string{"down", "j"},
 		PageUp:         []string{"pgup", "ctrl+b", "b"},
-		PageDown:       []string{"pgdown", "ctrl+f", "f"},
+		PageDown:       []string{"pgdown", "ctrl+f", "f", " "},
 		HalfUp:         []string{"ctrl+u", "u"},
 		HalfDown:       []string{"ctrl+d", "d"},
 		Top:            []string{"home"},
@@ -131,6 +136,7 @@ func DefaultKeyMap() KeyMap {
 		VisualExit:     []string{"esc", "ctrl+g"},
 	}
 	km.prefixSet = buildPrefixSet(km)
+	km.soloSet = buildSoloSet(km)
 	return km
 }
 
@@ -256,6 +262,31 @@ func buildPrefixSet(km KeyMap) map[string]bool {
 	return set
 }
 
+// buildSoloSet returns the set of tokens that appear as both a single-key
+// binding AND a prefix in the prefix set. These keys get dual-use behavior:
+// a chord timeout fires the solo binding, a fast follow-up continues the chord.
+func buildSoloSet(km KeyMap) map[string]bool {
+	singles := make(map[string]bool)
+	for _, keys := range allBindings(km) {
+		for _, k := range keys {
+			if len(parseBinding(k)) <= 1 {
+				token := k
+				if token == " " {
+					token = "space"
+				}
+				singles[token] = true
+			}
+		}
+	}
+	set := make(map[string]bool)
+	for prefix := range km.prefixSet {
+		if len(parseBinding(prefix)) == 1 && singles[prefix] {
+			set[prefix] = true
+		}
+	}
+	return set
+}
+
 // matchesSequence checks if prefix + " " + keyToken(msg) matches any binding in keys.
 func matchesSequence(prefix string, msg tea.KeyMsg, keys []string) bool {
 	seq := prefix + " " + keyToken(msg)
@@ -284,7 +315,8 @@ func matchesKey(msg tea.KeyMsg, keys []string) bool {
 }
 
 // ValidateBindings checks for conflicts where a key is both a single-key
-// binding and a sequence prefix. Returns an error describing the first conflict.
+// binding and a sequence prefix without being in the soloSet (dual-use).
+// Keys in soloSet are intentionally dual-use and allowed.
 func ValidateBindings(km KeyMap) error {
 	singleKeys := make(map[string]bool)
 	for _, keys := range allBindings(km) {
@@ -300,7 +332,7 @@ func ValidateBindings(km KeyMap) error {
 		}
 	}
 	for prefix := range km.prefixSet {
-		if singleKeys[prefix] {
+		if singleKeys[prefix] && !km.soloSet[prefix] {
 			return fmt.Errorf("key %q is both a direct binding and a sequence prefix — the sequence will never fire", prefix)
 		}
 	}
@@ -499,8 +531,9 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		}
 	}
 
-	// Rebuild prefix set after applying overrides
+	// Rebuild prefix set and solo set after applying overrides
 	km.prefixSet = buildPrefixSet(km)
+	km.soloSet = buildSoloSet(km)
 	return km
 }
 

@@ -79,12 +79,16 @@ func TestMatchesSequence_SpaceKeyToken(t *testing.T) {
 	assert.False(t, matchesSequence("space", cMsg, bindings))
 }
 
-func TestDefaultKeyMap_SpaceNotInPageDown(t *testing.T) {
+func TestDefaultKeyMap_SpaceInPageDown(t *testing.T) {
 	km := DefaultKeyMap()
+	found := false
 	for _, k := range km.PageDown {
-		assert.NotEqual(t, " ", k, "space should not be a PageDown binding")
-		assert.NotEqual(t, "space", k, "space should not be a PageDown binding")
+		if k == " " {
+			found = true
+			break
+		}
 	}
+	assert.True(t, found, "space should be a PageDown binding (dual-use)")
 }
 
 func TestDefaultKeyMap_SpaceIsPrefix(t *testing.T) {
@@ -99,14 +103,12 @@ func TestValidateBindings_NoConflicts(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestValidateBindings_DetectsConflict(t *testing.T) {
+func TestValidateBindings_AllowsDualUse(t *testing.T) {
+	// Default keymap has space in both PageDown and as a prefix — allowed via soloSet
 	km := DefaultKeyMap()
-	// Add space as both a direct binding and a prefix (via "space c j")
-	km.PageDown = append(km.PageDown, " ")
-	km.prefixSet = buildPrefixSet(km)
 	err := ValidateBindings(km)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "space")
+	assert.NoError(t, err)
+	assert.True(t, km.soloSet["space"], "space should be in soloSet")
 }
 
 func TestThreeKeySequence_Flow(t *testing.T) {
@@ -173,6 +175,21 @@ func TestThreeKeySequence_SpaceGJ_Flow(t *testing.T) {
 	// Press j — should clear pending (complete sequence)
 	m = sendKey(m, "j")
 	assert.Equal(t, "", m.pendingKey)
+}
+
+func TestBuildSoloSet_SpaceIsDualUse(t *testing.T) {
+	km := DefaultKeyMap()
+	assert.True(t, km.soloSet["space"], "space should be in soloSet (PageDown + prefix)")
+}
+
+func TestBuildSoloSet_GIsNotDualUse(t *testing.T) {
+	km := DefaultKeyMap()
+	assert.False(t, km.soloSet["g"], "g should not be in soloSet (not a single-key binding)")
+}
+
+func TestBuildSoloSet_MultiTokenPrefixNotIncluded(t *testing.T) {
+	km := DefaultKeyMap()
+	assert.False(t, km.soloSet["space c"], "multi-token prefix should not be in soloSet")
 }
 
 func TestTwoKeySequences_StillWork(t *testing.T) {

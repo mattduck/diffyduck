@@ -162,6 +162,7 @@ type FeaturesConfig struct {
 	AutoSnapshots   *bool `toml:"auto_snapshots"`    // take snapshots automatically (default: true)
 	ShowSnapshots   *bool `toml:"show_snapshots"`    // show snapshot view by default (default: false)
 	ExpandAllBudget *int  `toml:"expand_all_budget"` // max files for full shift-tab expansion (default: 500)
+	ChordTimeoutMs  *int  `toml:"chord_timeout_ms"`  // dual-use prefix timeout in milliseconds (default: 250)
 }
 
 // Load reads the config file from the XDG-conventional path.

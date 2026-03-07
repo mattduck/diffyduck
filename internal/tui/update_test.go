@@ -129,12 +129,119 @@ func TestUpdate_Space_IsLeaderPrefix(t *testing.T) {
 	m := makeTestModel(100)
 	m.w().scroll = 0
 
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	model := newM.(Model)
 
-	// Space is now a leader prefix, not PageDown — scroll unchanged, pending set
+	// Space is a dual-use prefix: scroll unchanged, pending set, tick returned
 	assert.Equal(t, 0, model.w().scroll)
 	assert.Equal(t, "space", model.pendingKey)
+	assert.NotNil(t, cmd, "dual-use prefix should return a tick cmd")
+}
+
+func TestUpdate_DualUse_TimeoutFiresPageDown(t *testing.T) {
+	m := makeTestModel(100)
+	m.w().scroll = 0
+
+	// Press space — enters pending state with a tick
+	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = newM.(Model)
+	assert.Equal(t, "space", m.pendingKey)
+	assert.NotNil(t, cmd)
+
+	// Fire the tick to simulate timeout
+	timeoutMsg := cmd()
+	newM, _ = m.Update(timeoutMsg)
+	m = newM.(Model)
+	assert.Equal(t, "", m.pendingKey, "pending state should be cleared")
+	assert.Equal(t, 20, m.w().scroll, "should have paged down (height=20)")
+}
+
+func TestUpdate_DualUse_FollowUpKeyCancelsTimeout(t *testing.T) {
+	m := makeTestModel(100)
+	m.w().scroll = 5
+
+	// Press space — enters pending state with timeout
+	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = newM.(Model)
+	savedGen := m.prefixTimeoutGen
+
+	// Press c — continues chord to "space c", gen incremented
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	m = newM.(Model)
+	assert.Equal(t, "space c", m.pendingKey)
+	assert.Greater(t, m.prefixTimeoutGen, savedGen, "gen should have incremented")
+
+	// Fire the stale timeout — should be ignored
+	timeoutMsg := cmd()
+	newM, _ = m.Update(timeoutMsg)
+	m = newM.(Model)
+	assert.Equal(t, "space c", m.pendingKey, "stale timeout should not affect state")
+	assert.Equal(t, 5, m.w().scroll, "scroll should not change")
+}
+
+func TestUpdate_DualUse_FollowUpCancelsSolo(t *testing.T) {
+	m := makeTestModel(100)
+	m.w().scroll = 0
+
+	// Press space then x (not a valid chord continuation)
+	// Any follow-up key cancels the solo binding — no page down
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = newM.(Model)
+	assert.Equal(t, "space", m.pendingKey)
+
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m = newM.(Model)
+	assert.Equal(t, "", m.pendingKey, "pending should be cleared")
+	assert.Equal(t, 0, m.w().scroll, "should NOT have paged down (follow-up cancels solo)")
+}
+
+func TestUpdate_DualUse_BoundFollowUpCancelsSolo(t *testing.T) {
+	m := makeTestModel(100)
+	m.w().scroll = 0
+
+	// Press space then j — j is a real binding (scroll down) but any
+	// follow-up key cancels the solo page-down. Only j's own action fires.
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = newM.(Model)
+	assert.Equal(t, "space", m.pendingKey)
+
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = newM.(Model)
+	assert.Equal(t, "", m.pendingKey, "pending should be cleared")
+	// "space j" matches no chord, so it cancels silently.
+	// j is NOT re-dispatched — the follow-up just cancels.
+	assert.Equal(t, 0, m.w().scroll, "should NOT have scrolled (follow-up cancels solo)")
+}
+
+func TestUpdate_DualUse_MultiLevelNoFallback(t *testing.T) {
+	m := makeTestModel(100)
+	m.w().scroll = 0
+
+	// Press space, c, x — "space c" is a multi-token prefix, no solo fallback
+	m = sendKeys(m, " ", "c", "x")
+	assert.Equal(t, "", m.pendingKey, "pending should be cleared")
+	assert.Equal(t, 0, m.w().scroll, "should NOT have paged down")
+}
+
+func TestUpdate_DualUse_ChordStillWorks(t *testing.T) {
+	m := makeTestModel(100)
+	m.w().scroll = 0
+
+	// space c j should complete the chord (next comment) without paging down
+	m = sendKeys(m, " ", "c", "j")
+	assert.Equal(t, "", m.pendingKey, "chord should complete")
+	assert.Equal(t, 0, m.w().scroll, "chord should not trigger page down")
+}
+
+func TestUpdate_DualUse_ZeroTimeoutDisables(t *testing.T) {
+	m := makeTestModel(100)
+	m.chordTimeout = 0
+
+	// Press space — should enter pending state with NO tick
+	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	model := newM.(Model)
+	assert.Equal(t, "space", model.pendingKey)
+	assert.Nil(t, cmd, "zero timeout should not return a tick")
 }
 
 func TestUpdate_PageDown_F(t *testing.T) {

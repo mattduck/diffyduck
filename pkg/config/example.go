@@ -55,6 +55,7 @@ const (
 	DefaultAutoSnapshots   = true
 	DefaultShowSnapshots   = false
 	DefaultExpandAllBudget = 500
+	DefaultChordTimeoutMs  = 250
 )
 
 // GenerateExample returns a complete, commented TOML config file with all
@@ -231,6 +232,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 	b.WriteString(fmt.Sprintf("# auto_snapshots     = %v  # take snapshots automatically (--no-snapshots overrides)\n", DefaultAutoSnapshots))
 	b.WriteString(fmt.Sprintf("# show_snapshots     = %v # show snapshot view by default (--snapshots overrides)\n", DefaultShowSnapshots))
 	b.WriteString(fmt.Sprintf("# expand_all_budget  = %d  # max total files for full shift-tab expansion\n", DefaultExpandAllBudget))
+	b.WriteString(fmt.Sprintf("# chord_timeout_ms   = %d  # milliseconds before a prefix key fires its solo binding\n", DefaultChordTimeoutMs))
 
 	return b.String()
 }

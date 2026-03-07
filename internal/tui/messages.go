@@ -11,6 +11,13 @@ type ClearStatusMsg struct {
 	SetTime time.Time // time when the message was set, to avoid clearing newer messages
 }
 
+// prefixTimeoutMsg fires when a dual-use prefix key's chord timeout expires.
+// If gen matches the model's prefixTimeoutGen and pendingKey is still set,
+// the solo (single-key) binding fires.
+type prefixTimeoutMsg struct {
+	gen int
+}
+
 // FileContentLoadedMsg is sent when file content has been fetched for a single file.
 type FileContentLoadedMsg struct {
 	FileIndex        int

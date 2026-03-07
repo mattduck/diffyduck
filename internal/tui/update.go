@@ -365,6 +365,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.invalidateAllRowCaches()
 		m.calculateTotalLines()
 		return m, nil
+
+	case prefixTimeoutMsg:
+		// Stale timeout (user continued the chord or cancelled) — ignore
+		if msg.gen != m.prefixTimeoutGen || m.pendingKey == "" {
+			return m, nil
+		}
+		// Timeout expired: fire the solo (single-key) binding
+		pending := m.pendingKey
+		pendingMsg := m.pendingKeyMsg
+		m.pendingKey = ""
+		if m.keys.soloSet[pending] {
+			return m.handleSingleKey(pendingMsg)
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -422,9 +436,24 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Check for prefix keys that start multi-key sequences
 	if token := keyToken(msg); m.keys.prefixSet[token] {
 		m.pendingKey = token
+		m.pendingKeyMsg = msg
+		// Dual-use key: start a timeout for the solo (single-key) binding
+		if m.keys.soloSet[token] && m.chordTimeout > 0 {
+			m.prefixTimeoutGen++
+			gen := m.prefixTimeoutGen
+			return m, tea.Tick(m.chordTimeout, func(t time.Time) tea.Msg {
+				return prefixTimeoutMsg{gen: gen}
+			})
+		}
 		return m, nil
 	}
 
+	return m.handleSingleKey(msg)
+}
+
+// handleSingleKey dispatches a single-key binding. Extracted from handleKeyMsg
+// so it can also be called from the prefix timeout and solo-fallback paths.
+func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	keys := m.keys
 
 	switch {
@@ -1418,6 +1447,7 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// If the accumulated sequence is still a prefix, stay pending
 	if m.keys.prefixSet[accumulated] {
 		m.pendingKey = accumulated
+		m.prefixTimeoutGen++ // invalidate any stale prefix timeout
 		return m, nil
 	}
 
@@ -1535,7 +1565,8 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Any other key just cancels the pending state without action
+	// Any follow-up key cancels the pending state without action.
+	// For dual-use keys, only the timeout (no follow-up) fires the solo binding.
 	return m, nil
 }
 
