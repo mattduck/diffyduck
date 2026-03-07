@@ -2,7 +2,7 @@
 
 git side-by-side terminal diff + log + review tool.
 
-<video src="demo.mp4" autoplay loop muted playsinline width="100%"></video>
+<video src="./demo.mp4" autoplay loop muted playsinline width="100%"></video>
 
 ## Purpose and features
 
