@@ -2,7 +2,7 @@
 
 git side-by-side terminal diff + log + review tool.
 
-<video src="./demo.mp4" autoplay loop muted playsinline width="100%"></video>
+![demo](./demo.gif)
 
 ## Purpose and features
 
@@ -71,8 +71,7 @@ Liable to change based on whatever I find useful, and has only been tested on my
 own machine and preferred tools.
 
 It does include a config feature where you can customise settings, theme and
-keybindings, so somebody might find it useful as a starting point to customise
-or fork.
+keybindings.
 
 ## Code
 
