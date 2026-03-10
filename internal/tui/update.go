@@ -65,8 +65,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// already have their fold levels set at creation time.
 		if !m.initialFoldSet && len(m.files) > 0 && len(m.commits) > 0 && !m.commits[0].Info.HasMetadata() {
 			m.initialFoldSet = true
-			// If only 1 file, or all content fits on screen, start fully expanded (hunks)
-			if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
+			// If only 1 file, or all content fits within the auto-unfold limit, start fully expanded (hunks)
+			if len(m.files) == 1 || m.estimateNormalRows() <= m.autoUnfoldLimit {
 				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
 				// Sync load content + highlighting so the first render is complete
 				if m.fetcher != nil {

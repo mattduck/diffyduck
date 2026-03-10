@@ -243,6 +243,7 @@ type Model struct {
 	commitBatchSize    int      // commits per batch (default 100)
 	commitMaxCount     int      // hard cap from -n flag (0=unlimited)
 	expandAllBudget    int      // max files for full shift-tab expansion (default 500)
+	autoUnfoldLimit    int      // max rows to auto-unfold on startup (default 800)
 	loadingMoreCommits bool     // true when fetching next batch
 	logArgs            []string // extra args for git log (ref ranges, pathspecs)
 	logPathspec        []string // pathspec portion only (for filtering git show)
@@ -585,6 +586,9 @@ func WithConfig(cfg config.Config) Option {
 		if cfg.Features.ExpandAllBudget != nil {
 			m.expandAllBudget = *cfg.Features.ExpandAllBudget
 		}
+		if cfg.Features.AutoUnfoldLimit != nil {
+			m.autoUnfoldLimit = *cfg.Features.AutoUnfoldLimit
+		}
 		if cfg.Features.ChordTimeoutMs != nil {
 			m.chordTimeout = time.Duration(*cfg.Features.ChordTimeoutMs) * time.Millisecond
 		}
@@ -622,6 +626,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		hscrollStep:         DefaultHScrollStep,
 		chordTimeout:        time.Duration(config.DefaultChordTimeoutMs) * time.Millisecond,
 		expandAllBudget:     config.DefaultExpandAllBudget,
+		autoUnfoldLimit:     config.DefaultAutoUnfoldLimit,
 		highlighter:         highlight.New(),
 		highlightSpans:      make(map[int]*FileHighlight),
 		structureMaps:       make(map[int]*FileStructure),
@@ -2463,7 +2468,7 @@ func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
 
 	// Re-apply auto-fold logic (same as initial WindowSizeMsg handler)
 	if len(m.files) > 0 && m.width > 0 {
-		if len(m.files) == 1 || m.estimateNormalRows() <= m.contentHeight() {
+		if len(m.files) == 1 || m.estimateNormalRows() <= m.autoUnfoldLimit {
 			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
 		} else {
 			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHeaders)
