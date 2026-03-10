@@ -1760,31 +1760,14 @@ func (m Model) windowResizeDown() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// isNavigationTarget returns true if the row at the given index is a valid
-// stop for gj/gk navigation. Targets are: commit headers, commit info headers,
-// file headers, hunk separator middle lines (breadcrumb), and trailing
-// separator-top lines (the single-line separator at the end of a file).
-func isNavigationTarget(rows []displayRow, i int) bool {
-	row := rows[i]
-	if row.isCommitHeader || row.isCommitInfoHeader || row.isHeader {
-		return true
-	}
-	if row.isSeparator {
-		return true
-	}
-	// A SeparatorTop is a target only when it's a trailing separator (not
-	// followed by a Separator middle line, i.e. it's the lone line at EOF).
-	if row.isSeparatorTop {
-		if i+1 >= len(rows) || !rows[i+1].isSeparator {
-			return true
-		}
-	}
-	return false
+// isNavigationTarget returns true if the row is a node header (commit,
+// commit info, or file) for gj/gk navigation.
+func isNavigationTarget(row displayRow) bool {
+	return row.isCommitHeader || row.isCommitInfoHeader || row.isHeader
 }
 
-// goToNextHeading moves the cursor to the next navigation target.
-// Targets include commit headers, commit info headers, file headers,
-// and hunk separators (breadcrumb lines and trailing EOF separators).
+// goToNextHeading moves the cursor to the next node header
+// (commit, commit info, or file).
 func (m *Model) goToNextHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
@@ -1794,16 +1777,15 @@ func (m *Model) goToNextHeading() {
 	}
 
 	for i := cursorPos + 1; i < len(rows); i++ {
-		if isNavigationTarget(rows, i) {
+		if isNavigationTarget(rows[i]) {
 			m.adjustScrollToRow(i)
 			return
 		}
 	}
 }
 
-// goToPrevHeading moves the cursor to the previous navigation target.
-// Targets include commit headers, commit info headers, file headers,
-// and hunk separators (breadcrumb lines and trailing EOF separators).
+// goToPrevHeading moves the cursor to the previous node header
+// (commit, commit info, or file).
 func (m *Model) goToPrevHeading() {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
@@ -1813,7 +1795,7 @@ func (m *Model) goToPrevHeading() {
 	}
 
 	for i := cursorPos - 1; i >= 0; i-- {
-		if isNavigationTarget(rows, i) {
+		if isNavigationTarget(rows[i]) {
 			m.adjustScrollToRow(i)
 			return
 		}
