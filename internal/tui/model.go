@@ -2470,6 +2470,9 @@ func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
 	if len(m.files) > 0 && m.width > 0 {
 		if len(m.files) == 1 || m.estimateNormalRows() <= m.autoUnfoldLimit {
 			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+		} else if len(m.commits) > 0 && m.commits[0].Info.HasMetadata() {
+			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileStructure)
+			m.setCommitInfoExpanded(0, true)
 		} else {
 			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHeaders)
 		}

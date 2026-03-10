@@ -61,12 +61,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Set initial fold levels on first window size message.
-		// Only for non-metadata commits (basic diff view) — log view commits
-		// already have their fold levels set at creation time.
-		if !m.initialFoldSet && len(m.files) > 0 && len(m.commits) > 0 && !m.commits[0].Info.HasMetadata() {
+		// Log view commits keep their fold levels set at creation time.
+		if !m.initialFoldSet && len(m.files) > 0 && len(m.commits) > 0 && m.loadedCommitCount == 0 {
 			m.initialFoldSet = true
-			// If only 1 file, or all content fits within the auto-unfold limit, start fully expanded (hunks)
 			if len(m.files) == 1 || m.estimateNormalRows() <= m.autoUnfoldLimit {
+				// Fits within limit: fully expand (hunks + info)
 				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
 				// Sync load content + highlighting so the first render is complete
 				if m.fetcher != nil {
@@ -74,8 +73,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.loadAndHighlightFileSync(i)
 					}
 				}
+			} else if m.commits[0].Info.HasMetadata() {
+				// Show view over limit: expand info + files at structure level
+				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileStructure)
+				m.setCommitInfoExpanded(0, true)
 			} else {
-				// Otherwise start with file headers only
+				// Diff view over limit: file headers only
 				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHeaders)
 			}
 			m.calculateTotalLines()
