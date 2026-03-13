@@ -2115,24 +2115,25 @@ func (m *Model) findNextCommentTarget(forward bool, includeAll bool) (commentKey
 	}
 
 	if forward {
-		return m.findSkeletonComment(curFileIdx, true)
+		return m.findSkeletonComment(curFileIdx, true, includeAll)
 	}
-	return m.findSkeletonComment(curFileIdx, false)
+	return m.findSkeletonComment(curFileIdx, false, includeAll)
 }
 
 // findSkeletonComment scans skeleton (unloaded) files for comments via
 // m.commentIndex. If found, loads the commit diff and returns the first
-// matching comment from m.comments.
-func (m *Model) findSkeletonComment(curFileIdx int, forward bool) (commentKey, bool) {
+// matching comment from m.comments. When includeAll is false, resolved
+// comments are skipped.
+func (m *Model) findSkeletonComment(curFileIdx int, forward, includeAll bool) (commentKey, bool) {
 	if forward {
 		for i := curFileIdx + 1; i < len(m.files); i++ {
-			if target, ok := m.tryLoadSkeletonForComment(i, true); ok {
+			if target, ok := m.tryLoadSkeletonForComment(i, true, includeAll); ok {
 				return target, true
 			}
 		}
 	} else {
 		for i := curFileIdx - 1; i >= 0; i-- {
-			if target, ok := m.tryLoadSkeletonForComment(i, false); ok {
+			if target, ok := m.tryLoadSkeletonForComment(i, false, includeAll); ok {
 				return target, true
 			}
 		}
@@ -2142,8 +2143,9 @@ func (m *Model) findSkeletonComment(curFileIdx int, forward bool) (commentKey, b
 
 // tryLoadSkeletonForComment checks if a file's path has comments in the
 // index and its commit hasn't been loaded yet. If so, loads the commit
-// diff and returns the first/last comment in the newly loaded range.
-func (m *Model) tryLoadSkeletonForComment(fileIdx int, first bool) (commentKey, bool) {
+// diff and returns the first/last matching comment in the newly loaded range.
+// When includeAll is false, resolved comments are skipped.
+func (m *Model) tryLoadSkeletonForComment(fileIdx int, first, includeAll bool) (commentKey, bool) {
 	commitIdx := m.commitForFile(fileIdx)
 	if commitIdx < 0 || commitIdx >= len(m.commits) {
 		return commentKey{}, false
@@ -2159,6 +2161,10 @@ func (m *Model) tryLoadSkeletonForComment(fileIdx int, first bool) (commentKey, 
 		paths = append(paths, cleanFilePath(f.OldPath))
 	}
 
+	// TODO: the index doesn't track resolved status, so when includeAll is
+	// false we may eagerly load a commit diff for files with only resolved
+	// comments. Consider adding resolved awareness to the index if skeleton
+	// loading becomes noticeably slow.
 	hasComments := false
 	for _, path := range paths {
 		if len(m.commentIndex.Get(path)) > 0 {
@@ -2180,11 +2186,14 @@ func (m *Model) tryLoadSkeletonForComment(fileIdx int, first bool) (commentKey, 
 		endIdx = m.commitFileStarts[commitIdx+1]
 	}
 
-	// Find the first/last comment in the loaded range
+	// Find the first/last matching comment in the loaded range
 	if first {
 		for _, k := range m.sortedCommentKeys() {
 			if k.fileIndex >= startIdx && k.fileIndex < endIdx {
-				return k, true
+				c := m.comments[k]
+				if c != nil && c.Text != "" && (includeAll || !c.Resolved) {
+					return k, true
+				}
 			}
 		}
 	} else {
@@ -2192,7 +2201,10 @@ func (m *Model) tryLoadSkeletonForComment(fileIdx int, first bool) (commentKey, 
 		for i := len(sorted) - 1; i >= 0; i-- {
 			k := sorted[i]
 			if k.fileIndex >= startIdx && k.fileIndex < endIdx {
-				return k, true
+				c := m.comments[k]
+				if c != nil && c.Text != "" && (includeAll || !c.Resolved) {
+					return k, true
+				}
 			}
 		}
 	}
