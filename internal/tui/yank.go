@@ -44,7 +44,7 @@ func (m Model) handleYank() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	c := m.comments[ck]
-	if c == nil || c.Text == "" || !m.isCommentVisible(c) {
+	if c == nil || c.Text == "" {
 		return m, nil
 	}
 	return m.yankComment(ck, c)
