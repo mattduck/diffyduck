@@ -1115,13 +1115,13 @@ func TestFormatCommentBlock(t *testing.T) {
 		},
 	}
 
-	block := stripANSI(formatCommentBlock(c, nil))
+	block := stripANSI(formatCommentBlock(c, nil, 120))
 
-	// Metadata
-	assert.Contains(t, block, "┃ Ref:    abc123d on main\n")
-	assert.Contains(t, block, "┃ File:   src/foo.go:42\n")
-	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z\n")
-	assert.Contains(t, block, "┃ Status: unresolved\n")
+	// Metadata (two-column layout at width 120)
+	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z")
+	assert.Contains(t, block, "File:   src/foo.go:42\n")
+	assert.Contains(t, block, "┃ Status: unresolved")
+	assert.Contains(t, block, "Ref:    abc123d on main\n")
 	assert.Contains(t, block, "┃ ID:     1705312200000\n")
 	// Diff context (line numbers: 40-43, gutter width 2)
 	assert.Contains(t, block, "┃   40 func foo() {\n")
@@ -1131,6 +1131,34 @@ func TestFormatCommentBlock(t *testing.T) {
 	// Comment text
 	assert.Contains(t, block, "┃ Fix this bug\n")
 	assert.Contains(t, block, "┃ It causes crashes\n")
+}
+
+func TestFormatCommentBlock_NarrowTerminal(t *testing.T) {
+	created := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
+	c := &comments.Comment{
+		ID:        "1705312200000",
+		File:      "src/foo.go",
+		Line:      42,
+		CommitSHA: "abc123def456",
+		Branch:    "main",
+		Created:   created,
+		Text:      "Fix this bug",
+		Context: comments.LineContext{
+			Above: []string{"func foo() {"},
+			Line:  "    return x",
+			Below: []string{"}"},
+		},
+	}
+
+	// Narrow terminal forces single-column layout
+	block := stripANSI(formatCommentBlock(c, nil, 40))
+
+	// Each field on its own line
+	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z\n")
+	assert.Contains(t, block, "┃ Status: unresolved\n")
+	assert.Contains(t, block, "┃ ID:     1705312200000\n")
+	assert.Contains(t, block, "┃ File:   src/foo.go:42\n")
+	assert.Contains(t, block, "┃ Ref:    abc123d on main\n")
 }
 
 func TestFormatCommentBlock_Resolved(t *testing.T) {
@@ -1143,7 +1171,7 @@ func TestFormatCommentBlock_Resolved(t *testing.T) {
 		Text:     "Done",
 		Context:  comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil))
+	block := stripANSI(formatCommentBlock(c, nil, 120))
 	assert.Contains(t, block, "┃ Status: resolved\n")
 	assert.Contains(t, block, "┃ ID:     100\n")
 }
@@ -1157,7 +1185,7 @@ func TestFormatCommentBlock_NoCommit(t *testing.T) {
 		Text:    "No commit",
 		Context: comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil))
+	block := stripANSI(formatCommentBlock(c, nil, 120))
 	assert.NotContains(t, block, "Ref:")
 }
 
@@ -1179,7 +1207,7 @@ func TestFormatCommentBlock_Highlighted(t *testing.T) {
 	}
 
 	// With highlighter: should produce valid output (ANSI codes present)
-	block := formatCommentBlock(c, h)
+	block := formatCommentBlock(c, h, 120)
 	stripped := stripANSI(block)
 
 	// Content should be the same after stripping ANSI
@@ -1190,7 +1218,7 @@ func TestFormatCommentBlock_Highlighted(t *testing.T) {
 	assert.Greater(t, len(block), len(stripped), "highlighting should add ANSI codes")
 
 	// Nil highlighter should also work (plain text)
-	plain := formatCommentBlock(c, nil)
+	plain := formatCommentBlock(c, nil, 120)
 	plainStripped := stripANSI(plain)
 	assert.Equal(t, stripped, plainStripped, "stripped output should match regardless of highlighter")
 }
@@ -1209,7 +1237,7 @@ func TestFormatCommentBlock_UnsupportedLanguage(t *testing.T) {
 	}
 
 	// Should gracefully fall back to plain text
-	block := formatCommentBlock(c, h)
+	block := formatCommentBlock(c, h, 120)
 	stripped := stripANSI(block)
 	assert.Contains(t, stripped, "some content")
 }

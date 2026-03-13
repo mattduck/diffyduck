@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"runtime/pprof"
 	"slices"
@@ -1638,7 +1639,7 @@ func runCommentList(args parsedArgs) error {
 		return nil
 	}
 
-	// Sort by Created descending (newest first)
+	// Sort by Created descending (newest first) for limiting
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].Created.After(all[j].Created)
 	})
@@ -1662,10 +1663,11 @@ func runCommentList(args parsedArgs) error {
 			if count < len(all) {
 				all = all[len(all)-count:]
 			}
-			// Reverse so oldest prints first (chronological)
-			slices.Reverse(all)
 		}
 	}
+
+	// Reverse to chronological order (oldest first, newest at bottom near prompt)
+	slices.Reverse(all)
 
 	// Create highlighter for multiline output (reused across comments)
 	var h *highlight.Highlighter
@@ -1684,6 +1686,12 @@ func runCommentList(args parsedArgs) error {
 		shortIDs = shortSuffixes(ids)
 	}
 
+	// Get terminal width for two-column layout
+	termWidth := 80
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		termWidth = w
+	}
+
 	for i, c := range all {
 		if args.commentOneline {
 			fmt.Println(formatCommentOneline(c, shortIDs[c.ID]))
@@ -1691,7 +1699,7 @@ func runCommentList(args parsedArgs) error {
 			if i > 0 {
 				fmt.Print("\n\n")
 			}
-			fmt.Print(formatCommentBlock(c, h))
+			fmt.Print(formatCommentBlock(c, h, termWidth))
 		}
 	}
 	return nil
@@ -1746,10 +1754,19 @@ func formatCommentOneline(c *comments.Comment, displayID string) string {
 		text)
 }
 
+// ansiEscRe matches ANSI escape sequences.
+var ansiEscRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// visibleWidth returns the visible character count of a string with ANSI codes.
+func visibleWidth(s string) int {
+	return len(ansiEscRe.ReplaceAllString(s, ""))
+}
+
 // formatCommentBlock formats a comment as a multiline block showing the full
 // serialized patch context and metadata. If h is non-nil, context lines are
-// syntax-highlighted based on the comment's file extension.
-func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
+// syntax-highlighted based on the comment's file extension. When termWidth is
+// wide enough, metadata is rendered in two columns.
+func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth int) string {
 	var b strings.Builder
 
 	// Header line
@@ -1757,24 +1774,76 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
 	if len(commitShort) > 7 {
 		commitShort = commitShort[:7]
 	}
-	// Metadata
-	if commitShort != "" && c.Branch != "" {
-		fmt.Fprintf(&b, "%sRef:%s    %s%s%s on %s%s%s\n", cGray, cReset, cYellow, commitShort, cReset, cCyan, c.Branch, cReset)
-	} else if commitShort != "" {
-		fmt.Fprintf(&b, "%sRef:%s    %s%s%s\n", cGray, cReset, cYellow, commitShort, cReset)
-	} else if c.Branch != "" {
-		fmt.Fprintf(&b, "%sRef:%s    %s%s%s\n", cGray, cReset, cCyan, c.Branch, cReset)
-	}
-	fmt.Fprintf(&b, "%sFile:%s   %s\n", cGray, cReset, styleCommentPath(c.File, c.Line))
-	fmt.Fprintf(&b, "%sDate:%s   %s\n", cGray, cReset, c.Created.Format(time.RFC3339))
+
+	// Build left column: Date, Status, ID
+	dateVal := c.Created.Format(time.RFC3339)
+	var statusLine string
 	if c.Resolved {
-		fmt.Fprintf(&b, "%sStatus:%s %sresolved%s\n", cGray, cReset, cGray, cReset)
+		statusLine = fmt.Sprintf("%sStatus:%s %sresolved%s", cGray, cReset, cGray, cReset)
 	} else {
-		fmt.Fprintf(&b, "%sStatus:%s unresolved\n", cGray, cReset)
+		statusLine = fmt.Sprintf("%sStatus:%s unresolved", cGray, cReset)
 	}
-	fmt.Fprintf(&b, "%sID:%s     %s%s%s\n",
-		cGray, cReset,
-		cGray, c.ID, cReset)
+	idLine := fmt.Sprintf("%sID:%s     %s%s%s", cGray, cReset, cGray, c.ID, cReset)
+
+	// Build right column: File, Ref
+	fileLine := fmt.Sprintf("%sFile:%s   %s", cGray, cReset, styleCommentPath(c.File, c.Line))
+	var refLine string
+	if commitShort != "" && c.Branch != "" {
+		refLine = fmt.Sprintf("%sRef:%s    %s%s%s on %s%s%s", cGray, cReset, cYellow, commitShort, cReset, cCyan, c.Branch, cReset)
+	} else if commitShort != "" {
+		refLine = fmt.Sprintf("%sRef:%s    %s%s%s", cGray, cReset, cYellow, commitShort, cReset)
+	} else if c.Branch != "" {
+		refLine = fmt.Sprintf("%sRef:%s    %s%s%s", cGray, cReset, cCyan, c.Branch, cReset)
+	}
+
+	// Left column width anchored on Date line (the longest fixed-length field).
+	// "Date:   " = 8 chars + date value + 2 char gap
+	leftColW := 8 + len(dateVal) + 2
+
+	// Determine if two-column layout fits (account for bar prefix "┃ " = 2 chars)
+	twoCol := termWidth >= leftColW+20+2 // 20 = minimum useful right column
+
+	if twoCol {
+		left := []string{
+			fmt.Sprintf("%sDate:%s   %s", cGray, cReset, dateVal),
+			statusLine,
+			idLine,
+		}
+		right := []string{fileLine}
+		if refLine != "" {
+			right = append(right, refLine)
+		}
+		rows := max(len(left), len(right))
+		for i := range rows {
+			var l, r string
+			if i < len(left) {
+				l = left[i]
+			}
+			if i < len(right) {
+				r = right[i]
+			}
+			if r != "" {
+				// Pad left column to fixed width using visible length
+				visLen := visibleWidth(l)
+				pad := leftColW - visLen
+				if pad < 0 {
+					pad = 0
+				}
+				fmt.Fprintf(&b, "%s%s%s\n", l, strings.Repeat(" ", pad), r)
+			} else {
+				fmt.Fprintf(&b, "%s\n", l)
+			}
+		}
+	} else {
+		// Single column fallback
+		fmt.Fprintf(&b, "%sDate:%s   %s\n", cGray, cReset, dateVal)
+		fmt.Fprintf(&b, "%s\n", statusLine)
+		fmt.Fprintf(&b, "%s\n", idLine)
+		fmt.Fprintf(&b, "%s\n", fileLine)
+		if refLine != "" {
+			fmt.Fprintf(&b, "%s\n", refLine)
+		}
+	}
 
 	// Diff context (with optional syntax highlighting)
 	b.WriteString("\n")
