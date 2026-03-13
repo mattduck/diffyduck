@@ -358,7 +358,7 @@ func (m Model) writeFileCommentHunks(sb *strings.Builder, fp sidebyside.FilePair
 
 			if cwk, ok := commentsByLine[pair.New.Num]; ok {
 				c := m.comments[cwk.key]
-				sb.WriteString(fmt.Sprintf("# MSG %s:\n", c.ID))
+				sb.WriteString(fmt.Sprintf("# COMMENT_ID %s:\n", c.ID))
 				for _, line := range strings.Split(c.Text, "\n") {
 					sb.WriteString("# " + line + "\n")
 				}
@@ -443,7 +443,7 @@ func (m Model) findCommentForCursor() (commentKey, bool) {
 //	 context line
 //	 context line
 //	+added line
-//	# MSG <id>:
+//	# COMMENT_ID <id>:
 //	# comment text here
 func (m Model) buildDiffSnippet(ck commentKey, c *comments.Comment) string {
 	comment := c.Text
@@ -493,7 +493,7 @@ func (m Model) buildDiffSnippet(ck commentKey, c *comments.Comment) string {
 
 		// If this is the commented line, add comment after
 		if pair.New.Num == ck.newLineNum {
-			sb.WriteString(fmt.Sprintf("# MSG %s:\n", c.ID))
+			sb.WriteString(fmt.Sprintf("# COMMENT_ID %s:\n", c.ID))
 			for _, line := range strings.Split(comment, "\n") {
 				sb.WriteString("# " + line + "\n")
 			}

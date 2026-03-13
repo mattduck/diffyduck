@@ -122,6 +122,9 @@ func (c *Comment) Serialize() string {
 		b.WriteString("\n")
 	}
 
+	// Write ID first so it's easy to find
+	b.WriteString(fmt.Sprintf("# ID: %s\n", c.ID))
+
 	// Write comment text with # prefix
 	b.WriteString("# COMMENT:\n")
 	for _, line := range strings.Split(c.Text, "\n") {
@@ -167,6 +170,10 @@ func ParseComment(id string, data string) (*Comment, error) {
 
 	for _, line := range lines {
 		// Parse metadata lines
+		if strings.HasPrefix(line, "# ID: ") {
+			// ID is already set from the blob name; skip this line.
+			continue
+		}
 		if strings.HasPrefix(line, "# CREATED: ") {
 			t, err := time.Parse(time.RFC3339, strings.TrimPrefix(line, "# CREATED: "))
 			if err == nil {

@@ -117,7 +117,7 @@ func TestYank_BuildDiffSnippet_Format(t *testing.T) {
 	assert.Contains(t, snippet, "@@ -", "should have hunk header")
 
 	// Should have the comment with # prefix and comment ID
-	assert.Contains(t, snippet, "# MSG 1700000000000:\n# This is my comment\n#\n#\n", "should have comment with # MSG ID prefix and trailing blank # lines")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000000:\n# This is my comment\n#\n#\n", "should have comment with # COMMENT_ID ID prefix and trailing blank # lines")
 
 	// Should have diff lines
 	assert.Contains(t, snippet, "-old line 3", "should have removed line")
@@ -185,7 +185,7 @@ func TestYank_HandleYank_SetsStatusMessage(t *testing.T) {
 
 	// Verify clipboard received the snippet
 	mc := m2.clipboard.(*MemoryClipboard)
-	assert.Contains(t, mc.Content, "# MSG 1700000000000:", "clipboard should contain the comment snippet")
+	assert.Contains(t, mc.Content, "# COMMENT_ID 1700000000000:", "clipboard should contain the comment snippet")
 }
 
 // Test: calculateHunkHeader computes correct values
@@ -629,7 +629,7 @@ func TestYankAll_SingleComment(t *testing.T) {
 
 	assert.Contains(t, snippet, "--- a/file1.go")
 	assert.Contains(t, snippet, "+++ b/file1.go")
-	assert.Contains(t, snippet, "# MSG 1700000000001:")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000001:")
 	assert.Contains(t, snippet, "# only comment")
 }
 
@@ -645,17 +645,17 @@ func TestYankAll_MultipleFiles_GlobalNumbering(t *testing.T) {
 
 	// File 1
 	assert.Contains(t, snippet, "--- a/file1.go")
-	assert.Contains(t, snippet, "# MSG 1700000000001:")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000001:")
 	assert.Contains(t, snippet, "# first comment")
 
 	// File 2
 	assert.Contains(t, snippet, "--- a/file2.go")
-	assert.Contains(t, snippet, "# MSG 1700000000002:")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000002:")
 	assert.Contains(t, snippet, "# second comment")
 
 	// File 1 comment should appear before file 2 comment
-	idx1 := strings.Index(snippet, "# MSG 1700000000001:")
-	idx2 := strings.Index(snippet, "# MSG 1700000000002:")
+	idx1 := strings.Index(snippet, "# COMMENT_ID 1700000000001:")
+	idx2 := strings.Index(snippet, "# COMMENT_ID 1700000000002:")
 	assert.True(t, idx1 < idx2, "file 1 comment should appear before file 2 comment")
 }
 
@@ -676,9 +676,9 @@ func TestYankAll_MergedHunks(t *testing.T) {
 	assert.Equal(t, 1, hunkCount, "adjacent comments should be merged into one hunk")
 
 	// Both comments should be present
-	assert.Contains(t, snippet, "# MSG 1700000000001:")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000001:")
 	assert.Contains(t, snippet, "# comment on 3")
-	assert.Contains(t, snippet, "# MSG 1700000000002:")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000002:")
 	assert.Contains(t, snippet, "# comment on 4")
 }
 
@@ -710,7 +710,7 @@ func TestYankAll_MultilineComment(t *testing.T) {
 
 	snippet, _ := m.buildCommentsSnippet(false)
 
-	assert.Contains(t, snippet, "# MSG 1700000000001:")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000001:")
 	assert.Contains(t, snippet, "# line one\n")
 	assert.Contains(t, snippet, "# line two\n")
 }
@@ -740,8 +740,8 @@ func TestYankAll_SkipsEmptyComments(t *testing.T) {
 	snippet, count := m.buildCommentsSnippet(false)
 
 	assert.Equal(t, 1, count)
-	assert.Contains(t, snippet, "# MSG 1700000000001:")
-	assert.NotContains(t, snippet, "# MSG 1700000000002:")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000001:")
+	assert.NotContains(t, snippet, "# COMMENT_ID 1700000000002:")
 }
 
 // Test: resolved comments are excluded
@@ -755,7 +755,7 @@ func TestYankAll_SkipsResolvedComments(t *testing.T) {
 	snippet, count := m.buildCommentsSnippet(false)
 
 	assert.Equal(t, 1, count)
-	assert.Contains(t, snippet, "# MSG 1700000000001:")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000001:")
 	assert.Contains(t, snippet, "# keep this one")
 	assert.NotContains(t, snippet, "skip this one")
 }
