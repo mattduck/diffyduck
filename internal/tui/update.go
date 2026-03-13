@@ -650,7 +650,23 @@ func (m Model) computeMoveDetectForCommit(ci int) *movedetect.Result {
 	if start >= end {
 		return &movedetect.Result{}
 	}
-	return movedetect.Detect(m.files[start:end], 3, start)
+	return movedetect.Detect(m.files[start:end], m.moveDetectMin, start)
+}
+
+// recomputeMoveDetectIfActive recomputes move detection for the commit
+// containing fileIdx, but only if move detection is currently enabled for
+// that commit. Called when pair indices change (semantic context expansion,
+// fold reset, user context expansion).
+func (m *Model) recomputeMoveDetectIfActive(fileIdx int) {
+	if m.moveDetectResults == nil {
+		return
+	}
+	ci := m.commitForFile(fileIdx)
+	if !m.moveDetectCommits[ci] {
+		delete(m.moveDetectResults, ci)
+		return
+	}
+	m.moveDetectResults[ci] = m.computeMoveDetectForCommit(ci)
 }
 
 // cursorRowIdentity captures the "identity" of the row the cursor is on.
@@ -1006,6 +1022,8 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 	}
 	// Reset pairs to original state (undo any user context expansion)
 	m.files[fileIdx].ResetPairs()
+	// Recompute move detection if active — pair indices changed
+	m.recomputeMoveDetectIfActive(fileIdx)
 
 	// If file is expanded beyond FoldHeader, ensure parent commit is at least CommitFileHeaders
 	// (so the file is visible), but don't force CommitFileHunks (keep commit info fold state independent)
@@ -2263,6 +2281,9 @@ func (m Model) handleContextExpand() (tea.Model, tea.Cmd) {
 	case RowKindSeparator:
 		targetNewLine = m.enterExpandMiddle(fp, boundaries, hunkBelow, sepRow)
 	}
+
+	// Recompute move detection if active — context expansion shifts pair indices
+	m.recomputeMoveDetectIfActive(fileIdx)
 
 	m.calculateTotalLines()
 

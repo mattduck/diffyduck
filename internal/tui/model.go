@@ -223,6 +223,7 @@ type Model struct {
 
 	// Move detection mode - highlights blocks of code that were moved between locations
 	// Toggle and results are per-commit so each commit can be independently inspected.
+	moveDetectMin     int                        // min consecutive lines for a move block (default 2)
 	moveDetectCommits map[int]bool               // commit index -> enabled
 	moveDetectResults map[int]*movedetect.Result // commit index -> cached result
 
@@ -598,6 +599,9 @@ func WithConfig(cfg config.Config) Option {
 		if cfg.Features.ChordTimeoutMs != nil {
 			m.chordTimeout = time.Duration(*cfg.Features.ChordTimeoutMs) * time.Millisecond
 		}
+		if cfg.Features.MoveDetectMin != nil {
+			m.moveDetectMin = *cfg.Features.MoveDetectMin
+		}
 	}
 }
 
@@ -633,6 +637,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		chordTimeout:        time.Duration(config.DefaultChordTimeoutMs) * time.Millisecond,
 		expandAllBudget:     config.DefaultExpandAllBudget,
 		autoUnfoldLimit:     config.DefaultAutoUnfoldLimit,
+		moveDetectMin:       config.DefaultMoveDetectMin,
 		highlighter:         highlight.New(),
 		highlightSpans:      make(map[int]*FileHighlight),
 		structureMaps:       make(map[int]*FileStructure),

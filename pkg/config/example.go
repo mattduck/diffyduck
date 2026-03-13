@@ -57,6 +57,7 @@ const (
 	DefaultExpandAllBudget = 500
 	DefaultChordTimeoutMs  = 250
 	DefaultAutoUnfoldLimit = 800
+	DefaultMoveDetectMin   = 2
 )
 
 // GenerateExample returns a complete, commented TOML config file with all
@@ -236,6 +237,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 	b.WriteString(fmt.Sprintf("# expand_all_budget  = %d  # max total files for full shift-tab expansion\n", DefaultExpandAllBudget))
 	b.WriteString(fmt.Sprintf("# chord_timeout_ms   = %d  # milliseconds before a prefix key fires its solo binding\n", DefaultChordTimeoutMs))
 	b.WriteString(fmt.Sprintf("# auto_unfold_limit  = %d  # max rows to auto-unfold diff on startup (0 = always fold)\n", DefaultAutoUnfoldLimit))
+	b.WriteString(fmt.Sprintf("# move_detect_min    = %d    # min consecutive lines for move detection (1-10)\n", DefaultMoveDetectMin))
 
 	return b.String()
 }

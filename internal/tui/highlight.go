@@ -187,6 +187,9 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 		expandSemanticContext(&m.files[msg.FileIndex], newStruct, SemanticContextThreshold)
 		// Snapshot pairs after semantic expansion so fold toggle can restore them
 		m.files[msg.FileIndex].SaveOriginalPairs()
+		// Recompute move detection for this commit if active — semantic context
+		// insertion shifts pair indices, so cached results would map to wrong lines.
+		m.recomputeMoveDetectIfActive(msg.FileIndex)
 	}
 
 	// Recalculate rows if structural diff would be visible.

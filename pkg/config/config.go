@@ -165,6 +165,7 @@ type FeaturesConfig struct {
 	ExpandAllBudget *int  `toml:"expand_all_budget"` // max files for full shift-tab expansion (default: 500)
 	ChordTimeoutMs  *int  `toml:"chord_timeout_ms"`  // dual-use prefix timeout in milliseconds (default: 250)
 	AutoUnfoldLimit *int  `toml:"auto_unfold_limit"` // max rows to auto-unfold on startup (default: 800)
+	MoveDetectMin   *int  `toml:"move_detect_min"`   // min consecutive lines for move detection (default: 2)
 }
 
 // Load reads the config file from the XDG-conventional path.
