@@ -200,7 +200,7 @@ func flagsForCmd(cmd string) []string {
 	case "status":
 		return append(global, "--symbols", "--untracked-files", "--branches")
 	case "comment":
-		return append(global, "-n", "-b", "--since", "--status", "--oneline", "--branch", "--all-branches")
+		return append(global, "-n", "-b", "--since", "--status", "--oneline", "--raw", "--branch", "--all-branches")
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:

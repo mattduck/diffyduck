@@ -118,6 +118,7 @@ type parsedArgs struct {
 	commentNSet        bool   // true if -n was explicitly passed
 	commentStatus      string // --status: "unresolved" (default), "resolved", "all"
 	commentOneline     bool   // --oneline: compact single-line output
+	commentRaw         bool   // --raw: show raw git blob serialization
 	commentAllBranches bool   // --all-branches: show comments from all branches
 	commentBranch      string // --branch: filter to specific branch
 
@@ -425,6 +426,8 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 	// comment flags
 	case arg == "--oneline":
 		p.commentOneline = true
+	case arg == "--raw":
+		p.commentRaw = true
 	case arg == "--all-branches":
 		p.commentAllBranches = true
 	case arg == "--branch":
@@ -611,6 +614,9 @@ func (p *parsedArgs) validate() error {
 	}
 	if p.cmd != "comment" && p.commentOneline {
 		return fmt.Errorf("--oneline is only valid for comment command")
+	}
+	if p.cmd != "comment" && p.commentRaw {
+		return fmt.Errorf("--raw is only valid for comment command")
 	}
 	if p.cmd != "comment" && p.commentAllBranches {
 		return fmt.Errorf("--all-branches is only valid for comment command")
@@ -971,6 +977,7 @@ List flags:
       --status <s> Filter: unresolved (default), resolved, all
       --since <d>  Only show comments created within duration (e.g. 6h, 7d, 2w, 3m, 1y, all)
       --oneline    Compact single-line output per comment
+      --raw        Show raw git blob format for each comment
   -b, --branch [b] Filter to a specific branch (default: current branch)
       --all-branches
                    Show comments from all branches (default: current branch only)
@@ -1748,7 +1755,12 @@ func runCommentList(args parsedArgs) error {
 	}
 
 	for i, c := range all {
-		if args.commentOneline {
+		if args.commentRaw {
+			if i > 0 {
+				fmt.Print("\n")
+			}
+			fmt.Print(c.Serialize())
+		} else if args.commentOneline {
 			fmt.Println(formatCommentOneline(c, shortIDs[c.ID]))
 		} else {
 			if i > 0 {
