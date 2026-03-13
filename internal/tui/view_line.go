@@ -461,8 +461,8 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 	// Move detection overlay: when a line is part of a detected move group,
 	// apply a cycling background color to make moved blocks visually distinct.
-	// Search highlighting still takes precedence (applied above).
-	if moveGroup > 0 {
+	// Skip when search is active — search highlighting takes precedence.
+	if moveGroup > 0 && m.searchQuery == "" {
 		style := moveDetectPalette[(moveGroup-1)%len(moveDetectPalette)]
 		styledContent = applyMoveStyle(visible, styledContent, style)
 	}
