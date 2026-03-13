@@ -50,7 +50,7 @@ func TestYank_FindCommentForCursor_OnCommentedLine(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = &comments.Comment{Text: "test comment"}
+	m.comments[key] = &comments.Comment{ID: "1700000000000", Text: "test comment"}
 	m.rebuildRowsCache()
 
 	// Find the row index for line 3
@@ -78,7 +78,7 @@ func TestYank_FindCommentForCursor_OnCommentRow(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = &comments.Comment{Text: "test comment"}
+	m.comments[key] = &comments.Comment{ID: "1700000000000", Text: "test comment"}
 	m.rebuildRowsCache()
 
 	// Find the comment row index
@@ -105,9 +105,9 @@ func TestYank_BuildDiffSnippet_Format(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	comment := "This is my comment"
+	c := &comments.Comment{ID: "1700000000000", Text: "This is my comment"}
 
-	snippet := m.buildDiffSnippet(key, comment)
+	snippet := m.buildDiffSnippet(key, c)
 
 	// Should have file headers
 	assert.Contains(t, snippet, "--- a/test.go", "should have old file header")
@@ -116,8 +116,8 @@ func TestYank_BuildDiffSnippet_Format(t *testing.T) {
 	// Should have hunk header
 	assert.Contains(t, snippet, "@@ -", "should have hunk header")
 
-	// Should have the comment with # prefix
-	assert.Contains(t, snippet, "# MSG 1:\n# This is my comment\n#\n#\n", "should have comment with # MSG prefix and trailing blank # lines")
+	// Should have the comment with # prefix and comment ID
+	assert.Contains(t, snippet, "# MSG 1700000000000:\n# This is my comment\n#\n#\n", "should have comment with # MSG ID prefix and trailing blank # lines")
 
 	// Should have diff lines
 	assert.Contains(t, snippet, "-old line 3", "should have removed line")
@@ -130,9 +130,9 @@ func TestYank_BuildDiffSnippet_Context(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	comment := "Comment on line 3"
+	c := &comments.Comment{ID: "1700000000000", Text: "Comment on line 3"}
 
-	snippet := m.buildDiffSnippet(key, comment)
+	snippet := m.buildDiffSnippet(key, c)
 
 	// Should include context lines before the commented line
 	assert.Contains(t, snippet, " context line 1", "should have first context line")
@@ -148,9 +148,9 @@ func TestYank_BuildDiffSnippet_MultilineComment(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	comment := "Line one\nLine two\nLine three"
+	c := &comments.Comment{ID: "1700000000000", Text: "Line one\nLine two\nLine three"}
 
-	snippet := m.buildDiffSnippet(key, comment)
+	snippet := m.buildDiffSnippet(key, c)
 
 	// Each line should be prefixed with #
 	assert.Contains(t, snippet, "# Line one\n", "should have first comment line")
@@ -165,7 +165,7 @@ func TestYank_HandleYank_SetsStatusMessage(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = &comments.Comment{Text: "test comment"}
+	m.comments[key] = &comments.Comment{ID: "1700000000000", Text: "test comment"}
 	m.rebuildRowsCache()
 
 	// Find and position on the commented line (scroll = rowIdx - cursorOffset)
@@ -185,7 +185,7 @@ func TestYank_HandleYank_SetsStatusMessage(t *testing.T) {
 
 	// Verify clipboard received the snippet
 	mc := m2.clipboard.(*MemoryClipboard)
-	assert.Contains(t, mc.Content, "# MSG 1:", "clipboard should contain the comment snippet")
+	assert.Contains(t, mc.Content, "# MSG 1700000000000:", "clipboard should contain the comment snippet")
 }
 
 // Test: calculateHunkHeader computes correct values
@@ -310,9 +310,9 @@ func TestYank_BuildDiffSnippet_FirstLine(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	comment := "Comment on first line"
+	c := &comments.Comment{ID: "1700000000000", Text: "Comment on first line"}
 
-	snippet := m.buildDiffSnippet(key, comment)
+	snippet := m.buildDiffSnippet(key, c)
 
 	// Should still have valid format even with no context before
 	assert.Contains(t, snippet, "--- a/test.go")
@@ -340,9 +340,9 @@ func TestYank_BuildDiffSnippet_ContextLine(t *testing.T) {
 
 	// Comment on context line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	comment := "Note about this line"
+	c := &comments.Comment{ID: "1700000000000", Text: "Note about this line"}
 
-	snippet := m.buildDiffSnippet(key, comment)
+	snippet := m.buildDiffSnippet(key, c)
 
 	// Should show context lines with space prefix
 	assert.Contains(t, snippet, " line 1")
@@ -397,7 +397,7 @@ func TestYank_KeyPress_Integration(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = &comments.Comment{Text: "integration test comment"}
+	m.comments[key] = &comments.Comment{ID: "1700000000000", Text: "integration test comment"}
 	m.rebuildRowsCache()
 
 	// Position cursor on the commented line
@@ -623,13 +623,13 @@ func TestYankAll_SingleComment(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "only comment"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "only comment"}
 
 	snippet, _ := m.buildAllCommentsSnippet()
 
 	assert.Contains(t, snippet, "--- a/file1.go")
 	assert.Contains(t, snippet, "+++ b/file1.go")
-	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# MSG 1700000000001:")
 	assert.Contains(t, snippet, "# only comment")
 }
 
@@ -638,25 +638,25 @@ func TestYankAll_MultipleFiles_GlobalNumbering(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "first comment"}
-	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = &comments.Comment{Text: "second comment"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "first comment"}
+	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = &comments.Comment{ID: "1700000000002", Text: "second comment"}
 
 	snippet, _ := m.buildAllCommentsSnippet()
 
 	// File 1
 	assert.Contains(t, snippet, "--- a/file1.go")
-	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# MSG 1700000000001:")
 	assert.Contains(t, snippet, "# first comment")
 
 	// File 2
 	assert.Contains(t, snippet, "--- a/file2.go")
-	assert.Contains(t, snippet, "# MSG 2:")
+	assert.Contains(t, snippet, "# MSG 1700000000002:")
 	assert.Contains(t, snippet, "# second comment")
 
-	// MSG 1 should appear before MSG 2
-	idx1 := strings.Index(snippet, "# MSG 1:")
-	idx2 := strings.Index(snippet, "# MSG 2:")
-	assert.True(t, idx1 < idx2, "MSG 1 should appear before MSG 2")
+	// File 1 comment should appear before file 2 comment
+	idx1 := strings.Index(snippet, "# MSG 1700000000001:")
+	idx2 := strings.Index(snippet, "# MSG 1700000000002:")
+	assert.True(t, idx1 < idx2, "file 1 comment should appear before file 2 comment")
 }
 
 // Test: nearby comments in same file are merged into one hunk
@@ -666,8 +666,8 @@ func TestYankAll_MergedHunks(t *testing.T) {
 
 	// Lines 3 and 4 are adjacent — with 2 context lines before each,
 	// their ranges overlap so they should merge into one hunk
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "comment on 3"}
-	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{Text: "comment on 4"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "comment on 3"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{ID: "1700000000002", Text: "comment on 4"}
 
 	snippet, _ := m.buildAllCommentsSnippet()
 
@@ -676,9 +676,9 @@ func TestYankAll_MergedHunks(t *testing.T) {
 	assert.Equal(t, 1, hunkCount, "adjacent comments should be merged into one hunk")
 
 	// Both comments should be present
-	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# MSG 1700000000001:")
 	assert.Contains(t, snippet, "# comment on 3")
-	assert.Contains(t, snippet, "# MSG 2:")
+	assert.Contains(t, snippet, "# MSG 1700000000002:")
 	assert.Contains(t, snippet, "# comment on 4")
 }
 
@@ -691,8 +691,8 @@ func TestYankAll_SeparateHunks(t *testing.T) {
 	// Line 3: range [1,3], Line 6: range [4,6] — actually these are adjacent (endIdx=3, startIdx=4)
 	// so they'd merge. Let me use line 7 instead which has range [5,7]
 	// Line 3: range [1,3], Line 7: range [5,7] — startIdx(5) > endIdx(3)+1, separate
-	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = &comments.Comment{Text: "comment on 1"}
-	m.comments[commentKey{fileIndex: 0, newLineNum: 7}] = &comments.Comment{Text: "comment on 7"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = &comments.Comment{ID: "1700000000001", Text: "comment on 1"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 7}] = &comments.Comment{ID: "1700000000002", Text: "comment on 7"}
 
 	snippet, _ := m.buildAllCommentsSnippet()
 
@@ -706,11 +706,11 @@ func TestYankAll_MultilineComment(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "line one\nline two"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "line one\nline two"}
 
 	snippet, _ := m.buildAllCommentsSnippet()
 
-	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# MSG 1700000000001:")
 	assert.Contains(t, snippet, "# line one\n")
 	assert.Contains(t, snippet, "# line two\n")
 }
@@ -720,8 +720,8 @@ func TestYankAll_StatusMessage(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "a"}
-	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = &comments.Comment{Text: "b"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "a"}
+	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = &comments.Comment{ID: "1700000000002", Text: "b"}
 
 	newModel, _ := m.handleYankAll()
 	m2 := newModel.(Model)
@@ -734,14 +734,14 @@ func TestYankAll_SkipsEmptyComments(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "real comment"}
-	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{Text: ""}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "real comment"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{ID: "1700000000002", Text: ""}
 
 	snippet, count := m.buildAllCommentsSnippet()
 
 	assert.Equal(t, 1, count)
-	assert.Contains(t, snippet, "# MSG 1:")
-	assert.NotContains(t, snippet, "# MSG 2:")
+	assert.Contains(t, snippet, "# MSG 1700000000001:")
+	assert.NotContains(t, snippet, "# MSG 1700000000002:")
 }
 
 // Test: resolved comments are excluded
@@ -749,13 +749,13 @@ func TestYankAll_SkipsResolvedComments(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "keep this one"}
-	m.comments[commentKey{fileIndex: 0, newLineNum: 6}] = &comments.Comment{Text: "skip this one", Resolved: true}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "keep this one"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 6}] = &comments.Comment{ID: "1700000000002", Text: "skip this one", Resolved: true}
 
 	snippet, count := m.buildAllCommentsSnippet()
 
 	assert.Equal(t, 1, count)
-	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# MSG 1700000000001:")
 	assert.Contains(t, snippet, "# keep this one")
 	assert.NotContains(t, snippet, "skip this one")
 }
@@ -765,7 +765,7 @@ func TestYankAll_AllResolved_ReturnsNil(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "done", Resolved: true}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "done", Resolved: true}
 
 	newModel, cmd := m.handleYankAll()
 	m2 := newModel.(Model)
@@ -779,7 +779,7 @@ func TestYankAll_KeyPress_Integration(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "test"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "test"}
 	m.rebuildRowsCache()
 
 	// Simulate pressing 'Y'

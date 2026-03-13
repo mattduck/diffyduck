@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -46,7 +47,7 @@ func (m Model) handleYank() (tea.Model, tea.Cmd) {
 	if c == nil || c.Text == "" {
 		return m, nil
 	}
-	return m.yankComment(ck, c.Text)
+	return m.yankComment(ck, c)
 }
 
 // yankCommitSHA copies the full commit SHA to the clipboard.
@@ -95,8 +96,8 @@ func (m Model) yankFilePath(fileIndex int) (tea.Model, tea.Cmd) {
 }
 
 // yankComment copies a comment as a unified diff snippet to the clipboard.
-func (m Model) yankComment(ck commentKey, comment string) (tea.Model, tea.Cmd) {
-	snippet := m.buildDiffSnippet(ck, comment)
+func (m Model) yankComment(ck commentKey, c *comments.Comment) (tea.Model, tea.Cmd) {
+	snippet := m.buildDiffSnippet(ck, c)
 
 	fileName := ""
 	if ck.fileIndex >= 0 && ck.fileIndex < len(m.files) {
@@ -195,7 +196,7 @@ func (m Model) handleVisualYank() (tea.Model, tea.Cmd) {
 }
 
 // handleYankAll copies all unresolved comments to the clipboard as a single unified diff patch.
-// Comments are numbered globally (# MSG 1:, # MSG 2:, etc.) and nearby comments
+// Comments are identified by their timestamp ID (# MSG <id>:) and nearby comments
 // within the same file are merged into single hunks.
 func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
 	if len(m.comments) == 0 {
@@ -219,10 +220,9 @@ func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
 	return m, m.clearStatusAfter(now)
 }
 
-// commentWithKey pairs a comment key with its global message number for sorting.
+// commentWithKey pairs a comment key for sorting.
 type commentWithKey struct {
-	key    commentKey
-	msgNum int
+	key commentKey
 }
 
 // buildAllCommentsSnippet generates a unified diff patch containing all unresolved comments.
@@ -244,11 +244,6 @@ func (m Model) buildAllCommentsSnippet() (string, int) {
 		}
 		return sorted[i].key.newLineNum < sorted[j].key.newLineNum
 	})
-
-	// Assign global message numbers
-	for i := range sorted {
-		sorted[i].msgNum = i + 1
-	}
 
 	// Group by file
 	type fileGroup struct {
@@ -355,7 +350,7 @@ func (m Model) writeFileCommentHunks(sb *strings.Builder, fp sidebyside.FilePair
 
 			if cwk, ok := commentsByLine[pair.New.Num]; ok {
 				c := m.comments[cwk.key]
-				sb.WriteString(fmt.Sprintf("# MSG %d:\n", cwk.msgNum))
+				sb.WriteString(fmt.Sprintf("# MSG %s:\n", c.ID))
 				for _, line := range strings.Split(c.Text, "\n") {
 					sb.WriteString("# " + line + "\n")
 				}
@@ -422,9 +417,10 @@ func (m Model) findCommentForCursor() (commentKey, bool) {
 //	 context line
 //	 context line
 //	+added line
-//	# MSG 1:
+//	# MSG <id>:
 //	# comment text here
-func (m Model) buildDiffSnippet(ck commentKey, comment string) string {
+func (m Model) buildDiffSnippet(ck commentKey, c *comments.Comment) string {
+	comment := c.Text
 	fp := m.files[ck.fileIndex]
 
 	// Find the pair index for the commented line
@@ -471,7 +467,7 @@ func (m Model) buildDiffSnippet(ck commentKey, comment string) string {
 
 		// If this is the commented line, add comment after
 		if pair.New.Num == ck.newLineNum {
-			sb.WriteString("# MSG 1:\n")
+			sb.WriteString(fmt.Sprintf("# MSG %s:\n", c.ID))
 			for _, line := range strings.Split(comment, "\n") {
 				sb.WriteString("# " + line + "\n")
 			}
