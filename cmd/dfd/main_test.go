@@ -1122,6 +1122,7 @@ func TestFormatCommentBlock(t *testing.T) {
 	assert.Contains(t, block, "┃ Branch: main\n")
 	assert.Contains(t, block, "┃ File:   src/foo.go:42\n")
 	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z\n")
+	assert.Contains(t, block, "┃ Status: unresolved\n")
 	assert.Contains(t, block, "┃ ID:     1705312200000\n")
 	// Diff context (line numbers: 40-43, gutter width 2)
 	assert.Contains(t, block, "┃   40 func foo() {\n")
@@ -1144,7 +1145,8 @@ func TestFormatCommentBlock_Resolved(t *testing.T) {
 		Context:  comments.LineContext{Line: "code"},
 	}
 	block := stripANSI(formatCommentBlock(c, nil))
-	assert.Contains(t, block, "┃ ID:     100 [resolved]\n")
+	assert.Contains(t, block, "┃ Status: resolved\n")
+	assert.Contains(t, block, "┃ ID:     100\n")
 }
 
 func TestFormatCommentBlock_NoCommit(t *testing.T) {

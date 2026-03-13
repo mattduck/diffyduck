@@ -1757,10 +1757,6 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
 	if len(commitShort) > 7 {
 		commitShort = commitShort[:7]
 	}
-	resolved := ""
-	if c.Resolved {
-		resolved = cGreen + " [resolved]" + cReset
-	}
 	// Metadata
 	if commitShort != "" {
 		fmt.Fprintf(&b, "%sCommit:%s %s%s%s\n", cGray, cReset, cYellow, commitShort, cReset)
@@ -1770,10 +1766,14 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
 	}
 	fmt.Fprintf(&b, "%sFile:%s   %s\n", cGray, cReset, styleCommentPath(c.File, c.Line))
 	fmt.Fprintf(&b, "%sDate:%s   %s\n", cGray, cReset, c.Created.Format(time.RFC3339))
-	fmt.Fprintf(&b, "%sID:%s     %s%s%s%s\n",
+	if c.Resolved {
+		fmt.Fprintf(&b, "%sStatus:%s %sresolved%s\n", cGray, cReset, cGray, cReset)
+	} else {
+		fmt.Fprintf(&b, "%sStatus:%s unresolved\n", cGray, cReset)
+	}
+	fmt.Fprintf(&b, "%sID:%s     %s%s%s\n",
 		cGray, cReset,
-		cGray, c.ID, cReset,
-		resolved)
+		cGray, c.ID, cReset)
 
 	// Diff context (with optional syntax highlighting)
 	b.WriteString("\n")
@@ -1795,7 +1795,11 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
 	// Comment text
 	b.WriteString("\n")
 	for _, line := range strings.Split(c.Text, "\n") {
-		fmt.Fprintf(&b, "%s\n", line)
+		if c.Resolved {
+			fmt.Fprintf(&b, "%s%s%s\n", cGray, line, cReset)
+		} else {
+			fmt.Fprintf(&b, "%s\n", line)
+		}
 	}
 
 	// Add grey left margin bar to every line
