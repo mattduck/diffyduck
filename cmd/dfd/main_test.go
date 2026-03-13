@@ -1087,6 +1087,37 @@ func TestParseArgs_CommentAddAttachedM(t *testing.T) {
 	assert.Equal(t, "hello", result.commentAddMessage)
 }
 
+func TestParseArgs_CommentAddAuthor(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "add", "main.go:42", "-m", "Note", "--author", "Claude"})
+	require.NoError(t, err)
+	assert.Equal(t, "add", result.commentSub)
+	assert.Equal(t, "Claude", result.commentAddAuthor)
+}
+
+func TestParseArgs_CommentAddAuthorEquals(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--author=Bot"})
+	require.NoError(t, err)
+	assert.Equal(t, "Bot", result.commentAddAuthor)
+}
+
+func TestParseArgs_CommentAddAuthorOnNonAdd(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "list", "--author", "Claude"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--author is only valid for comment add")
+}
+
+func TestParseArgs_CommentAddAuthorMissing(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--author"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--author requires an author argument")
+}
+
+func TestParseArgs_CommentAddAuthorEmptyEquals(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--author="})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--author requires an author argument")
+}
+
 func TestParseCommentTarget(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1423,4 +1454,77 @@ func TestFormatCommentBlock_UnsupportedLanguage(t *testing.T) {
 	block := formatCommentBlock(c, h, 120)
 	stripped := stripANSI(block)
 	assert.Contains(t, stripped, "some content")
+}
+
+func TestFormatCommentOneline_WithAuthor(t *testing.T) {
+	c := &comments.Comment{
+		ID:        "200",
+		File:      "test.go",
+		Line:      1,
+		CommitSHA: "abc1234",
+		Author:    "Claude",
+		Text:      "Review note",
+	}
+	line := stripANSI(formatCommentOneline(c, ""))
+	assert.Contains(t, line, "[Claude]")
+	assert.Contains(t, line, "Review note")
+}
+
+func TestFormatCommentOneline_WithoutAuthor(t *testing.T) {
+	c := &comments.Comment{
+		ID:        "201",
+		File:      "test.go",
+		Line:      1,
+		CommitSHA: "abc1234",
+		Text:      "Human note",
+	}
+	line := stripANSI(formatCommentOneline(c, ""))
+	assert.NotContains(t, line, "[")
+	assert.Contains(t, line, "Human note")
+}
+
+func TestFormatCommentBlock_WithAuthor(t *testing.T) {
+	c := &comments.Comment{
+		ID:      "300",
+		File:    "test.go",
+		Line:    1,
+		Branch:  "main",
+		Author:  "Claude",
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Text:    "Check this",
+		Context: comments.LineContext{Line: "code"},
+	}
+	block := stripANSI(formatCommentBlock(c, nil, 120))
+	// Author should appear in the right column as a header
+	assert.Contains(t, block, "Author: Claude")
+	// Should NOT appear as a separate "commented" header line
+	assert.NotContains(t, block, "Claude commented")
+}
+
+func TestFormatCommentBlock_WithoutAuthor(t *testing.T) {
+	c := &comments.Comment{
+		ID:      "301",
+		File:    "test.go",
+		Line:    1,
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Text:    "No author",
+		Context: comments.LineContext{Line: "code"},
+	}
+	block := stripANSI(formatCommentBlock(c, nil, 120))
+	assert.NotContains(t, block, "Author:")
+}
+
+func TestFormatCommentBlock_AuthorNarrowTerminal(t *testing.T) {
+	c := &comments.Comment{
+		ID:      "302",
+		File:    "test.go",
+		Line:    1,
+		Author:  "Bot",
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Text:    "Note",
+		Context: comments.LineContext{Line: "code"},
+	}
+	// Single column fallback
+	block := stripANSI(formatCommentBlock(c, nil, 40))
+	assert.Contains(t, block, "Author: Bot")
 }

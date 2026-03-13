@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
@@ -3056,6 +3057,57 @@ func TestGoToNextComment_FoldedFile(t *testing.T) {
 	assert.Equal(t, 5, rows[cursor].pair.New.Num)
 	// File should now be unfolded to hunks
 	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
+}
+
+func TestComment_FormatCommentMeta_WithAuthor(t *testing.T) {
+	row := displayRow{
+		commentAuthor:    "Claude",
+		commentCreated:   time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC),
+		commentBranch:    "main",
+		commentCommitSHA: "abc1234567890",
+	}
+	meta := formatCommentMeta(row)
+	// Should contain author prefix with "commented" and pipe separator
+	assert.Contains(t, meta, "Claude commented")
+	assert.Contains(t, meta, "|")
+	assert.Contains(t, meta, "Mar 10")
+	assert.Contains(t, meta, "abc1234")
+}
+
+func TestComment_FormatCommentMeta_WithoutAuthor(t *testing.T) {
+	row := displayRow{
+		commentCreated: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC),
+		commentBranch:  "main",
+	}
+	meta := formatCommentMeta(row)
+	assert.NotContains(t, meta, "commented")
+	assert.NotContains(t, meta, "|")
+	assert.Contains(t, meta, "Mar 10")
+}
+
+func TestComment_BuildCommentRows_PropagatesAuthor(t *testing.T) {
+	c := &comments.Comment{
+		Text:   "hello",
+		Author: "Bot",
+	}
+	rows := buildCommentRows(0, 1, c, 40, TreePath{})
+	require.GreaterOrEqual(t, len(rows), 3)
+
+	for i, r := range rows {
+		assert.Equal(t, "Bot", r.commentAuthor, "row %d should carry author", i)
+	}
+}
+
+func TestComment_BuildCommentRows_EmptyAuthor(t *testing.T) {
+	c := &comments.Comment{
+		Text: "hello",
+	}
+	rows := buildCommentRows(0, 1, c, 40, TreePath{})
+	require.GreaterOrEqual(t, len(rows), 3)
+
+	for i, r := range rows {
+		assert.Equal(t, "", r.commentAuthor, "row %d should have empty author", i)
+	}
 }
 
 func TestGoToNextComment_NoComments(t *testing.T) {

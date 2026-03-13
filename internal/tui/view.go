@@ -766,6 +766,7 @@ type displayRow struct {
 	commentCommitSHA string    // commit SHA when comment was created
 	commentHeadSHA   string    // HEAD SHA when comment was created
 	commentBranch    string    // branch when comment was created
+	commentAuthor    string    // author identifier (empty = no author)
 	// Conflict block fields
 	conflictZone conflictZone // which part of a conflict block this row is in (zero = not in conflict)
 	// Structural diff fields (for RowKindStructuralDiff rows)
@@ -796,6 +797,12 @@ func formatCommentMeta(row displayRow) string {
 	}
 
 	meta := cbStyle.Render(checkbox)
+
+	// Author prefix
+	if row.commentAuthor != "" {
+		meta += " " + dtStyle.Render(row.commentAuthor+" commented")
+		meta += " " + dtStyle.Render("|")
+	}
 
 	// Date
 	if !row.commentCreated.IsZero() {
@@ -859,6 +866,7 @@ func buildCommentRows(fileIndex int, lineNum int, c *comments.Comment, contentWi
 		commentCommitSHA: c.CommitSHA,
 		commentHeadSHA:   c.HeadSHA,
 		commentBranch:    c.Branch,
+		commentAuthor:    c.Author,
 		treePath:         treePath,
 	}
 

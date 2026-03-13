@@ -56,6 +56,9 @@ type Comment struct {
 
 	// Resolved marks the comment as resolved (addressed/done).
 	Resolved bool
+
+	// Author is an optional identifier for who created the comment (e.g. agent name).
+	Author string
 }
 
 // LineContext stores the original line and its surrounding context for matching.
@@ -139,6 +142,9 @@ func (c *Comment) Serialize() string {
 	if c.HeadSHA != "" {
 		b.WriteString(fmt.Sprintf("# HEAD: %s\n", c.HeadSHA))
 	}
+	if c.Author != "" {
+		b.WriteString(fmt.Sprintf("# AUTHOR: %s\n", c.Author))
+	}
 	b.WriteString(fmt.Sprintf("# RESOLVED: %t\n", c.Resolved))
 	b.WriteString(fmt.Sprintf("# FILE: %s\n", c.File))
 	b.WriteString(fmt.Sprintf("# LINE: %d\n", c.Line))
@@ -202,6 +208,10 @@ func ParseComment(id string, data string) (*Comment, error) {
 			c.Anchor = strings.TrimPrefix(line, "# ANCHOR: ")
 			continue
 		}
+		if strings.HasPrefix(line, "# AUTHOR: ") {
+			c.Author = strings.TrimPrefix(line, "# AUTHOR: ")
+			continue
+		}
 		if strings.HasPrefix(line, "# RESOLVED: ") {
 			val := strings.TrimPrefix(line, "# RESOLVED: ")
 			switch val {
@@ -231,6 +241,7 @@ func ParseComment(id string, data string) (*Comment, error) {
 				strings.HasPrefix(rest, "FILE:") ||
 				strings.HasPrefix(rest, "LINE:") ||
 				strings.HasPrefix(rest, "ANCHOR:") ||
+				strings.HasPrefix(rest, "AUTHOR:") ||
 				strings.HasPrefix(rest, "RESOLVED:") {
 				inComment = false
 				// Re-process this line as metadata

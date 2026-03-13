@@ -410,3 +410,107 @@ func TestParseCommentResolvedBackwardCompat(t *testing.T) {
 		t.Error("expected Resolved=false for old blob without RESOLVED field")
 	}
 }
+
+func TestCommentAuthorRoundTrip(t *testing.T) {
+	c := &Comment{
+		ID:      "500",
+		Text:    "agent comment",
+		File:    "test.go",
+		Line:    5,
+		Anchor:  "abc",
+		Author:  "Claude",
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Updated: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Context: LineContext{Line: "code"},
+	}
+
+	serialized := c.Serialize()
+	if !strings.Contains(serialized, "# AUTHOR: Claude") {
+		t.Error("serialized should contain AUTHOR: Claude")
+	}
+
+	parsed, err := ParseComment("500", serialized)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if parsed.Author != "Claude" {
+		t.Errorf("expected Author 'Claude', got %q", parsed.Author)
+	}
+}
+
+func TestCommentAuthorOmittedWhenEmpty(t *testing.T) {
+	c := &Comment{
+		ID:      "501",
+		Text:    "no author",
+		File:    "test.go",
+		Line:    1,
+		Anchor:  "abc",
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Updated: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Context: LineContext{Line: "code"},
+	}
+
+	serialized := c.Serialize()
+	if strings.Contains(serialized, "# AUTHOR:") {
+		t.Error("serialized should not contain AUTHOR when empty")
+	}
+
+	parsed, err := ParseComment("501", serialized)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if parsed.Author != "" {
+		t.Errorf("expected empty Author, got %q", parsed.Author)
+	}
+}
+
+func TestParseCommentAuthorBackwardCompat(t *testing.T) {
+	// Existing blobs without AUTHOR field should parse with empty author
+	data := `--- a/test.go
++++ b/test.go
+@@ -1,1 +1,1 @@
++code
+# COMMENT:
+# old comment
+# FILE: test.go
+# LINE: 1
+# ANCHOR: abc
+# CREATED: 2026-01-01T00:00:00Z
+# UPDATED: 2026-01-01T00:00:00Z
+# RESOLVED: false
+`
+	c, err := ParseComment("502", data)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if c.Author != "" {
+		t.Errorf("expected empty Author for old blob, got %q", c.Author)
+	}
+}
+
+func TestCommentAuthorInCommentTextNotConfused(t *testing.T) {
+	// Make sure "AUTHOR:" appearing in comment text doesn't get parsed as metadata
+	c := &Comment{
+		ID:      "503",
+		Text:    "the AUTHOR: field is new",
+		File:    "test.go",
+		Line:    1,
+		Anchor:  "abc",
+		Author:  "Bot",
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Updated: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Context: LineContext{Line: "code"},
+	}
+
+	serialized := c.Serialize()
+	parsed, err := ParseComment("503", serialized)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if parsed.Author != "Bot" {
+		t.Errorf("expected Author 'Bot', got %q", parsed.Author)
+	}
+	if parsed.Text != "the AUTHOR: field is new" {
+		t.Errorf("expected text preserved, got %q", parsed.Text)
+	}
+}

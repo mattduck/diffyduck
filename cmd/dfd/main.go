@@ -128,6 +128,7 @@ type parsedArgs struct {
 	commentAddTarget  string // file:line positional arg
 	commentAddMessage string // -m message
 	commentAddRef     string // --ref: commit/branch/tag to comment on
+	commentAddAuthor  string // --author: author identifier
 
 	// config-specific
 	configInit  bool // --init
@@ -456,6 +457,17 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		if p.commentAddRef == "" {
 			return 0, fmt.Errorf("--ref requires a ref argument")
 		}
+	case arg == "--author":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--author requires an author argument")
+		}
+		p.commentAddAuthor = args[i+1]
+		return 1, nil
+	case strings.HasPrefix(arg, "--author="):
+		p.commentAddAuthor = strings.TrimPrefix(arg, "--author=")
+		if p.commentAddAuthor == "" {
+			return 0, fmt.Errorf("--author requires an author argument")
+		}
 
 	// comment flags
 	case arg == "--oneline":
@@ -650,6 +662,9 @@ func (p *parsedArgs) validate() error {
 		}
 		if p.commentAddRef != "" && p.commentSub != "add" {
 			return fmt.Errorf("--ref is only valid for comment add")
+		}
+		if p.commentAddAuthor != "" && p.commentSub != "add" {
+			return fmt.Errorf("--author is only valid for comment add")
 		}
 	case "config":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
@@ -1049,9 +1064,10 @@ Sub-commands:
   add        Add a new comment on a file and line
 
 Add flags:
-  -m <message>     Comment text (required unless reading from stdin)
-      --ref <ref>  Comment on file as it appears at ref (branch, tag, or commit)
-                   Without --ref, comments on the working tree version
+  -m <message>        Comment text (required unless reading from stdin)
+      --ref <ref>     Comment on file as it appears at ref (branch, tag, or commit)
+                      Without --ref, comments on the working tree version
+      --author <name> Author identifier (shown in list and TUI display)
 
 Edit flags:
       --resolved <b>  Set resolved state: true or false (skips $EDITOR)
@@ -1904,11 +1920,17 @@ func formatCommentOneline(c *comments.Comment, displayID string) string {
 		resolved = cGreen + " [resolved]" + cReset
 	}
 
-	return fmt.Sprintf("%s%s%s%s  %s  %s%s%s%s  %s",
+	authorPart := ""
+	if c.Author != "" {
+		authorPart = fmt.Sprintf("  %s[%s]%s", cCyan, c.Author, cReset)
+	}
+
+	return fmt.Sprintf("%s%s%s%s  %s  %s%s%s%s%s  %s",
 		cBrightWhite, cBold, displayID, cReset,
 		styleCommentPath(c.File, c.Line),
 		cYellow, commitShort, cReset,
 		resolved,
+		authorPart,
 		text)
 }
 
@@ -1971,6 +1993,9 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 		if refLine != "" {
 			right = append(right, refLine)
 		}
+		if c.Author != "" {
+			right = append(right, fmt.Sprintf("%sAuthor:%s %s%s%s", cGray, cReset, cCyan, c.Author, cReset))
+		}
 		rows := max(len(left), len(right))
 		for i := range rows {
 			var l, r string
@@ -2000,6 +2025,9 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 		fmt.Fprintf(&b, "%s\n", fileLine)
 		if refLine != "" {
 			fmt.Fprintf(&b, "%s\n", refLine)
+		}
+		if c.Author != "" {
+			fmt.Fprintf(&b, "%sAuthor:%s %s%s%s\n", cGray, cReset, cCyan, c.Author, cReset)
 		}
 	}
 
@@ -2402,22 +2430,9 @@ func runCommentAdd(args parsedArgs) error {
 		}
 		fileLines = splitFileLines(string(data))
 
-		// Get current branch
+		// Record branch only — no commit SHA without explicit --ref
 		if cb, err := g.CurrentBranch(); err == nil {
 			branch = cb
-		}
-
-		// Detect if line is in current diff vs HEAD.
-		// If Diff or RevParse fail (e.g. initial commit with no HEAD),
-		// commitSHA stays empty — only branch is recorded.
-		diffOutput, err := g.Diff("HEAD", "--", relPath)
-		if err == nil && isLineInDiff(diffOutput, relPath, lineNum) {
-			// Line is part of uncommitted changes — record branch only (no commit)
-		} else {
-			// Line is unchanged — record HEAD commit
-			if sha, err := g.RevParse("HEAD"); err == nil {
-				commitSHA = sha
-			}
 		}
 	}
 
@@ -2450,6 +2465,7 @@ func runCommentAdd(args parsedArgs) error {
 		Updated:   now,
 		CommitSHA: commitSHA,
 		Branch:    branch,
+		Author:    args.commentAddAuthor,
 	}
 
 	// Write to store
