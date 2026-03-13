@@ -564,9 +564,6 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case matchesKey(msg, keys.YankAll):
-		return m.handleYankAll()
-
 	case matchesKey(msg, keys.Yank):
 		return m.handleYank()
 
@@ -1664,6 +1661,14 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if matchesSequence(prefix, msg, keys.WinResizeDown) {
 		return m.windowResizeDown()
+	}
+
+	// Comment yank sequences
+	if matchesSequence(prefix, msg, keys.YankUnresolved) {
+		return m.handleYankComments(false)
+	}
+	if matchesSequence(prefix, msg, keys.YankAllComments) {
+		return m.handleYankComments(true)
 	}
 
 	// Comment resolve toggle

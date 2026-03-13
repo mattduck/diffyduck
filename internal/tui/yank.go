@@ -195,15 +195,15 @@ func (m Model) handleVisualYank() (tea.Model, tea.Cmd) {
 	return m, m.clearStatusAfter(now)
 }
 
-// handleYankAll copies all unresolved comments to the clipboard as a single unified diff patch.
-// Comments are identified by their timestamp ID (# MSG <id>:) and nearby comments
-// within the same file are merged into single hunks.
-func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
+// handleYankComments copies comments to the clipboard as a single unified diff patch.
+// If includeAll is true, all comments (including resolved) are included.
+// Otherwise, only unresolved comments are included.
+func (m Model) handleYankComments(includeAll bool) (tea.Model, tea.Cmd) {
 	if len(m.comments) == 0 {
 		return m, nil
 	}
 
-	snippet, count := m.buildAllCommentsSnippet()
+	snippet, count := m.buildCommentsSnippet(includeAll)
 	if count == 0 {
 		return m, nil
 	}
@@ -216,7 +216,7 @@ func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
 	}
 
 	label := "unresolved comments"
-	if m.commentDisplayMode == CommentShowAll {
+	if includeAll {
 		label = "comments"
 	}
 	m.statusMessage = fmt.Sprintf("Copied %d %s", count, label)
@@ -229,14 +229,13 @@ type commentWithKey struct {
 	key commentKey
 }
 
-// buildAllCommentsSnippet generates a unified diff patch containing all unresolved comments.
-// Comments are sorted by file then line number, numbered globally, and nearby
-// comments within the same file are merged into single hunks.
+// buildCommentsSnippet generates a unified diff patch containing comments.
+// If includeAll is true, all comments are included; otherwise only unresolved.
+// Comments are sorted by file then line number, and nearby comments within the
+// same file are merged into single hunks.
 // Returns the snippet and the number of comments included.
-func (m Model) buildAllCommentsSnippet() (string, int) {
+func (m Model) buildCommentsSnippet(includeAll bool) (string, int) {
 	// Collect and sort comments by (fileIndex, newLineNum).
-	// In ShowAll mode, include all comments. Otherwise, only unresolved.
-	includeAll := m.commentDisplayMode == CommentShowAll
 	var sorted []commentWithKey
 	for ck, c := range m.comments {
 		if c == nil || c.Text == "" {
@@ -370,13 +369,12 @@ func (m Model) writeFileCommentHunks(sb *strings.Builder, fp sidebyside.FilePair
 }
 
 // AllCommentsSnippet returns the unified diff patch for all unresolved comments,
-// or empty string if there are none. This is the exported version of
-// buildAllCommentsSnippet, intended for printing after the TUI exits.
+// or empty string if there are none. Intended for printing after the TUI exits.
 func (m Model) AllCommentsSnippet() string {
 	if len(m.comments) == 0 {
 		return ""
 	}
-	snippet, _ := m.buildAllCommentsSnippet()
+	snippet, _ := m.buildCommentsSnippet(false)
 	return snippet
 }
 

@@ -44,18 +44,19 @@ type KeyMap struct {
 	FullFileToggle []string
 
 	// Actions
-	Quit           []string
-	Enter          []string // used for comment mode
-	ResolveToggle  []string // toggle comment resolved: "ctrl+c ctrl+c"
-	Yank           []string
-	YankAll        []string
-	RefreshLayout  []string // recalculate dynamic column widths
-	Snapshot       []string // take snapshot and switch to snapshot view
-	SnapshotToggle []string // toggle snapshot view
-	VisualMode     []string // enter visual line mode
-	Help           []string // toggle help screen
-	MoveDetect     []string // toggle move detection highlighting
-	CommentToggle  []string // cycle comment display mode
+	Quit            []string
+	Enter           []string // used for comment mode
+	ResolveToggle   []string // toggle comment resolved: "ctrl+c ctrl+c"
+	Yank            []string
+	YankUnresolved  []string // copy all unresolved comments
+	YankAllComments []string // copy all comments (including resolved)
+	RefreshLayout   []string // recalculate dynamic column widths
+	Snapshot        []string // take snapshot and switch to snapshot view
+	SnapshotToggle  []string // toggle snapshot view
+	VisualMode      []string // enter visual line mode
+	Help            []string // toggle help screen
+	MoveDetect      []string // toggle move detection highlighting
+	CommentToggle   []string // cycle comment display mode
 
 	// Window management (sequences with prefix)
 	WinSplitV      []string // "ctrl+w %"
@@ -87,57 +88,58 @@ type KeyMap struct {
 // DefaultKeyMap returns the default key bindings.
 func DefaultKeyMap() KeyMap {
 	km := KeyMap{
-		Up:             []string{"up", "k"},
-		Down:           []string{"down", "j"},
-		PageUp:         []string{"pgup", "ctrl+b", "b"},
-		PageDown:       []string{"pgdown", "ctrl+f", "f", " "},
-		HalfUp:         []string{"ctrl+u", "u"},
-		HalfDown:       []string{"ctrl+d", "d"},
-		Top:            []string{"home"},
-		Bottom:         []string{"end", "G"},
-		Left:           []string{"left", "h"},
-		Right:          []string{"right", "l"},
-		GoToTop:        []string{"g g"},
-		NextHeading:    []string{"g j"},
-		PrevHeading:    []string{"g k"},
-		NextComment:    []string{"space c j"},
-		PrevComment:    []string{"space c k"},
-		NextChange:     []string{"space g j"},
-		PrevChange:     []string{"space g k"},
-		NarrowNext:     []string{"ctrl+j"},
-		NarrowPrev:     []string{"ctrl+k"},
-		Quit:           []string{"q"},
-		SearchForward:  []string{"/"},
-		SearchBack:     []string{"?"},
-		NextMatch:      []string{"n"},
-		PrevMatch:      []string{"N"},
-		NarrowToggle:   []string{"space n f"},
-		FoldToggle:     []string{"tab"},
-		FoldToggleAll:  []string{"shift+tab"},
-		FullFileToggle: []string{"F"},
-		Enter:          []string{"enter"},
-		ResolveToggle:  []string{"ctrl+c ctrl+c"},
-		Yank:           []string{"y"},
-		YankAll:        []string{"Y"},
-		RefreshLayout:  []string{"r"},
-		Snapshot:       []string{"S"},
-		SnapshotToggle: []string{"s"},
-		VisualMode:     []string{"V"},
-		Help:           []string{"ctrl+h"},
-		MoveDetect:     []string{"M"},
-		CommentToggle:  []string{"C"},
-		WinSplitV:      []string{"ctrl+w %"},
-		WinSplitH:      []string{"ctrl+w \""},
-		WinClose:       []string{"ctrl+w x"},
-		WinFocusLeft:   []string{"ctrl+w h"},
-		WinFocusRight:  []string{"ctrl+w l"},
-		WinFocusUp:     []string{"ctrl+w k"},
-		WinFocusDown:   []string{"ctrl+w j"},
-		WinResizeLeft:  []string{"ctrl+w ctrl+h"},
-		WinResizeRight: []string{"ctrl+w ctrl+l"},
-		WinResizeUp:    []string{"ctrl+w ctrl+k"},
-		WinResizeDown:  []string{"ctrl+w ctrl+j"},
-		VisualExit:     []string{"esc", "ctrl+g"},
+		Up:              []string{"up", "k"},
+		Down:            []string{"down", "j"},
+		PageUp:          []string{"pgup", "ctrl+b", "b"},
+		PageDown:        []string{"pgdown", "ctrl+f", "f", " "},
+		HalfUp:          []string{"ctrl+u", "u"},
+		HalfDown:        []string{"ctrl+d", "d"},
+		Top:             []string{"home"},
+		Bottom:          []string{"end", "G"},
+		Left:            []string{"left", "h"},
+		Right:           []string{"right", "l"},
+		GoToTop:         []string{"g g"},
+		NextHeading:     []string{"g j"},
+		PrevHeading:     []string{"g k"},
+		NextComment:     []string{"space c j"},
+		PrevComment:     []string{"space c k"},
+		NextChange:      []string{"space g j"},
+		PrevChange:      []string{"space g k"},
+		NarrowNext:      []string{"ctrl+j"},
+		NarrowPrev:      []string{"ctrl+k"},
+		Quit:            []string{"q"},
+		SearchForward:   []string{"/"},
+		SearchBack:      []string{"?"},
+		NextMatch:       []string{"n"},
+		PrevMatch:       []string{"N"},
+		NarrowToggle:    []string{"space n f"},
+		FoldToggle:      []string{"tab"},
+		FoldToggleAll:   []string{"shift+tab"},
+		FullFileToggle:  []string{"F"},
+		Enter:           []string{"enter"},
+		ResolveToggle:   []string{"ctrl+c ctrl+c"},
+		Yank:            []string{"y"},
+		YankUnresolved:  []string{"space c y"},
+		YankAllComments: []string{"space c Y"},
+		RefreshLayout:   []string{"r"},
+		Snapshot:        []string{"S"},
+		SnapshotToggle:  []string{"s"},
+		VisualMode:      []string{"V"},
+		Help:            []string{"ctrl+h"},
+		MoveDetect:      []string{"M"},
+		CommentToggle:   []string{"C"},
+		WinSplitV:       []string{"ctrl+w %"},
+		WinSplitH:       []string{"ctrl+w \""},
+		WinClose:        []string{"ctrl+w x"},
+		WinFocusLeft:    []string{"ctrl+w h"},
+		WinFocusRight:   []string{"ctrl+w l"},
+		WinFocusUp:      []string{"ctrl+w k"},
+		WinFocusDown:    []string{"ctrl+w j"},
+		WinResizeLeft:   []string{"ctrl+w ctrl+h"},
+		WinResizeRight:  []string{"ctrl+w ctrl+l"},
+		WinResizeUp:     []string{"ctrl+w ctrl+k"},
+		WinResizeDown:   []string{"ctrl+w ctrl+j"},
+		VisualExit:      []string{"esc", "ctrl+g"},
 	}
 	km.prefixSet = buildPrefixSet(km)
 	km.soloSet = buildSoloSet(km)
@@ -191,7 +193,8 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.Enter, Desc: "Add comment"},
 			{Keys: km.ResolveToggle, Desc: "Toggle comment resolved"},
 			{Keys: km.Yank, Desc: "Copy item (SHA / path / comment)"},
-			{Keys: km.YankAll, Desc: "Copy all comments"},
+			{Keys: km.YankUnresolved, Desc: "Copy unresolved comments"},
+			{Keys: km.YankAllComments, Desc: "Copy all comments"},
 			{Keys: km.RefreshLayout, Desc: "Refresh layout"},
 			{Keys: km.SnapshotToggle, Desc: "Toggle snapshot view"},
 			{Keys: km.Snapshot, Desc: "Take snapshot"},
@@ -357,7 +360,7 @@ func allBindings(km KeyMap) [][]string {
 		km.SearchForward, km.SearchBack, km.NextMatch, km.PrevMatch,
 		km.NarrowToggle,
 		km.FoldToggle, km.FoldToggleAll, km.FullFileToggle,
-		km.Quit, km.Enter, km.ResolveToggle, km.Yank, km.YankAll,
+		km.Quit, km.Enter, km.ResolveToggle, km.Yank, km.YankUnresolved, km.YankAllComments,
 		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help, km.MoveDetect, km.CommentToggle,
 		km.WinSplitV, km.WinSplitH, km.WinClose,
 		km.WinFocusLeft, km.WinFocusRight, km.WinFocusUp, km.WinFocusDown,
@@ -475,8 +478,11 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		if a.Yank != nil {
 			km.Yank = a.Yank
 		}
-		if a.YankAll != nil {
-			km.YankAll = a.YankAll
+		if a.YankUnresolved != nil {
+			km.YankUnresolved = a.YankUnresolved
+		}
+		if a.YankAllComments != nil {
+			km.YankAllComments = a.YankAllComments
 		}
 		if a.Refresh != nil {
 			km.RefreshLayout = a.Refresh
@@ -588,18 +594,19 @@ func DefaultKeysConfig() config.KeysConfig {
 			FullFile: km.FullFileToggle,
 		},
 		Actions: &config.ActionKeys{
-			Quit:           km.Quit,
-			Enter:          km.Enter,
-			ResolveToggle:  km.ResolveToggle,
-			Yank:           km.Yank,
-			YankAll:        km.YankAll,
-			Refresh:        km.RefreshLayout,
-			Snapshot:       km.Snapshot,
-			SnapshotToggle: km.SnapshotToggle,
-			Visual:         km.VisualMode,
-			Help:           km.Help,
-			MoveDetect:     km.MoveDetect,
-			CommentToggle:  km.CommentToggle,
+			Quit:            km.Quit,
+			Enter:           km.Enter,
+			ResolveToggle:   km.ResolveToggle,
+			Yank:            km.Yank,
+			YankUnresolved:  km.YankUnresolved,
+			YankAllComments: km.YankAllComments,
+			Refresh:         km.RefreshLayout,
+			Snapshot:        km.Snapshot,
+			SnapshotToggle:  km.SnapshotToggle,
+			Visual:          km.VisualMode,
+			Help:            km.Help,
+			MoveDetect:      km.MoveDetect,
+			CommentToggle:   km.CommentToggle,
 		},
 		Window: &config.WindowKeys{
 			SplitVertical:   km.WinSplitV,

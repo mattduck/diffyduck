@@ -72,18 +72,19 @@ type FoldKeys struct {
 
 // ActionKeys configures action bindings.
 type ActionKeys struct {
-	Quit           []string `toml:"quit"`
-	Enter          []string `toml:"enter"`
-	ResolveToggle  []string `toml:"resolve_toggle"`
-	Yank           []string `toml:"yank"`
-	YankAll        []string `toml:"yank_all"`
-	Refresh        []string `toml:"refresh"`
-	Snapshot       []string `toml:"snapshot"`
-	SnapshotToggle []string `toml:"snapshot_toggle"`
-	Visual         []string `toml:"visual"`
-	Help           []string `toml:"help"`           // default: ["ctrl+h"]
-	MoveDetect     []string `toml:"move_detect"`    // default: ["M"]
-	CommentToggle  []string `toml:"comment_toggle"` // default: ["C"]
+	Quit            []string `toml:"quit"`
+	Enter           []string `toml:"enter"`
+	ResolveToggle   []string `toml:"resolve_toggle"`
+	Yank            []string `toml:"yank"`
+	YankUnresolved  []string `toml:"yank_unresolved"`   // default: ["space c y"]
+	YankAllComments []string `toml:"yank_all_comments"` // default: ["space c Y"]
+	Refresh         []string `toml:"refresh"`
+	Snapshot        []string `toml:"snapshot"`
+	SnapshotToggle  []string `toml:"snapshot_toggle"`
+	Visual          []string `toml:"visual"`
+	Help            []string `toml:"help"`           // default: ["ctrl+h"]
+	MoveDetect      []string `toml:"move_detect"`    // default: ["M"]
+	CommentToggle   []string `toml:"comment_toggle"` // default: ["C"]
 }
 
 // WindowKeys configures window management bindings.
