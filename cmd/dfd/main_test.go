@@ -1118,8 +1118,7 @@ func TestFormatCommentBlock(t *testing.T) {
 	block := stripANSI(formatCommentBlock(c, nil))
 
 	// Metadata
-	assert.Contains(t, block, "┃ Commit: abc123d\n")
-	assert.Contains(t, block, "┃ Branch: main\n")
+	assert.Contains(t, block, "┃ Ref:    abc123d on main\n")
 	assert.Contains(t, block, "┃ File:   src/foo.go:42\n")
 	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z\n")
 	assert.Contains(t, block, "┃ Status: unresolved\n")
@@ -1159,7 +1158,7 @@ func TestFormatCommentBlock_NoCommit(t *testing.T) {
 		Context: comments.LineContext{Line: "code"},
 	}
 	block := stripANSI(formatCommentBlock(c, nil))
-	assert.NotContains(t, block, "Commit:")
+	assert.NotContains(t, block, "Ref:")
 }
 
 func TestFormatCommentBlock_Highlighted(t *testing.T) {

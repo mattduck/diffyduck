@@ -1758,11 +1758,12 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
 		commitShort = commitShort[:7]
 	}
 	// Metadata
-	if commitShort != "" {
-		fmt.Fprintf(&b, "%sCommit:%s %s%s%s\n", cGray, cReset, cYellow, commitShort, cReset)
-	}
-	if c.Branch != "" {
-		fmt.Fprintf(&b, "%sBranch:%s %s%s%s\n", cGray, cReset, cCyan, c.Branch, cReset)
+	if commitShort != "" && c.Branch != "" {
+		fmt.Fprintf(&b, "%sRef:%s    %s%s%s on %s%s%s\n", cGray, cReset, cYellow, commitShort, cReset, cCyan, c.Branch, cReset)
+	} else if commitShort != "" {
+		fmt.Fprintf(&b, "%sRef:%s    %s%s%s\n", cGray, cReset, cYellow, commitShort, cReset)
+	} else if c.Branch != "" {
+		fmt.Fprintf(&b, "%sRef:%s    %s%s%s\n", cGray, cReset, cCyan, c.Branch, cReset)
 	}
 	fmt.Fprintf(&b, "%sFile:%s   %s\n", cGray, cReset, styleCommentPath(c.File, c.Line))
 	fmt.Fprintf(&b, "%sDate:%s   %s\n", cGray, cReset, c.Created.Format(time.RFC3339))
