@@ -94,7 +94,7 @@ func isFlag(w string) bool {
 // flagTakesValue returns true if the flag consumes a separate next word as its value.
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--exclude", "-e", "-n", "--since", "--status", "--cpuprofile":
+	case "--exclude", "-e", "-n", "--since", "--status", "-b", "--branch", "--cpuprofile":
 		return true
 	}
 	return false
@@ -200,7 +200,7 @@ func flagsForCmd(cmd string) []string {
 	case "status":
 		return append(global, "--symbols", "--untracked-files", "--branches")
 	case "comment":
-		return append(global, "-n", "--since", "--status", "--oneline", "--all-branches")
+		return append(global, "-n", "-b", "--since", "--status", "--oneline", "--branch", "--all-branches")
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:

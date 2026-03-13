@@ -119,6 +119,7 @@ type parsedArgs struct {
 	commentStatus      string // --status: "unresolved" (default), "resolved", "all"
 	commentOneline     bool   // --oneline: compact single-line output
 	commentAllBranches bool   // --all-branches: show comments from all branches
+	commentBranch      string // --branch: filter to specific branch
 
 	// config-specific
 	configInit  bool // --init
@@ -400,15 +401,39 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			return 0, fmt.Errorf("-u mode must be no, normal, or all; got %q", mode)
 		}
 
-	// status: show branches
-	case arg == "--branches" || arg == "-b":
+	// status: show branches / comment: filter branch
+	case arg == "--branches":
 		p.showBranches = true
+	case arg == "-b":
+		if p.cmd == "comment" {
+			// -b is shorthand for --branch in comment context
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				p.commentBranch = args[i+1]
+				return 1, nil
+			}
+			// No arg: will resolve to current branch in runCommentList
+			p.commentBranch = "."
+		} else {
+			p.showBranches = true
+		}
 
 	// comment flags
 	case arg == "--oneline":
 		p.commentOneline = true
 	case arg == "--all-branches":
 		p.commentAllBranches = true
+	case arg == "--branch":
+		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			p.commentBranch = args[i+1]
+			return 1, nil
+		}
+		// No arg: will resolve to current branch in runCommentList
+		p.commentBranch = "."
+	case strings.HasPrefix(arg, "--branch="):
+		p.commentBranch = strings.TrimPrefix(arg, "--branch=")
+		if p.commentBranch == "" {
+			return 0, fmt.Errorf("--branch requires a branch name")
+		}
 	case arg == "--status":
 		if i+1 >= len(args) {
 			return 0, fmt.Errorf("--status requires a value (unresolved, resolved, all)")
@@ -584,6 +609,12 @@ func (p *parsedArgs) validate() error {
 	}
 	if p.cmd != "comment" && p.commentAllBranches {
 		return fmt.Errorf("--all-branches is only valid for comment command")
+	}
+	if p.cmd != "comment" && p.commentBranch != "" {
+		return fmt.Errorf("--branch is only valid for comment command")
+	}
+	if p.commentAllBranches && p.commentBranch != "" {
+		return fmt.Errorf("--all-branches and --branch cannot be used together")
 	}
 	return nil
 }
@@ -935,6 +966,7 @@ List flags:
       --status <s> Filter: unresolved (default), resolved, all
       --since <d>  Only show comments created within duration (e.g. 6h, 7d, 2w, 3m, 1y, all)
       --oneline    Compact single-line output per comment
+  -b, --branch [b] Filter to a specific branch (default: current branch)
       --all-branches
                    Show comments from all branches (default: current branch only)
 
@@ -1605,8 +1637,26 @@ func runCommentList(args parsedArgs) error {
 			}
 		}
 
-		// Filter by reachability from HEAD (default: on, --all-branches disables)
-		if !args.commentAllBranches {
+		// Filter by branch
+		if args.commentBranch != "" {
+			// Resolve "." sentinel to current branch
+			branch := args.commentBranch
+			if branch == "." {
+				if cb, err := store.CurrentBranch(); err == nil && cb != "" {
+					branch = cb
+				} else {
+					return fmt.Errorf("could not determine current branch")
+				}
+			}
+			var filtered []*comments.Comment
+			for _, c := range all {
+				if c.Branch == branch {
+					filtered = append(filtered, c)
+				}
+			}
+			all = filtered
+		} else if !args.commentAllBranches {
+			// Default: filter by reachability from HEAD
 			reachable, revListErr := store.ReachableCommits("HEAD")
 			currentBranch, _ := store.CurrentBranch()
 

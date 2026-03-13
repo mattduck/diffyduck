@@ -947,6 +947,43 @@ func TestParseArgs_CommentSince(t *testing.T) {
 	assert.Equal(t, "2w", result.since)
 }
 
+func TestParseArgs_CommentBranch(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list", "--branch=main"})
+	require.NoError(t, err)
+	assert.Equal(t, "main", result.commentBranch)
+
+	result, err = parseArgs([]string{"comment", "list", "--branch", "feature/x"})
+	require.NoError(t, err)
+	assert.Equal(t, "feature/x", result.commentBranch)
+
+	// -b with explicit branch name
+	result, err = parseArgs([]string{"comment", "list", "-b", "develop"})
+	require.NoError(t, err)
+	assert.Equal(t, "develop", result.commentBranch)
+
+	// --branch with no arg defaults to "." sentinel
+	result, err = parseArgs([]string{"comment", "list", "--branch"})
+	require.NoError(t, err)
+	assert.Equal(t, ".", result.commentBranch)
+
+	// -b with no arg defaults to "." sentinel
+	result, err = parseArgs([]string{"comment", "list", "-b"})
+	require.NoError(t, err)
+	assert.Equal(t, ".", result.commentBranch)
+
+	// -b in status context means --branches, not --branch
+	result, err = parseArgs([]string{"status", "-b"})
+	require.NoError(t, err)
+	assert.True(t, result.showBranches)
+	assert.Empty(t, result.commentBranch)
+}
+
+func TestParseArgs_CommentBranchAllBranchesConflict(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "list", "--branch=main", "--all-branches"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be used together")
+}
+
 func TestParseArgs_HelpComment(t *testing.T) {
 	result, err := parseArgs([]string{"help", "comment"})
 	require.NoError(t, err)
