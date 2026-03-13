@@ -758,6 +758,8 @@ type displayRow struct {
 	structuralDiffAdded       int                  // lines added within this element
 	structuralDiffRemoved     int                  // lines removed within this element
 	structuralDiffIsTruncated bool                 // true if this is a "...N more" overflow row
+	// Comment indicator on content rows
+	hasComment bool // true if this content row has any comment in m.comments (for * gutter marker)
 }
 
 // formatCommentMeta returns the metadata line for a comment row.
@@ -1528,12 +1530,19 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 			}
 		}
 
-		// Add comment rows if this line has a comment
+		// Add comment rows if this line has a visible comment
 		if pair.New.Num > 0 {
 			key := commentKey{fileIndex: fileIdx, newLineNum: pair.New.Num}
 			if c, ok := m.comments[key]; ok {
-				commentRows := buildCommentRows(fileIdx, pair.New.Num, c, m.commentContentWidth(), contentTreePath)
-				rows = append(rows, commentRows...)
+				// Mark the content row as having a comment (for * gutter indicator)
+				lastIdx := len(rows) - 1
+				r := rows[lastIdx]
+				r.hasComment = true
+				rows[lastIdx] = r
+				if m.isCommentExpanded(key, c) {
+					commentRows := buildCommentRows(fileIdx, pair.New.Num, c, m.commentContentWidth(), contentTreePath)
+					rows = append(rows, commentRows...)
+				}
 			}
 		}
 
@@ -1592,15 +1601,20 @@ func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, conten
 	// Append expanded rows with comment rows interleaved
 	var rows []displayRow
 	for _, expRow := range expandedRows {
-		rows = append(rows, expRow)
-		// Add comment rows if this is a content row with a comment
+		// Mark content rows that have a comment and interleave visible comment rows
 		if expRow.kind == RowKindContent && expRow.pair.New.Num > 0 {
 			key := commentKey{fileIndex: fileIdx, newLineNum: expRow.pair.New.Num}
 			if c, ok := m.comments[key]; ok {
-				commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, c, m.commentContentWidth(), contentTreePath)
-				rows = append(rows, commentRows...)
+				expRow.hasComment = true
+				if m.isCommentExpanded(key, c) {
+					rows = append(rows, expRow)
+					commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, c, m.commentContentWidth(), contentTreePath)
+					rows = append(rows, commentRows...)
+					continue
+				}
 			}
 		}
+		rows = append(rows, expRow)
 	}
 
 	if fp.Truncated || fp.ContentTruncated || fp.OldContentTruncated || fp.NewContentTruncated {
@@ -2040,7 +2054,7 @@ func (m Model) renderDisplayRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 		moveGroupOld = r.Groups[movedetect.Key{FileIndex: row.fileIndex, PairIndex: row.pairIndex, Side: 1}]
 		moveGroupNew = r.Groups[movedetect.Key{FileIndex: row.fileIndex, PairIndex: row.pairIndex, Side: 0}]
 	}
-	return m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIndex, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.treePath, row.conflictZone, moveGroupOld, moveGroupNew)
+	return m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIndex, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.treePath, row.conflictZone, moveGroupOld, moveGroupNew, row.hasComment)
 }
 
 // renderHunkSeparator renders a separator line between hunks.

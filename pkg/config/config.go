@@ -81,8 +81,9 @@ type ActionKeys struct {
 	Snapshot       []string `toml:"snapshot"`
 	SnapshotToggle []string `toml:"snapshot_toggle"`
 	Visual         []string `toml:"visual"`
-	Help           []string `toml:"help"`        // default: ["ctrl+h"]
-	MoveDetect     []string `toml:"move_detect"` // default: ["M"]
+	Help           []string `toml:"help"`           // default: ["ctrl+h"]
+	MoveDetect     []string `toml:"move_detect"`    // default: ["M"]
+	CommentToggle  []string `toml:"comment_toggle"` // default: ["C"]
 }
 
 // WindowKeys configures window management bindings.

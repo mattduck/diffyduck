@@ -44,7 +44,7 @@ func (m Model) handleYank() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	c := m.comments[ck]
-	if c == nil || c.Text == "" {
+	if c == nil || c.Text == "" || !m.isCommentVisible(c) {
 		return m, nil
 	}
 	return m.yankComment(ck, c)
@@ -215,7 +215,11 @@ func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
 		return m, m.clearStatusAfter(now)
 	}
 
-	m.statusMessage = fmt.Sprintf("Copied %d unresolved comments", count)
+	label := "unresolved comments"
+	if m.commentDisplayMode == CommentShowAll {
+		label = "comments"
+	}
+	m.statusMessage = fmt.Sprintf("Copied %d %s", count, label)
 	m.statusMessageTime = now
 	return m, m.clearStatusAfter(now)
 }
@@ -230,10 +234,15 @@ type commentWithKey struct {
 // comments within the same file are merged into single hunks.
 // Returns the snippet and the number of comments included.
 func (m Model) buildAllCommentsSnippet() (string, int) {
-	// Collect and sort all unresolved comments by (fileIndex, newLineNum)
+	// Collect and sort comments by (fileIndex, newLineNum).
+	// In ShowAll mode, include all comments. Otherwise, only unresolved.
+	includeAll := m.commentDisplayMode == CommentShowAll
 	var sorted []commentWithKey
 	for ck, c := range m.comments {
-		if c == nil || c.Text == "" || c.Resolved {
+		if c == nil || c.Text == "" {
+			continue
+		}
+		if !includeAll && c.Resolved {
 			continue
 		}
 		sorted = append(sorted, commentWithKey{key: ck})
@@ -379,6 +388,25 @@ func (m Model) clearStatusAfter(_ time.Time) tea.Cmd {
 
 // findCommentForCursor returns the comment key for the current cursor position.
 // Returns false if the cursor is not on a line with a comment.
+// findCommentForContentLine returns the comment key if the cursor is on a
+// content line that has a comment. Unlike findCommentForCursor, it does NOT
+// match when the cursor is on a comment row.
+func (m Model) findCommentForContentLine() (commentKey, bool) {
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos < 0 || cursorPos >= len(rows) {
+		return commentKey{}, false
+	}
+	row := rows[cursorPos]
+	if row.kind == RowKindContent && row.pair.New.Num > 0 {
+		key := commentKey{fileIndex: row.fileIndex, newLineNum: row.pair.New.Num}
+		if _, ok := m.comments[key]; ok {
+			return key, true
+		}
+	}
+	return commentKey{}, false
+}
+
 func (m Model) findCommentForCursor() (commentKey, bool) {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()

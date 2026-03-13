@@ -627,6 +627,32 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.statusMessageTime = time.Now()
 		return m, nil
+
+	case matchesKey(msg, keys.CommentToggle):
+		// If any per-comment overrides exist, clear them first and reset to
+		// the current mode's default (like org-mode tab: normalize first).
+		if len(m.collapsedComments) > 0 {
+			m.collapsedComments = make(map[commentKey]bool)
+			m.commentDisplayMode = CommentShowUnresolved
+			m.statusMessage = "Comments: unresolved only"
+			m.statusMessageTime = time.Now()
+			m.rebuildAllRowCachesPreservingCursor()
+			return m, nil
+		}
+		switch m.commentDisplayMode {
+		case CommentShowUnresolved:
+			m.commentDisplayMode = CommentShowAll
+			m.statusMessage = "Comments: all"
+		case CommentShowAll:
+			m.commentDisplayMode = CommentShowNone
+			m.statusMessage = "Comments: hidden"
+		case CommentShowNone:
+			m.commentDisplayMode = CommentShowUnresolved
+			m.statusMessage = "Comments: unresolved only"
+		}
+		m.statusMessageTime = time.Now()
+		m.rebuildAllRowCachesPreservingCursor()
+		return m, nil
 	}
 
 	// Check if we should load more commits after scroll changes
@@ -1001,8 +1027,15 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 		return m.handleCommitFoldCycle()
 	}
 
-	// If not on a header, try context expansion on separators
+	// If on a content line with a comment, toggle per-comment collapse
 	if !m.isOnFileHeader() {
+		if key, ok := m.findCommentForContentLine(); ok {
+			if c, exists := m.comments[key]; exists && c.Text != "" {
+				m.collapsedComments[key] = !m.collapsedComments[key]
+				m.rebuildAllRowCachesPreservingCursor()
+				return m, nil
+			}
+		}
 		return m.handleContextExpand()
 	}
 
@@ -2033,19 +2066,23 @@ func (m *Model) findNextCommentTarget(forward bool) (commentKey, bool) {
 		curLineNum = math.MaxInt
 	}
 
-	// Phase 1: Check loaded comments
+	// Phase 1: Check loaded comments (filtered by display mode)
 	sorted := m.sortedCommentKeys()
 	if forward {
 		for _, k := range sorted {
 			if k.fileIndex > curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum > curLineNum) {
-				return k, true
+				if m.isCommentVisible(m.comments[k]) {
+					return k, true
+				}
 			}
 		}
 	} else {
 		for i := len(sorted) - 1; i >= 0; i-- {
 			k := sorted[i]
 			if k.fileIndex < curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum < curLineNum) {
-				return k, true
+				if m.isCommentVisible(m.comments[k]) {
+					return k, true
+				}
 			}
 		}
 	}

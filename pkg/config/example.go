@@ -147,6 +147,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 		writeKeys("visual", "enter visual line mode", a.Visual)
 		writeKeys("help", "toggle help screen", a.Help)
 		writeKeys("move_detect", "toggle move detection highlighting", a.MoveDetect)
+		writeKeys("comment_toggle", "cycle comment display mode", a.CommentToggle)
 		b.WriteString("\n")
 	}
 

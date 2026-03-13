@@ -55,6 +55,7 @@ type KeyMap struct {
 	VisualMode     []string // enter visual line mode
 	Help           []string // toggle help screen
 	MoveDetect     []string // toggle move detection highlighting
+	CommentToggle  []string // cycle comment display mode
 
 	// Window management (sequences with prefix)
 	WinSplitV      []string // "ctrl+w %"
@@ -124,6 +125,7 @@ func DefaultKeyMap() KeyMap {
 		VisualMode:     []string{"V"},
 		Help:           []string{"ctrl+h"},
 		MoveDetect:     []string{"M"},
+		CommentToggle:  []string{"C"},
 		WinSplitV:      []string{"ctrl+w %"},
 		WinSplitH:      []string{"ctrl+w \""},
 		WinClose:       []string{"ctrl+w x"},
@@ -195,6 +197,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.Snapshot, Desc: "Take snapshot"},
 			{Keys: km.VisualMode, Desc: "Enter visual line mode"},
 			{Keys: km.MoveDetect, Desc: "Toggle move detection"},
+			{Keys: km.CommentToggle, Desc: "Cycle comment display mode"},
 			{Keys: km.Help, Desc: "Toggle this help screen"},
 			{Keys: km.Quit, Desc: "Quit"},
 		}},
@@ -355,7 +358,7 @@ func allBindings(km KeyMap) [][]string {
 		km.NarrowToggle,
 		km.FoldToggle, km.FoldToggleAll, km.FullFileToggle,
 		km.Quit, km.Enter, km.ResolveToggle, km.Yank, km.YankAll,
-		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help, km.MoveDetect,
+		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help, km.MoveDetect, km.CommentToggle,
 		km.WinSplitV, km.WinSplitH, km.WinClose,
 		km.WinFocusLeft, km.WinFocusRight, km.WinFocusUp, km.WinFocusDown,
 		km.WinResizeLeft, km.WinResizeRight, km.WinResizeUp, km.WinResizeDown,
@@ -493,6 +496,9 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		if a.MoveDetect != nil {
 			km.MoveDetect = a.MoveDetect
 		}
+		if a.CommentToggle != nil {
+			km.CommentToggle = a.CommentToggle
+		}
 	}
 
 	if w := cfg.Window; w != nil {
@@ -593,6 +599,7 @@ func DefaultKeysConfig() config.KeysConfig {
 			Visual:         km.VisualMode,
 			Help:           km.Help,
 			MoveDetect:     km.MoveDetect,
+			CommentToggle:  km.CommentToggle,
 		},
 		Window: &config.WindowKeys{
 			SplitVertical:   km.WinSplitV,

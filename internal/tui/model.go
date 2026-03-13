@@ -27,6 +27,43 @@ type inlineDiffKey struct {
 	newNum    int
 }
 
+// CommentDisplayMode controls which comments are shown in the view.
+type CommentDisplayMode int
+
+const (
+	CommentShowUnresolved CommentDisplayMode = iota // default: show unresolved only
+	CommentShowAll                                  // show all comments
+	CommentShowNone                                 // hide all comments
+)
+
+// isCommentVisible returns true if the given comment should be displayed
+// based on the global display mode (does not check per-comment collapse).
+func (m Model) isCommentVisible(c *comments.Comment) bool {
+	if c == nil || c.Text == "" {
+		return false
+	}
+	switch m.commentDisplayMode {
+	case CommentShowAll:
+		return true
+	case CommentShowNone:
+		return false
+	default: // CommentShowUnresolved
+		return !c.Resolved
+	}
+}
+
+// isCommentExpanded returns true if the comment box should be rendered.
+// Per-comment toggle (Tab) acts as an override of the global display mode:
+// if collapsedComments[key] is true, the visibility is flipped from global default.
+func (m Model) isCommentExpanded(key commentKey, c *comments.Comment) bool {
+	if c == nil || c.Text == "" {
+		return false
+	}
+	globalVisible := m.isCommentVisible(c)
+	// XOR: per-comment toggle flips the global state
+	return globalVisible != m.collapsedComments[key]
+}
+
 // commentKey identifies a line that can have a comment.
 // Comments attach to the new/left side line number.
 type commentKey struct {
@@ -231,6 +268,8 @@ type Model struct {
 	clipboard Clipboard // clipboard interface for copy/paste
 
 	// Comment data - shared across windows (the actual stored comments)
+	commentDisplayMode  CommentDisplayMode               // which comments to display (unresolved/all/none)
+	collapsedComments   map[commentKey]bool              // individually collapsed comments (tab toggle)
 	comments            map[commentKey]*comments.Comment // stored comments (full objects with metadata)
 	commentStore        *comments.Store                  // git-backed persistent storage
 	persistedCommentIDs map[commentKey]string            // maps in-memory comment to persisted comment ID
@@ -648,6 +687,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		focusColour:         false,
 		clipboard:           &SystemClipboard{},
 		comments:            make(map[commentKey]*comments.Comment),
+		collapsedComments:   make(map[commentKey]bool),
 		persistedCommentIDs: make(map[commentKey]string),
 		loadedCommentIDs:    make(map[string]bool),
 		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh

@@ -502,7 +502,7 @@ func TestComment_ResolveToggleFromContentLine(t *testing.T) {
 	require.True(t, toggled, "should toggle from content line")
 	assert.True(t, m.comments[key].Resolved, "comment should now be resolved")
 
-	// Toggle again to unresolve
+	// Toggle again to unresolve — should work even when comment is hidden
 	toggled = m.toggleResolveComment()
 	require.True(t, toggled)
 	assert.False(t, m.comments[key].Resolved, "comment should now be unresolved")
@@ -915,13 +915,13 @@ func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
 		"comment should still be for line 3")
 }
 
-// Test: TAB on comment row does nothing (only works on file header)
+// Test: TAB on comment row does nothing (only works on content line)
 func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	m := makeCommentableTestModel(10)
 	m.files[0].FoldLevel = sidebyside.FoldHunks
+	m.collapsedComments = make(map[commentKey]bool)
 	m.calculateTotalLines()
 
-	// Add a comment on a content line
 	key := commentKey{fileIndex: 0, newLineNum: 5}
 	m.comments[key] = &comments.Comment{Text: "Comment on line 5"}
 	m.w().rowsCacheValid = false
@@ -938,24 +938,153 @@ func TestComment_FoldToggle_CursorOnCommentRow_NoEffect(t *testing.T) {
 	}
 	require.NotEqual(t, -1, commentRowIdx, "should find comment row")
 
-	// Position cursor on comment row
 	m.w().scroll = commentRowIdx
-	cursorPos := m.cursorLine()
-	require.Equal(t, commentRowIdx, cursorPos, "cursor should be on comment row")
 
-	// TAB should do nothing when cursor is on comment row
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	model := newM.(Model)
 
-	// Fold level should remain unchanged
-	assert.Equal(t, sidebyside.FoldHunks, model.fileFoldLevel(0),
-		"fold level should not change when TAB pressed on comment row")
+	// No per-comment override should have been created
+	assert.False(t, model.collapsedComments[key],
+		"TAB on comment row should not toggle collapse")
 
-	// Cursor should still be on comment row
-	newCursorPos := model.cursorLine()
+	// Fold level unchanged
+	assert.Equal(t, sidebyside.FoldHunks, model.fileFoldLevel(0))
+}
+
+// Test: TAB on content line with a comment collapses it, TAB again expands
+func TestComment_FoldToggle_ContentLine_CollapseExpand(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.files[0].FoldLevel = sidebyside.FoldHunks
+	m.collapsedComments = make(map[commentKey]bool)
+	m.calculateTotalLines()
+
+	key := commentKey{fileIndex: 0, newLineNum: 5}
+	m.comments[key] = &comments.Comment{Text: "Comment on line 5"}
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Find the content line for line 5
+	rows := m.buildRows()
+	contentIdx := -1
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Num == 5 {
+			contentIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, contentIdx, "should find content row for line 5")
+
+	// Position cursor on content line
+	m.w().scroll = contentIdx
+
+	// TAB should collapse the comment
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+	assert.True(t, model.collapsedComments[key], "comment should be collapsed")
+
+	// TAB again should expand the comment
+	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model2 := newM2.(Model)
+	assert.False(t, model2.collapsedComments[key], "comment should be expanded again")
+
+	// Verify comment rows are back
+	rows2 := model2.buildRows()
+	found := false
+	for _, r := range rows2 {
+		if r.kind == RowKindComment && r.commentLineNum == 5 {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "comment rows should reappear after expanding")
+}
+
+// Test: C key resets per-comment overrides before cycling mode (org-mode style)
+func TestComment_GlobalToggle_ResetsOverridesFirst(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.files[0].FoldLevel = sidebyside.FoldHunks
+	m.collapsedComments = make(map[commentKey]bool)
+	m.calculateTotalLines()
+
+	key := commentKey{fileIndex: 0, newLineNum: 5}
+	m.comments[key] = &comments.Comment{Text: "Comment on line 5"}
+
+	// Manually collapse one comment via Tab override
+	m.collapsedComments[key] = true
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// C with overrides always snaps to unresolved-only default
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	model := newM.(Model)
+
+	assert.Equal(t, CommentShowUnresolved, model.commentDisplayMode,
+		"C with overrides should always snap to unresolved-only")
+	assert.Empty(t, model.collapsedComments,
+		"per-comment overrides should be cleared")
+
+	// Next C (no overrides) cycles normally to ShowAll
+	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	model2 := newM2.(Model)
+	assert.Equal(t, CommentShowAll, model2.commentDisplayMode)
+
+	// Tab to hide a comment in ShowAll, then C should snap back to unresolved
+	model2.collapsedComments[key] = true
+	model2.w().rowsCacheValid = false
+	model2.rebuildRowsCache()
+
+	newM3, _ := model2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	model3 := newM3.(Model)
+
+	assert.Equal(t, CommentShowUnresolved, model3.commentDisplayMode,
+		"C from ShowAll with overrides should snap to unresolved-only")
+	assert.Empty(t, model3.collapsedComments)
+}
+
+// Test: Tab works independently of global display mode (can show a comment in ShowNone)
+func TestComment_TabToggle_IndependentOfGlobalMode(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.files[0].FoldLevel = sidebyside.FoldHunks
+	m.collapsedComments = make(map[commentKey]bool)
+	m.commentDisplayMode = CommentShowNone
+	m.calculateTotalLines()
+
+	key := commentKey{fileIndex: 0, newLineNum: 5}
+	m.comments[key] = &comments.Comment{Text: "Comment on line 5"}
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// In ShowNone, comment rows should not appear
+	rows := m.buildRows()
+	for _, r := range rows {
+		assert.False(t, r.kind == RowKindComment && r.commentLineNum == 5,
+			"comment should be hidden in ShowNone mode")
+	}
+
+	// Find content line for line 5 and Tab to show it
+	contentIdx := -1
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.New.Num == 5 {
+			contentIdx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, contentIdx)
+	m.w().scroll = contentIdx
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model := newM.(Model)
+
+	// The per-comment override should make it visible despite global ShowNone
 	newRows := model.buildRows()
-	assert.True(t, newRows[newCursorPos].kind == RowKindComment,
-		"cursor should still be on comment row")
+	found := false
+	for _, r := range newRows {
+		if r.kind == RowKindComment && r.commentLineNum == 5 {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Tab should show comment even in ShowNone mode")
 }
 
 // Test: Multiple files with comments - navigation between them
