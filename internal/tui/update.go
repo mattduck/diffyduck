@@ -2685,7 +2685,6 @@ func (m *Model) handleSnapshot() tea.Cmd {
 
 	// Capture values for closure
 	gitClient := m.git
-	allMode := m.allMode
 	baseSHA := m.baseSHA
 	prevSnapshot := m.snapshots[len(m.snapshots)-1]
 
@@ -2698,7 +2697,7 @@ func (m *Model) handleSnapshot() tea.Cmd {
 	message := fmt.Sprintf("dfd: %s @ %s", baseShort, dateStr)
 
 	snapshotCmd := func() tea.Msg {
-		newSnapshot, err := gitClient.CreateSnapshot(allMode, prevSnapshot, message)
+		newSnapshot, err := gitClient.CreateSnapshot(prevSnapshot, message)
 		if err != nil {
 			return SnapshotDiffReadyMsg{Err: err}
 		}

@@ -869,10 +869,10 @@ func prependContextFlag(args []string) []string {
 
 // CreateSnapshot creates a commit representing the current working tree state.
 // Uses a temporary index file to avoid affecting the real index.
-// If allMode is true, includes untracked files (-A); otherwise only tracked files (-u).
+// Always includes all files (tracked + untracked) via git add -A.
 // If parentSHA is non-empty, the commit will have that as its parent, forming a chain.
 // The message is used as the commit message.
-func (g *RealGit) CreateSnapshot(allMode bool, parentSHA string, message string) (string, error) {
+func (g *RealGit) CreateSnapshot(parentSHA string, message string) (string, error) {
 	// Create a temporary index file
 	tmpDir := os.TempDir()
 	tmpIndex := filepath.Join(tmpDir, fmt.Sprintf("dfd-snapshot-%d", os.Getpid()))
@@ -898,14 +898,10 @@ func (g *RealGit) CreateSnapshot(allMode bool, parentSHA string, message string)
 		}
 	}
 
-	// Add files to the temporary index
-	addFlag := "-u" // only tracked files
-	if allMode {
-		addFlag = "-A" // include untracked
-	}
-	cmd = g.commandWithEnv([]string{"GIT_INDEX_FILE=" + tmpIndex}, "add", addFlag)
+	// Add all files (tracked + untracked) to the temporary index
+	cmd = g.commandWithEnv([]string{"GIT_INDEX_FILE=" + tmpIndex}, "add", "-A")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("git add %s: %s", addFlag, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("git add -A: %s", strings.TrimSpace(string(out)))
 	}
 
 	// Write the tree

@@ -93,11 +93,11 @@ type Git interface {
 	DiffNewFile(path string) (string, error)
 
 	// CreateSnapshot creates a commit representing the current working tree state.
-	// If allMode is true, includes untracked files; otherwise only tracked files.
+	// Always includes all files (tracked + untracked) via git add -A.
 	// If parentSHA is non-empty, the commit will have that as its parent, forming a chain.
 	// The message is used as the commit message.
 	// Returns the commit SHA. The commit is not attached to any ref.
-	CreateSnapshot(allMode bool, parentSHA string, message string) (string, error)
+	CreateSnapshot(parentSHA string, message string) (string, error)
 
 	// DiffSnapshots returns the diff between two snapshot commits.
 	// Extra args are appended to the git diff command (e.g. pathspecs).

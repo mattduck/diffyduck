@@ -149,7 +149,7 @@ func (m *MockGit) DiffNewFile(path string) (string, error) {
 }
 
 // CreateSnapshot returns a fake SHA for testing (mock doesn't actually create commits).
-func (m *MockGit) CreateSnapshot(allMode bool, parentSHA string, message string) (string, error) {
+func (m *MockGit) CreateSnapshot(parentSHA string, message string) (string, error) {
 	return "mock-snapshot-sha", nil
 }
 

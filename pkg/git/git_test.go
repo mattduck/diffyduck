@@ -882,7 +882,7 @@ func TestRealGit_SnapshotRefs_Integration(t *testing.T) {
 	assert.Nil(t, refs, "should have no refs initially")
 
 	// Create a snapshot commit with baseSHA as parent
-	snapshot1, err := g.CreateSnapshot(false, baseSHA, "dfd: test @ now")
+	snapshot1, err := g.CreateSnapshot(baseSHA, "dfd: test @ now")
 	require.NoError(t, err)
 
 	// Update the snapshot ref to point to snapshot1
@@ -897,7 +897,7 @@ func TestRealGit_SnapshotRefs_Integration(t *testing.T) {
 	assert.Equal(t, "dfd: test @ now", refs[0].Subject)
 
 	// Create another snapshot with snapshot1 as parent
-	snapshot2, err := g.CreateSnapshot(false, snapshot1, "dfd: test @ now")
+	snapshot2, err := g.CreateSnapshot(snapshot1, "dfd: test @ now")
 	require.NoError(t, err)
 
 	// Update ref to point to latest
@@ -944,7 +944,7 @@ func TestRealGit_ListSnapshotRefs_SubjectAndDate(t *testing.T) {
 
 	// Create snapshot with a known message
 	msg := "dfd: abc1234 @ Feb 5 09:15"
-	sha, err := g.CreateSnapshot(false, baseSHA, msg)
+	sha, err := g.CreateSnapshot(baseSHA, msg)
 	require.NoError(t, err)
 	require.NotEmpty(t, sha)
 
@@ -987,7 +987,7 @@ func TestRealGit_ListSnapshotRefs_EmptyMessage(t *testing.T) {
 	g := NewWithDir(tmpDir)
 
 	// Create snapshot with empty message
-	sha, err := g.CreateSnapshot(false, baseSHA, "")
+	sha, err := g.CreateSnapshot(baseSHA, "")
 	require.NoError(t, err)
 	require.NotEmpty(t, sha)
 
@@ -1032,7 +1032,7 @@ func TestRealGit_ListSnapshotRefs_MultipleWithDistinctSubjects(t *testing.T) {
 
 	parentSHA := baseSHA
 	for _, msg := range messages {
-		sha, err := g.CreateSnapshot(false, parentSHA, msg)
+		sha, err := g.CreateSnapshot(parentSHA, msg)
 		require.NoError(t, err)
 		err = g.UpdateSnapshotRef("test-branch", baseSHA, sha)
 		require.NoError(t, err)
@@ -1332,13 +1332,13 @@ func TestRealGit_SnapshotRefs_BranchIsolation(t *testing.T) {
 	g := NewWithDir(tmpDir)
 
 	// Create snapshot on branch-a
-	snap1, err := g.CreateSnapshot(false, baseSHA, "snapshot on branch-a")
+	snap1, err := g.CreateSnapshot(baseSHA, "snapshot on branch-a")
 	require.NoError(t, err)
 	err = g.UpdateSnapshotRef("branch-a", baseSHA, snap1)
 	require.NoError(t, err)
 
 	// Create snapshot on branch-b (same baseSHA)
-	snap2, err := g.CreateSnapshot(false, baseSHA, "snapshot on branch-b")
+	snap2, err := g.CreateSnapshot(baseSHA, "snapshot on branch-b")
 	require.NoError(t, err)
 	err = g.UpdateSnapshotRef("branch-b", baseSHA, snap2)
 	require.NoError(t, err)

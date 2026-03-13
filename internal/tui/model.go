@@ -840,7 +840,6 @@ func (m Model) createSnapshot() tea.Cmd {
 	}
 
 	gitClient := m.git
-	allMode := m.allMode
 	baseSHA := m.baseSHA
 
 	// Parent is last snapshot if any exist, otherwise baseSHA
@@ -858,7 +857,7 @@ func (m Model) createSnapshot() tea.Cmd {
 	message := fmt.Sprintf("dfd: %s @ %s", baseShort, dateStr)
 
 	return func() tea.Msg {
-		sha, err := gitClient.CreateSnapshot(allMode, parentSHA, message)
+		sha, err := gitClient.CreateSnapshot(parentSHA, message)
 		return SnapshotCreatedMsg{SHA: sha, Subject: message, Date: dateStr, Err: err}
 	}
 }
@@ -2631,6 +2630,7 @@ func (m *Model) buildSnapshotHistoryCmd() tea.Cmd {
 
 	baseSHA := m.baseSHA
 	branch := m.branch
+	allMode := m.allMode
 	snapshots := make([]string, len(m.snapshots))
 	copy(snapshots, m.snapshots)
 	debugLog := m.debugLog // capture for closure
@@ -2642,7 +2642,7 @@ func (m *Model) buildSnapshotHistoryCmd() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		logf("buildSnapshotHistoryCmd: starting (baseSHA=%q branch=%q snapshots=%d)", baseSHA, branch, len(snapshots))
+		logf("buildSnapshotHistoryCmd: starting (baseSHA=%q branch=%q snapshots=%d allMode=%v)", baseSHA, branch, len(snapshots), allMode)
 		infos, err := gitClient.ListSnapshotRefs(branch, baseSHA)
 		if err != nil {
 			logf("buildSnapshotHistoryCmd: ListSnapshotRefs error: %v", err)
@@ -2668,36 +2668,65 @@ func (m *Model) buildSnapshotHistoryCmd() tea.Cmd {
 			persistedSHAs[i] = info.SHA
 		}
 
+		// When not in allMode, build a set of currently-untracked files
+		// so we can filter them out of snapshot diffs (snapshots always
+		// include all files via git add -A).
+		var untrackedSet map[string]bool
+		if !allMode {
+			untrackedFiles, err := gitClient.ListUntrackedFiles()
+			if err == nil && len(untrackedFiles) > 0 {
+				untrackedSet = make(map[string]bool, len(untrackedFiles))
+				for _, f := range untrackedFiles {
+					untrackedSet[f] = true
+				}
+				logf("buildSnapshotHistoryCmd: filtering %d untracked files (allMode=false)", len(untrackedSet))
+			}
+		}
+
 		var commits []sidebyside.CommitSet
 
-		// Build lastSnapshot→WT diff
+		// Build lastSnapshot→WT diff by creating a temporary snapshot of
+		// the current working tree and diffing tree-to-tree. This avoids
+		// the bug where git diff <commit> treats untracked files (which
+		// are included in snapshots) as deleted.
 		lastSnapshot := persistedSHAs[len(persistedSHAs)-1]
-		logf("buildSnapshotHistoryCmd: diffing lastSnapshot=%q → WT", lastSnapshot[:min(len(lastSnapshot), 7)])
-		wtDiff, err := gitClient.Diff(lastSnapshot)
-		logf("buildSnapshotHistoryCmd: WT diff err=%v len=%d", err, len(wtDiff))
-		if err == nil && wtDiff != "" {
-			if wtParsed, err := diff.Parse(wtDiff); err == nil && len(wtParsed.Files) > 0 {
-				wtFiles, _ := sidebyside.TransformDiff(wtParsed)
-				wtCommit := sidebyside.CommitSet{
-					Info:           sidebyside.CommitInfo{Subject: "Working tree changes"},
-					Files:          wtFiles,
-					FoldLevel:      sidebyside.CommitFileHeaders,
-					FilesLoaded:    true,
-					StatsLoaded:    true,
-					IsSnapshot:     true,
-					SnapshotOldRef: lastSnapshot,
-				}
-				for _, f := range wtFiles {
-					for _, lp := range f.Pairs {
-						if lp.New.Type == sidebyside.Added {
-							wtCommit.TotalAdded++
+		logf("buildSnapshotHistoryCmd: creating temp snapshot for WT diff")
+		tempSnapshot, err := gitClient.CreateSnapshot(lastSnapshot, "dfd: temp WT snapshot")
+		if err != nil {
+			logf("buildSnapshotHistoryCmd: temp snapshot error: %v", err)
+		} else {
+			logf("buildSnapshotHistoryCmd: diffing lastSnapshot=%q → tempSnapshot=%q",
+				lastSnapshot[:min(len(lastSnapshot), 7)], tempSnapshot[:min(len(tempSnapshot), 7)])
+			wtDiff, err := gitClient.DiffSnapshots(lastSnapshot, tempSnapshot)
+			logf("buildSnapshotHistoryCmd: WT diff err=%v len=%d", err, len(wtDiff))
+			if err == nil && wtDiff != "" {
+				if wtParsed, err := diff.Parse(wtDiff); err == nil && len(wtParsed.Files) > 0 {
+					wtFiles, _ := sidebyside.TransformDiff(wtParsed)
+					wtFiles = filterUntrackedFiles(wtFiles, untrackedSet)
+					if len(wtFiles) > 0 {
+						wtCommit := sidebyside.CommitSet{
+							Info:           sidebyside.CommitInfo{Subject: "Working tree changes"},
+							Files:          wtFiles,
+							FoldLevel:      sidebyside.CommitFileHeaders,
+							FilesLoaded:    true,
+							StatsLoaded:    true,
+							IsSnapshot:     true,
+							SnapshotOldRef: lastSnapshot,
+							SnapshotNewRef: tempSnapshot,
 						}
-						if lp.Old.Type == sidebyside.Removed {
-							wtCommit.TotalRemoved++
+						for _, f := range wtFiles {
+							for _, lp := range f.Pairs {
+								if lp.New.Type == sidebyside.Added {
+									wtCommit.TotalAdded++
+								}
+								if lp.Old.Type == sidebyside.Removed {
+									wtCommit.TotalRemoved++
+								}
+							}
 						}
+						commits = append(commits, wtCommit)
 					}
 				}
-				commits = append(commits, wtCommit)
 			}
 		}
 
@@ -2719,6 +2748,7 @@ func (m *Model) buildSnapshotHistoryCmd() tea.Cmd {
 				snapshotShort = snapshotShort[:7]
 			}
 			histFiles, _ := sidebyside.TransformDiff(histParsed)
+			histFiles = filterUntrackedFiles(histFiles, untrackedSet)
 			histCommit := sidebyside.CommitSet{
 				Info: sidebyside.CommitInfo{
 					SHA: snapshotShort, Date: info.Date, Subject: info.Subject,
@@ -2751,6 +2781,7 @@ func (m *Model) buildSnapshotHistoryCmd() tea.Cmd {
 					snapshotShort = snapshotShort[:7]
 				}
 				histFiles, _ := sidebyside.TransformDiff(histParsed)
+				histFiles = filterUntrackedFiles(histFiles, untrackedSet)
 				histCommit := sidebyside.CommitSet{
 					Info: sidebyside.CommitInfo{
 						SHA: snapshotShort, Date: firstInfo.Date, Subject: firstInfo.Subject,
@@ -2779,6 +2810,26 @@ func (m *Model) buildSnapshotHistoryCmd() tea.Cmd {
 		}
 		return SnapshotHistoryReadyMsg{Commits: commits}
 	}
+}
+
+// filterUntrackedFiles removes files from the list whose paths match
+// currently-untracked files. Returns the original slice unchanged if
+// untrackedSet is nil (allMode=true).
+func filterUntrackedFiles(files []sidebyside.FilePair, untrackedSet map[string]bool) []sidebyside.FilePair {
+	if len(untrackedSet) == 0 {
+		return files
+	}
+	filtered := make([]sidebyside.FilePair, 0, len(files))
+	for _, f := range files {
+		path := stripPathPrefix(f.NewPath)
+		if path == "/dev/null" {
+			path = stripPathPrefix(f.OldPath)
+		}
+		if !untrackedSet[path] {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered
 }
 
 // shiftFileIndexMapsFrom shifts file-indexed map keys >= fromIdx by delta.
