@@ -344,20 +344,9 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 	// Diff indicator (+/-/~/space) before line number
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
-	// Move detection overrides with the palette style for the indicator character.
 	// Cursor arrow is shown in the tree gutter (first column), not here
 	var indicator string
-	if moveGroup > 0 {
-		moveStyle := moveDetectPalette[(moveGroup-1)%len(moveDetectPalette)]
-		switch line.Type {
-		case sidebyside.Added:
-			indicator = moveStyle.Render("+")
-		case sidebyside.Removed:
-			indicator = moveStyle.Render("-")
-		default:
-			indicator = " "
-		}
-	} else if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
+	if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		indicator = changedStyle.Render("~")
 	} else {
 		switch line.Type {
@@ -382,9 +371,6 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	}
 	if isCursorRow && m.focused {
 		numStr = cursorStyle.Render(numContent)
-	} else if moveGroup > 0 {
-		moveStyle := moveDetectPalette[(moveGroup-1)%len(moveDetectPalette)]
-		numStr = moveStyle.Render(numContent)
 	} else {
 		switch line.Type {
 		case sidebyside.Added:
@@ -470,7 +456,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 	// Wrap added/removed lines with gutter indicators
 	// Use blue for changed lines (hasWordDiff), otherwise green/red
-	styledContent = m.applyColumnIndicators(styledContent, line.Type, hasWordDiff, hideTrailingGutter, cZone, moveGroup)
+	styledContent = m.applyColumnIndicators(styledContent, line.Type, hasWordDiff, hideTrailingGutter, cZone)
 
 	// Style truncation indicator with fg=13 if present
 	if strings.Contains(visible, diff.LineTruncationText) {
@@ -853,7 +839,7 @@ func expandTabs(s string) string {
 	return result.String()
 }
 
-func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.LineType, hasWordDiff bool, hideTrailingGutter bool, cZone conflictZone, moveGroup int) string {
+func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.LineType, hasWordDiff bool, hideTrailingGutter bool, cZone conflictZone) string {
 	isAddedOrRemoved := lineType == sidebyside.Added || lineType == sidebyside.Removed
 
 	// In a conflict block, replace the start gutter with a continuous vertical bar
@@ -874,11 +860,9 @@ func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.L
 	}
 
 	// Get indicator styles for added/removed lines
-	// Move detection overrides with palette style, otherwise blue for changed, green/red for add/remove
+	// Blue for changed (word diff), green/red for add/remove
 	var colorStyle lipgloss.Style
-	if moveGroup > 0 {
-		colorStyle = moveDetectPalette[(moveGroup-1)%len(moveDetectPalette)]
-	} else if hasWordDiff {
+	if hasWordDiff {
 		colorStyle = changedStyle // blue for modified lines with word diff
 	} else if lineType == sidebyside.Added {
 		colorStyle = addedStyle // green

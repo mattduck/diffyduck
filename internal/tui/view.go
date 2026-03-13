@@ -81,6 +81,7 @@ var (
 
 	// Move detection palette — cycling background colors for matched move groups.
 	// Each group gets a distinct color; the palette wraps around for large counts.
+	// Used for content area highlighting.
 	moveDetectPalette = []lipgloss.Style{
 		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("6")),  // cyan
 		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("5")),  // magenta
