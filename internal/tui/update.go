@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/user/diffyduck/pkg/diff"
+	"github.com/user/diffyduck/pkg/movedetect"
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
@@ -586,6 +587,46 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.w().visualSelection.Active = true
 		m.w().visualSelection.AnchorRow = m.w().scroll
 		return m, nil
+
+	case matchesKey(msg, keys.MoveDetect):
+		ci := m.currentCommitIndex()
+		if m.moveDetectCommits == nil {
+			m.moveDetectCommits = make(map[int]bool)
+		}
+		m.moveDetectCommits[ci] = !m.moveDetectCommits[ci]
+		enabled := m.moveDetectCommits[ci]
+		if enabled {
+			// Ensure commit diff is loaded (skeleton → real files)
+			// so move detection has actual line pairs to work with.
+			if ci >= 0 && ci < len(m.commits) && !m.commits[ci].FilesLoaded && m.git != nil {
+				m.loadCommitDiff(ci)
+			}
+			if m.moveDetectResults == nil {
+				m.moveDetectResults = make(map[int]*movedetect.Result)
+			}
+			if m.moveDetectResults[ci] == nil {
+				m.moveDetectResults[ci] = m.computeMoveDetectForCommit(ci)
+			}
+		}
+		for _, w := range m.windows {
+			w.rowsCacheValid = false
+		}
+		if enabled {
+			r := m.moveDetectResults[ci]
+			n := 0
+			if r != nil {
+				n = r.MaxGroup
+			}
+			if n == 0 {
+				m.statusMessage = "move detect: no moved blocks found"
+			} else {
+				m.statusMessage = fmt.Sprintf("move detect: %d moved block(s)", n)
+			}
+		} else {
+			m.statusMessage = "move detect: off"
+		}
+		m.statusMessageTime = time.Now()
+		return m, nil
 	}
 
 	// Check if we should load more commits after scroll changes
@@ -594,6 +635,22 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// computeMoveDetectForCommit runs move detection for a single commit's files.
+func (m Model) computeMoveDetectForCommit(ci int) *movedetect.Result {
+	if ci < 0 || ci >= len(m.commitFileStarts) {
+		return &movedetect.Result{}
+	}
+	start := m.commitFileStarts[ci]
+	end := len(m.files)
+	if ci+1 < len(m.commitFileStarts) {
+		end = m.commitFileStarts[ci+1]
+	}
+	if start >= end {
+		return &movedetect.Result{}
+	}
+	return movedetect.Detect(m.files[start:end], 3, start)
 }
 
 // cursorRowIdentity captures the "identity" of the row the cursor is on.

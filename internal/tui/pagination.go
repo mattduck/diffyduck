@@ -150,6 +150,8 @@ func (m *Model) appendCommits(commits []sidebyside.CommitSet) {
 		m.files = append(m.files, c.Files...)
 	}
 	m.loadedCommitCount = len(m.commits)
+	// Per-commit move detection caches remain valid for already-loaded commits;
+	// new commits will compute lazily when toggled.
 	// Invalidate all windows since new commits affect all views
 	m.invalidateAllRowCaches()
 	m.calculateTotalLines()

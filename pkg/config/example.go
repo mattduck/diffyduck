@@ -145,6 +145,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 		writeKeys("snapshot_toggle", "toggle snapshot view", a.SnapshotToggle)
 		writeKeys("visual", "enter visual line mode", a.Visual)
 		writeKeys("help", "toggle help screen", a.Help)
+		writeKeys("move_detect", "toggle move detection highlighting", a.MoveDetect)
 		b.WriteString("\n")
 	}
 

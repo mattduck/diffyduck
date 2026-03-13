@@ -54,6 +54,7 @@ type KeyMap struct {
 	SnapshotToggle []string // toggle snapshot view
 	VisualMode     []string // enter visual line mode
 	Help           []string // toggle help screen
+	MoveDetect     []string // toggle move detection highlighting
 
 	// Window management (sequences with prefix)
 	WinSplitV      []string // "ctrl+w %"
@@ -122,6 +123,7 @@ func DefaultKeyMap() KeyMap {
 		SnapshotToggle: []string{"s"},
 		VisualMode:     []string{"V"},
 		Help:           []string{"ctrl+h"},
+		MoveDetect:     []string{"M"},
 		WinSplitV:      []string{"ctrl+w %"},
 		WinSplitH:      []string{"ctrl+w \""},
 		WinClose:       []string{"ctrl+w x"},
@@ -192,6 +194,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.SnapshotToggle, Desc: "Toggle snapshot view"},
 			{Keys: km.Snapshot, Desc: "Take snapshot"},
 			{Keys: km.VisualMode, Desc: "Enter visual line mode"},
+			{Keys: km.MoveDetect, Desc: "Toggle move detection"},
 			{Keys: km.Help, Desc: "Toggle this help screen"},
 			{Keys: km.Quit, Desc: "Quit"},
 		}},
@@ -352,7 +355,7 @@ func allBindings(km KeyMap) [][]string {
 		km.NarrowToggle,
 		km.FoldToggle, km.FoldToggleAll, km.FullFileToggle,
 		km.Quit, km.Enter, km.ResolveToggle, km.Yank, km.YankAll,
-		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help,
+		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help, km.MoveDetect,
 		km.WinSplitV, km.WinSplitH, km.WinClose,
 		km.WinFocusLeft, km.WinFocusRight, km.WinFocusUp, km.WinFocusDown,
 		km.WinResizeLeft, km.WinResizeRight, km.WinResizeUp, km.WinResizeDown,
@@ -487,6 +490,9 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		if a.Help != nil {
 			km.Help = a.Help
 		}
+		if a.MoveDetect != nil {
+			km.MoveDetect = a.MoveDetect
+		}
 	}
 
 	if w := cfg.Window; w != nil {
@@ -586,6 +592,7 @@ func DefaultKeysConfig() config.KeysConfig {
 			SnapshotToggle: km.SnapshotToggle,
 			Visual:         km.VisualMode,
 			Help:           km.Help,
+			MoveDetect:     km.MoveDetect,
 		},
 		Window: &config.WindowKeys{
 			SplitVertical:   km.WinSplitV,

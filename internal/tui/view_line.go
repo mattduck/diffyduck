@@ -301,7 +301,7 @@ func wrapComment(line string, maxWidth int) []string {
 	return strings.Split(wrapped, "\n")
 }
 
-func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool, treePath TreePath, cZone conflictZone) string {
+func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIdx int, isCursorRow bool, isFirstLine, isLastLine, hideRightTrailingGutter bool, treePath TreePath, cZone conflictZone, moveGroupOld, moveGroupNew int) string {
 	// Tree prefix using tight spacing for compact content indentation
 	// Cursor arrow replaces the left margin space in the tree prefix
 	treeContinuation := renderTreePrefixTightWithCursor(treePath, isCursorRow, m.focused)
@@ -331,22 +331,33 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 
 	// Render: New on left (side 0), Old on right (side 1)
 	// Conflict block indicator only on the new (left) side
-	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, 0, isCursorRow, hasWordDiff, false, cZone)
-	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, 1, isCursorRow, hasWordDiff, hideRightTrailingGutter, conflictNone)
+	left := m.renderLineWithSpans(pair.New, leftContentWidth, lineNumWidth, newSpans, newSyntax, 0, isCursorRow, hasWordDiff, false, cZone, moveGroupNew)
+	right := m.renderLineWithSpans(pair.Old, rightContentWidth, lineNumWidth, oldSpans, oldSyntax, 1, isCursorRow, hasWordDiff, hideRightTrailingGutter, conflictNone, moveGroupOld)
 
 	separator := centerDividerStyle.Render(separatorChar)
 	return treeContinuation + left + " " + separator + " " + right
 }
 
-func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool, cZone conflictZone) string {
+func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWidth int, inlineSpans []inlinediff.Span, syntaxSpans []highlight.Span, side int, isCursorRow bool, hasWordDiff bool, hideTrailingGutter bool, cZone conflictZone, moveGroup int) string {
 	// Check for conflict marker lines (<<<<<<, =======, >>>>>>) for text styling
 	isConflictMarker := cZone != conflictNone && isConflictMarkerLine(line)
 
 	// Diff indicator (+/-/~/space) before line number
 	// When hasWordDiff is true, use blue "~" instead of green/red +/-
+	// Move detection overrides with the palette style for the indicator character.
 	// Cursor arrow is shown in the tree gutter (first column), not here
 	var indicator string
-	if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
+	if moveGroup > 0 {
+		moveStyle := moveDetectPalette[(moveGroup-1)%len(moveDetectPalette)]
+		switch line.Type {
+		case sidebyside.Added:
+			indicator = moveStyle.Render("+")
+		case sidebyside.Removed:
+			indicator = moveStyle.Render("-")
+		default:
+			indicator = " "
+		}
+	} else if hasWordDiff && (line.Type == sidebyside.Added || line.Type == sidebyside.Removed) {
 		indicator = changedStyle.Render("~")
 	} else {
 		switch line.Type {
@@ -361,6 +372,7 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 
 	// Line number (fixed, not affected by horizontal scroll)
 	// Color matches the +/- indicator: green for added, red for removed, blue for changed, dim for context
+	// Move detection overrides with palette foreground color.
 	// When focused and on cursor row, highlight with cursor background
 	// When unfocused, show normal colors (no background highlight)
 	var numStr string
@@ -370,6 +382,9 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 	}
 	if isCursorRow && m.focused {
 		numStr = cursorStyle.Render(numContent)
+	} else if moveGroup > 0 {
+		moveStyle := moveDetectPalette[(moveGroup-1)%len(moveDetectPalette)]
+		numStr = moveStyle.Render(numContent)
 	} else {
 		switch line.Type {
 		case sidebyside.Added:
@@ -445,9 +460,17 @@ func (m Model) renderLineWithSpans(line sidebyside.Line, contentWidth, lineNumWi
 		}
 	}
 
+	// Move detection overlay: when a line is part of a detected move group,
+	// apply a cycling background color to make moved blocks visually distinct.
+	// Search highlighting still takes precedence (applied above).
+	if moveGroup > 0 {
+		style := moveDetectPalette[(moveGroup-1)%len(moveDetectPalette)]
+		styledContent = applyMoveStyle(visible, styledContent, style)
+	}
+
 	// Wrap added/removed lines with gutter indicators
 	// Use blue for changed lines (hasWordDiff), otherwise green/red
-	styledContent = m.applyColumnIndicators(styledContent, line.Type, hasWordDiff, hideTrailingGutter, cZone)
+	styledContent = m.applyColumnIndicators(styledContent, line.Type, hasWordDiff, hideTrailingGutter, cZone, moveGroup)
 
 	// Style truncation indicator with fg=13 if present
 	if strings.Contains(visible, diff.LineTruncationText) {
@@ -830,7 +853,7 @@ func expandTabs(s string) string {
 	return result.String()
 }
 
-func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.LineType, hasWordDiff bool, hideTrailingGutter bool, cZone conflictZone) string {
+func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.LineType, hasWordDiff bool, hideTrailingGutter bool, cZone conflictZone, moveGroup int) string {
 	isAddedOrRemoved := lineType == sidebyside.Added || lineType == sidebyside.Removed
 
 	// In a conflict block, replace the start gutter with a continuous vertical bar
@@ -851,9 +874,11 @@ func (m Model) applyColumnIndicators(styledContent string, lineType sidebyside.L
 	}
 
 	// Get indicator styles for added/removed lines
-	// Start and end indicators: blue for changed (word diff), green/red otherwise
+	// Move detection overrides with palette style, otherwise blue for changed, green/red for add/remove
 	var colorStyle lipgloss.Style
-	if hasWordDiff {
+	if moveGroup > 0 {
+		colorStyle = moveDetectPalette[(moveGroup-1)%len(moveDetectPalette)]
+	} else if hasWordDiff {
 		colorStyle = changedStyle // blue for modified lines with word diff
 	} else if lineType == sidebyside.Added {
 		colorStyle = addedStyle // green
@@ -909,6 +934,18 @@ func (m Model) getInlineDiff(fileIndex int, pair sidebyside.LinePair) ([]inlined
 
 // isConflictMarkerLine returns true if the line content is a merge/rebase
 // conflict marker (<<<<<<, =======, >>>>>>).
+// applyMoveStyle applies a move-detection background color to the visible
+// content. It re-renders each rune of the plain visible text with the given
+// style, effectively replacing the previous styling with the move palette
+// color while preserving character content.
+func applyMoveStyle(visible string, _ string, style lipgloss.Style) string {
+	var b strings.Builder
+	for _, r := range visible {
+		b.WriteString(style.Render(string(r)))
+	}
+	return b.String()
+}
+
 func isConflictMarkerLine(line sidebyside.Line) bool {
 	if line.Type != sidebyside.Added {
 		return false

@@ -10,6 +10,7 @@ import (
 	"github.com/user/diffyduck/pkg/comments"
 	"github.com/user/diffyduck/pkg/config"
 	"github.com/user/diffyduck/pkg/highlight"
+	"github.com/user/diffyduck/pkg/movedetect"
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"github.com/user/diffyduck/pkg/structure"
 )
@@ -77,6 +78,19 @@ var (
 
 	// Conflict marker styles (bold yellow for merge/rebase conflict markers)
 	conflictMarkerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
+
+	// Move detection palette — cycling background colors for matched move groups.
+	// Each group gets a distinct color; the palette wraps around for large counts.
+	moveDetectPalette = []lipgloss.Style{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("6")),  // cyan
+		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("5")),  // magenta
+		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3")),  // yellow
+		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("2")),  // green
+		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("4")),  // blue
+		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("13")), // bright magenta
+		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("14")), // bright cyan
+		lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("11")), // bright yellow
+	}
 
 	// Ref decoration styles (commit header)
 	localRefStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
@@ -657,6 +671,8 @@ const (
 type displayRow struct {
 	kind      RowKind // type of row - use this for identity matching
 	fileIndex int     // index of the file this row belongs to (-1 for summary row)
+
+	pairIndex int // index within the file's Pairs slice (for move detection lookup)
 
 	// Legacy boolean flags - kept for backward compatibility during refactor.
 	// These are derived from 'kind' and will be removed in a future cleanup.
@@ -1491,7 +1507,7 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 			}
 		}
 
-		row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pair: pair, isLastFileInCommit: isLastFile, treePath: contentTreePath, conflictZone: conflictZn}
+		row := displayRow{kind: RowKindContent, fileIndex: fileIdx, pairIndex: i, pair: pair, isLastFileInCommit: isLastFile, treePath: contentTreePath, conflictZone: conflictZn}
 		if i == 0 {
 			row.isFirstLine = true
 		}
@@ -2017,7 +2033,13 @@ func (m Model) renderDisplayRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	} else if row.kind == RowKindComment {
 		return m.renderCommentRow(row, leftHalfWidth, rightHalfWidth, lineNumWidth, isCursorRow)
 	}
-	return m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIndex, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.treePath, row.conflictZone)
+	// Look up move detection group for this line pair (per-commit toggle)
+	var moveGroupOld, moveGroupNew int
+	if r := m.moveDetectResultForFile(row.fileIndex); r != nil && r.Groups != nil {
+		moveGroupOld = r.Groups[movedetect.Key{FileIndex: row.fileIndex, PairIndex: row.pairIndex, Side: 1}]
+		moveGroupNew = r.Groups[movedetect.Key{FileIndex: row.fileIndex, PairIndex: row.pairIndex, Side: 0}]
+	}
+	return m.renderLinePair(row.pair, row.fileIndex, leftHalfWidth, rightHalfWidth, lineNumWidth, rowIndex, isCursorRow, row.isFirstLine, row.isLastLine, hideRightTrailingGutter, row.treePath, row.conflictZone, moveGroupOld, moveGroupNew)
 }
 
 // renderHunkSeparator renders a separator line between hunks.

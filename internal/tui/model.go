@@ -15,6 +15,7 @@ import (
 	"github.com/user/diffyduck/pkg/git"
 	"github.com/user/diffyduck/pkg/highlight"
 	"github.com/user/diffyduck/pkg/inlinediff"
+	"github.com/user/diffyduck/pkg/movedetect"
 	"github.com/user/diffyduck/pkg/sidebyside"
 	"github.com/user/diffyduck/pkg/structure"
 )
@@ -219,6 +220,11 @@ type Model struct {
 
 	// Focus colour mode - dims content outside current hunk to reduce visual clutter
 	focusColour bool
+
+	// Move detection mode - highlights blocks of code that were moved between locations
+	// Toggle and results are per-commit so each commit can be independently inspected.
+	moveDetectCommits map[int]bool               // commit index -> enabled
+	moveDetectResults map[int]*movedetect.Result // commit index -> cached result
 
 	// Clipboard
 	clipboard Clipboard // clipboard interface for copy/paste
@@ -2025,6 +2031,19 @@ func (m Model) commitForFile(fileIdx int) int {
 		}
 	}
 	return 0
+}
+
+// moveDetectResultForFile returns the move detection result for the commit
+// that contains fileIdx, or nil if move detection is not enabled for that commit.
+func (m Model) moveDetectResultForFile(fileIdx int) *movedetect.Result {
+	ci := m.commitForFile(fileIdx)
+	if !m.moveDetectCommits[ci] {
+		return nil
+	}
+	if m.moveDetectResults == nil {
+		return nil
+	}
+	return m.moveDetectResults[ci]
 }
 
 // isFirstFileInCommit returns true if fileIdx is the first file in its commit.
