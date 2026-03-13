@@ -289,8 +289,7 @@ func determineCommitHeaderMode(isFolded bool, isFirstCommit bool, prevCommitUnfo
 // In diff view there is no commit to connect to, so the vertical tree line (│)
 // between sibling files should be suppressed.
 func (m Model) isDiffView() bool {
-	return len(m.commits) == 0 ||
-		(len(m.commits) > 0 && !m.commits[0].Info.HasMetadata())
+	return len(m.commits) == 0 || !m.commits[0].Info.HasMetadata()
 }
 
 // buildFileTreePath creates a TreePath for rows belonging to a file.
