@@ -818,7 +818,7 @@ func TestParseArgs_Comment(t *testing.T) {
 	result, err := parseArgs([]string{"comment"})
 	require.NoError(t, err)
 	assert.Equal(t, "comment", result.cmd)
-	assert.Equal(t, "", result.commentSub)
+	assert.Equal(t, "list", result.commentSub)
 }
 
 func TestParseArgs_CommentAlias(t *testing.T) {

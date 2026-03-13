@@ -176,11 +176,16 @@ func parseArgs(args []string) (parsedArgs, error) {
 			remaining = remaining[1:]
 
 			// Consume comment sub-subcommand and ID
-			if result.cmd == "comment" && len(remaining) > 0 {
-				switch remaining[0] {
-				case "list", "edit":
-					result.commentSub = remaining[0]
-					remaining = remaining[1:]
+			if result.cmd == "comment" {
+				if len(remaining) > 0 {
+					switch remaining[0] {
+					case "list", "edit":
+						result.commentSub = remaining[0]
+						remaining = remaining[1:]
+					}
+				}
+				if result.commentSub == "" {
+					result.commentSub = "list"
 				}
 				if (result.commentSub == "edit" || result.commentSub == "list") &&
 					len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
