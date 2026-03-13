@@ -33,25 +33,27 @@ type KeysConfig struct {
 // Key sequences use space-separated strings: "g g", "space c j".
 // The literal space key uses the token "space" in sequences.
 type NavigationKeys struct {
-	Up          []string `toml:"up"`
-	Down        []string `toml:"down"`
-	PageUp      []string `toml:"page_up"`
-	PageDown    []string `toml:"page_down"`
-	HalfUp      []string `toml:"half_up"`
-	HalfDown    []string `toml:"half_down"`
-	Top         []string `toml:"top"`
-	Bottom      []string `toml:"bottom"`
-	Left        []string `toml:"left"`
-	Right       []string `toml:"right"`
-	GoToTop     []string `toml:"go_to_top"`    // default: ["g g"]
-	NextHeading []string `toml:"next_heading"` // default: ["g j"]
-	PrevHeading []string `toml:"prev_heading"` // default: ["g k"]
-	NextComment []string `toml:"next_comment"` // default: ["space c j"]
-	PrevComment []string `toml:"prev_comment"` // default: ["space c k"]
-	NextChange  []string `toml:"next_change"`  // default: ["space g j"]
-	PrevChange  []string `toml:"prev_change"`  // default: ["space g k"]
-	NarrowNext  []string `toml:"narrow_next"`  // default: ["ctrl+j"]
-	NarrowPrev  []string `toml:"narrow_prev"`  // default: ["ctrl+k"]
+	Up             []string `toml:"up"`
+	Down           []string `toml:"down"`
+	PageUp         []string `toml:"page_up"`
+	PageDown       []string `toml:"page_down"`
+	HalfUp         []string `toml:"half_up"`
+	HalfDown       []string `toml:"half_down"`
+	Top            []string `toml:"top"`
+	Bottom         []string `toml:"bottom"`
+	Left           []string `toml:"left"`
+	Right          []string `toml:"right"`
+	GoToTop        []string `toml:"go_to_top"`        // default: ["g g"]
+	NextHeading    []string `toml:"next_heading"`     // default: ["g j"]
+	PrevHeading    []string `toml:"prev_heading"`     // default: ["g k"]
+	NextComment    []string `toml:"next_comment"`     // default: ["space c j"]
+	PrevComment    []string `toml:"prev_comment"`     // default: ["space c k"]
+	NextAllComment []string `toml:"next_all_comment"` // default: ["space C j"]
+	PrevAllComment []string `toml:"prev_all_comment"` // default: ["space C k"]
+	NextChange     []string `toml:"next_change"`      // default: ["space g j"]
+	PrevChange     []string `toml:"prev_change"`      // default: ["space g k"]
+	NarrowNext     []string `toml:"narrow_next"`      // default: ["ctrl+j"]
+	NarrowPrev     []string `toml:"narrow_prev"`      // default: ["ctrl+k"]
 }
 
 // SearchKeys configures search bindings.
@@ -77,7 +79,7 @@ type ActionKeys struct {
 	ResolveToggle   []string `toml:"resolve_toggle"`
 	Yank            []string `toml:"yank"`
 	YankUnresolved  []string `toml:"yank_unresolved"`   // default: ["space c y"]
-	YankAllComments []string `toml:"yank_all_comments"` // default: ["space c Y"]
+	YankAllComments []string `toml:"yank_all_comments"` // default: ["space C y"]
 	Refresh         []string `toml:"refresh"`
 	Snapshot        []string `toml:"snapshot"`
 	SnapshotToggle  []string `toml:"snapshot_toggle"`

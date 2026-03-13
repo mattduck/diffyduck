@@ -11,25 +11,27 @@ import (
 // KeyMap defines the key bindings for the application.
 type KeyMap struct {
 	// Navigation
-	Up          []string
-	Down        []string
-	PageUp      []string
-	PageDown    []string
-	HalfUp      []string
-	HalfDown    []string
-	Top         []string
-	Bottom      []string
-	Left        []string
-	Right       []string
-	GoToTop     []string // sequence: "g g"
-	NextHeading []string // sequence: "g j"
-	PrevHeading []string // sequence: "g k"
-	NextComment []string // sequence: "space c j"
-	PrevComment []string // sequence: "space c k"
-	NextChange  []string // sequence: "space g j"
-	PrevChange  []string // sequence: "space g k"
-	NarrowNext  []string // next node while narrowed
-	NarrowPrev  []string // previous node while narrowed
+	Up             []string
+	Down           []string
+	PageUp         []string
+	PageDown       []string
+	HalfUp         []string
+	HalfDown       []string
+	Top            []string
+	Bottom         []string
+	Left           []string
+	Right          []string
+	GoToTop        []string // sequence: "g g"
+	NextHeading    []string // sequence: "g j"
+	PrevHeading    []string // sequence: "g k"
+	NextComment    []string // sequence: "space c j" (unresolved only)
+	PrevComment    []string // sequence: "space c k" (unresolved only)
+	NextAllComment []string // sequence: "space C j" (all comments)
+	PrevAllComment []string // sequence: "space C k" (all comments)
+	NextChange     []string // sequence: "space g j"
+	PrevChange     []string // sequence: "space g k"
+	NarrowNext     []string // next node while narrowed
+	NarrowPrev     []string // previous node while narrowed
 
 	// Search
 	SearchForward []string
@@ -103,6 +105,8 @@ func DefaultKeyMap() KeyMap {
 		PrevHeading:     []string{"g k"},
 		NextComment:     []string{"space c j"},
 		PrevComment:     []string{"space c k"},
+		NextAllComment:  []string{"space C j"},
+		PrevAllComment:  []string{"space C k"},
 		NextChange:      []string{"space g j"},
 		PrevChange:      []string{"space g k"},
 		NarrowNext:      []string{"ctrl+j"},
@@ -120,7 +124,7 @@ func DefaultKeyMap() KeyMap {
 		ResolveToggle:   []string{"ctrl+c ctrl+c"},
 		Yank:            []string{"y"},
 		YankUnresolved:  []string{"space c y"},
-		YankAllComments: []string{"space c Y"},
+		YankAllComments: []string{"space C y"},
 		RefreshLayout:   []string{"r"},
 		Snapshot:        []string{"S"},
 		SnapshotToggle:  []string{"s"},
@@ -171,7 +175,8 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.Bottom, Desc: "Go to bottom", Keys2: km.Top, Desc2: "top"},
 			{Keys: km.GoToTop, Desc: "Go to top"},
 			{Keys: km.NextHeading, Desc: "Next heading", Keys2: km.PrevHeading, Desc2: "previous"},
-			{Keys: km.NextComment, Desc: "Next comment", Keys2: km.PrevComment, Desc2: "previous"},
+			{Keys: km.NextComment, Desc: "Next unresolved comment", Keys2: km.PrevComment, Desc2: "previous"},
+			{Keys: km.NextAllComment, Desc: "Next comment (any)", Keys2: km.PrevAllComment, Desc2: "previous"},
 			{Keys: km.NextChange, Desc: "Next change", Keys2: km.PrevChange, Desc2: "previous"},
 			{Keys: km.NarrowNext, Desc: "Narrow next", Keys2: km.NarrowPrev, Desc2: "previous"},
 			{Keys: km.Right, Desc: "Scroll right", Keys2: km.Left, Desc2: "left"},
@@ -354,7 +359,7 @@ func allBindings(km KeyMap) [][]string {
 		km.Up, km.Down, km.PageUp, km.PageDown,
 		km.HalfUp, km.HalfDown, km.Top, km.Bottom,
 		km.Left, km.Right, km.GoToTop, km.NextHeading, km.PrevHeading,
-		km.NextComment, km.PrevComment,
+		km.NextComment, km.PrevComment, km.NextAllComment, km.PrevAllComment,
 		km.NextChange, km.PrevChange,
 		km.NarrowNext, km.NarrowPrev,
 		km.SearchForward, km.SearchBack, km.NextMatch, km.PrevMatch,
@@ -420,6 +425,12 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		}
 		if nav.PrevComment != nil {
 			km.PrevComment = nav.PrevComment
+		}
+		if nav.NextAllComment != nil {
+			km.NextAllComment = nav.NextAllComment
+		}
+		if nav.PrevAllComment != nil {
+			km.PrevAllComment = nav.PrevAllComment
 		}
 		if nav.NextChange != nil {
 			km.NextChange = nav.NextChange
@@ -561,25 +572,27 @@ func DefaultKeysConfig() config.KeysConfig {
 	km := DefaultKeyMap()
 	return config.KeysConfig{
 		Navigation: &config.NavigationKeys{
-			Up:          km.Up,
-			Down:        km.Down,
-			PageUp:      km.PageUp,
-			PageDown:    km.PageDown,
-			HalfUp:      km.HalfUp,
-			HalfDown:    km.HalfDown,
-			Top:         km.Top,
-			Bottom:      km.Bottom,
-			Left:        km.Left,
-			Right:       km.Right,
-			GoToTop:     km.GoToTop,
-			NextHeading: km.NextHeading,
-			PrevHeading: km.PrevHeading,
-			NextComment: km.NextComment,
-			PrevComment: km.PrevComment,
-			NextChange:  km.NextChange,
-			PrevChange:  km.PrevChange,
-			NarrowNext:  km.NarrowNext,
-			NarrowPrev:  km.NarrowPrev,
+			Up:             km.Up,
+			Down:           km.Down,
+			PageUp:         km.PageUp,
+			PageDown:       km.PageDown,
+			HalfUp:         km.HalfUp,
+			HalfDown:       km.HalfDown,
+			Top:            km.Top,
+			Bottom:         km.Bottom,
+			Left:           km.Left,
+			Right:          km.Right,
+			GoToTop:        km.GoToTop,
+			NextHeading:    km.NextHeading,
+			PrevHeading:    km.PrevHeading,
+			NextComment:    km.NextComment,
+			PrevComment:    km.PrevComment,
+			NextAllComment: km.NextAllComment,
+			PrevAllComment: km.PrevAllComment,
+			NextChange:     km.NextChange,
+			PrevChange:     km.PrevChange,
+			NarrowNext:     km.NarrowNext,
+			NarrowPrev:     km.NarrowPrev,
 		},
 		Search: &config.SearchKeys{
 			SearchFwd:    km.SearchForward,

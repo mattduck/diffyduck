@@ -250,14 +250,14 @@ func TestAllBindingGroups_GSequencesInNavigation(t *testing.T) {
 		if b.Desc == "Go to top" {
 			assert.Equal(t, []string{"g g"}, b.Keys)
 		}
-		if b.Desc == "Next comment" {
+		if b.Desc == "Next unresolved comment" {
 			assert.Equal(t, []string{"space c j"}, b.Keys)
 			assert.Equal(t, []string{"space c k"}, b.Keys2)
 			assert.Equal(t, "previous", b.Desc2)
 		}
 	}
 
-	assert.Contains(t, descs, "Next comment")
+	assert.Contains(t, descs, "Next unresolved comment")
 }
 
 func TestAllBindingGroups_SearchInputMerged(t *testing.T) {

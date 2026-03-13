@@ -2959,23 +2959,22 @@ func TestGoToNextComment(t *testing.T) {
 	// Position at top
 	m.w().scroll = 0
 
-	// Navigate to first comment
-	m.goToNextComment()
+	// Navigate to first comment — should land on the content line
+	m.goToNextComment(false)
 	rows := m.getRows()
 	cursor := m.cursorLine()
-	assert.Equal(t, RowKindComment, rows[cursor].kind)
-	assert.Equal(t, 3, rows[cursor].commentLineNum)
-	assert.Equal(t, 0, rows[cursor].commentRowIndex, "should land on top border")
+	assert.Equal(t, RowKindContent, rows[cursor].kind)
+	assert.Equal(t, 3, rows[cursor].pair.New.Num)
 
 	// Navigate to second comment
-	m.goToNextComment()
+	m.goToNextComment(false)
 	cursor = m.cursorLine()
-	assert.Equal(t, RowKindComment, rows[cursor].kind)
-	assert.Equal(t, 7, rows[cursor].commentLineNum)
+	assert.Equal(t, RowKindContent, rows[cursor].kind)
+	assert.Equal(t, 7, rows[cursor].pair.New.Num)
 
 	// No more comments — should stay put
 	prevCursor := m.cursorLine()
-	m.goToNextComment()
+	m.goToNextComment(false)
 	assert.Equal(t, prevCursor, m.cursorLine(), "should not wrap")
 }
 
@@ -2991,22 +2990,22 @@ func TestGoToPrevComment(t *testing.T) {
 	// Position at bottom
 	m.w().scroll = m.maxScroll()
 
-	// Navigate to last comment
-	m.goToPrevComment()
+	// Navigate to last comment — should land on the content line
+	m.goToPrevComment(false)
 	rows := m.getRows()
 	cursor := m.cursorLine()
-	assert.Equal(t, RowKindComment, rows[cursor].kind)
-	assert.Equal(t, 7, rows[cursor].commentLineNum)
+	assert.Equal(t, RowKindContent, rows[cursor].kind)
+	assert.Equal(t, 7, rows[cursor].pair.New.Num)
 
 	// Navigate to first comment
-	m.goToPrevComment()
+	m.goToPrevComment(false)
 	cursor = m.cursorLine()
-	assert.Equal(t, RowKindComment, rows[cursor].kind)
-	assert.Equal(t, 3, rows[cursor].commentLineNum)
+	assert.Equal(t, RowKindContent, rows[cursor].kind)
+	assert.Equal(t, 3, rows[cursor].pair.New.Num)
 
 	// No more comments — should stay put
 	prevCursor := m.cursorLine()
-	m.goToPrevComment()
+	m.goToPrevComment(false)
 	assert.Equal(t, prevCursor, m.cursorLine(), "should not wrap")
 }
 
@@ -3032,11 +3031,11 @@ func TestCommentNavigation_SpaceSequence(t *testing.T) {
 	m = newM.(Model)
 	assert.Equal(t, "", m.pendingKey)
 
-	// Should have moved to the comment
+	// Should have moved to the content line with the comment
 	rows := m.getRows()
 	cursor := m.cursorLine()
-	assert.Equal(t, RowKindComment, rows[cursor].kind)
-	assert.Equal(t, 5, rows[cursor].commentLineNum)
+	assert.Equal(t, RowKindContent, rows[cursor].kind)
+	assert.Equal(t, 5, rows[cursor].pair.New.Num)
 }
 
 func TestGoToNextComment_FoldedFile(t *testing.T) {
@@ -3049,12 +3048,12 @@ func TestGoToNextComment_FoldedFile(t *testing.T) {
 	m.calculateTotalLines()
 	m.w().scroll = 0
 
-	// Navigate should unfold the file and land on the comment
-	m.goToNextComment()
+	// Navigate should unfold the file and land on the content line
+	m.goToNextComment(false)
 	rows := m.getRows()
 	cursor := m.cursorLine()
-	assert.Equal(t, RowKindComment, rows[cursor].kind)
-	assert.Equal(t, 5, rows[cursor].commentLineNum)
+	assert.Equal(t, RowKindContent, rows[cursor].kind)
+	assert.Equal(t, 5, rows[cursor].pair.New.Num)
 	// File should now be unfolded to hunks
 	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
 }
@@ -3066,9 +3065,9 @@ func TestGoToNextComment_NoComments(t *testing.T) {
 	prevScroll := m.w().scroll
 
 	// Should be a no-op when no comments exist
-	m.goToNextComment()
+	m.goToNextComment(false)
 	assert.Equal(t, prevScroll, m.w().scroll, "scroll should not change")
 
-	m.goToPrevComment()
+	m.goToPrevComment(false)
 	assert.Equal(t, prevScroll, m.w().scroll, "scroll should not change")
 }

@@ -501,6 +501,7 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case matchesKey(msg, keys.Up):
 		m.w().scroll--
 		m.clampScroll()
+		m.skipCommentRowsUp()
 		m.resetSearchMatchForRow()
 
 	case matchesKey(msg, keys.Down):
@@ -1604,12 +1605,22 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if matchesSequence(prefix, msg, keys.NextComment) {
-		m.goToNextComment()
+		m.goToNextComment(false)
 		m.resetSearchMatchForRow()
 		return m, nil
 	}
 	if matchesSequence(prefix, msg, keys.PrevComment) {
-		m.goToPrevComment()
+		m.goToPrevComment(false)
+		m.resetSearchMatchForRow()
+		return m, nil
+	}
+	if matchesSequence(prefix, msg, keys.NextAllComment) {
+		m.goToNextComment(true)
+		m.resetSearchMatchForRow()
+		return m, nil
+	}
+	if matchesSequence(prefix, msg, keys.PrevAllComment) {
+		m.goToPrevComment(true)
 		m.resetSearchMatchForRow()
 		return m, nil
 	}
@@ -1999,8 +2010,8 @@ func (m *Model) goToPrevChange() {
 
 // goToNextComment moves the cursor to the next comment, even if the
 // containing file or commit is folded. Unfolds as needed. Does not wrap.
-func (m *Model) goToNextComment() {
-	target, ok := m.findNextCommentTarget(true)
+func (m *Model) goToNextComment(includeAll bool) {
+	target, ok := m.findNextCommentTarget(true, includeAll)
 	if !ok {
 		return
 	}
@@ -2009,8 +2020,8 @@ func (m *Model) goToNextComment() {
 
 // goToPrevComment moves the cursor to the previous comment, even if the
 // containing file or commit is folded. Unfolds as needed. Does not wrap.
-func (m *Model) goToPrevComment() {
-	target, ok := m.findNextCommentTarget(false)
+func (m *Model) goToPrevComment(includeAll bool) {
+	target, ok := m.findNextCommentTarget(false, includeAll)
 	if !ok {
 		return
 	}
@@ -2061,7 +2072,7 @@ func (m *Model) sortedCommentKeys() []commentKey {
 // checking both loaded comments (m.comments) and skeleton files
 // (m.commentIndex). Returns the target commentKey and true, or false
 // if no comment found.
-func (m *Model) findNextCommentTarget(forward bool) (commentKey, bool) {
+func (m *Model) findNextCommentTarget(forward bool, includeAll bool) (commentKey, bool) {
 	curFileIdx, curLineNum := m.cursorFilePosition()
 
 	// On non-content rows (lineNum == 0), going backward means the cursor is
@@ -2071,12 +2082,13 @@ func (m *Model) findNextCommentTarget(forward bool) (commentKey, bool) {
 		curLineNum = math.MaxInt
 	}
 
-	// Phase 1: Check loaded comments (filtered by display mode)
+	// Phase 1: Check loaded comments (filtered by resolved state)
 	sorted := m.sortedCommentKeys()
 	if forward {
 		for _, k := range sorted {
 			if k.fileIndex > curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum > curLineNum) {
-				if m.isCommentVisible(m.comments[k]) {
+				c := m.comments[k]
+				if c != nil && c.Text != "" && (includeAll || !c.Resolved) {
 					return k, true
 				}
 			}
@@ -2085,7 +2097,8 @@ func (m *Model) findNextCommentTarget(forward bool) (commentKey, bool) {
 		for i := len(sorted) - 1; i >= 0; i-- {
 			k := sorted[i]
 			if k.fileIndex < curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum < curLineNum) {
-				if m.isCommentVisible(m.comments[k]) {
+				c := m.comments[k]
+				if c != nil && c.Text != "" && (includeAll || !c.Resolved) {
 					return k, true
 				}
 			}
@@ -2216,11 +2229,11 @@ func (m *Model) navigateToComment(key commentKey) {
 	// Rebuild rows
 	m.calculateTotalLines()
 
-	// Find the comment row and navigate to it
+	// Find the content line for this comment and navigate to it
 	rows := m.getRows()
 	for i, row := range rows {
-		if row.kind == RowKindComment && row.fileIndex == key.fileIndex &&
-			row.commentLineNum == key.newLineNum && row.commentRowIndex == 0 {
+		if row.kind == RowKindContent && row.fileIndex == key.fileIndex &&
+			row.pair.New.Num == key.newLineNum {
 			m.adjustScrollToRow(i)
 			return
 		}
