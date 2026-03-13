@@ -269,8 +269,8 @@ func TestTree_LastFileHeader_WithHunkContent_UsesTBranch(t *testing.T) {
 		"last file with hunk content should use ├ (IsLast=false)")
 }
 
-// Test: Last file when folded with no preview uses ├ in log mode (╵ terminator follows)
-func TestTree_LastFileHeader_FoldedNoPreview_UsesTBranch(t *testing.T) {
+// Test: Last file when folded with no preview uses └ (no content below)
+func TestTree_LastFileHeader_FoldedNoPreview_UsesLBranch(t *testing.T) {
 	m := makeLogModeModel([]sidebyside.FilePair{
 		{
 			OldPath:   "a/first.go",
@@ -291,10 +291,9 @@ func TestTree_LastFileHeader_FoldedNoPreview_UsesTBranch(t *testing.T) {
 	header := findLastFileHeader(rows)
 	require.NotNil(t, header, "should find last file header")
 	require.NotNil(t, header.treePath.Current, "header should have Current tree level")
-	// When a terminator row follows the bare header, IsLast is false so we get ├ (not └).
-	// The ╵ terminator row below provides the visual end-of-tree.
-	assert.False(t, header.treePath.Current.IsLast,
-		"last file folded with no preview should use ├ (IsLast=false) because ╵ terminator follows")
+	// Fully collapsed last file uses └ — no content or terminator row follows.
+	assert.True(t, header.treePath.Current.IsLast,
+		"last file folded with no preview should use └ (IsLast=true)")
 }
 
 // Test: Last file with expanded content uses ├ in log mode
@@ -397,8 +396,8 @@ func TestTree_LastFileContentRows_LogMode_ShowContinuation(t *testing.T) {
 	t.Fatal("did not find content row")
 }
 
-// Test: Content rows of last file in diff mode show │ continuation (same as log mode)
-func TestTree_LastFileContentRows_DiffMode_ShowContinuation(t *testing.T) {
+// Test: Content rows of last file in diff mode render │ faintly (no parent commit)
+func TestTree_LastFileContentRows_DiffMode_Faint(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
@@ -421,15 +420,17 @@ func TestTree_LastFileContentRows_DiffMode_ShowContinuation(t *testing.T) {
 			require.Greater(t, len(r.treePath.Ancestors), 0,
 				"content row should have tree ancestors")
 			assert.False(t, r.treePath.Ancestors[0].IsLast,
-				"last file's content row in diff mode should have IsLast=false for │ continuation")
+				"last file's content row in diff mode should have IsLast=false (terminator follows)")
+			assert.True(t, r.treePath.Ancestors[0].Faint,
+				"diff mode should render │ faintly (no parent commit)")
 			return
 		}
 	}
 	t.Fatal("did not find content row")
 }
 
-// Test: In diff mode with multiple files, only last file gets ╵ terminator
-func TestTree_DiffMode_MultiFile_TerminatorOnlyLast(t *testing.T) {
+// Test: In diff mode with multiple folded files, last file uses └ with no terminator
+func TestTree_DiffMode_MultiFile_LastFoldedUsesLBranch(t *testing.T) {
 	m := Model{
 		focused: true,
 		files: []sidebyside.FilePair{
@@ -454,7 +455,7 @@ func TestTree_DiffMode_MultiFile_TerminatorOnlyLast(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// Both headers should use ├ (IsLast=false)
+	// First header uses ├, last uses └ (fully collapsed, nothing below)
 	var headers []displayRow
 	for _, r := range rows {
 		if r.isHeader {
@@ -463,19 +464,16 @@ func TestTree_DiffMode_MultiFile_TerminatorOnlyLast(t *testing.T) {
 	}
 	require.Len(t, headers, 2, "should have 2 file headers")
 	assert.False(t, headers[0].treePath.Current.IsLast, "first file header should use ├")
-	assert.False(t, headers[1].treePath.Current.IsLast, "last file header should use ├ (terminator follows)")
+	assert.True(t, headers[1].treePath.Current.IsLast, "last folded file header should use └")
 
-	// Only the last file should have a terminator blank
+	// No terminator row when last file is fully collapsed
 	var terminators []displayRow
 	for _, r := range rows {
 		if r.treeTerminator {
 			terminators = append(terminators, r)
 		}
 	}
-	require.Len(t, terminators, 1, "only one terminator row expected")
-	assert.Equal(t, 1, terminators[0].fileIndex, "terminator should belong to the last file")
-	assert.False(t, terminators[0].treePath.Ancestors[0].IsLast,
-		"terminator treePath should have IsLast=false so ╵ renders")
+	assert.Empty(t, terminators, "no terminator row when last file is fully collapsed")
 }
 
 func TestRenderEmptyTreeRow(t *testing.T) {

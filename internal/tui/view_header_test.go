@@ -418,14 +418,10 @@ func TestBuildRows_FoldedFileOnlyHeader(t *testing.T) {
 
 	rows := m.buildRows()
 
-	// In diff view, folded file has header + terminator row
-	require.Len(t, rows, 2, "folded file should have header + terminator row")
+	// When the last (only) file is folded, it has just a header row with IsLast=true (└), no terminator
+	require.Len(t, rows, 1, "folded last file should have header only, no terminator row")
 	assert.True(t, rows[0].isHeader, "first row should be header")
-	assert.False(t, rows[0].treePath.Current.IsLast, "header should use ├ (terminator follows)")
-	assert.True(t, rows[1].isBlank, "second row should be terminator blank")
-	assert.True(t, rows[1].treeTerminator, "second row should be a tree terminator")
-	require.Greater(t, len(rows[1].treePath.Ancestors), 0, "terminator should have ancestors")
-	assert.False(t, rows[1].treePath.Ancestors[0].IsLast, "terminator ancestor IsLast=false so ╵ renders")
+	assert.True(t, rows[0].treePath.Current.IsLast, "header should use └ (IsLast=true, no terminator)")
 }
 
 // Test: First file unfolded has header as first row (top border is in padding area in diff view)
@@ -1964,10 +1960,10 @@ func TestTreeLayoutAlignment(t *testing.T) {
 			)
 			headerStripped := stripANSI(header)
 
-			// Header should have tree branch (├ for non-last, └ for last file)
-			hasTreeBranch := strings.Contains(headerStripped, "├") || strings.Contains(headerStripped, "└")
+			// Header should have tree branch (├ middle, └ last, ┌ first in diff view)
+			hasTreeBranch := strings.Contains(headerStripped, "├") || strings.Contains(headerStripped, "└") || strings.Contains(headerStripped, "┌")
 			assert.True(t, hasTreeBranch,
-				"header should contain tree branch (├ or └): %q", headerStripped)
+				"header should contain tree branch (├, └, or ┌): %q", headerStripped)
 		})
 	}
 }

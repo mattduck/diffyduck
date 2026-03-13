@@ -13,7 +13,9 @@ import (
 // TreeLevel represents one level in the tree hierarchy.
 type TreeLevel struct {
 	IsLast   bool           // Is this the last child at its level?
+	IsFirst  bool           // Is this the first child with no parent above? (uses ┌ instead of ├)
 	IsFolded bool           // Is this node folded (hiding children)?
+	Faint    bool           // Render │ line faintly, e.g. diff view with no parent commit
 	Style    lipgloss.Style // Color/style for tree chars at this level
 	Depth    int            // 0=commit, 1=file, 2=hunk, 3=content
 }
@@ -66,6 +68,10 @@ const (
 // Grey color provides visual hierarchy without competing with branch colors.
 var treeContinuationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 
+// treeFaintContinuationStyle is used for vertical lines in diff view where
+// there is no parent commit node. Renders faintly to de-emphasise the connection.
+var treeFaintContinuationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Faint(true)
+
 // renderTreeContinuation renders the vertical continuation lines for ancestor levels.
 // Example output: "│    │    " for two non-last ancestors.
 func renderTreeContinuation(ancestors []TreeLevel) string {
@@ -74,7 +80,11 @@ func renderTreeContinuation(ancestors []TreeLevel) string {
 		if level.IsLast || level.IsFolded {
 			b.WriteString("     ") // 5 spaces - no continuation needed
 		} else {
-			b.WriteString(treeContinuationStyle.Render("│"))
+			style := treeContinuationStyle
+			if level.Faint {
+				style = treeFaintContinuationStyle
+			}
+			b.WriteString(style.Render("│"))
 			b.WriteString("    ") // │ + 4 spaces = 5 chars
 		}
 	}
@@ -89,7 +99,11 @@ func renderTreeContinuationTight(ancestors []TreeLevel) string {
 		if level.IsLast || level.IsFolded {
 			b.WriteString("  ") // 2 spaces - no continuation needed
 		} else {
-			b.WriteString(treeContinuationStyle.Render("│"))
+			style := treeContinuationStyle
+			if level.Faint {
+				style = treeFaintContinuationStyle
+			}
+			b.WriteString(style.Render("│"))
 			b.WriteString(" ") // │ + 1 space = 2 chars
 		}
 	}
@@ -154,7 +168,11 @@ func renderTreeTerminatorTight(ancestors []TreeLevel) string {
 		if level.IsLast || level.IsFolded {
 			b.WriteString("  ") // 2 spaces - no continuation needed
 		} else {
-			b.WriteString(treeContinuationStyle.Render("╵"))
+			style := treeContinuationStyle
+			if level.Faint {
+				style = treeFaintContinuationStyle
+			}
+			b.WriteString(style.Render("╵"))
 			b.WriteString(" ") // ╵ + 1 space = 2 chars
 		}
 	}
@@ -168,13 +186,20 @@ func treeWidthTight(numAncestors int) int {
 }
 
 // renderTreeBranch renders the branch character for a header node.
-// T-connectors (├/└) use grey to match vertical lines, horizontal (━) uses status color.
-// Example output: "├━" or "└━" with mixed colors.
+// Branch connectors use grey to match vertical lines, horizontal (━) uses status color.
+// ├━ = middle child, └━ = last child, ┌━ = first child with no parent above.
 func renderTreeBranch(level TreeLevel) string {
-	if level.IsLast {
-		return treeContinuationStyle.Render("└") + level.Style.Render("━")
+	style := treeContinuationStyle
+	if level.Faint {
+		style = treeFaintContinuationStyle
 	}
-	return treeContinuationStyle.Render("├") + level.Style.Render("━")
+	if level.IsLast {
+		return style.Render("└") + level.Style.Render("━")
+	}
+	if level.IsFirst {
+		return style.Render("┌") + level.Style.Render("━")
+	}
+	return style.Render("├") + level.Style.Render("━")
 }
 
 // renderTreePrefix renders the full tree prefix for any row.
@@ -198,13 +223,18 @@ func renderTreePrefix(path TreePath, isHeader bool) string {
 	innermost := path.Ancestors[len(path.Ancestors)-1]
 	continuation := renderTreeContinuation(outerAncestors)
 
+	innermostStyle := treeContinuationStyle
+	if innermost.Faint {
+		innermostStyle = treeFaintContinuationStyle
+	}
+
 	if isHeader && path.Current != nil {
 		// Header row: margin + outer continuation + innermost continuation (5 chars) + branch (2 chars)
 		var innermostCont string
 		if innermost.IsLast || innermost.IsFolded {
 			innermostCont = "     " // 5 spaces
 		} else {
-			innermostCont = treeContinuationStyle.Render("│") + "    " // │ + 4 spaces
+			innermostCont = innermostStyle.Render("│") + "    " // │ + 4 spaces
 		}
 		return margin + continuation + innermostCont + renderTreeBranch(*path.Current)
 	}
@@ -214,7 +244,7 @@ func renderTreePrefix(path TreePath, isHeader bool) string {
 	if innermost.IsLast || innermost.IsFolded {
 		return margin + continuation + "     " + contentIndent // 5 spaces + indent
 	}
-	return margin + continuation + treeContinuationStyle.Render("│") + "    " + contentIndent // │ + 4 spaces + indent
+	return margin + continuation + innermostStyle.Render("│") + "    " + contentIndent // │ + 4 spaces + indent
 }
 
 // treeWidth calculates the character width of tree prefixes.

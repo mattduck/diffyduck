@@ -834,8 +834,8 @@ func TestFoldToggleAll_NoBlanksBetweenFoldedFiles(t *testing.T) {
 			blankCount++
 		}
 	}
-	// The last folded file gets a terminator blank row (╵)
-	assert.Equal(t, 1, blankCount, "last folded file should have a terminator blank row")
+	// When the last file is folded, there is no terminator blank row — the header uses └ (IsLast=true)
+	assert.Equal(t, 0, blankCount, "no terminator blank rows when all files are folded")
 
 	// Cursor should be on a valid header
 	cursorPos := model.cursorLine()

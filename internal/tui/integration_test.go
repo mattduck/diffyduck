@@ -317,12 +317,12 @@ index 0000000..abc1234
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the two header lines (in tree layout, they have tree branches ├ or └)
+	// Find the two header lines (in tree layout, they have tree branches ├, └, or ┌)
 	var emptyHeader, contentHeader string
 	for _, line := range lines {
 		stripped := stripANSI(line)
 		// Header lines have the tree branch and filename
-		hasTreeBranch := strings.Contains(stripped, "├") || strings.Contains(stripped, "└")
+		hasTreeBranch := strings.Contains(stripped, "├") || strings.Contains(stripped, "└") || strings.Contains(stripped, "┌")
 		if strings.Contains(stripped, "empty.txt") && hasTreeBranch {
 			emptyHeader = stripped
 		}

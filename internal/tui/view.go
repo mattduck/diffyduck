@@ -285,6 +285,14 @@ func determineCommitHeaderMode(isFolded bool, isFirstCommit bool, prevCommitUnfo
 	return HeaderThreeLine
 }
 
+// isDiffView returns true when files are displayed without a parent commit node.
+// In diff view there is no commit to connect to, so the vertical tree line (│)
+// between sibling files should be suppressed.
+func (m Model) isDiffView() bool {
+	return len(m.commits) == 0 ||
+		(len(m.commits) > 0 && !m.commits[0].Info.HasMetadata())
+}
+
 // buildFileTreePath creates a TreePath for rows belonging to a file.
 // This is used for file headers, preview rows, and content rows.
 //
@@ -308,12 +316,20 @@ func (m Model) buildFileTreePath(fileIdx int, isLastFileInCommit, isFileFolded b
 		fileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("4")) // blue fallback
 	}
 
+	// In diff view there is no parent commit node, so render │ faintly
+	faint := m.isDiffView()
+
+	// In diff view, the first file has no parent above — use ┌ instead of ├
+	isFirst := faint && fileIdx == 0
+
 	switch kind {
 	case TreeRowHeader:
-		// File header: no ancestors, shows branch character (├─── or └───)
+		// File header: no ancestors, shows branch character (├━, └━, or ┌━)
 		fileLevel := TreeLevel{
 			IsLast:   isLastFileInCommit,
+			IsFirst:  isFirst,
 			IsFolded: isFileFolded,
+			Faint:    faint,
 			Style:    fileStyle,
 			Depth:    0,
 		}
@@ -325,13 +341,15 @@ func (m Model) buildFileTreePath(fileIdx int, isLastFileInCommit, isFileFolded b
 	case TreeRowPreview, TreeRowContent:
 		// Preview and content rows show sibling continuation only.
 		// Shows │ if there are more sibling files below.
+		// In diff view, │ renders faintly since there is no parent commit.
 		//
-		// This produces: │    content
+		// This produces: │    content  (log/diff mode, faint in diff)
 		//                ^
 		//                +-- sibling continuation (5 chars)
 		siblingLevel := TreeLevel{
 			IsLast:   isLastFileInCommit, // controls whether │ shows
 			IsFolded: false,
+			Faint:    faint,
 			Style:    fileStyle,
 			Depth:    0,
 		}
@@ -1320,16 +1338,20 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 	header := formatFileHeader(fp)
 	ownBoxWidth := fileHeaderBoxWidth(header, added, removed)
 
-	// The last file's header always uses ├ (not └) because there is always something
-	// below it: either content rows or a ╵ terminator row.
+	// The last file's header uses └ when fully collapsed (no content below),
+	// and ├ when expanded (content rows + ╵ terminator follow).
 	headerIsLast := false
 
 	if isFolded {
 		// Folded path: header (no border) → body content → margin
-		headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, true, TreeRowHeader)
+		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth)
+
+		// Last file with no content below: use └ (IsLast=true), no terminator needed
+		foldedHeaderIsLast := isLastFile && len(bodyRows) == 0
+		effectiveHeaderIsLast := headerIsLast || foldedHeaderIsLast
+		headerTreePath := m.buildFileTreePath(fileIdx, effectiveHeaderIsLast, true, TreeRowHeader)
 		rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: sidebyside.FoldHeader, status: status, header: header, added: added, removed: removed, headerBoxWidth: headerBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
 
-		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth)
 		rows = append(rows, bodyRows...)
 
 		if len(bodyRows) > 0 {
@@ -1343,18 +1365,6 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 				treeTerminator:     isLastFile,
 				treePath:           marginTreePath,
 			})
-		} else if isLastFile {
-			// Last file with no preview content: add ╵ terminator after the bare header.
-			// Force IsLast=false so the ancestor renders ╵ (not blank space).
-			terminatorPath := m.buildFileTreePath(fileIdx, false, true, TreeRowContent)
-			rows = append(rows, displayRow{
-				kind:               RowKindBlank,
-				fileIndex:          fileIdx,
-				isBlank:            true,
-				isLastFileInCommit: isLastFile,
-				treeTerminator:     true,
-				treePath:           terminatorPath,
-			})
 		}
 
 	} else {
@@ -1366,21 +1376,11 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 
 		// FoldStructure with no structural diff content: treat like folded path
 		// (header only, no spacer/margin/top-border) but keep the ━━━━◐ trailing.
+		// Last file with no content: use └ (IsLast=true), no terminator needed.
 		if foldLevel == sidebyside.FoldStructure && len(bodyRows) == 0 {
-			headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, true, TreeRowHeader)
+			structHeaderIsLast := headerIsLast || isLastFile
+			headerTreePath := m.buildFileTreePath(fileIdx, structHeaderIsLast, true, TreeRowHeader)
 			rows = append(rows, displayRow{kind: RowKindHeader, fileIndex: fileIdx, isHeader: true, foldLevel: foldLevel, status: status, header: header, added: added, removed: removed, headerBoxWidth: ownBoxWidth, isLastFileInCommit: isLastFile, treePath: headerTreePath, headerMode: headerMode})
-
-			if isLastFile {
-				terminatorPath := m.buildFileTreePath(fileIdx, false, true, TreeRowContent)
-				rows = append(rows, displayRow{
-					kind:               RowKindBlank,
-					fileIndex:          fileIdx,
-					isBlank:            true,
-					isLastFileInCommit: isLastFile,
-					treeTerminator:     true,
-					treePath:           terminatorPath,
-				})
-			}
 		} else {
 			headerTreePath := m.buildFileTreePath(fileIdx, headerIsLast, false, TreeRowHeader)
 			// Use contentIsLast so │ continuation shows in log mode on content rows of the last file.

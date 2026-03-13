@@ -111,8 +111,8 @@ func TestView_TreeConnectsFilesDirectly(t *testing.T) {
 	require.NotEqual(t, -1, firstHeaderIdx, "should find first file header")
 	require.NotEqual(t, -1, secondHeaderIdx, "should find second file header")
 
-	// Both files should have ├ branch (never └, since ╵ terminator follows last file)
-	assert.Contains(t, lines[firstHeaderIdx], "├", "first file should have non-last tree branch")
+	// First file in diff view uses ┌ (no parent above), second uses ├
+	assert.Contains(t, lines[firstHeaderIdx], "┌", "first file in diff view should have ┌ branch (no parent above)")
 	assert.Contains(t, lines[secondHeaderIdx], "├", "second file should have ├ branch (╵ terminator follows)")
 
 	// There should be no blank lines between last content of first file and second file header
@@ -157,20 +157,20 @@ func TestView_FirstFileHasTreeBranch(t *testing.T) {
 	output := m.View()
 	lines := strings.Split(output, "\n")
 
-	// Find the file header line with tree branch - it has fold icon (●) AND tree branch (└ or ├)
+	// Find the file header line with tree branch - it has fold icon (●) AND tree branch (└, ├, or ┌)
 	// Skip the top bar which also has the filename but no tree branch
 	headerIdx := -1
 	for i, line := range lines {
 		if strings.Contains(line, "only.go") && strings.Contains(line, "●") &&
-			(strings.Contains(line, "└") || strings.Contains(line, "├")) {
+			(strings.Contains(line, "└") || strings.Contains(line, "├") || strings.Contains(line, "┌")) {
 			headerIdx = i
 			break
 		}
 	}
 	require.NotEqual(t, -1, headerIdx, "should find file header with tree branch")
 
-	// Single file should have ├ branch (╵ terminator follows)
-	assert.Contains(t, lines[headerIdx], "├", "single file should have ├ branch (╵ terminator follows)")
+	// Single expanded file in diff view uses ┌ (no parent above, content below)
+	assert.Contains(t, lines[headerIdx], "┌", "single file in diff view should have ┌ branch (no parent above)")
 	assert.Contains(t, lines[headerIdx], "━━━", "tree branch should have heavy horizontal line")
 }
 

@@ -254,9 +254,9 @@ func TestView_TotalLines_WithFolding(t *testing.T) {
 
 	// In tree layout:
 	// Normal file (first): 1 header + 1 bottom border + 10 pairs + 1 blank margin + 1 top border (next file) = 14 lines
-	// Folded file (second): 1 header + 1 terminator row
-	// Total: 14 + 2 = 16 lines
-	assert.Equal(t, 16, m.w().totalLines, "totalLines should account for fold states")
+	// Folded file (second, last): 1 header only (no terminator — uses └ IsLast=true)
+	// Total: 14 + 1 = 15 lines
+	assert.Equal(t, 15, m.w().totalLines, "totalLines should account for fold states")
 }
 
 func TestView_ExpandedFile_ShowsFullContent(t *testing.T) {

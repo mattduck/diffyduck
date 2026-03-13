@@ -786,7 +786,7 @@ func TestView_StructuralDiffBorderAlignment(t *testing.T) {
 	for _, line := range lines {
 		stripped := ansiRegex.ReplaceAllString(line, "")
 		// Find the header line (contains filename "example.go" and has tree branch)
-		if strings.Contains(stripped, "example.go") && (strings.Contains(stripped, "├") || strings.Contains(stripped, "└")) {
+		if strings.Contains(stripped, "example.go") && (strings.Contains(stripped, "├") || strings.Contains(stripped, "└") || strings.Contains(stripped, "┌")) {
 			headerLine = stripped
 		}
 		// Find a structural diff line (contains "func" kind keyword)

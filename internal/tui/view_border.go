@@ -23,7 +23,11 @@ func (m Model) renderNodeBorder(headerBoxWidth int, treePrefixWidth int, style l
 	if len(treePath.Ancestors) > 0 {
 		level := treePath.Ancestors[0]
 		if !level.IsLast && !level.IsFolded {
-			treeCont = treeContinuationStyle.Render("│")
+			style := treeContinuationStyle
+			if level.Faint {
+				style = treeFaintContinuationStyle
+			}
+			treeCont = style.Render("│")
 		} else {
 			treeCont = " "
 		}
@@ -110,7 +114,11 @@ func (m Model) renderHeaderBottomBorder(headerBoxWidth int, headerMode HeaderMod
 	if len(treePath.Ancestors) > 0 {
 		level := treePath.Ancestors[0]
 		if !level.IsLast && !level.IsFolded {
-			treeCont = treeContinuationStyle.Render("│")
+			contStyle := treeContinuationStyle
+			if level.Faint {
+				contStyle = treeFaintContinuationStyle
+			}
+			treeCont = contStyle.Render("│")
 		} else {
 			treeCont = " "
 		}
