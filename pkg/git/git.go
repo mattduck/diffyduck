@@ -948,6 +948,42 @@ func snapshotRefName(branch, baseSHA string) string {
 	return fmt.Sprintf("%s%s/%s", snapshotRefPrefix, branch, baseSHA)
 }
 
+// RevParse resolves a ref (branch, tag, short SHA, etc.) to a full commit SHA.
+func (g *RealGit) RevParse(ref string) (string, error) {
+	cmd := g.command("rev-parse", "--verify", ref)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", &GitError{
+				Command: "git rev-parse --verify " + ref,
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// IsAncestor returns true if ancestor is an ancestor of descendant.
+func (g *RealGit) IsAncestor(ancestor, descendant string) (bool, error) {
+	cmd := g.command("merge-base", "--is-ancestor", ancestor, descendant)
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// Exit code 1 means not an ancestor
+			if exitErr.ExitCode() == 1 {
+				return false, nil
+			}
+			return false, &GitError{
+				Command: "git merge-base --is-ancestor",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // CurrentBranch returns the short name of the current branch (e.g. "main").
 // Returns "HEAD" if in detached HEAD state.
 func (g *RealGit) CurrentBranch() (string, error) {

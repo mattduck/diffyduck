@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -112,7 +113,7 @@ type parsedArgs struct {
 	since   string // --since duration (e.g. "30d", "2w", "3m", "all")
 
 	// comment-specific
-	commentSub         string // "list" or "edit"
+	commentSub         string // "list", "edit", or "add"
 	commentID          string // comment ID/suffix for edit or list lookup
 	commentN           int    // -n count: positive=newest, negative=oldest, 0=uncapped
 	commentNSet        bool   // true if -n was explicitly passed
@@ -122,6 +123,11 @@ type parsedArgs struct {
 	commentAllBranches bool   // --all-branches: show comments from all branches
 	commentBranch      string // --branch: filter to specific branch
 	commentResolved    *bool  // --resolved=true/false: set resolved state (edit only)
+
+	// comment add-specific
+	commentAddTarget  string // file:line positional arg
+	commentAddMessage string // -m message
+	commentAddRef     string // --ref: commit/branch/tag to comment on
 
 	// config-specific
 	configInit  bool // --init
@@ -177,11 +183,11 @@ func parseArgs(args []string) (parsedArgs, error) {
 			result.helpCmd = result.cmd // target for --help flag
 			remaining = remaining[1:]
 
-			// Consume comment sub-subcommand and ID
+			// Consume comment sub-subcommand and ID/target
 			if result.cmd == "comment" {
 				if len(remaining) > 0 {
 					switch remaining[0] {
-					case "list", "edit":
+					case "list", "edit", "add":
 						result.commentSub = remaining[0]
 						remaining = remaining[1:]
 					}
@@ -189,7 +195,13 @@ func parseArgs(args []string) (parsedArgs, error) {
 				if result.commentSub == "" {
 					result.commentSub = "list"
 				}
-				if (result.commentSub == "edit" || result.commentSub == "list") &&
+				if result.commentSub == "add" {
+					// Consume file:line positional arg
+					if len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
+						result.commentAddTarget = remaining[0]
+						remaining = remaining[1:]
+					}
+				} else if (result.commentSub == "edit" || result.commentSub == "list") &&
 					len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
 					result.commentID = remaining[0]
 					remaining = remaining[1:]
@@ -424,6 +436,27 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			p.showBranches = true
 		}
 
+	// comment add flags
+	case arg == "-m":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("-m requires a message argument")
+		}
+		p.commentAddMessage = args[i+1]
+		return 1, nil
+	case strings.HasPrefix(arg, "-m"):
+		p.commentAddMessage = strings.TrimPrefix(arg, "-m")
+	case arg == "--ref":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--ref requires a ref argument (branch, tag, or commit)")
+		}
+		p.commentAddRef = args[i+1]
+		return 1, nil
+	case strings.HasPrefix(arg, "--ref="):
+		p.commentAddRef = strings.TrimPrefix(arg, "--ref=")
+		if p.commentAddRef == "" {
+			return 0, fmt.Errorf("--ref requires a ref argument")
+		}
+
 	// comment flags
 	case arg == "--oneline":
 		p.commentOneline = true
@@ -608,6 +641,15 @@ func (p *parsedArgs) validate() error {
 		}
 		if p.commentResolved != nil && p.commentSub != "edit" {
 			return fmt.Errorf("--resolved is only valid for comment edit")
+		}
+		if p.commentSub == "add" && p.commentAddTarget == "" {
+			return fmt.Errorf("comment add requires a file:line argument")
+		}
+		if p.commentAddMessage != "" && p.commentSub != "add" {
+			return fmt.Errorf("-m is only valid for comment add")
+		}
+		if p.commentAddRef != "" && p.commentSub != "add" {
+			return fmt.Errorf("--ref is only valid for comment add")
 		}
 	case "config":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
@@ -999,10 +1041,17 @@ const usageComment = `dfd comment - manage comments
 Usage:
   dfd comment list [flags] [<id>]
   dfd comment edit <id> [--resolved=true|false]
+  dfd comment add <file>:<line> -m <message> [--ref <ref>]
 
 Sub-commands:
   list       List comments (default: 5 newest unresolved)
   edit       Open a comment in $EDITOR (or set resolved state with --resolved)
+  add        Add a new comment on a file and line
+
+Add flags:
+  -m <message>     Comment text (required unless reading from stdin)
+      --ref <ref>  Comment on file as it appears at ref (branch, tag, or commit)
+                   Without --ref, comments on the working tree version
 
 Edit flags:
       --resolved <b>  Set resolved state: true or false (skips $EDITOR)
@@ -1018,6 +1067,9 @@ List flags:
                    Show comments from all branches (default: current branch only)
 
 Examples:
+  dfd comment add main.go:42 -m "This needs error handling"
+  dfd comment add src/app.go:10 -m "Refactor this" --ref main
+  echo "Review this" | dfd comment add lib.go:5
   dfd comment list                    Show 5 newest unresolved
   dfd comment list -n 10              Show 10 newest unresolved
   dfd comment list -n -3              Show 3 oldest unresolved
@@ -1624,6 +1676,8 @@ func runComment(args parsedArgs) error {
 		return runCommentList(args)
 	case "edit":
 		return runCommentEdit(args.commentID, args.commentResolved)
+	case "add":
+		return runCommentAdd(args)
 	default:
 		printUsage("comment")
 		return nil
@@ -2152,6 +2206,260 @@ func highlightContext(c *comments.Comment, h *highlight.Highlighter) []string {
 	}
 
 	return result
+}
+
+// splitFileLines splits file content into lines, trimming the trailing empty
+// element that strings.Split produces for newline-terminated files.
+func splitFileLines(content string) []string {
+	lines := strings.Split(content, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+// parseCommentTarget parses a "file:line" string into path and line number.
+func parseCommentTarget(target string) (string, int, error) {
+	lastColon := strings.LastIndex(target, ":")
+	if lastColon < 0 {
+		return "", 0, fmt.Errorf("expected file:line format, got %q (missing colon)", target)
+	}
+	filePart := target[:lastColon]
+	linePart := target[lastColon+1:]
+	if filePart == "" {
+		return "", 0, fmt.Errorf("expected file:line format, got %q (empty file path)", target)
+	}
+	lineNum, err := strconv.Atoi(linePart)
+	if err != nil || lineNum < 1 {
+		return "", 0, fmt.Errorf("expected file:line format with positive line number, got %q", target)
+	}
+	return filePart, lineNum, nil
+}
+
+// normalizeFilePath converts a file path (absolute or relative) to a repo-relative path.
+// Also returns the repo root so the caller can reuse it without another git call.
+func normalizeFilePath(g *git.RealGit, path string) (relPath, repoRoot string, err error) {
+	topLevel, err := g.TopLevel()
+	if err != nil {
+		return "", "", fmt.Errorf("cannot determine repo root: %w", err)
+	}
+
+	absPath := path
+	if !filepath.IsAbs(absPath) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", "", err
+		}
+		absPath = filepath.Join(cwd, absPath)
+	}
+	absPath = filepath.Clean(absPath)
+
+	rel, err := filepath.Rel(topLevel, absPath)
+	if err != nil {
+		return "", "", fmt.Errorf("cannot make path relative to repo root: %w", err)
+	}
+	if strings.HasPrefix(rel, "..") {
+		return "", "", fmt.Errorf("file %s is outside the repository", path)
+	}
+	return rel, topLevel, nil
+}
+
+// isLineInDiff checks whether the given new-side line number appears as a
+// changed (added) line in the diff for the given file.
+func isLineInDiff(diffOutput string, filePath string, lineNum int) bool {
+	d, err := diff.Parse(diffOutput)
+	if err != nil || d == nil {
+		return false
+	}
+	for _, f := range d.Files {
+		// Match file path (strip a/ b/ prefixes)
+		newPath := strings.TrimPrefix(f.NewPath, "b/")
+		if newPath != filePath {
+			continue
+		}
+		for _, h := range f.Hunks {
+			newLine := h.NewStart
+			for _, l := range h.Lines {
+				switch l.Type {
+				case diff.Added:
+					if newLine == lineNum {
+						return true
+					}
+					newLine++
+				case diff.Removed:
+					// Removed lines don't advance new line counter
+				case diff.Context:
+					newLine++
+				}
+			}
+		}
+	}
+	return false
+}
+
+// checkExistingComment checks if a comment already exists at the given file and line.
+// Uses the comment matcher to detect relocated comments, not just stored line numbers.
+// Returns the conflicting comment ID if one exists.
+func checkExistingComment(store *comments.Store, filePath string, lineNum int, fileLines []string) (string, error) {
+	idx, err := store.ReadIndex()
+	if err != nil {
+		// No index means no comments
+		return "", nil
+	}
+	ids := idx.Get(filePath)
+	if len(ids) == 0 {
+		return "", nil
+	}
+	fetched, err := store.ReadCommentsBatch(ids)
+	if err != nil {
+		return "", fmt.Errorf("reading comments for %s: %w", filePath, err)
+	}
+	for _, c := range fetched {
+		// Check stored line number first (fast path)
+		if c.Line == lineNum && c.File == filePath {
+			return c.ID, nil
+		}
+		// Check matched/relocated position against current file content
+		if len(fileLines) > 0 {
+			result := comments.FindCommentPosition(c, fileLines)
+			if result.Found && result.Line == lineNum {
+				return c.ID, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// runCommentAdd creates a new comment on a specific file and line.
+func runCommentAdd(args parsedArgs) error {
+	// Parse file:line target
+	filePath, lineNum, err := parseCommentTarget(args.commentAddTarget)
+	if err != nil {
+		return err
+	}
+
+	g := git.New()
+
+	// Normalize file path to repo-relative
+	relPath, repoRoot, err := normalizeFilePath(g, filePath)
+	if err != nil {
+		return err
+	}
+
+	// Get comment text from -m or stdin
+	text := args.commentAddMessage
+	if text == "" {
+		// Check if stdin is a pipe/file (not a terminal)
+		stat, err := os.Stdin.Stat()
+		if err != nil {
+			return fmt.Errorf("cannot read stdin: %w", err)
+		}
+		if (stat.Mode() & os.ModeCharDevice) != 0 {
+			return fmt.Errorf("no message provided: use -m or pipe text to stdin")
+		}
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("reading stdin: %w", err)
+		}
+		text = strings.TrimRight(string(data), "\n")
+	}
+	if text == "" {
+		return fmt.Errorf("comment text cannot be empty")
+	}
+
+	// Read file content (working tree or from ref)
+	var fileLines []string
+	var commitSHA string
+	var branch string
+
+	if args.commentAddRef != "" {
+		// --ref provided: resolve to commit SHA and read file from that commit
+		sha, err := g.RevParse(args.commentAddRef)
+		if err != nil {
+			return fmt.Errorf("cannot resolve ref %q: %w", args.commentAddRef, err)
+		}
+		commitSHA = sha
+
+		content, err := g.GetFileContent(sha, relPath)
+		if err != nil {
+			return fmt.Errorf("cannot read %s at %s: %w", relPath, args.commentAddRef, err)
+		}
+		fileLines = splitFileLines(content)
+
+		// Check if this commit is on our current branch
+		if cb, err := g.CurrentBranch(); err == nil && cb != "HEAD" {
+			isAnc, err := g.IsAncestor(sha, "HEAD")
+			if err == nil && isAnc {
+				branch = cb
+			}
+		}
+	} else {
+		// No ref: read from working tree
+		absFile := filepath.Join(repoRoot, relPath)
+		data, err := os.ReadFile(absFile)
+		if err != nil {
+			return fmt.Errorf("cannot read %s: %w", relPath, err)
+		}
+		fileLines = splitFileLines(string(data))
+
+		// Get current branch
+		if cb, err := g.CurrentBranch(); err == nil {
+			branch = cb
+		}
+
+		// Detect if line is in current diff vs HEAD.
+		// If Diff or RevParse fail (e.g. initial commit with no HEAD),
+		// commitSHA stays empty — only branch is recorded.
+		diffOutput, err := g.Diff("HEAD", "--", relPath)
+		if err == nil && isLineInDiff(diffOutput, relPath, lineNum) {
+			// Line is part of uncommitted changes — record branch only (no commit)
+		} else {
+			// Line is unchanged — record HEAD commit
+			if sha, err := g.RevParse("HEAD"); err == nil {
+				commitSHA = sha
+			}
+		}
+	}
+
+	// Validate line number
+	if lineNum > len(fileLines) {
+		return fmt.Errorf("line %d is out of range (file has %d lines)", lineNum, len(fileLines))
+	}
+
+	// Check for existing comment at this file+line
+	store := comments.NewStore("")
+	existingID, err := checkExistingComment(store, relPath, lineNum, fileLines)
+	if err != nil {
+		return fmt.Errorf("checking existing comments: %w", err)
+	}
+	if existingID != "" {
+		return fmt.Errorf("comment already exists at %s:%d (id: %s). Use 'dfd comment edit %s' to modify it",
+			relPath, lineNum, existingID, existingID)
+	}
+
+	// Build comment
+	ctx := comments.ExtractContextForLine(fileLines, lineNum)
+	now := time.Now()
+	c := &comments.Comment{
+		Text:      text,
+		File:      relPath,
+		Line:      lineNum,
+		Context:   ctx,
+		Anchor:    ctx.ComputeAnchor(),
+		Created:   now,
+		Updated:   now,
+		CommitSHA: commitSHA,
+		Branch:    branch,
+	}
+
+	// Write to store
+	id, err := store.WriteComment(c)
+	if err != nil {
+		return fmt.Errorf("saving comment: %w", err)
+	}
+
+	fmt.Printf("Created comment %s on %s:%d\n", id, relPath, lineNum)
+	return nil
 }
 
 // runCommentEdit opens a comment in $EDITOR for editing, or toggles

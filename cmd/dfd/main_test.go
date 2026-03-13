@@ -1039,6 +1039,111 @@ func TestParseArgs_CommentHelp(t *testing.T) {
 	assert.Equal(t, "comment", result.helpCmd)
 }
 
+func TestParseArgs_CommentAdd(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "add", "main.go:42", "-m", "Fix this"})
+	require.NoError(t, err)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "add", result.commentSub)
+	assert.Equal(t, "main.go:42", result.commentAddTarget)
+	assert.Equal(t, "Fix this", result.commentAddMessage)
+}
+
+func TestParseArgs_CommentAddRef(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "add", "src/app.go:10", "-m", "Note", "--ref", "main"})
+	require.NoError(t, err)
+	assert.Equal(t, "add", result.commentSub)
+	assert.Equal(t, "src/app.go:10", result.commentAddTarget)
+	assert.Equal(t, "Note", result.commentAddMessage)
+	assert.Equal(t, "main", result.commentAddRef)
+}
+
+func TestParseArgs_CommentAddRefEquals(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--ref=abc123"})
+	require.NoError(t, err)
+	assert.Equal(t, "abc123", result.commentAddRef)
+}
+
+func TestParseArgs_CommentAddMissingTarget(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "add", "-m", "text"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "comment add requires a file:line argument")
+}
+
+func TestParseArgs_CommentAddMOnNonAdd(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "list", "-m", "text"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "-m is only valid for comment add")
+}
+
+func TestParseArgs_CommentAddRefOnNonAdd(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "list", "--ref", "main"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--ref is only valid for comment add")
+}
+
+func TestParseArgs_CommentAddAttachedM(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "add", "f.go:1", "-mhello"})
+	require.NoError(t, err)
+	assert.Equal(t, "hello", result.commentAddMessage)
+}
+
+func TestParseCommentTarget(t *testing.T) {
+	tests := []struct {
+		name     string
+		target   string
+		wantFile string
+		wantLine int
+		wantErr  bool
+	}{
+		{"simple", "main.go:42", "main.go", 42, false},
+		{"path with dirs", "src/pkg/file.go:100", "src/pkg/file.go", 100, false},
+		{"line 1", "f.go:1", "f.go", 1, false},
+		{"no colon", "main.go", "", 0, true},
+		{"no line number", "main.go:", "", 0, true},
+		{"zero line", "main.go:0", "", 0, true},
+		{"negative line", "main.go:-1", "", 0, true},
+		{"non-numeric line", "main.go:abc", "", 0, true},
+		{"empty file", ":42", "", 0, true},
+		{"colon in path", "src/a:b/file.go:10", "src/a:b/file.go", 10, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, line, err := parseCommentTarget(tt.target)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantFile, file)
+				assert.Equal(t, tt.wantLine, line)
+			}
+		})
+	}
+}
+
+func TestIsLineInDiff(t *testing.T) {
+	diffOutput := `diff --git a/main.go b/main.go
+index abc..def 100644
+--- a/main.go
++++ b/main.go
+@@ -10,6 +10,7 @@ func main() {
+ 	existing := 1
+ 	more := 2
+ 	stuff := 3
++	newLine := 4
+ 	after := 5
+ 	end := 6
+ }
+`
+	// Line 13 is the added line (newLine := 4)
+	assert.True(t, isLineInDiff(diffOutput, "main.go", 13))
+	// Line 10 is context, not changed
+	assert.False(t, isLineInDiff(diffOutput, "main.go", 10))
+	// Different file
+	assert.False(t, isLineInDiff(diffOutput, "other.go", 13))
+	// Empty diff
+	assert.False(t, isLineInDiff("", "main.go", 1))
+}
+
 func TestFormatCommentOneline(t *testing.T) {
 	tests := []struct {
 		name     string

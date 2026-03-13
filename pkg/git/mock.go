@@ -1,6 +1,8 @@
 package git
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"strings"
@@ -156,6 +158,17 @@ func (m *MockGit) CreateSnapshot(parentSHA string, message string) (string, erro
 // DiffSnapshots returns the preconfigured diff output (mock treats all diffs the same).
 func (m *MockGit) DiffSnapshots(sha1, sha2 string, args ...string) (string, error) {
 	return m.DiffOutput, m.DiffError
+}
+
+// RevParse returns a deterministic fake full-length SHA derived from the ref.
+func (m *MockGit) RevParse(ref string) (string, error) {
+	hash := sha256.Sum256([]byte(ref))
+	return hex.EncodeToString(hash[:20]), nil
+}
+
+// IsAncestor returns true for the mock.
+func (m *MockGit) IsAncestor(ancestor, descendant string) (bool, error) {
+	return true, nil
 }
 
 // CurrentBranch returns "main" for the mock.

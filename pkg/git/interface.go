@@ -103,6 +103,12 @@ type Git interface {
 	// Extra args are appended to the git diff command (e.g. pathspecs).
 	DiffSnapshots(sha1, sha2 string, args ...string) (string, error)
 
+	// RevParse resolves a ref (branch, tag, short SHA, etc.) to a full commit SHA.
+	RevParse(ref string) (string, error)
+
+	// IsAncestor returns true if ancestor is an ancestor of descendant.
+	IsAncestor(ancestor, descendant string) (bool, error)
+
 	// CurrentBranch returns the short name of the current branch (e.g. "main").
 	// Returns "HEAD" if in detached HEAD state.
 	CurrentBranch() (string, error)

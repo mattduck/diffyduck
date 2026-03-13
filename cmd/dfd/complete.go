@@ -94,7 +94,7 @@ func isFlag(w string) bool {
 // flagTakesValue returns true if the flag consumes a separate next word as its value.
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--exclude", "-e", "-n", "--since", "--status", "-b", "--branch", "--cpuprofile":
+	case "--exclude", "-e", "-n", "--since", "--status", "-b", "--branch", "--cpuprofile", "-m", "--ref":
 		return true
 	}
 	return false
@@ -147,9 +147,9 @@ func generateCompletions(ctx completionContext, g git.Git, commentIDs commentIDs
 	case "diff", "show", "log":
 		return completeRefs(ctx, g)
 	case "comment":
-		// Complete sub-subcommand (list, edit) if not yet given.
+		// Complete sub-subcommand (list, edit, add) if not yet given.
 		if len(ctx.refs) == 0 {
-			return filterPrefix([]string{"list", "edit"}, ctx.current)
+			return filterPrefix([]string{"list", "edit", "add"}, ctx.current)
 		}
 		// Complete comment ID after "edit" sub-subcommand.
 		if len(ctx.refs) == 1 && ctx.refs[0] == "edit" && commentIDs != nil {
@@ -202,7 +202,7 @@ func flagsForCmd(cmd string) []string {
 	case "status":
 		return append(global, "--symbols", "--untracked-files", "--branches")
 	case "comment":
-		return append(global, "-n", "-b", "--since", "--status", "--oneline", "--raw", "--branch", "--all-branches", "--resolved")
+		return append(global, "-n", "-b", "-m", "--since", "--status", "--oneline", "--raw", "--branch", "--all-branches", "--resolved", "--ref")
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:
