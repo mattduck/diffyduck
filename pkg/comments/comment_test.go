@@ -307,7 +307,7 @@ func TestCommentResolvedRoundTrip(t *testing.T) {
 	}
 }
 
-func TestCommentUnresolvedOmitted(t *testing.T) {
+func TestCommentUnresolvedSerialized(t *testing.T) {
 	c := &Comment{
 		ID:       "101",
 		Text:     "unresolved comment",
@@ -321,8 +321,8 @@ func TestCommentUnresolvedOmitted(t *testing.T) {
 	}
 
 	serialized := c.Serialize()
-	if strings.Contains(serialized, "RESOLVED") {
-		t.Error("serialized should not contain RESOLVED when false")
+	if !strings.Contains(serialized, "# RESOLVED: false") {
+		t.Error("serialized should contain RESOLVED: false")
 	}
 
 	parsed, err := ParseComment("101", serialized)
@@ -330,7 +330,61 @@ func TestCommentUnresolvedOmitted(t *testing.T) {
 		t.Fatalf("ParseComment failed: %v", err)
 	}
 	if parsed.Resolved {
-		t.Error("expected Resolved=false when absent")
+		t.Error("expected Resolved=false")
+	}
+}
+
+func TestCommentResolvedEditRoundTrip(t *testing.T) {
+	// Start with unresolved, flip to resolved via edit
+	c := &Comment{
+		ID: "300", Text: "test", File: "test.go", Line: 1, Anchor: "abc",
+		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Updated: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Context: LineContext{Line: "code"},
+	}
+	serialized := c.Serialize()
+	// Simulate user editing false → true
+	edited := strings.Replace(serialized, "# RESOLVED: false", "# RESOLVED: true", 1)
+	parsed, err := ParseComment("300", edited)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if !parsed.Resolved {
+		t.Error("expected Resolved=true after edit")
+	}
+
+	// Now flip back to false
+	serialized2 := parsed.Serialize()
+	edited2 := strings.Replace(serialized2, "# RESOLVED: true", "# RESOLVED: false", 1)
+	parsed2, err := ParseComment("300", edited2)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if parsed2.Resolved {
+		t.Error("expected Resolved=false after edit back")
+	}
+}
+
+func TestCommentResolvedInvalidValue(t *testing.T) {
+	data := `--- a/test.go
++++ b/test.go
+@@ -1,1 +1,1 @@
++code
+# COMMENT:
+# test
+# FILE: test.go
+# LINE: 1
+# ANCHOR: abc
+# CREATED: 2026-01-01T00:00:00Z
+# UPDATED: 2026-01-01T00:00:00Z
+# RESOLVED: yes
+`
+	_, err := ParseComment("400", data)
+	if err == nil {
+		t.Error("expected error for invalid RESOLVED value")
+	}
+	if !strings.Contains(err.Error(), "invalid RESOLVED value") {
+		t.Errorf("expected error about RESOLVED value, got: %v", err)
 	}
 }
 

@@ -139,9 +139,7 @@ func (c *Comment) Serialize() string {
 	if c.HeadSHA != "" {
 		b.WriteString(fmt.Sprintf("# HEAD: %s\n", c.HeadSHA))
 	}
-	if c.Resolved {
-		b.WriteString("# RESOLVED: true\n")
-	}
+	b.WriteString(fmt.Sprintf("# RESOLVED: %t\n", c.Resolved))
 	b.WriteString(fmt.Sprintf("# FILE: %s\n", c.File))
 	b.WriteString(fmt.Sprintf("# LINE: %d\n", c.Line))
 	b.WriteString(fmt.Sprintf("# ANCHOR: %s\n", c.Anchor))
@@ -205,7 +203,15 @@ func ParseComment(id string, data string) (*Comment, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "# RESOLVED: ") {
-			c.Resolved = strings.TrimPrefix(line, "# RESOLVED: ") == "true"
+			val := strings.TrimPrefix(line, "# RESOLVED: ")
+			switch val {
+			case "true":
+				c.Resolved = true
+			case "false":
+				c.Resolved = false
+			default:
+				return nil, fmt.Errorf("invalid RESOLVED value %q: expected true or false", val)
+			}
 			continue
 		}
 
