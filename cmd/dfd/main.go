@@ -152,6 +152,20 @@ type parsedArgs struct {
 	ref2 string
 }
 
+// commentSubTakesID reports whether the comment subcommand accepts a comment ID argument.
+// When require is true, only subcommands that require an ID are matched (excludes "list"
+// which accepts an optional ID).
+func commentSubTakesID(sub string, require bool) bool {
+	switch sub {
+	case "edit", "resolve", "unresolve":
+		return true
+	case "list":
+		return !require
+	default:
+		return false
+	}
+}
+
 // expandAlias maps single-letter subcommand aliases to their canonical names.
 func expandAlias(s string) string {
 	switch s {
@@ -188,7 +202,7 @@ func parseArgs(args []string) (parsedArgs, error) {
 			if result.cmd == "comment" {
 				if len(remaining) > 0 {
 					switch remaining[0] {
-					case "list", "edit", "add":
+					case "list", "edit", "add", "resolve", "unresolve":
 						result.commentSub = remaining[0]
 						remaining = remaining[1:]
 					}
@@ -202,7 +216,7 @@ func parseArgs(args []string) (parsedArgs, error) {
 						result.commentAddTarget = remaining[0]
 						remaining = remaining[1:]
 					}
-				} else if (result.commentSub == "edit" || result.commentSub == "list") &&
+				} else if commentSubTakesID(result.commentSub, false) &&
 					len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
 					result.commentID = remaining[0]
 					remaining = remaining[1:]
@@ -648,8 +662,8 @@ func (p *parsedArgs) validate() error {
 		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
 			return fmt.Errorf("comment only accepts -n and --status")
 		}
-		if p.commentSub == "edit" && p.commentID == "" {
-			return fmt.Errorf("comment edit requires a comment ID")
+		if commentSubTakesID(p.commentSub, true) && p.commentID == "" {
+			return fmt.Errorf("comment %s requires a comment ID", p.commentSub)
 		}
 		if p.commentResolved != nil && p.commentSub != "edit" {
 			return fmt.Errorf("--resolved is only valid for comment edit")
@@ -1056,11 +1070,15 @@ const usageComment = `dfd comment - manage comments
 Usage:
   dfd comment list [flags] [<id>]
   dfd comment edit <id> [--resolved=true|false]
+  dfd comment resolve <id>
+  dfd comment unresolve <id>
   dfd comment add <file>:<line> -m <message> [--ref <ref>]
 
 Sub-commands:
   list       List comments (default: 5 newest unresolved)
   edit       Open a comment in $EDITOR (or set resolved state with --resolved)
+  resolve    Mark a comment as resolved (shorthand for edit --resolved=true)
+  unresolve  Mark a comment as unresolved (shorthand for edit --resolved=false)
   add        Add a new comment on a file and line
 
 Add flags:
@@ -1096,8 +1114,8 @@ Examples:
   dfd comment list --oneline          Compact output
   dfd comment list 415                Show comment(s) matching suffix
   dfd comment edit <id>               Edit in $EDITOR
-  dfd comment edit <id> --resolved=true   Mark as resolved
-  dfd comment edit <id> --resolved=false  Mark as unresolved
+  dfd comment resolve <id>            Mark as resolved
+  dfd comment unresolve <id>          Mark as unresolved
   dfd c list                          Short alias
 `
 
@@ -1692,6 +1710,12 @@ func runComment(args parsedArgs) error {
 		return runCommentList(args)
 	case "edit":
 		return runCommentEdit(args.commentID, args.commentResolved)
+	case "resolve":
+		resolved := true
+		return runCommentEdit(args.commentID, &resolved)
+	case "unresolve":
+		resolved := false
+		return runCommentEdit(args.commentID, &resolved)
 	case "add":
 		return runCommentAdd(args)
 	default:

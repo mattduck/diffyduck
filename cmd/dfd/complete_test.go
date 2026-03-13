@@ -332,6 +332,18 @@ func TestGenerateCompletions(t *testing.T) {
 			wantAbsent: []string{"1739380234567"},
 		},
 		{
+			name:        "comment resolve completes IDs",
+			words:       []string{"comment", "resolve", ""},
+			commentIDs:  mockCommentIDs,
+			wantContain: []string{"1739380234567", "1739380299000", "1739400000000"},
+		},
+		{
+			name:        "comment unresolve completes IDs",
+			words:       []string{"comment", "unresolve", ""},
+			commentIDs:  mockCommentIDs,
+			wantContain: []string{"1739380234567", "1739380299000", "1739400000000"},
+		},
+		{
 			name:        "no subcommand matches subcommands only",
 			words:       []string{"co"},
 			wantContain: []string{"comment", "config", "completion"},

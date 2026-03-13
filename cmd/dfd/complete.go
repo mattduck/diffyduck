@@ -149,10 +149,10 @@ func generateCompletions(ctx completionContext, g git.Git, commentIDs commentIDs
 	case "comment":
 		// Complete sub-subcommand (list, edit, add) if not yet given.
 		if len(ctx.refs) == 0 {
-			return filterPrefix([]string{"list", "edit", "add"}, ctx.current)
+			return filterPrefix([]string{"list", "edit", "add", "resolve", "unresolve"}, ctx.current)
 		}
-		// Complete comment ID after "edit" sub-subcommand.
-		if len(ctx.refs) == 1 && ctx.refs[0] == "edit" && commentIDs != nil {
+		// Complete comment ID after "edit", "resolve", or "unresolve" sub-subcommand.
+		if len(ctx.refs) == 1 && commentSubTakesID(ctx.refs[0], true) && commentIDs != nil {
 			if ids := commentIDs(); len(ids) > 0 {
 				return filterPrefix(ids, ctx.current)
 			}

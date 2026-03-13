@@ -945,6 +945,34 @@ func TestParseArgs_CommentEditMissingID(t *testing.T) {
 	assert.Contains(t, err.Error(), "requires a comment ID")
 }
 
+func TestParseArgs_CommentResolveSubcommand(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "resolve", "abc123"})
+	require.NoError(t, err)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "resolve", result.commentSub)
+	assert.Equal(t, "abc123", result.commentID)
+}
+
+func TestParseArgs_CommentUnresolveSubcommand(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "unresolve", "abc123"})
+	require.NoError(t, err)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "unresolve", result.commentSub)
+	assert.Equal(t, "abc123", result.commentID)
+}
+
+func TestParseArgs_CommentResolveMissingID(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "resolve"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a comment ID")
+}
+
+func TestParseArgs_CommentUnresolveMissingID(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "unresolve"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a comment ID")
+}
+
 func TestParseArgs_CommentWithDiffFlags(t *testing.T) {
 	_, err := parseArgs([]string{"comment", "--cached"})
 	assert.Error(t, err)
