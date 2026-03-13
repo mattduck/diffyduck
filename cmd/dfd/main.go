@@ -121,6 +121,7 @@ type parsedArgs struct {
 	commentRaw         bool   // --raw: show raw git blob serialization
 	commentAllBranches bool   // --all-branches: show comments from all branches
 	commentBranch      string // --branch: filter to specific branch
+	commentResolved    *bool  // --resolved=true/false: set resolved state (edit only)
 
 	// config-specific
 	configInit  bool // --init
@@ -462,6 +463,34 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			return 0, fmt.Errorf("--status must be unresolved, resolved, or all; got %q", val)
 		}
 
+	case arg == "--resolved":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--resolved requires a value (true or false)")
+		}
+		switch args[i+1] {
+		case "true":
+			v := true
+			p.commentResolved = &v
+		case "false":
+			v := false
+			p.commentResolved = &v
+		default:
+			return 0, fmt.Errorf("--resolved must be true or false; got %q", args[i+1])
+		}
+		return 1, nil
+	case strings.HasPrefix(arg, "--resolved="):
+		val := strings.TrimPrefix(arg, "--resolved=")
+		switch val {
+		case "true":
+			v := true
+			p.commentResolved = &v
+		case "false":
+			v := false
+			p.commentResolved = &v
+		default:
+			return 0, fmt.Errorf("--resolved must be true or false; got %q", val)
+		}
+
 	// config flags
 	case arg == "--init":
 		p.configInit = true
@@ -576,6 +605,9 @@ func (p *parsedArgs) validate() error {
 		}
 		if p.commentSub == "edit" && p.commentID == "" {
 			return fmt.Errorf("comment edit requires a comment ID")
+		}
+		if p.commentResolved != nil && p.commentSub != "edit" {
+			return fmt.Errorf("--resolved is only valid for comment edit")
 		}
 	case "config":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
@@ -966,11 +998,14 @@ const usageComment = `dfd comment - manage comments
 
 Usage:
   dfd comment list [flags] [<id>]
-  dfd comment edit <id>
+  dfd comment edit <id> [--resolved=true|false]
 
 Sub-commands:
   list       List comments (default: 5 newest unresolved)
-  edit       Open a comment in $EDITOR
+  edit       Open a comment in $EDITOR (or set resolved state with --resolved)
+
+Edit flags:
+      --resolved <b>  Set resolved state: true or false (skips $EDITOR)
 
 List flags:
   -n <count>       Positive: newest N, negative: oldest |N|, 0: uncapped (default: 5)
@@ -993,6 +1028,8 @@ Examples:
   dfd comment list --oneline          Compact output
   dfd comment list 415                Show comment(s) matching suffix
   dfd comment edit <id>               Edit in $EDITOR
+  dfd comment edit <id> --resolved=true   Mark as resolved
+  dfd comment edit <id> --resolved=false  Mark as unresolved
   dfd c list                          Short alias
 `
 
@@ -1586,7 +1623,7 @@ func runComment(args parsedArgs) error {
 	case "list":
 		return runCommentList(args)
 	case "edit":
-		return runCommentEdit(args.commentID)
+		return runCommentEdit(args.commentID, args.commentResolved)
 	default:
 		printUsage("comment")
 		return nil
@@ -2117,13 +2154,9 @@ func highlightContext(c *comments.Comment, h *highlight.Highlighter) []string {
 	return result
 }
 
-// runCommentEdit opens a comment in $EDITOR for editing.
-func runCommentEdit(id string) error {
-	editor := editorCmd()
-	if editor == "" {
-		return fmt.Errorf("$VISUAL or $EDITOR must be set")
-	}
-
+// runCommentEdit opens a comment in $EDITOR for editing, or toggles
+// the resolved state when --resolved is provided.
+func runCommentEdit(id string, resolved *bool) error {
 	store := comments.NewStore("")
 
 	// Resolve suffix to full ID
@@ -2136,6 +2169,26 @@ func runCommentEdit(id string) error {
 	original, err := store.ReadComment(fullID)
 	if err != nil {
 		return fmt.Errorf("comment %s not found: %w", fullID, err)
+	}
+
+	// --resolved flag: toggle resolved state without opening editor
+	if resolved != nil {
+		original.Resolved = *resolved
+		original.Updated = time.Now()
+		if _, err := store.WriteComment(original); err != nil {
+			return fmt.Errorf("saving comment: %w", err)
+		}
+		state := "unresolved"
+		if *resolved {
+			state = "resolved"
+		}
+		fmt.Printf("Marked comment %s as %s\n", id, state)
+		return nil
+	}
+
+	editor := editorCmd()
+	if editor == "" {
+		return fmt.Errorf("$VISUAL or $EDITOR must be set")
 	}
 
 	// Serialize to temp file

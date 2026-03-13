@@ -173,6 +173,8 @@ func completeFlagValue(flag, prefix string) []string {
 		values = []string{"no", "normal", "all"}
 	case "--status":
 		values = []string{"unresolved", "resolved", "all"}
+	case "--resolved":
+		values = []string{"true", "false"}
 	default:
 		return nil
 	}
@@ -200,7 +202,7 @@ func flagsForCmd(cmd string) []string {
 	case "status":
 		return append(global, "--symbols", "--untracked-files", "--branches")
 	case "comment":
-		return append(global, "-n", "-b", "--since", "--status", "--oneline", "--raw", "--branch", "--all-branches")
+		return append(global, "-n", "-b", "--since", "--status", "--oneline", "--raw", "--branch", "--all-branches", "--resolved")
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:

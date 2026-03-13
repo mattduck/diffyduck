@@ -898,6 +898,47 @@ func TestParseArgs_CommentListSuffix(t *testing.T) {
 	assert.Equal(t, "7415", result.commentID)
 }
 
+func TestParseArgs_CommentEditResolved(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"equals true", []string{"comment", "edit", "abc", "--resolved=true"}, true},
+		{"equals false", []string{"comment", "edit", "abc", "--resolved=false"}, false},
+		{"space true", []string{"comment", "edit", "abc", "--resolved", "true"}, true},
+		{"space false", []string{"comment", "edit", "abc", "--resolved", "false"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseArgs(tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, "edit", result.commentSub)
+			assert.Equal(t, "abc", result.commentID)
+			require.NotNil(t, result.commentResolved)
+			assert.Equal(t, tt.want, *result.commentResolved)
+		})
+	}
+}
+
+func TestParseArgs_CommentEditResolvedNil(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "edit", "abc"})
+	require.NoError(t, err)
+	assert.Nil(t, result.commentResolved)
+}
+
+func TestParseArgs_CommentResolvedOnlyValidForEdit(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "list", "--resolved=true"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--resolved is only valid for comment edit")
+}
+
+func TestParseArgs_CommentResolvedInvalidValue(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "edit", "abc", "--resolved=maybe"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must be true or false")
+}
+
 func TestParseArgs_CommentEditMissingID(t *testing.T) {
 	_, err := parseArgs([]string{"comment", "edit"})
 	assert.Error(t, err)
