@@ -48,12 +48,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		// Capture cursor row index before resize changes cursorOffset()
-		// Row list is stable on resize (only rendering widths change, not row count),
-		// so we can restore to the same absolute row index.
 		savedRowIdx := m.cursorLine()
 
 		m.width = msg.Width
 		m.height = msg.Height
+
+		// Comment row counts depend on text wrapping which is width-dependent,
+		// so invalidate all row caches when comments exist.
+		if len(m.comments) > 0 {
+			m.invalidateAllRowCaches()
+		}
 
 		// Rebuild help content on resize (column layout depends on width)
 		if m.helpMode {
