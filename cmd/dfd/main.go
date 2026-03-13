@@ -856,7 +856,7 @@ branch, default branch, and worktree branches are always included.
 Flags:
   -v, --verbose          Show commit subject for each branch
       --since <duration> Only show branches active within duration (default: 30d)
-                         Accepts: 7d (days), 2w (weeks), 3m (months), 1y (years), all
+                         Accepts: 6h (hours), 7d (days), 2w (weeks), 3m (months), 1y (years), all
 
 Examples:
   dfd branch                Show branch tree (last 30 days)
@@ -932,7 +932,7 @@ Sub-commands:
 List flags:
   -n <count>       Positive: newest N, negative: oldest |N|, 0: uncapped (default: 5)
       --status <s> Filter: unresolved (default), resolved, all
-      --since <d>  Only show comments created within duration (e.g. 7d, 2w, 3m, 1y, all)
+      --since <d>  Only show comments created within duration (e.g. 6h, 7d, 2w, 3m, 1y, all)
       --oneline    Compact single-line output per comment
       --all-branches
                    Show comments from all branches (default: current branch only)
@@ -1277,22 +1277,24 @@ func run() error {
 }
 
 // parseSinceDuration parses a human-friendly duration string.
-// Accepts: "7d" (days), "2w" (weeks), "3m" (months), "1y" (years), "all" (no filter).
+// Accepts: "6h" (hours), "7d" (days), "2w" (weeks), "3m" (months), "1y" (years), "all" (no filter).
 // Returns 0 for "all" or empty string (caller should skip filtering).
 func parseSinceDuration(s string) (time.Duration, error) {
 	if s == "" || s == "all" {
 		return 0, nil
 	}
 	if len(s) < 2 {
-		return 0, fmt.Errorf("invalid duration %q: expected number + unit (d/w/m/y)", s)
+		return 0, fmt.Errorf("invalid duration %q: expected number + unit (h/d/w/m/y)", s)
 	}
 	numStr := s[:len(s)-1]
 	unit := s[len(s)-1]
 	n, err := strconv.Atoi(numStr)
 	if err != nil || n <= 0 {
-		return 0, fmt.Errorf("invalid duration %q: expected positive number + unit (d/w/m/y)", s)
+		return 0, fmt.Errorf("invalid duration %q: expected positive number + unit (h/d/w/m/y)", s)
 	}
 	switch unit {
+	case 'h':
+		return time.Duration(n) * time.Hour, nil
 	case 'd':
 		return time.Duration(n) * 24 * time.Hour, nil
 	case 'w':
@@ -1302,7 +1304,7 @@ func parseSinceDuration(s string) (time.Duration, error) {
 	case 'y':
 		return time.Duration(n) * 365 * 24 * time.Hour, nil
 	default:
-		return 0, fmt.Errorf("invalid duration unit %q: expected d, w, m, or y", string(unit))
+		return 0, fmt.Errorf("invalid duration unit %q: expected h, d, w, m, or y", string(unit))
 	}
 }
 

@@ -168,7 +168,7 @@ func completeFlagValue(flag, prefix string) []string {
 	var values []string
 	switch flag {
 	case "--since":
-		values = []string{"7d", "2w", "1m", "3m", "1y", "all"}
+		values = []string{"6h", "7d", "2w", "1m", "3m", "1y", "all"}
 	case "--untracked-files", "-u":
 		values = []string{"no", "normal", "all"}
 	case "--status":

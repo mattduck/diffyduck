@@ -412,6 +412,7 @@ func TestParseSinceDuration(t *testing.T) {
 		want  time.Duration
 		err   bool
 	}{
+		{"6h", 6 * time.Hour, false},
 		{"7d", 7 * 24 * time.Hour, false},
 		{"2w", 14 * 24 * time.Hour, false},
 		{"3m", 90 * 24 * time.Hour, false},
