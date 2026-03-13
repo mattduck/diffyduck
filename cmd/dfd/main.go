@@ -1229,6 +1229,9 @@ func run() error {
 
 	// Create content fetcher for lazy file loading
 	fetcher := content.NewFetcher(g, args.mode, args.ref1, args.ref2)
+	if topLevel, err := g.TopLevel(); err == nil {
+		fetcher.WorkDir = topLevel
+	}
 
 	// Create comment store for persistence
 	commentStore := comments.NewStore("")

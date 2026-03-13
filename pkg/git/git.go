@@ -650,6 +650,15 @@ func (g *RealGit) HasConflicts() bool {
 	return op != ""
 }
 
+// TopLevel returns the absolute path of the repository root.
+func (g *RealGit) TopLevel() (string, error) {
+	out, err := g.command("rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // resolveGitDir returns the absolute path to the .git directory.
 func (g *RealGit) resolveGitDir() string {
 	out, err := g.command("rev-parse", "--git-dir").Output()
