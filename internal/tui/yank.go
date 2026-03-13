@@ -194,7 +194,7 @@ func (m Model) handleVisualYank() (tea.Model, tea.Cmd) {
 	return m, m.clearStatusAfter(now)
 }
 
-// handleYankAll copies all comments to the clipboard as a single unified diff patch.
+// handleYankAll copies all unresolved comments to the clipboard as a single unified diff patch.
 // Comments are numbered globally (# MSG 1:, # MSG 2:, etc.) and nearby comments
 // within the same file are merged into single hunks.
 func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
@@ -202,7 +202,10 @@ func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	snippet := m.buildAllCommentsSnippet()
+	snippet, count := m.buildAllCommentsSnippet()
+	if count == 0 {
+		return m, nil
+	}
 
 	now := time.Now()
 	if err := m.clipboard.Copy(snippet); err != nil {
@@ -211,7 +214,7 @@ func (m Model) handleYankAll() (tea.Model, tea.Cmd) {
 		return m, m.clearStatusAfter(now)
 	}
 
-	m.statusMessage = fmt.Sprintf("Copied all %d comments", len(m.comments))
+	m.statusMessage = fmt.Sprintf("Copied %d unresolved comments", count)
 	m.statusMessageTime = now
 	return m, m.clearStatusAfter(now)
 }
@@ -222,14 +225,15 @@ type commentWithKey struct {
 	msgNum int
 }
 
-// buildAllCommentsSnippet generates a unified diff patch containing all comments.
+// buildAllCommentsSnippet generates a unified diff patch containing all unresolved comments.
 // Comments are sorted by file then line number, numbered globally, and nearby
 // comments within the same file are merged into single hunks.
-func (m Model) buildAllCommentsSnippet() string {
-	// Collect and sort all comments by (fileIndex, newLineNum)
+// Returns the snippet and the number of comments included.
+func (m Model) buildAllCommentsSnippet() (string, int) {
+	// Collect and sort all unresolved comments by (fileIndex, newLineNum)
 	var sorted []commentWithKey
 	for ck, c := range m.comments {
-		if c == nil || c.Text == "" {
+		if c == nil || c.Text == "" || c.Resolved {
 			continue
 		}
 		sorted = append(sorted, commentWithKey{key: ck})
@@ -275,7 +279,7 @@ func (m Model) buildAllCommentsSnippet() string {
 		m.writeFileCommentHunks(&sb, fp, group.comments)
 	}
 
-	return sb.String()
+	return sb.String(), len(sorted)
 }
 
 // hunkRange represents a range of pair indices that form a hunk.
@@ -361,14 +365,15 @@ func (m Model) writeFileCommentHunks(sb *strings.Builder, fp sidebyside.FilePair
 	}
 }
 
-// AllCommentsSnippet returns the unified diff patch for all comments, or empty
-// string if there are no comments. This is the exported version of
+// AllCommentsSnippet returns the unified diff patch for all unresolved comments,
+// or empty string if there are none. This is the exported version of
 // buildAllCommentsSnippet, intended for printing after the TUI exits.
 func (m Model) AllCommentsSnippet() string {
 	if len(m.comments) == 0 {
 		return ""
 	}
-	return m.buildAllCommentsSnippet()
+	snippet, _ := m.buildAllCommentsSnippet()
+	return snippet
 }
 
 // clearStatusAfter is a no-op kept for call-site compatibility. Status messages

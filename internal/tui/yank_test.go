@@ -625,7 +625,7 @@ func TestYankAll_SingleComment(t *testing.T) {
 
 	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "only comment"}
 
-	snippet := m.buildAllCommentsSnippet()
+	snippet, _ := m.buildAllCommentsSnippet()
 
 	assert.Contains(t, snippet, "--- a/file1.go")
 	assert.Contains(t, snippet, "+++ b/file1.go")
@@ -641,7 +641,7 @@ func TestYankAll_MultipleFiles_GlobalNumbering(t *testing.T) {
 	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "first comment"}
 	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = &comments.Comment{Text: "second comment"}
 
-	snippet := m.buildAllCommentsSnippet()
+	snippet, _ := m.buildAllCommentsSnippet()
 
 	// File 1
 	assert.Contains(t, snippet, "--- a/file1.go")
@@ -669,7 +669,7 @@ func TestYankAll_MergedHunks(t *testing.T) {
 	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "comment on 3"}
 	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{Text: "comment on 4"}
 
-	snippet := m.buildAllCommentsSnippet()
+	snippet, _ := m.buildAllCommentsSnippet()
 
 	// Should have only ONE hunk header for this file
 	hunkCount := strings.Count(snippet, "@@ -")
@@ -694,7 +694,7 @@ func TestYankAll_SeparateHunks(t *testing.T) {
 	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = &comments.Comment{Text: "comment on 1"}
 	m.comments[commentKey{fileIndex: 0, newLineNum: 7}] = &comments.Comment{Text: "comment on 7"}
 
-	snippet := m.buildAllCommentsSnippet()
+	snippet, _ := m.buildAllCommentsSnippet()
 
 	// Should have TWO hunk headers for this file
 	hunkCount := strings.Count(snippet, "@@ -")
@@ -708,7 +708,7 @@ func TestYankAll_MultilineComment(t *testing.T) {
 
 	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "line one\nline two"}
 
-	snippet := m.buildAllCommentsSnippet()
+	snippet, _ := m.buildAllCommentsSnippet()
 
 	assert.Contains(t, snippet, "# MSG 1:")
 	assert.Contains(t, snippet, "# line one\n")
@@ -726,7 +726,7 @@ func TestYankAll_StatusMessage(t *testing.T) {
 	newModel, _ := m.handleYankAll()
 	m2 := newModel.(Model)
 
-	assert.Contains(t, m2.statusMessage, "Copied all 2 comments")
+	assert.Contains(t, m2.statusMessage, "Copied 2 unresolved comments")
 }
 
 // Test: empty comments are excluded
@@ -737,10 +737,41 @@ func TestYankAll_SkipsEmptyComments(t *testing.T) {
 	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "real comment"}
 	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{Text: ""}
 
-	snippet := m.buildAllCommentsSnippet()
+	snippet, count := m.buildAllCommentsSnippet()
 
+	assert.Equal(t, 1, count)
 	assert.Contains(t, snippet, "# MSG 1:")
 	assert.NotContains(t, snippet, "# MSG 2:")
+}
+
+// Test: resolved comments are excluded
+func TestYankAll_SkipsResolvedComments(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "keep this one"}
+	m.comments[commentKey{fileIndex: 0, newLineNum: 6}] = &comments.Comment{Text: "skip this one", Resolved: true}
+
+	snippet, count := m.buildAllCommentsSnippet()
+
+	assert.Equal(t, 1, count)
+	assert.Contains(t, snippet, "# MSG 1:")
+	assert.Contains(t, snippet, "# keep this one")
+	assert.NotContains(t, snippet, "skip this one")
+}
+
+// Test: handleYankAll returns nil when all comments are resolved
+func TestYankAll_AllResolved_ReturnsNil(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{Text: "done", Resolved: true}
+
+	newModel, cmd := m.handleYankAll()
+	m2 := newModel.(Model)
+
+	assert.Nil(t, cmd)
+	assert.Empty(t, m2.statusMessage)
 }
 
 // Test: Y key press triggers handleYankAll (integration)
