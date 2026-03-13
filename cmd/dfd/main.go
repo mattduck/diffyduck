@@ -1701,6 +1701,7 @@ func runCommentList(args parsedArgs) error {
 const (
 	cReset       = "\033[0m"
 	cBold        = "\033[1m"
+	cDim         = "\033[2m"
 	cYellow      = "\033[33m"      // fg=3 - commit SHA
 	cGreen       = "\033[38;5;10m" // fg=10 - added/resolved
 	cGray        = "\033[38;5;8m"  // fg=8 - labels, dim text
@@ -1760,11 +1761,6 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
 	if c.Resolved {
 		resolved = cGreen + " [resolved]" + cReset
 	}
-	fmt.Fprintf(&b, "%sID:%s     %s%s%s%s%s\n",
-		cGray, cReset,
-		cBrightWhite+cBold, c.ID, cReset,
-		resolved, cReset)
-
 	// Metadata
 	if commitShort != "" {
 		fmt.Fprintf(&b, "%sCommit:%s %s%s%s\n", cGray, cReset, cYellow, commitShort, cReset)
@@ -1774,23 +1770,32 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
 	}
 	fmt.Fprintf(&b, "%sFile:%s   %s\n", cGray, cReset, styleCommentPath(c.File, c.Line))
 	fmt.Fprintf(&b, "%sDate:%s   %s\n", cGray, cReset, c.Created.Format(time.RFC3339))
+	fmt.Fprintf(&b, "%sID:%s     %s%s%s%s\n",
+		cGray, cReset,
+		cGray, c.ID, cReset,
+		resolved)
 
 	// Diff context (with optional syntax highlighting)
 	b.WriteString("\n")
 	contextLines := highlightContext(c, h)
 	targetIdx := len(c.Context.Above)
+	startLine := c.Line - len(c.Context.Above)
+	// Determine width for line number gutter
+	lastLine := startLine + len(contextLines) - 1
+	gutterW := len(strconv.Itoa(lastLine))
 	for i, hl := range contextLines {
+		lineNo := startLine + i
 		if i == targetIdx {
-			fmt.Fprintf(&b, " %s>%s%s%s\n", cBrightWhite+cBold, cReset, hl, cReset)
+			fmt.Fprintf(&b, "%s>%s %s%*d%s %s%s\n", cBrightWhite+cBold, cReset, cBrightWhite+cBold, gutterW, lineNo, cReset, hl, cReset)
 		} else {
-			fmt.Fprintf(&b, "  %s%s\n", hl, cReset)
+			fmt.Fprintf(&b, "  %s%*d%s %s%s\n", cGray+cDim, gutterW, lineNo, cReset, hl, cReset)
 		}
 	}
 
 	// Comment text
 	b.WriteString("\n")
 	for _, line := range strings.Split(c.Text, "\n") {
-		fmt.Fprintf(&b, "    %s\n", line)
+		fmt.Fprintf(&b, "%s\n", line)
 	}
 
 	// Add grey left margin bar to every line

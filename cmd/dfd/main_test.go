@@ -1117,21 +1117,20 @@ func TestFormatCommentBlock(t *testing.T) {
 
 	block := stripANSI(formatCommentBlock(c, nil))
 
-	// Header
-	assert.Contains(t, block, "┃ ID:     1705312200000\n")
 	// Metadata
 	assert.Contains(t, block, "┃ Commit: abc123d\n")
 	assert.Contains(t, block, "┃ Branch: main\n")
 	assert.Contains(t, block, "┃ File:   src/foo.go:42\n")
 	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z\n")
-	// Diff context
-	assert.Contains(t, block, "┃   func foo() {\n")
-	assert.Contains(t, block, "┃   "+`    x := 1`+"\n")
-	assert.Contains(t, block, "┃  >    return x\n")
-	assert.Contains(t, block, "┃   }\n")
+	assert.Contains(t, block, "┃ ID:     1705312200000\n")
+	// Diff context (line numbers: 40-43, gutter width 2)
+	assert.Contains(t, block, "┃   40 func foo() {\n")
+	assert.Contains(t, block, "┃   41     x := 1\n")
+	assert.Contains(t, block, "┃ > 42     return x\n")
+	assert.Contains(t, block, "┃   43 }\n")
 	// Comment text
-	assert.Contains(t, block, "┃     Fix this bug\n")
-	assert.Contains(t, block, "┃     It causes crashes\n")
+	assert.Contains(t, block, "┃ Fix this bug\n")
+	assert.Contains(t, block, "┃ It causes crashes\n")
 }
 
 func TestFormatCommentBlock_Resolved(t *testing.T) {
