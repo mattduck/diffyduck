@@ -1489,6 +1489,10 @@ func (m Model) handleSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.KeySpace:
+		m.searchInput += " "
+		return m, nil
+
 	case tea.KeyRunes:
 		m.searchInput += string(msg.Runes)
 		return m, nil
