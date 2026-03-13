@@ -1779,7 +1779,7 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter) string {
 	targetIdx := len(c.Context.Above)
 	for i, hl := range contextLines {
 		if i == targetIdx {
-			fmt.Fprintf(&b, " %s+%s%s%s\n", cGreen, cReset, hl, cReset)
+			fmt.Fprintf(&b, " %s>%s%s%s\n", cBrightWhite+cBold, cReset, hl, cReset)
 		} else {
 			fmt.Fprintf(&b, "  %s%s\n", hl, cReset)
 		}

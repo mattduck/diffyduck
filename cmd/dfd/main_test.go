@@ -1126,7 +1126,7 @@ func TestFormatCommentBlock(t *testing.T) {
 	// Diff context
 	assert.Contains(t, block, "┃   func foo() {\n")
 	assert.Contains(t, block, "┃   "+`    x := 1`+"\n")
-	assert.Contains(t, block, "┃  +    return x\n")
+	assert.Contains(t, block, "┃  >    return x\n")
 	assert.Contains(t, block, "┃   }\n")
 	// Comment text
 	assert.Contains(t, block, "┃     Fix this bug\n")
