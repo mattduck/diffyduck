@@ -297,7 +297,7 @@ func Render(branchTree string, repoOp, repoDetail string, staged, unstaged []Fil
 	// Section bar prefixes: thick vertical line in section color
 	const bar = "┃"
 	stagedBar := "\033[32m" + bar + reset + " "         // fg=2
-	unstagedBar := "\033[33m" + bar + reset + " "       // fg=3
+	unstagedBar := "\033[34m" + bar + reset + " "       // fg=4 (blue)
 	untrackedBar := "\033[38;5;10m" + bar + reset + " " // fg=10
 
 	// Staged section
