@@ -657,6 +657,7 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusMessageTime = time.Now()
 		m.rebuildAllRowCachesPreservingCursor()
 		return m, nil
+
 	}
 
 	// Check if we should load more commits after scroll changes
@@ -1688,6 +1689,21 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleYankComments(true)
 	}
 
+	// Comment branch filter toggle
+	if matchesSequence(prefix, msg, keys.BranchFilter) {
+		switch m.commentBranchFilter {
+		case CommentBranchCurrent:
+			m.commentBranchFilter = CommentBranchAll
+			m.statusMessage = "all comments"
+		case CommentBranchAll:
+			m.commentBranchFilter = CommentBranchCurrent
+			m.statusMessage = "branch comments only"
+		}
+		m.statusMessageTime = time.Now()
+		m.rebuildAllRowCachesPreservingCursor()
+		return m, nil
+	}
+
 	// Comment resolve toggle
 	if matchesSequence(prefix, msg, keys.ResolveToggle) {
 		m.toggleResolveComment()
@@ -2088,13 +2104,13 @@ func (m *Model) findNextCommentTarget(forward bool, includeAll bool) (commentKey
 		curLineNum = math.MaxInt
 	}
 
-	// Phase 1: Check loaded comments (filtered by resolved state)
+	// Phase 1: Check loaded comments (filtered by branch + resolved state)
 	sorted := m.sortedCommentKeys()
 	if forward {
 		for _, k := range sorted {
 			if k.fileIndex > curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum > curLineNum) {
 				c := m.comments[k]
-				if c != nil && c.Text != "" && (includeAll || !c.Resolved) {
+				if m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
 					return k, true
 				}
 			}
@@ -2104,7 +2120,7 @@ func (m *Model) findNextCommentTarget(forward bool, includeAll bool) (commentKey
 			k := sorted[i]
 			if k.fileIndex < curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum < curLineNum) {
 				c := m.comments[k]
-				if c != nil && c.Text != "" && (includeAll || !c.Resolved) {
+				if m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
 					return k, true
 				}
 			}
@@ -2193,7 +2209,7 @@ func (m *Model) tryLoadSkeletonForComment(fileIdx int, first, includeAll bool) (
 		for _, k := range m.sortedCommentKeys() {
 			if k.fileIndex >= startIdx && k.fileIndex < endIdx {
 				c := m.comments[k]
-				if c != nil && c.Text != "" && (includeAll || !c.Resolved) {
+				if m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
 					return k, true
 				}
 			}
@@ -2204,7 +2220,7 @@ func (m *Model) tryLoadSkeletonForComment(fileIdx int, first, includeAll bool) (
 			k := sorted[i]
 			if k.fileIndex >= startIdx && k.fileIndex < endIdx {
 				c := m.comments[k]
-				if c != nil && c.Text != "" && (includeAll || !c.Resolved) {
+				if m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
 					return k, true
 				}
 			}

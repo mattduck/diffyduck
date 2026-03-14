@@ -87,6 +87,7 @@ type ActionKeys struct {
 	Help            []string `toml:"help"`           // default: ["ctrl+h"]
 	MoveDetect      []string `toml:"move_detect"`    // default: ["M"]
 	CommentToggle   []string `toml:"comment_toggle"` // default: ["C"]
+	BranchFilter    []string `toml:"branch_filter"`  // default: ["space t b"]
 }
 
 // WindowKeys configures window management bindings.

@@ -1537,10 +1537,10 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 			}
 		}
 
-		// Add comment rows if this line has a visible comment
+		// Add comment rows if this line has an included comment
 		if pair.New.Num > 0 {
 			key := commentKey{fileIndex: fileIdx, newLineNum: pair.New.Num}
-			if c, ok := m.comments[key]; ok {
+			if c, ok := m.comments[key]; ok && m.isCommentIncluded(c) {
 				// Mark the content row as having a comment (for * gutter indicator)
 				lastIdx := len(rows) - 1
 				r := rows[lastIdx]
@@ -1608,10 +1608,10 @@ func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, conten
 	// Append expanded rows with comment rows interleaved
 	var rows []displayRow
 	for _, expRow := range expandedRows {
-		// Mark content rows that have a comment and interleave visible comment rows
+		// Mark content rows that have an included comment and interleave visible comment rows
 		if expRow.kind == RowKindContent && expRow.pair.New.Num > 0 {
 			key := commentKey{fileIndex: fileIdx, newLineNum: expRow.pair.New.Num}
-			if c, ok := m.comments[key]; ok {
+			if c, ok := m.comments[key]; ok && m.isCommentIncluded(c) {
 				expRow.hasComment = true
 				if m.isCommentExpanded(key, c) {
 					rows = append(rows, expRow)

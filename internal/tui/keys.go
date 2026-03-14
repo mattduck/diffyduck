@@ -59,6 +59,7 @@ type KeyMap struct {
 	Help            []string // toggle help screen
 	MoveDetect      []string // toggle move detection highlighting
 	CommentToggle   []string // cycle comment display mode
+	BranchFilter    []string // toggle comment branch filter
 
 	// Window management (sequences with prefix)
 	WinSplitV      []string // "ctrl+w %"
@@ -132,6 +133,7 @@ func DefaultKeyMap() KeyMap {
 		Help:            []string{"ctrl+h"},
 		MoveDetect:      []string{"M"},
 		CommentToggle:   []string{"C"},
+		BranchFilter:    []string{"space t b"},
 		WinSplitV:       []string{"ctrl+w %"},
 		WinSplitH:       []string{"ctrl+w \""},
 		WinClose:        []string{"ctrl+w x"},
@@ -206,6 +208,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.VisualMode, Desc: "Enter visual line mode"},
 			{Keys: km.MoveDetect, Desc: "Toggle move detection"},
 			{Keys: km.CommentToggle, Desc: "Cycle comment display mode"},
+			{Keys: km.BranchFilter, Desc: "Toggle comment branch filter"},
 			{Keys: km.Help, Desc: "Toggle this help screen"},
 			{Keys: km.Quit, Desc: "Quit"},
 		}},
@@ -366,7 +369,7 @@ func allBindings(km KeyMap) [][]string {
 		km.NarrowToggle,
 		km.FoldToggle, km.FoldToggleAll, km.FullFileToggle,
 		km.Quit, km.Enter, km.ResolveToggle, km.Yank, km.YankUnresolved, km.YankAllComments,
-		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help, km.MoveDetect, km.CommentToggle,
+		km.RefreshLayout, km.Snapshot, km.SnapshotToggle, km.VisualMode, km.Help, km.MoveDetect, km.CommentToggle, km.BranchFilter,
 		km.WinSplitV, km.WinSplitH, km.WinClose,
 		km.WinFocusLeft, km.WinFocusRight, km.WinFocusUp, km.WinFocusDown,
 		km.WinResizeLeft, km.WinResizeRight, km.WinResizeUp, km.WinResizeDown,
@@ -516,6 +519,9 @@ func ApplyKeysConfig(cfg config.KeysConfig) KeyMap {
 		if a.CommentToggle != nil {
 			km.CommentToggle = a.CommentToggle
 		}
+		if a.BranchFilter != nil {
+			km.BranchFilter = a.BranchFilter
+		}
 	}
 
 	if w := cfg.Window; w != nil {
@@ -620,6 +626,7 @@ func DefaultKeysConfig() config.KeysConfig {
 			Help:            km.Help,
 			MoveDetect:      km.MoveDetect,
 			CommentToggle:   km.CommentToggle,
+			BranchFilter:    km.BranchFilter,
 		},
 		Window: &config.WindowKeys{
 			SplitVertical:   km.WinSplitV,

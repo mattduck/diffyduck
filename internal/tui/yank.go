@@ -238,7 +238,7 @@ func (m Model) buildCommentsSnippet(includeAll bool) (string, int) {
 	// Collect and sort comments by (fileIndex, newLineNum).
 	var sorted []commentWithKey
 	for ck, c := range m.comments {
-		if c == nil || c.Text == "" {
+		if !m.isCommentIncluded(c) {
 			continue
 		}
 		if !includeAll && c.Resolved {

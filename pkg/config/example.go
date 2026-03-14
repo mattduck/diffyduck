@@ -151,6 +151,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 		writeKeys("help", "toggle help screen", a.Help)
 		writeKeys("move_detect", "toggle move detection highlighting", a.MoveDetect)
 		writeKeys("comment_toggle", "cycle comment display mode", a.CommentToggle)
+		writeKeys("branch_filter", "toggle comment branch filter", a.BranchFilter)
 		b.WriteString("\n")
 	}
 

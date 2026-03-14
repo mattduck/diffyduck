@@ -36,10 +36,34 @@ const (
 	CommentShowNone                                 // hide all comments
 )
 
-// isCommentVisible returns true if the given comment should be displayed
-// based on the global display mode (does not check per-comment collapse).
-func (m Model) isCommentVisible(c *comments.Comment) bool {
+// CommentBranchFilter controls branch-based comment filtering.
+type CommentBranchFilter int
+
+const (
+	CommentBranchCurrent CommentBranchFilter = iota // default: only current branch
+	CommentBranchAll                                // show from all branches
+)
+
+// isCommentIncluded returns true if the comment passes the branch filter.
+// This is the hard gate: excluded comments are invisible to gutter markers,
+// navigation, and row caching — as if they don't exist.
+func (m Model) isCommentIncluded(c *comments.Comment) bool {
 	if c == nil || c.Text == "" {
+		return false
+	}
+	if m.commentBranchFilter == CommentBranchCurrent && m.currentBranch != "" {
+		if c.Branch != m.currentBranch {
+			return false
+		}
+	}
+	return true
+}
+
+// isCommentVisible returns true if the given comment should be displayed
+// based on the branch filter and display mode (does not check per-comment
+// collapse).
+func (m Model) isCommentVisible(c *comments.Comment) bool {
+	if !m.isCommentIncluded(c) {
 		return false
 	}
 	switch m.commentDisplayMode {
@@ -275,6 +299,8 @@ type Model struct {
 	persistedCommentIDs map[commentKey]string            // maps in-memory comment to persisted comment ID
 	commentIndex        *comments.Index                  // full index loaded once at startup
 	loadedCommentIDs    map[string]bool                  // tracks fetched comment IDs to avoid re-reads
+	commentBranchFilter CommentBranchFilter              // branch-based comment filter mode
+	currentBranch       string                           // current branch name for comment filtering
 
 	// Conflict state
 	hasConflicts bool // true when repo is in a merge/rebase/cherry-pick conflict state

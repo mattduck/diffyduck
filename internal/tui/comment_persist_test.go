@@ -671,6 +671,93 @@ func TestReloadCommentsPreservesCollapsedState(t *testing.T) {
 	}
 }
 
+func TestBranchFilterCurrentBranch(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := comments.NewStore(dir)
+
+	pairs := []sidebyside.LinePair{
+		{
+			Old: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+		},
+		{
+			Old: sidebyside.Line{Num: 2, Content: "line 2", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 2, Content: "line 2", Type: sidebyside.Context},
+		},
+		{
+			Old: sidebyside.Line{Num: 3, Content: "line 3", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 3, Content: "line 3", Type: sidebyside.Context},
+		},
+	}
+
+	writeComment := func(line int, branch string) {
+		ctx := comments.LineContext{Line: "line " + string(rune('0'+line))}
+		c := &comments.Comment{
+			Text:    "comment on line " + string(rune('0'+line)),
+			File:    "test.go",
+			Line:    line,
+			Context: ctx,
+			Anchor:  ctx.ComputeAnchor(),
+			Branch:  branch,
+		}
+		store.WriteComment(c)
+	}
+
+	writeComment(1, "main")      // matching branch
+	writeComment(2, "feature-x") // non-matching branch
+	writeComment(3, "")          // no branch metadata
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	}, WithCommentStore(store))
+	m.width = 80
+	m.height = 30
+	m.currentBranch = "main"
+	m.commentBranchFilter = CommentBranchCurrent
+
+	// All comments are loaded into memory
+	loaded := m.loadPersistedComments()
+	if loaded != 3 {
+		t.Errorf("expected 3 comments loaded, got %d", loaded)
+	}
+
+	// isCommentIncluded is the hard gate — excluded comments are invisible
+	// to gutter markers, navigation, and row caching
+	key1 := commentKey{fileIndex: 0, newLineNum: 1}
+	key2 := commentKey{fileIndex: 0, newLineNum: 2}
+	key3 := commentKey{fileIndex: 0, newLineNum: 3}
+
+	if !m.isCommentIncluded(m.comments[key1]) {
+		t.Error("comment with matching branch should be included")
+	}
+	if m.isCommentIncluded(m.comments[key2]) {
+		t.Error("comment with non-matching branch should be excluded")
+	}
+	if m.isCommentIncluded(m.comments[key3]) {
+		t.Error("comment with no branch should be excluded in current-branch mode")
+	}
+
+	// isCommentVisible inherits the included gate
+	if !m.isCommentVisible(m.comments[key1]) {
+		t.Error("comment with matching branch should be visible")
+	}
+	if m.isCommentVisible(m.comments[key2]) {
+		t.Error("comment with non-matching branch should be hidden")
+	}
+
+	// Toggle to all-branches mode: all become included
+	m.commentBranchFilter = CommentBranchAll
+	if !m.isCommentIncluded(m.comments[key1]) {
+		t.Error("comment with matching branch should be included in all mode")
+	}
+	if !m.isCommentIncluded(m.comments[key2]) {
+		t.Error("comment with non-matching branch should be included in all mode")
+	}
+	if !m.isCommentIncluded(m.comments[key3]) {
+		t.Error("comment with no branch should be included in all mode")
+	}
+}
+
 func TestCommentPersistenceNoStore(t *testing.T) {
 	// Model without store should work without errors
 	pairs := []sidebyside.LinePair{

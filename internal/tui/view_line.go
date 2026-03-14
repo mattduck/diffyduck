@@ -333,7 +333,7 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 	var commentMarker string
 	if hasComment && pair.New.Num > 0 {
 		key := commentKey{fileIndex: fileIndex, newLineNum: pair.New.Num}
-		if c, ok := m.comments[key]; ok {
+		if c, ok := m.comments[key]; ok && m.isCommentIncluded(c) {
 			if c.Resolved {
 				commentMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("¶")
 			} else {

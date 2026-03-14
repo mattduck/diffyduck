@@ -25,7 +25,20 @@ func cleanFilePath(path string) string {
 // The index is cheap (one git cat-file call for a small text blob) and maps
 // file paths to comment IDs. It's loaded once and kept in memory.
 func (m *Model) loadCommentIndex() {
-	if m.commentStore == nil || m.commentIndex != nil {
+	if m.commentStore == nil {
+		return
+	}
+
+	// Cache the current branch for display-time comment filtering.
+	// Set unconditionally (before the index guard) so the branch filter
+	// works even when the index hasn't been created yet.
+	if m.currentBranch == "" {
+		if branch, err := m.commentStore.CurrentBranch(); err == nil {
+			m.currentBranch = branch
+		}
+	}
+
+	if m.commentIndex != nil {
 		return
 	}
 	idx, err := m.commentStore.ReadIndex()
