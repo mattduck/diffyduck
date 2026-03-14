@@ -8,50 +8,43 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// handleHelpKey handles key events while the help screen is displayed.
-func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	keys := m.keys
-
-	switch {
-	case msg.String() == "q" || msg.String() == "esc" || msg.String() == "ctrl+g" || msg.String() == "ctrl+c":
+// dispatchHelpAction handles actions while the help screen is displayed.
+// Only navigation and close actions are active; all others are swallowed.
+func (m Model) dispatchHelpAction(action Action) (tea.Model, tea.Cmd) {
+	switch action {
+	case ActionQuit, ActionVisualExit:
 		m.helpMode = false
-		return m, nil
 
-	case matchesKey(msg, keys.Down):
+	case ActionScrollDown:
 		m.helpScroll++
 		m.clampHelpScroll()
 
-	case matchesKey(msg, keys.Up):
+	case ActionScrollUp:
 		m.helpScroll--
 		m.clampHelpScroll()
 
-	case matchesKey(msg, keys.PageDown):
+	case ActionPageDown:
 		m.helpScroll += m.helpViewportHeight()
 		m.clampHelpScroll()
 
-	case matchesKey(msg, keys.PageUp):
+	case ActionPageUp:
 		m.helpScroll -= m.helpViewportHeight()
 		m.clampHelpScroll()
 
-	case matchesKey(msg, keys.HalfDown):
+	case ActionHalfDown:
 		m.helpScroll += m.helpViewportHeight() / 2
 		m.clampHelpScroll()
 
-	case matchesKey(msg, keys.HalfUp):
+	case ActionHalfUp:
 		m.helpScroll -= m.helpViewportHeight() / 2
 		m.clampHelpScroll()
 
-	case matchesKey(msg, keys.Bottom):
+	case ActionGoToBottom:
 		m.helpScroll = m.maxHelpScroll()
 		m.clampHelpScroll()
 
-	case matchesKey(msg, keys.Top):
+	case ActionTop, ActionGoToTop:
 		m.helpScroll = 0
-
-	case m.keys.prefixSet[msg.String()]:
-		// Support sequences (e.g. gg to go to top)
-		m.pendingKey = msg.String()
-		return m, nil
 	}
 
 	return m, nil

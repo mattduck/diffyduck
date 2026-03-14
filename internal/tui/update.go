@@ -384,7 +384,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		pendingMsg := m.pendingKeyMsg
 		m.pendingKey = ""
 		if m.keys.soloSet[pending] {
-			return m.handleSingleKey(pendingMsg)
+			action := resolveKeyAction(pendingMsg, m.keys)
+			return m.dispatchWithModeChecks(action)
 		}
 		return m, nil
 	}
@@ -408,37 +409,16 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchInput(msg)
 	}
 
+	// ctrl+c always exits help mode (universal escape, not a configurable binding)
+	if m.helpMode && msg.String() == "ctrl+c" {
+		m.helpMode = false
+		return m, nil
+	}
+
 	// Handle multi-key sequences first (before mode checks, since prefix
 	// could have been set in any mode that supports sequences)
 	if m.pendingKey != "" {
 		return m.handlePendingKey(msg)
-	}
-
-	// Toggle help screen — available except in text-editing modes
-	if matchesKey(msg, m.keys.Help) {
-		m.helpMode = !m.helpMode
-		m.helpScroll = 0
-		if m.helpMode {
-			m.helpLines = m.buildHelpLines()
-		}
-		return m, nil
-	}
-
-	// Handle help screen navigation when active
-	if m.helpMode {
-		return m.handleHelpKey(msg)
-	}
-
-	// Handle visual mode - exit keys, yank, otherwise delegate to normal keys
-	if m.w().visualSelection.Active {
-		if matchesKey(msg, m.keys.VisualExit) {
-			m.w().visualSelection.Active = false
-			return m, nil
-		}
-		if matchesKey(msg, m.keys.Yank) {
-			return m.handleVisualYank()
-		}
-		// Fall through to normal key handling for movement, quit, etc.
 	}
 
 	// Check for prefix keys that start multi-key sequences
@@ -456,143 +436,226 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	return m.handleSingleKey(msg)
+	action := resolveKeyAction(msg, m.keys)
+	return m.dispatchWithModeChecks(action)
 }
 
-// handleSingleKey dispatches a single-key binding. Extracted from handleKeyMsg
-// so it can also be called from the prefix timeout and solo-fallback paths.
-func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	keys := m.keys
+// dispatchWithModeChecks resolves mode-dependent behavior before dispatching.
+// Help mode, visual mode, and other mode-specific handling is done here.
+func (m Model) dispatchWithModeChecks(action Action) (tea.Model, tea.Cmd) {
+	if action == ActionNone {
+		return m, nil
+	}
 
-	switch {
-	case matchesKey(msg, keys.Quit):
-		// Close window if multiple, quit if last
+	// Help toggle is always available (except text-editing modes,
+	// which are filtered out before we get here)
+	if action == ActionHelp {
+		m.helpMode = !m.helpMode
+		m.helpScroll = 0
+		if m.helpMode {
+			m.helpLines = m.buildHelpLines()
+		}
+		return m, nil
+	}
+
+	// Help mode: only navigation subset + close
+	if m.helpMode {
+		return m.dispatchHelpAction(action)
+	}
+
+	// Visual mode: intercept exit and yank, fall through for movement/quit
+	if m.w().visualSelection.Active {
+		if action == ActionVisualExit {
+			m.w().visualSelection.Active = false
+			return m, nil
+		}
+		if action == ActionYank {
+			return m.handleVisualYank()
+		}
+	}
+
+	return m.dispatchAction(action)
+}
+
+// dispatchAction handles all actions in a single switch.
+// Both single-key and sequence bindings are dispatched through here.
+func (m Model) dispatchAction(action Action) (tea.Model, tea.Cmd) {
+	switch action {
+	case ActionQuit:
 		if len(m.windows) > 1 {
 			return m.windowClose()
 		}
 		return m, tea.Quit
 
-	case matchesKey(msg, keys.SearchForward):
+	case ActionSearchForward:
 		m.searchMode = true
 		m.searchForward = true
 		m.searchInput = ""
 		return m, nil
 
-	case matchesKey(msg, keys.SearchBack):
+	case ActionSearchBack:
 		m.searchMode = true
 		m.searchForward = false
 		m.searchInput = ""
 		return m, nil
 
-	case matchesKey(msg, keys.NextMatch):
+	case ActionNextMatch:
 		m.nextMatch()
 		return m, nil
 
-	case matchesKey(msg, keys.PrevMatch):
+	case ActionPrevMatch:
 		m.prevMatch()
 		return m, nil
 
-	case matchesKey(msg, keys.NarrowNext):
+	case ActionNarrowNext:
 		if m.narrowNext() && m.shouldPaginateForNarrowNav() {
 			return m, m.fetchMoreCommits()
 		}
 		return m, nil
 
-	case matchesKey(msg, keys.NarrowPrev):
+	case ActionNarrowPrev:
 		m.narrowPrev()
 		return m, nil
 
-	case matchesKey(msg, keys.Up):
+	case ActionScrollUp:
 		m.w().scroll--
 		m.clampScroll()
 		m.skipCommentRowsUp()
 		m.resetSearchMatchForRow()
 
-	case matchesKey(msg, keys.Down):
+	case ActionScrollDown:
 		m.w().scroll++
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
-	case matchesKey(msg, keys.PageUp):
+	case ActionPageUp:
 		m.w().scroll -= m.height
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
-	case matchesKey(msg, keys.PageDown):
+	case ActionPageDown:
 		m.w().scroll += m.height
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
-	case matchesKey(msg, keys.HalfUp):
+	case ActionHalfUp:
 		m.w().scroll -= m.height / 2
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
-	case matchesKey(msg, keys.HalfDown):
+	case ActionHalfDown:
 		m.w().scroll += m.height / 2
 		m.clampScroll()
 		m.resetSearchMatchForRow()
 
-	case matchesKey(msg, keys.Top):
+	case ActionTop, ActionGoToTop:
 		m.w().scroll = m.minScroll()
 		m.resetSearchMatchForRow()
 
-	case matchesKey(msg, keys.Bottom):
+	case ActionGoToBottom:
 		m.w().scroll = m.maxScroll()
 		m.resetSearchMatchForRow()
-		// Trigger loading more commits if available
 		if m.shouldLoadMoreCommits() {
 			return m, m.fetchMoreCommits()
 		}
 
-	case matchesKey(msg, keys.Left):
+	case ActionScrollLeft:
 		m.w().hscroll -= m.hscrollStep
 		if m.w().hscroll < 0 {
 			m.w().hscroll = 0
 		}
 
-	case matchesKey(msg, keys.Right):
+	case ActionScrollRight:
 		m.w().hscroll += m.hscrollStep
 
-	case matchesKey(msg, keys.FoldToggle):
+	case ActionNextHeading:
+		m.goToNextHeading()
+		m.resetSearchMatchForRow()
+		return m, nil
+
+	case ActionPrevHeading:
+		m.goToPrevHeading()
+		m.resetSearchMatchForRow()
+		return m, nil
+
+	case ActionNextComment:
+		m.goToNextComment(false)
+		m.resetSearchMatchForRow()
+		return m, nil
+
+	case ActionPrevComment:
+		m.goToPrevComment(false)
+		m.resetSearchMatchForRow()
+		return m, nil
+
+	case ActionNextAllComment:
+		m.goToNextComment(true)
+		m.resetSearchMatchForRow()
+		return m, nil
+
+	case ActionPrevAllComment:
+		m.goToPrevComment(true)
+		m.resetSearchMatchForRow()
+		return m, nil
+
+	case ActionNextChange:
+		m.goToNextChange()
+		m.resetSearchMatchForRow()
+		return m, nil
+
+	case ActionPrevChange:
+		m.goToPrevChange()
+		m.resetSearchMatchForRow()
+		return m, nil
+
+	case ActionNarrowToggle:
+		m.toggleNarrow()
+		return m, nil
+
+	case ActionFoldToggle:
 		return m.handleFoldToggle()
 
-	case matchesKey(msg, keys.FoldToggleAll):
+	case ActionFoldToggleAll:
 		return m.handleFoldToggleAll()
 
-	case matchesKey(msg, keys.FullFileToggle):
+	case ActionFullFileToggle:
 		return m.handleFullFileToggle()
 
-	case matchesKey(msg, keys.Enter):
-		// Enter starts comment mode on commentable lines
+	case ActionEnter:
 		if m.startComment() {
 			return m, nil
 		}
 
-	case matchesKey(msg, keys.Yank):
+	case ActionYank:
 		return m.handleYank()
 
-	case matchesKey(msg, keys.RefreshLayout):
+	case ActionYankUnresolved:
+		return m.handleYankComments(false)
+
+	case ActionYankAllComments:
+		return m.handleYankComments(true)
+
+	case ActionRefreshLayout:
 		m.RefreshLayout()
 		m.statusMessage = "Refreshed"
 		m.statusMessageTime = time.Now()
 
-	case matchesKey(msg, keys.Snapshot):
+	case ActionSnapshot:
 		if cmd := m.handleSnapshot(); cmd != nil {
 			return m, cmd
 		}
 
-	case matchesKey(msg, keys.SnapshotToggle):
+	case ActionSnapshotToggle:
 		if cmd := m.handleSnapshotToggle(); cmd != nil {
 			return m, cmd
 		}
 
-	case matchesKey(msg, keys.VisualMode):
+	case ActionVisualMode:
 		m.w().visualSelection.Active = true
 		m.w().visualSelection.AnchorRow = m.w().scroll
 		return m, nil
 
-	case matchesKey(msg, keys.MoveDetect):
+	case ActionMoveDetect:
 		ci := m.currentCommitIndex()
 		if m.moveDetectCommits == nil {
 			m.moveDetectCommits = make(map[int]bool)
@@ -600,8 +663,6 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveDetectCommits[ci] = !m.moveDetectCommits[ci]
 		enabled := m.moveDetectCommits[ci]
 		if enabled {
-			// Ensure commit diff is loaded (skeleton → real files)
-			// so move detection has actual line pairs to work with.
 			if ci >= 0 && ci < len(m.commits) && !m.commits[ci].FilesLoaded && m.git != nil {
 				m.loadCommitDiff(ci)
 			}
@@ -632,9 +693,7 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.statusMessageTime = time.Now()
 		return m, nil
 
-	case matchesKey(msg, keys.CommentToggle):
-		// If any per-comment overrides exist, clear them first and reset to
-		// the current mode's default (like org-mode tab: normalize first).
+	case ActionCommentToggle:
 		if len(m.collapsedComments) > 0 {
 			m.collapsedComments = make(map[commentKey]bool)
 			m.commentDisplayMode = CommentShowUnresolved
@@ -658,6 +717,52 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.rebuildAllRowCachesPreservingCursor()
 		return m, nil
 
+	case ActionBranchFilter:
+		switch m.commentBranchFilter {
+		case CommentBranchCurrent:
+			m.commentBranchFilter = CommentBranchAll
+			m.statusMessage = "Comments: all branches"
+		case CommentBranchAll:
+			m.commentBranchFilter = CommentBranchCurrent
+			m.statusMessage = "Comments: current branch"
+		}
+		m.statusMessageTime = time.Now()
+		m.recomputeCommentCounts()
+		m.rebuildAllRowCachesPreservingCursor()
+		return m, nil
+
+	case ActionResolveToggle:
+		m.toggleResolveComment()
+		return m, nil
+
+	case ActionVisualExit:
+		if m.w().visualSelection.Active {
+			m.w().visualSelection.Active = false
+		}
+		return m, nil
+
+	case ActionWinSplitV:
+		return m.windowSplitVertical()
+	case ActionWinSplitH:
+		return m.windowSplitHorizontal()
+	case ActionWinClose:
+		return m.windowClose()
+	case ActionWinFocusLeft:
+		return m.windowFocusLeft()
+	case ActionWinFocusRight:
+		return m.windowFocusRight()
+	case ActionWinFocusUp:
+		return m.windowFocusUp()
+	case ActionWinFocusDown:
+		return m.windowFocusDown()
+	case ActionWinResizeLeft:
+		return m.windowResizeLeft()
+	case ActionWinResizeRight:
+		return m.windowResizeRight()
+	case ActionWinResizeUp:
+		return m.windowResizeUp()
+	case ActionWinResizeDown:
+		return m.windowResizeDown()
 	}
 
 	// Check if we should load more commits after scroll changes
@@ -1575,148 +1680,9 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	prefix := m.pendingKey
 	m.pendingKey = "" // Clear pending state
 
-	keys := m.keys
-
-	// In help mode, only GoToTop (gg) is meaningful
-	if m.helpMode {
-		if matchesSequence(prefix, msg, keys.GoToTop) {
-			m.helpScroll = 0
-		}
-		return m, nil
-	}
-
-	// Help toggle (supports sequence bindings like "g h")
-	if matchesSequence(prefix, msg, keys.Help) {
-		m.helpMode = !m.helpMode
-		m.helpScroll = 0
-		if m.helpMode {
-			m.helpLines = m.buildHelpLines()
-		}
-		return m, nil
-	}
-
-	// Navigation sequences
-	if matchesSequence(prefix, msg, keys.GoToTop) {
-		m.w().scroll = m.minScroll()
-		m.resetSearchMatchForRow()
-		return m, nil
-	}
-	if matchesSequence(prefix, msg, keys.NextHeading) {
-		m.goToNextHeading()
-		m.resetSearchMatchForRow()
-		return m, nil
-	}
-	if matchesSequence(prefix, msg, keys.PrevHeading) {
-		m.goToPrevHeading()
-		m.resetSearchMatchForRow()
-		return m, nil
-	}
-	if matchesSequence(prefix, msg, keys.NextComment) {
-		m.goToNextComment(false)
-		m.resetSearchMatchForRow()
-		return m, nil
-	}
-	if matchesSequence(prefix, msg, keys.PrevComment) {
-		m.goToPrevComment(false)
-		m.resetSearchMatchForRow()
-		return m, nil
-	}
-	if matchesSequence(prefix, msg, keys.NextAllComment) {
-		m.goToNextComment(true)
-		m.resetSearchMatchForRow()
-		return m, nil
-	}
-	if matchesSequence(prefix, msg, keys.PrevAllComment) {
-		m.goToPrevComment(true)
-		m.resetSearchMatchForRow()
-		return m, nil
-	}
-	if matchesSequence(prefix, msg, keys.NextChange) {
-		m.goToNextChange()
-		m.resetSearchMatchForRow()
-		return m, nil
-	}
-	if matchesSequence(prefix, msg, keys.PrevChange) {
-		m.goToPrevChange()
-		m.resetSearchMatchForRow()
-		return m, nil
-	}
-	if matchesSequence(prefix, msg, keys.NarrowToggle) {
-		m.toggleNarrow()
-		return m, nil
-	}
-
-	// Window management sequences
-	if matchesSequence(prefix, msg, keys.WinSplitV) {
-		return m.windowSplitVertical()
-	}
-	if matchesSequence(prefix, msg, keys.WinSplitH) {
-		return m.windowSplitHorizontal()
-	}
-	if matchesSequence(prefix, msg, keys.WinClose) {
-		return m.windowClose()
-	}
-	if matchesSequence(prefix, msg, keys.WinFocusLeft) {
-		return m.windowFocusLeft()
-	}
-	if matchesSequence(prefix, msg, keys.WinFocusRight) {
-		return m.windowFocusRight()
-	}
-	if matchesSequence(prefix, msg, keys.WinFocusUp) {
-		return m.windowFocusUp()
-	}
-	if matchesSequence(prefix, msg, keys.WinFocusDown) {
-		return m.windowFocusDown()
-	}
-	if matchesSequence(prefix, msg, keys.WinResizeLeft) {
-		return m.windowResizeLeft()
-	}
-	if matchesSequence(prefix, msg, keys.WinResizeRight) {
-		return m.windowResizeRight()
-	}
-	if matchesSequence(prefix, msg, keys.WinResizeUp) {
-		return m.windowResizeUp()
-	}
-	if matchesSequence(prefix, msg, keys.WinResizeDown) {
-		return m.windowResizeDown()
-	}
-
-	// Comment yank sequences
-	if matchesSequence(prefix, msg, keys.YankUnresolved) {
-		return m.handleYankComments(false)
-	}
-	if matchesSequence(prefix, msg, keys.YankAllComments) {
-		return m.handleYankComments(true)
-	}
-
-	// Comment branch filter toggle
-	if matchesSequence(prefix, msg, keys.BranchFilter) {
-		switch m.commentBranchFilter {
-		case CommentBranchCurrent:
-			m.commentBranchFilter = CommentBranchAll
-			m.statusMessage = "Comments: all branches"
-		case CommentBranchAll:
-			m.commentBranchFilter = CommentBranchCurrent
-			m.statusMessage = "Comments: current branch"
-		}
-		m.statusMessageTime = time.Now()
-		m.recomputeCommentCounts()
-		m.rebuildAllRowCachesPreservingCursor()
-		return m, nil
-	}
-
-	// Comment resolve toggle
-	if matchesSequence(prefix, msg, keys.ResolveToggle) {
-		m.toggleResolveComment()
-		return m, nil
-	}
-
-	// Visual exit (supports sequence bindings)
-	if matchesSequence(prefix, msg, keys.VisualExit) {
-		if m.w().visualSelection.Active {
-			m.w().visualSelection.Active = false
-		}
-		return m, nil
+	action := resolveSequenceAction(prefix, msg, m.keys)
+	if action != ActionNone {
+		return m.dispatchWithModeChecks(action)
 	}
 
 	// Any follow-up key cancels the pending state without action.
