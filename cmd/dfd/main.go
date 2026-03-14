@@ -2056,9 +2056,14 @@ func formatCommentOneline(c *comments.Comment, displayID string) string {
 		resolved = cGreen + " [resolved]" + cReset
 	}
 
+	branchPart := ""
+	if c.Branch != "" {
+		branchPart = fmt.Sprintf("  %s%s%s", cCyan, c.Branch, cReset)
+	}
+
 	authorPart := ""
 	if c.Author != "" {
-		authorPart = fmt.Sprintf("  %s[%s]%s", cCyan, c.Author, cReset)
+		authorPart = fmt.Sprintf("  %s[%s]%s", cGray, c.Author, cReset)
 	}
 
 	pathPart := styleCommentPath(c.File, c.Line)
@@ -2066,10 +2071,11 @@ func formatCommentOneline(c *comments.Comment, displayID string) string {
 		pathPart = cGray + "(standalone)" + cReset
 	}
 
-	return fmt.Sprintf("%s%s%s%s  %s  %s%s%s%s%s  %s",
+	return fmt.Sprintf("%s%s%s%s  %s  %s%s%s%s%s%s  %s",
 		cBrightWhite, cBold, displayID, cReset,
 		pathPart,
 		cYellow, commitShort, cReset,
+		branchPart,
 		resolved,
 		authorPart,
 		text)
