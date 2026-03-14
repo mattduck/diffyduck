@@ -1010,7 +1010,7 @@ func TestParseArgs_CommentAllBranchesOnDiff(t *testing.T) {
 }
 
 func TestParseArgs_CommentKind(t *testing.T) {
-	for _, kind := range []string{"file", "note", "all"} {
+	for _, kind := range []string{"comment", "note", "all"} {
 		result, err := parseArgs([]string{"comment", "list", "--kind", kind})
 		require.NoError(t, err)
 		assert.Equal(t, kind, result.commentKind)
@@ -1024,17 +1024,17 @@ func TestParseArgs_CommentKind(t *testing.T) {
 func TestParseArgs_CommentKindInvalid(t *testing.T) {
 	_, err := parseArgs([]string{"comment", "list", "--kind", "bad"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "file, note, or all")
+	assert.Contains(t, err.Error(), "comment, note, or all")
 }
 
 func TestParseArgs_CommentKindOnDiff(t *testing.T) {
-	_, err := parseArgs([]string{"diff", "--kind", "file"})
+	_, err := parseArgs([]string{"diff", "--kind", "comment"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "only valid for comment")
 }
 
 func TestParseArgs_CommentKindOnlyForList(t *testing.T) {
-	_, err := parseArgs([]string{"comment", "edit", "123", "--kind", "file"})
+	_, err := parseArgs([]string{"comment", "edit", "123", "--kind", "comment"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "only valid for comment list")
 }
@@ -1042,20 +1042,23 @@ func TestParseArgs_CommentKindOnlyForList(t *testing.T) {
 func TestParseArgs_NoteList(t *testing.T) {
 	result, err := parseArgs([]string{"note", "list"})
 	require.NoError(t, err)
-	assert.Equal(t, "note", result.cmd)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "note", result.cmdAlias)
 	assert.Equal(t, "list", result.commentSub)
 }
 
 func TestParseArgs_NoteAlias(t *testing.T) {
 	result, err := parseArgs([]string{"n", "list"})
 	require.NoError(t, err)
-	assert.Equal(t, "note", result.cmd)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "note", result.cmdAlias)
 }
 
 func TestParseArgs_NoteAddNoFile(t *testing.T) {
 	result, err := parseArgs([]string{"note", "add", "-m", "text"})
 	require.NoError(t, err)
-	assert.Equal(t, "note", result.cmd)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "note", result.cmdAlias)
 	assert.Equal(t, "add", result.commentSub)
 	assert.Equal(t, "", result.commentAddTarget)
 }
@@ -1069,7 +1072,8 @@ func TestParseArgs_NoteAddRejectsFile(t *testing.T) {
 func TestParseArgs_NoteEdit(t *testing.T) {
 	result, err := parseArgs([]string{"note", "edit", "123"})
 	require.NoError(t, err)
-	assert.Equal(t, "note", result.cmd)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "note", result.cmdAlias)
 	assert.Equal(t, "edit", result.commentSub)
 	assert.Equal(t, "123", result.commentID)
 }
@@ -1078,7 +1082,8 @@ func TestParseArgs_NoteDefault(t *testing.T) {
 	// No sub-subcommand defaults to list
 	result, err := parseArgs([]string{"note"})
 	require.NoError(t, err)
-	assert.Equal(t, "note", result.cmd)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "note", result.cmdAlias)
 	assert.Equal(t, "list", result.commentSub)
 }
 
@@ -1086,10 +1091,42 @@ func TestParseArgs_NoteListFlags(t *testing.T) {
 	// Shared flags should work with note command
 	result, err := parseArgs([]string{"note", "list", "--since", "2w", "--status", "all", "--oneline"})
 	require.NoError(t, err)
-	assert.Equal(t, "note", result.cmd)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "note", result.cmdAlias)
 	assert.Equal(t, "2w", result.since)
 	assert.Equal(t, "all", result.commentStatus)
 	assert.True(t, result.commentOneline)
+}
+
+func TestParseArgs_NoteResolve(t *testing.T) {
+	result, err := parseArgs([]string{"note", "resolve", "abc"})
+	require.NoError(t, err)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "note", result.cmdAlias)
+	assert.Equal(t, "resolve", result.commentSub)
+	assert.Equal(t, "abc", result.commentID)
+}
+
+func TestParseArgs_NoteUnresolve(t *testing.T) {
+	result, err := parseArgs([]string{"note", "unresolve", "abc"})
+	require.NoError(t, err)
+	assert.Equal(t, "comment", result.cmd)
+	assert.Equal(t, "note", result.cmdAlias)
+	assert.Equal(t, "unresolve", result.commentSub)
+	assert.Equal(t, "abc", result.commentID)
+}
+
+func TestParseArgs_NoteRejectsKind(t *testing.T) {
+	_, err := parseArgs([]string{"note", "list", "--kind", "all"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--kind cannot be used with note")
+}
+
+func TestParseArgs_NoteN(t *testing.T) {
+	result, err := parseArgs([]string{"note", "list", "-n1"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.commentN)
+	assert.True(t, result.commentNSet)
 }
 
 func TestParseArgs_CommentSince(t *testing.T) {

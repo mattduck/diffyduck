@@ -89,7 +89,8 @@ func main() {
 
 // parsedArgs contains parsed command line arguments.
 type parsedArgs struct {
-	cmd      string   // "diff", "show", "log", "clean", "branch", "config"
+	cmd      string   // "diff", "show", "log", "clean", "branch", "config", "comment"
+	cmdAlias string   // original command name before normalization (e.g. "note" → "comment")
 	refs     []string // 0-2 refs for diff, 0-1 for show/log (before --)
 	paths    []string // file paths (after --)
 	excludes []string // --exclude/-e glob patterns
@@ -122,7 +123,7 @@ type parsedArgs struct {
 	commentRaw         bool   // --raw: show raw git blob serialization
 	commentAllBranches bool   // --all-branches: show comments from all branches
 	commentBranch      string // --branch: filter to specific branch
-	commentKind        string // --kind: "file", "note", or "all" (default)
+	commentKind        string // --kind: "comment", "note", or "all"
 	commentResolved    *bool  // --resolved=true/false: set resolved state (edit only)
 
 	// comment add-specific
@@ -198,11 +199,18 @@ func parseArgs(args []string) (parsedArgs, error) {
 		switch remaining[0] {
 		case "diff", "d", "show", "log", "l", "clean", "branch", "b", "config", "status", "s", "comment", "c", "note", "n":
 			result.cmd = expandAlias(remaining[0])
-			result.helpCmd = result.cmd // target for --help flag
+			result.cmdAlias = result.cmd
+			// Normalize "note" to "comment" so all flag parsing and
+			// validation works identically; cmdAlias preserves the
+			// original for dispatch and error messages.
+			if result.cmd == "note" {
+				result.cmd = "comment"
+			}
+			result.helpCmd = result.cmdAlias // target for --help flag
 			remaining = remaining[1:]
 
-			// Consume comment/note sub-subcommand and ID/target
-			if result.cmd == "comment" || result.cmd == "note" {
+			// Consume comment sub-subcommand and ID/target
+			if result.cmd == "comment" {
 				if len(remaining) > 0 {
 					switch remaining[0] {
 					case "list", "edit", "add", "resolve", "unresolve":
@@ -495,22 +503,22 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		p.commentAllBranches = true
 	case arg == "--kind":
 		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--kind requires a value (file, note, all)")
+			return 0, fmt.Errorf("--kind requires a value (comment, note, all)")
 		}
 		switch args[i+1] {
-		case "file", "note", "all":
+		case "comment", "note", "all":
 			p.commentKind = args[i+1]
 		default:
-			return 0, fmt.Errorf("--kind must be file, note, or all; got %q", args[i+1])
+			return 0, fmt.Errorf("--kind must be comment, note, or all; got %q", args[i+1])
 		}
 		return 1, nil
 	case strings.HasPrefix(arg, "--kind="):
 		val := strings.TrimPrefix(arg, "--kind=")
 		switch val {
-		case "file", "note", "all":
+		case "comment", "note", "all":
 			p.commentKind = val
 		default:
-			return 0, fmt.Errorf("--kind must be file, note, or all; got %q", val)
+			return 0, fmt.Errorf("--kind must be comment, note, or all; got %q", val)
 		}
 	case arg == "--branch":
 		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
@@ -677,32 +685,35 @@ func (p *parsedArgs) validate() error {
 		if p.cached || p.unstaged || p.count > 0 || p.verbose || p.allMode {
 			return fmt.Errorf("status only accepts -S/--symbols, -u/--untracked-files, and -b/--branches")
 		}
-	case "comment", "note":
+	case "comment":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
-			return fmt.Errorf("%s does not accept ref or path arguments", p.cmd)
+			return fmt.Errorf("%s does not accept ref or path arguments", p.cmdAlias)
 		}
 		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
-			return fmt.Errorf("%s only accepts -n and --status", p.cmd)
+			return fmt.Errorf("%s only accepts -n and --status", p.cmdAlias)
 		}
 		if commentSubTakesID(p.commentSub, true) && p.commentID == "" {
-			return fmt.Errorf("%s %s requires a comment ID", p.cmd, p.commentSub)
+			return fmt.Errorf("%s %s requires a comment ID", p.cmdAlias, p.commentSub)
 		}
 		if p.commentResolved != nil && p.commentSub != "edit" {
-			return fmt.Errorf("--resolved is only valid for %s edit", p.cmd)
+			return fmt.Errorf("--resolved is only valid for %s edit", p.cmdAlias)
 		}
 		if p.commentKind != "" && p.commentSub != "list" {
-			return fmt.Errorf("--kind is only valid for %s list", p.cmd)
+			return fmt.Errorf("--kind is only valid for %s list", p.cmdAlias)
+		}
+		if p.commentKind != "" && p.cmdAlias == "note" {
+			return fmt.Errorf("--kind cannot be used with note (use comment list --kind instead)")
 		}
 		if p.commentAddMessage != "" && p.commentSub != "add" {
-			return fmt.Errorf("-m is only valid for %s add", p.cmd)
+			return fmt.Errorf("-m is only valid for %s add", p.cmdAlias)
 		}
 		if p.commentAddRef != "" && p.commentSub != "add" {
-			return fmt.Errorf("--ref is only valid for %s add", p.cmd)
+			return fmt.Errorf("--ref is only valid for %s add", p.cmdAlias)
 		}
 		if p.commentAddAuthor != "" && p.commentSub != "add" {
-			return fmt.Errorf("--author is only valid for %s add", p.cmd)
+			return fmt.Errorf("--author is only valid for %s add", p.cmdAlias)
 		}
-		if p.cmd == "note" && p.commentSub == "add" && p.commentAddTarget != "" {
+		if p.cmdAlias == "note" && p.commentSub == "add" && p.commentAddTarget != "" {
 			return fmt.Errorf("note add does not accept a file:line argument (use comment add instead)")
 		}
 	case "config":
@@ -731,7 +742,7 @@ func (p *parsedArgs) validate() error {
 		return fmt.Errorf("--init, --force, --print, --path, --edit are only valid for config command")
 	}
 
-	isCommentCmd := p.cmd == "comment" || p.cmd == "note"
+	isCommentCmd := p.cmd == "comment"
 
 	// --since is only valid for branch and comment/note list
 	if p.cmd != "branch" && !isCommentCmd && p.since != "" {
@@ -1131,7 +1142,7 @@ List flags:
       --since <d>  Only show comments created within duration (e.g. 6h, 7d, 2w, 3m, 1y, all)
       --oneline    Compact single-line output per comment
       --raw        Show raw git blob format for each comment
-      --kind <k>   Filter by kind: file, note, all (default: all)
+      --kind <k>   Filter by kind: comment, note, all (default: comment)
   -b, --branch [b] Filter to a specific branch (default: current branch)
       --all-branches
                    Show comments from all branches (default: current branch only)
@@ -1142,8 +1153,8 @@ Examples:
   dfd comment add -m "TODO: investigate flaky tests"
   echo "Review this" | dfd comment add lib.go:5
   dfd comment list                    Show 5 newest unresolved
-  dfd comment list --kind note       Show only standalone comments
-  dfd comment list --kind file         Show only file-attached comments
+  dfd comment list --kind all        Show comments and notes
+  dfd comment list --kind note       Show only standalone notes
   dfd comment list -n 10              Show 10 newest unresolved
   dfd comment list -n -3              Show 3 oldest unresolved
   dfd comment list -n 0               Show all unresolved
@@ -1203,14 +1214,12 @@ func run() error {
 		defer pprof.StopCPUProfile()
 	}
 
-	// Handle comment command - list and edit comments
+	// Handle comment/note command
 	if args.cmd == "comment" {
+		if args.cmdAlias == "note" {
+			return runNote(args)
+		}
 		return runComment(args)
-	}
-
-	// Handle note command - shorthand for comment with --kind note
-	if args.cmd == "note" {
-		return runNote(args)
 	}
 
 	// Handle clean command - deletes all persisted snapshot refs
@@ -1756,6 +1765,12 @@ func runNote(args parsedArgs) error {
 		return runCommentList(args)
 	case "edit":
 		return runNoteEdit(args.commentID, args.commentResolved)
+	case "resolve":
+		resolved := true
+		return runNoteEdit(args.commentID, &resolved)
+	case "unresolve":
+		resolved := false
+		return runNoteEdit(args.commentID, &resolved)
 	case "add":
 		return runCommentAddStandalone(args)
 	default:
@@ -1789,6 +1804,9 @@ func runNoteEdit(id string, resolved *bool) error {
 func runComment(args parsedArgs) error {
 	switch args.commentSub {
 	case "list":
+		if args.commentKind == "" {
+			args.commentKind = "comment"
+		}
 		return runCommentList(args)
 	case "edit":
 		return runCommentEdit(args.commentID, args.commentResolved)
@@ -1844,9 +1862,9 @@ func runCommentList(args parsedArgs) error {
 			all = filtered
 		}
 
-		// Filter by --kind (default: all)
+		// Filter by --kind
 		switch args.commentKind {
-		case "file":
+		case "comment":
 			var filtered []*comments.Comment
 			for _, c := range all {
 				if !c.IsStandalone() {

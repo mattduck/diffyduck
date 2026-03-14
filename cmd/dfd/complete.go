@@ -174,7 +174,7 @@ func completeFlagValue(flag, prefix string) []string {
 	case "--status":
 		values = []string{"unresolved", "resolved", "all"}
 	case "--kind":
-		values = []string{"file", "note", "all"}
+		values = []string{"comment", "note", "all"}
 	case "--resolved":
 		values = []string{"true", "false"}
 	default:
