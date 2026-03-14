@@ -163,6 +163,57 @@ file:good.go:456
 	}
 }
 
+func TestIndexStandaloneSerializeAndParse(t *testing.T) {
+	idx := NewIndex()
+
+	idx.Add("", "111")
+	idx.Add("", "222")
+	idx.Add("src/foo.go", "333")
+
+	serialized := idx.Serialize()
+
+	// Standalone entries use "standalone:" prefix
+	expected := `file:src/foo.go:333
+standalone:111
+standalone:222
+`
+	if serialized != expected {
+		t.Errorf("serialized mismatch:\ngot:\n%s\nwant:\n%s", serialized, expected)
+	}
+
+	// Parse back
+	parsed := ParseIndex(serialized)
+
+	standaloneIDs := parsed.Get("")
+	if len(standaloneIDs) != 2 {
+		t.Errorf("expected 2 standalone IDs, got %d: %v", len(standaloneIDs), standaloneIDs)
+	}
+
+	fileIDs := parsed.Get("src/foo.go")
+	if len(fileIDs) != 1 || fileIDs[0] != "333" {
+		t.Errorf("expected [333], got %v", fileIDs)
+	}
+
+	// All should return all 3
+	all := parsed.All()
+	if len(all) != 3 {
+		t.Errorf("expected 3 total, got %d: %v", len(all), all)
+	}
+}
+
+func TestIndexStandaloneRemove(t *testing.T) {
+	idx := NewIndex()
+	idx.Add("", "111")
+	idx.Add("", "222")
+
+	idx.Remove("", "111")
+
+	ids := idx.Get("")
+	if len(ids) != 1 || ids[0] != "222" {
+		t.Errorf("expected [222], got %v", ids)
+	}
+}
+
 func TestIndexFileWithColons(t *testing.T) {
 	// File paths shouldn't have colons normally, but test edge case
 	idx := NewIndex()

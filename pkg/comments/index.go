@@ -68,12 +68,16 @@ func (idx *Index) All() []string {
 }
 
 // Serialize converts the index to its storage format.
-// Format: one line per entry as "file:<path>:<commentID>"
+// Format: one line per entry as "file:<path>:<commentID>" or "standalone:<commentID>"
 func (idx *Index) Serialize() string {
 	var lines []string
 	for filePath, ids := range idx.entries {
 		for _, id := range ids {
-			lines = append(lines, "file:"+filePath+":"+id)
+			if filePath == "" {
+				lines = append(lines, "standalone:"+id)
+			} else {
+				lines = append(lines, "file:"+filePath+":"+id)
+			}
 		}
 	}
 	sort.Strings(lines)
@@ -89,7 +93,19 @@ func ParseIndex(data string) *Index {
 
 	for _, line := range strings.Split(data, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || !strings.HasPrefix(line, "file:") {
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "standalone:") {
+			commentID := strings.TrimPrefix(line, "standalone:")
+			if commentID != "" {
+				idx.Add("", commentID)
+			}
+			continue
+		}
+
+		if !strings.HasPrefix(line, "file:") {
 			continue
 		}
 

@@ -94,7 +94,7 @@ func isFlag(w string) bool {
 // flagTakesValue returns true if the flag consumes a separate next word as its value.
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--exclude", "-e", "-n", "--since", "--status", "-b", "--branch", "--cpuprofile", "-m", "--ref", "--author":
+	case "--exclude", "-e", "-n", "--since", "--status", "--kind", "-b", "--branch", "--cpuprofile", "-m", "--ref", "--author":
 		return true
 	}
 	return false
@@ -173,6 +173,8 @@ func completeFlagValue(flag, prefix string) []string {
 		values = []string{"no", "normal", "all"}
 	case "--status":
 		values = []string{"unresolved", "resolved", "all"}
+	case "--kind":
+		values = []string{"file", "nofile", "all"}
 	case "--resolved":
 		values = []string{"true", "false"}
 	default:
@@ -202,7 +204,7 @@ func flagsForCmd(cmd string) []string {
 	case "status":
 		return append(global, "--symbols", "--untracked-files", "--branches")
 	case "comment":
-		return append(global, "-n", "-b", "-m", "--since", "--status", "--oneline", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author")
+		return append(global, "-n", "-b", "-m", "--since", "--status", "--kind", "--oneline", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author")
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:

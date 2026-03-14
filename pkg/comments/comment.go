@@ -89,37 +89,44 @@ func NewID() string {
 	return strconv.FormatInt(time.Now().UnixMilli(), 10)
 }
 
+// IsStandalone returns true if the comment has no file attachment.
+func (c *Comment) IsStandalone() bool {
+	return c.File == ""
+}
+
 // Serialize converts a Comment to its blob format (patch with metadata).
 func (c *Comment) Serialize() string {
 	var b strings.Builder
 
-	// Write the patch header and context
-	b.WriteString(fmt.Sprintf("--- a/%s\n", c.File))
-	b.WriteString(fmt.Sprintf("+++ b/%s\n", c.File))
+	// Write patch header and context only for file-attached comments
+	if c.File != "" {
+		b.WriteString(fmt.Sprintf("--- a/%s\n", c.File))
+		b.WriteString(fmt.Sprintf("+++ b/%s\n", c.File))
 
-	// Calculate hunk header line numbers
-	// We show 2 lines above, the line itself, and 2 lines below (up to 5 lines total)
-	startLine := max(1, c.Line-len(c.Context.Above))
-	totalLines := len(c.Context.Above) + 1 + len(c.Context.Below)
-	b.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n", startLine, totalLines, startLine, totalLines))
+		// Calculate hunk header line numbers
+		// We show 2 lines above, the line itself, and 2 lines below (up to 5 lines total)
+		startLine := max(1, c.Line-len(c.Context.Above))
+		totalLines := len(c.Context.Above) + 1 + len(c.Context.Below)
+		b.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n", startLine, totalLines, startLine, totalLines))
 
-	// Write context lines above
-	for _, line := range c.Context.Above {
-		b.WriteString(" ")
-		b.WriteString(line)
+		// Write context lines above
+		for _, line := range c.Context.Above {
+			b.WriteString(" ")
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+
+		// Write the commented line (as addition to make it stand out)
+		b.WriteString("+")
+		b.WriteString(c.Context.Line)
 		b.WriteString("\n")
-	}
 
-	// Write the commented line (as addition to make it stand out)
-	b.WriteString("+")
-	b.WriteString(c.Context.Line)
-	b.WriteString("\n")
-
-	// Write context lines below
-	for _, line := range c.Context.Below {
-		b.WriteString(" ")
-		b.WriteString(line)
-		b.WriteString("\n")
+		// Write context lines below
+		for _, line := range c.Context.Below {
+			b.WriteString(" ")
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
 	}
 
 	// Write ID first so it's easy to find

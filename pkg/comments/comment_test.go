@@ -223,6 +223,74 @@ func TestCommentSerializeMinimal(t *testing.T) {
 	}
 }
 
+func TestCommentSerializeStandalone(t *testing.T) {
+	now := time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC)
+	c := &Comment{
+		ID:      "999",
+		Text:    "TODO: investigate flaky tests",
+		Branch:  "main",
+		Created: now,
+		Updated: now,
+	}
+
+	serialized := c.Serialize()
+
+	// Should not contain patch headers
+	if strings.Contains(serialized, "--- a/") {
+		t.Error("standalone serialized should not contain patch header")
+	}
+	if strings.Contains(serialized, "+++ b/") {
+		t.Error("standalone serialized should not contain patch header")
+	}
+	if strings.Contains(serialized, "@@ ") {
+		t.Error("standalone serialized should not contain hunk header")
+	}
+
+	// Should contain comment text and metadata
+	if !strings.Contains(serialized, "# COMMENT:") {
+		t.Error("should contain COMMENT section")
+	}
+	if !strings.Contains(serialized, "TODO: investigate flaky tests") {
+		t.Error("should contain comment text")
+	}
+	if !strings.Contains(serialized, "# BRANCH: main") {
+		t.Error("should contain BRANCH")
+	}
+
+	// Round-trip
+	parsed, err := ParseComment("999", serialized)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	if parsed.Text != "TODO: investigate flaky tests" {
+		t.Errorf("text mismatch: got %q", parsed.Text)
+	}
+	if parsed.File != "" {
+		t.Errorf("expected empty File, got %q", parsed.File)
+	}
+	if parsed.Line != 0 {
+		t.Errorf("expected Line 0, got %d", parsed.Line)
+	}
+	if parsed.Branch != "main" {
+		t.Errorf("expected Branch 'main', got %q", parsed.Branch)
+	}
+	if !parsed.IsStandalone() {
+		t.Error("expected IsStandalone() to be true")
+	}
+}
+
+func TestCommentIsStandalone(t *testing.T) {
+	standalone := &Comment{Text: "note"}
+	if !standalone.IsStandalone() {
+		t.Error("expected standalone")
+	}
+
+	attached := &Comment{Text: "note", File: "foo.go", Line: 1}
+	if attached.IsStandalone() {
+		t.Error("expected not standalone")
+	}
+}
+
 func TestParseCommentWithEmptyContext(t *testing.T) {
 	data := `--- a/test.go
 +++ b/test.go

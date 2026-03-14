@@ -122,6 +122,7 @@ type parsedArgs struct {
 	commentRaw         bool   // --raw: show raw git blob serialization
 	commentAllBranches bool   // --all-branches: show comments from all branches
 	commentBranch      string // --branch: filter to specific branch
+	commentKind        string // --kind: "file", "nofile", or "all" (default)
 	commentResolved    *bool  // --resolved=true/false: set resolved state (edit only)
 
 	// comment add-specific
@@ -490,6 +491,25 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		p.commentRaw = true
 	case arg == "--all-branches":
 		p.commentAllBranches = true
+	case arg == "--kind":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--kind requires a value (file, nofile, all)")
+		}
+		switch args[i+1] {
+		case "file", "nofile", "all":
+			p.commentKind = args[i+1]
+		default:
+			return 0, fmt.Errorf("--kind must be file, nofile, or all; got %q", args[i+1])
+		}
+		return 1, nil
+	case strings.HasPrefix(arg, "--kind="):
+		val := strings.TrimPrefix(arg, "--kind=")
+		switch val {
+		case "file", "nofile", "all":
+			p.commentKind = val
+		default:
+			return 0, fmt.Errorf("--kind must be file, nofile, or all; got %q", val)
+		}
 	case arg == "--branch":
 		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 			p.commentBranch = args[i+1]
@@ -668,8 +688,8 @@ func (p *parsedArgs) validate() error {
 		if p.commentResolved != nil && p.commentSub != "edit" {
 			return fmt.Errorf("--resolved is only valid for comment edit")
 		}
-		if p.commentSub == "add" && p.commentAddTarget == "" {
-			return fmt.Errorf("comment add requires a file:line argument")
+		if p.commentKind != "" && p.commentSub != "list" {
+			return fmt.Errorf("--kind is only valid for comment list")
 		}
 		if p.commentAddMessage != "" && p.commentSub != "add" {
 			return fmt.Errorf("-m is only valid for comment add")
@@ -729,6 +749,9 @@ func (p *parsedArgs) validate() error {
 	}
 	if p.commentAllBranches && p.commentBranch != "" {
 		return fmt.Errorf("--all-branches and --branch cannot be used together")
+	}
+	if p.cmd != "comment" && p.commentKind != "" {
+		return fmt.Errorf("--kind is only valid for comment command")
 	}
 	return nil
 }
@@ -1072,14 +1095,14 @@ Usage:
   dfd comment edit <id> [--resolved=true|false]
   dfd comment resolve <id>
   dfd comment unresolve <id>
-  dfd comment add <file>:<line> -m <message> [--ref <ref>]
+  dfd comment add [<file>:<line>] -m <message> [--ref <ref>]
 
 Sub-commands:
   list       List comments (default: 5 newest unresolved)
   edit       Open a comment in $EDITOR (or set resolved state with --resolved)
   resolve    Mark a comment as resolved (shorthand for edit --resolved=true)
   unresolve  Mark a comment as unresolved (shorthand for edit --resolved=false)
-  add        Add a new comment on a file and line
+  add        Add a new comment (standalone if no file:line given)
 
 Add flags:
   -m <message>        Comment text (required unless reading from stdin)
@@ -1096,6 +1119,7 @@ List flags:
       --since <d>  Only show comments created within duration (e.g. 6h, 7d, 2w, 3m, 1y, all)
       --oneline    Compact single-line output per comment
       --raw        Show raw git blob format for each comment
+      --kind <k>   Filter by kind: file, nofile, all (default: all)
   -b, --branch [b] Filter to a specific branch (default: current branch)
       --all-branches
                    Show comments from all branches (default: current branch only)
@@ -1103,8 +1127,11 @@ List flags:
 Examples:
   dfd comment add main.go:42 -m "This needs error handling"
   dfd comment add src/app.go:10 -m "Refactor this" --ref main
+  dfd comment add -m "TODO: investigate flaky tests"
   echo "Review this" | dfd comment add lib.go:5
   dfd comment list                    Show 5 newest unresolved
+  dfd comment list --kind nofile       Show only standalone comments
+  dfd comment list --kind file         Show only file-attached comments
   dfd comment list -n 10              Show 10 newest unresolved
   dfd comment list -n -3              Show 3 oldest unresolved
   dfd comment list -n 0               Show all unresolved
@@ -1762,6 +1789,26 @@ func runCommentList(args parsedArgs) error {
 			all = filtered
 		}
 
+		// Filter by --kind (default: all)
+		switch args.commentKind {
+		case "file":
+			var filtered []*comments.Comment
+			for _, c := range all {
+				if !c.IsStandalone() {
+					filtered = append(filtered, c)
+				}
+			}
+			all = filtered
+		case "nofile":
+			var filtered []*comments.Comment
+			for _, c := range all {
+				if c.IsStandalone() {
+					filtered = append(filtered, c)
+				}
+			}
+			all = filtered
+		}
+
 		// Filter by --since
 		if args.since != "" {
 			dur, err := parseSinceDuration(args.since)
@@ -1949,9 +1996,14 @@ func formatCommentOneline(c *comments.Comment, displayID string) string {
 		authorPart = fmt.Sprintf("  %s[%s]%s", cCyan, c.Author, cReset)
 	}
 
+	pathPart := styleCommentPath(c.File, c.Line)
+	if c.IsStandalone() {
+		pathPart = cGray + "(standalone)" + cReset
+	}
+
 	return fmt.Sprintf("%s%s%s%s  %s  %s%s%s%s%s  %s",
 		cBrightWhite, cBold, displayID, cReset,
-		styleCommentPath(c.File, c.Line),
+		pathPart,
 		cYellow, commitShort, cReset,
 		resolved,
 		authorPart,
@@ -1989,8 +2041,11 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	}
 	idLine := fmt.Sprintf("%sID:%s     %s%s%s", cGray, cReset, cGray, c.ID, cReset)
 
-	// Build right column: File, Ref
-	fileLine := fmt.Sprintf("%sFile:%s   %s", cGray, cReset, styleCommentPath(c.File, c.Line))
+	// Build right column: File (if attached), Ref
+	var fileLine string
+	if !c.IsStandalone() {
+		fileLine = fmt.Sprintf("%sFile:%s   %s", cGray, cReset, styleCommentPath(c.File, c.Line))
+	}
 	var refLine string
 	if commitShort != "" && c.Branch != "" {
 		refLine = fmt.Sprintf("%sRef:%s    %s%s%s on %s%s%s", cGray, cReset, cYellow, commitShort, cReset, cCyan, c.Branch, cReset)
@@ -2013,7 +2068,10 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 			statusLine,
 			idLine,
 		}
-		right := []string{fileLine}
+		var right []string
+		if fileLine != "" {
+			right = append(right, fileLine)
+		}
 		if refLine != "" {
 			right = append(right, refLine)
 		}
@@ -2046,7 +2104,9 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 		fmt.Fprintf(&b, "%sDate:%s   %s\n", cGray, cReset, dateVal)
 		fmt.Fprintf(&b, "%s\n", statusLine)
 		fmt.Fprintf(&b, "%s\n", idLine)
-		fmt.Fprintf(&b, "%s\n", fileLine)
+		if fileLine != "" {
+			fmt.Fprintf(&b, "%s\n", fileLine)
+		}
 		if refLine != "" {
 			fmt.Fprintf(&b, "%s\n", refLine)
 		}
@@ -2055,20 +2115,22 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 		}
 	}
 
-	// Diff context (with optional syntax highlighting)
-	b.WriteString("\n")
-	contextLines := highlightContext(c, h)
-	targetIdx := len(c.Context.Above)
-	startLine := c.Line - len(c.Context.Above)
-	// Determine width for line number gutter
-	lastLine := startLine + len(contextLines) - 1
-	gutterW := len(strconv.Itoa(lastLine))
-	for i, hl := range contextLines {
-		lineNo := startLine + i
-		if i == targetIdx {
-			fmt.Fprintf(&b, "%s>%s %s%*d%s %s%s\n", cBrightWhite+cBold, cReset, cBrightWhite+cBold, gutterW, lineNo, cReset, hl, cReset)
-		} else {
-			fmt.Fprintf(&b, "  %s%*d%s %s%s\n", cGray+cDim, gutterW, lineNo, cReset, hl, cReset)
+	// Diff context (with optional syntax highlighting) — skip for standalone comments
+	if !c.IsStandalone() {
+		b.WriteString("\n")
+		contextLines := highlightContext(c, h)
+		targetIdx := len(c.Context.Above)
+		startLine := c.Line - len(c.Context.Above)
+		// Determine width for line number gutter
+		lastLine := startLine + len(contextLines) - 1
+		gutterW := len(strconv.Itoa(lastLine))
+		for i, hl := range contextLines {
+			lineNo := startLine + i
+			if i == targetIdx {
+				fmt.Fprintf(&b, "%s>%s %s%*d%s %s%s\n", cBrightWhite+cBold, cReset, cBrightWhite+cBold, gutterW, lineNo, cReset, hl, cReset)
+			} else {
+				fmt.Fprintf(&b, "  %s%*d%s %s%s\n", cGray+cDim, gutterW, lineNo, cReset, hl, cReset)
+			}
 		}
 	}
 
@@ -2384,6 +2446,65 @@ func checkExistingComment(store *comments.Store, filePath string, lineNum int, f
 
 // runCommentAdd creates a new comment on a specific file and line.
 func runCommentAdd(args parsedArgs) error {
+	if args.commentAddTarget == "" {
+		return runCommentAddStandalone(args)
+	}
+	return runCommentAddFile(args)
+}
+
+// runCommentAddStandalone creates a standalone comment with no file attachment.
+func runCommentAddStandalone(args parsedArgs) error {
+	g := git.New()
+
+	// Get comment text from -m or stdin
+	text, err := readCommentText(args.commentAddMessage)
+	if err != nil {
+		return err
+	}
+
+	var commitSHA string
+	var branch string
+
+	if args.commentAddRef != "" {
+		sha, err := g.RevParse(args.commentAddRef)
+		if err != nil {
+			return fmt.Errorf("cannot resolve ref %q: %w", args.commentAddRef, err)
+		}
+		commitSHA = sha
+		if cb, err := g.CurrentBranch(); err == nil && cb != "HEAD" {
+			isAnc, err := g.IsAncestor(sha, "HEAD")
+			if err == nil && isAnc {
+				branch = cb
+			}
+		}
+	} else {
+		if cb, err := g.CurrentBranch(); err == nil {
+			branch = cb
+		}
+	}
+
+	now := time.Now()
+	c := &comments.Comment{
+		Text:      text,
+		Created:   now,
+		Updated:   now,
+		CommitSHA: commitSHA,
+		Branch:    branch,
+		Author:    args.commentAddAuthor,
+	}
+
+	store := comments.NewStore("")
+	id, err := store.WriteComment(c)
+	if err != nil {
+		return fmt.Errorf("saving comment: %w", err)
+	}
+
+	fmt.Printf("Created standalone comment %s\n", id)
+	return nil
+}
+
+// runCommentAddFile creates a comment attached to a specific file and line.
+func runCommentAddFile(args parsedArgs) error {
 	// Parse file:line target
 	filePath, lineNum, err := parseCommentTarget(args.commentAddTarget)
 	if err != nil {
@@ -2399,24 +2520,9 @@ func runCommentAdd(args parsedArgs) error {
 	}
 
 	// Get comment text from -m or stdin
-	text := args.commentAddMessage
-	if text == "" {
-		// Check if stdin is a pipe/file (not a terminal)
-		stat, err := os.Stdin.Stat()
-		if err != nil {
-			return fmt.Errorf("cannot read stdin: %w", err)
-		}
-		if (stat.Mode() & os.ModeCharDevice) != 0 {
-			return fmt.Errorf("no message provided: use -m or pipe text to stdin")
-		}
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return fmt.Errorf("reading stdin: %w", err)
-		}
-		text = strings.TrimRight(string(data), "\n")
-	}
-	if text == "" {
-		return fmt.Errorf("comment text cannot be empty")
+	text, err := readCommentText(args.commentAddMessage)
+	if err != nil {
+		return err
 	}
 
 	// Read file content (working tree or from ref)
@@ -2502,6 +2608,29 @@ func runCommentAdd(args parsedArgs) error {
 	return nil
 }
 
+// readCommentText reads comment text from -m flag or stdin.
+func readCommentText(message string) (string, error) {
+	text := message
+	if text == "" {
+		stat, err := os.Stdin.Stat()
+		if err != nil {
+			return "", fmt.Errorf("cannot read stdin: %w", err)
+		}
+		if (stat.Mode() & os.ModeCharDevice) != 0 {
+			return "", fmt.Errorf("no message provided: use -m or pipe text to stdin")
+		}
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", fmt.Errorf("reading stdin: %w", err)
+		}
+		text = strings.TrimRight(string(data), "\n")
+	}
+	if text == "" {
+		return "", fmt.Errorf("comment text cannot be empty")
+	}
+	return text, nil
+}
+
 // runCommentEdit opens a comment in $EDITOR for editing, or toggles
 // the resolved state when --resolved is provided.
 func runCommentEdit(id string, resolved *bool) error {
@@ -2574,11 +2703,8 @@ func runCommentEdit(id string, resolved *bool) error {
 	if err != nil {
 		return fmt.Errorf("invalid comment format: %w", err)
 	}
-	if parsed.File == "" {
-		return fmt.Errorf("invalid edit: FILE metadata is required")
-	}
-	if parsed.Line <= 0 {
-		return fmt.Errorf("invalid edit: LINE metadata must be positive")
+	if parsed.File != "" && parsed.Line <= 0 {
+		return fmt.Errorf("invalid edit: LINE metadata must be positive when FILE is set")
 	}
 
 	// Update timestamp and write back

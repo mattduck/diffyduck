@@ -1009,6 +1009,36 @@ func TestParseArgs_CommentAllBranchesOnDiff(t *testing.T) {
 	assert.Contains(t, err.Error(), "only valid for comment")
 }
 
+func TestParseArgs_CommentKind(t *testing.T) {
+	for _, kind := range []string{"file", "nofile", "all"} {
+		result, err := parseArgs([]string{"comment", "list", "--kind", kind})
+		require.NoError(t, err)
+		assert.Equal(t, kind, result.commentKind)
+	}
+	// --kind=value form
+	result, err := parseArgs([]string{"comment", "list", "--kind=nofile"})
+	require.NoError(t, err)
+	assert.Equal(t, "nofile", result.commentKind)
+}
+
+func TestParseArgs_CommentKindInvalid(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "list", "--kind", "bad"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "file, nofile, or all")
+}
+
+func TestParseArgs_CommentKindOnDiff(t *testing.T) {
+	_, err := parseArgs([]string{"diff", "--kind", "file"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid for comment")
+}
+
+func TestParseArgs_CommentKindOnlyForList(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "edit", "123", "--kind", "file"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid for comment list")
+}
+
 func TestParseArgs_CommentSince(t *testing.T) {
 	result, err := parseArgs([]string{"comment", "list", "--since=2w"})
 	require.NoError(t, err)
@@ -1091,10 +1121,13 @@ func TestParseArgs_CommentAddRefEquals(t *testing.T) {
 	assert.Equal(t, "abc123", result.commentAddRef)
 }
 
-func TestParseArgs_CommentAddMissingTarget(t *testing.T) {
-	_, err := parseArgs([]string{"comment", "add", "-m", "text"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "comment add requires a file:line argument")
+func TestParseArgs_CommentAddStandalone(t *testing.T) {
+	// No file:line is valid — creates a standalone comment
+	args, err := parseArgs([]string{"comment", "add", "-m", "text"})
+	require.NoError(t, err)
+	assert.Equal(t, "add", args.commentSub)
+	assert.Equal(t, "", args.commentAddTarget)
+	assert.Equal(t, "text", args.commentAddMessage)
 }
 
 func TestParseArgs_CommentAddMOnNonAdd(t *testing.T) {
