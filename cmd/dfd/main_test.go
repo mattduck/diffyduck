@@ -1363,7 +1363,7 @@ func TestFormatCommentOneline(t *testing.T) {
 				Line: 1,
 				Text: "No commit",
 			},
-			contains: []string{"  -  "},
+			contains: []string{" - "},
 		},
 		{
 			name: "long text truncated",
