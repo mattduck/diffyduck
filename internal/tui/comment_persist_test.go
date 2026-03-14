@@ -543,6 +543,134 @@ func TestDeleteCommentUpdatesIndex(t *testing.T) {
 	}
 }
 
+func TestReloadCommentsPicksUpExternalChanges(t *testing.T) {
+	dir := setupTestRepo(t)
+
+	store := comments.NewStore(dir)
+
+	pairs := []sidebyside.LinePair{
+		{
+			Old: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+		},
+		{
+			Old: sidebyside.Line{Num: 2, Content: "line 2", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 2, Content: "line 2", Type: sidebyside.Context},
+		},
+		{
+			Old: sidebyside.Line{Num: 0, Content: "", Type: sidebyside.Empty},
+			New: sidebyside.Line{Num: 3, Content: "added line", Type: sidebyside.Added},
+		},
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	}, WithCommentStore(store))
+	m.width = 80
+	m.height = 30
+
+	// Persist a comment
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.comments[key] = &comments.Comment{Text: "original"}
+	c := m.persistComment(key, "original")
+	if c == nil {
+		t.Fatal("persistComment returned nil")
+	}
+	m.persistedCommentIDs[key] = c.ID
+
+	// Externally resolve the comment (simulating CLI `dfd comment resolve`)
+	c.Resolved = true
+	c.Text = "original (resolved externally)"
+	if _, err := store.WriteComment(c); err != nil {
+		t.Fatalf("external WriteComment failed: %v", err)
+	}
+
+	// Before reload: in-memory state is stale
+	if m.comments[key].Resolved {
+		t.Fatal("comment should not be resolved before reload")
+	}
+
+	// Reload
+	loaded := m.reloadComments()
+	if loaded != 1 {
+		t.Errorf("expected 1 comment reloaded, got %d", loaded)
+	}
+
+	// After reload: in-memory state reflects external change
+	reloaded, ok := m.comments[key]
+	if !ok {
+		t.Fatal("comment not found after reload")
+	}
+	if !reloaded.Resolved {
+		t.Error("expected comment to be resolved after reload")
+	}
+	if reloaded.Text != "original (resolved externally)" {
+		t.Errorf("expected updated text, got %q", reloaded.Text)
+	}
+}
+
+func TestReloadCommentsNoStore(t *testing.T) {
+	pairs := []sidebyside.LinePair{
+		{
+			Old: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+		},
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	}) // No store
+	m.width = 80
+	m.height = 30
+
+	// Should not panic and return 0
+	loaded := m.reloadComments()
+	if loaded != 0 {
+		t.Errorf("expected 0 from reloadComments without store, got %d", loaded)
+	}
+}
+
+func TestReloadCommentsPreservesCollapsedState(t *testing.T) {
+	dir := setupTestRepo(t)
+
+	store := comments.NewStore(dir)
+
+	pairs := []sidebyside.LinePair{
+		{
+			Old: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 1, Content: "line 1", Type: sidebyside.Context},
+		},
+		{
+			Old: sidebyside.Line{Num: 2, Content: "line 2", Type: sidebyside.Context},
+			New: sidebyside.Line{Num: 2, Content: "line 2", Type: sidebyside.Context},
+		},
+	}
+
+	m := New([]sidebyside.FilePair{
+		{OldPath: "a/test.go", NewPath: "b/test.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	}, WithCommentStore(store))
+	m.width = 80
+	m.height = 30
+
+	// Persist a comment and collapse it
+	key := commentKey{fileIndex: 0, newLineNum: 2}
+	m.comments[key] = &comments.Comment{Text: "collapsed comment"}
+	c := m.persistComment(key, "collapsed comment")
+	if c == nil {
+		t.Fatal("persistComment returned nil")
+	}
+	m.persistedCommentIDs[key] = c.ID
+	m.collapsedComments[key] = true
+
+	// Reload
+	m.reloadComments()
+
+	// Collapsed state should survive
+	if !m.collapsedComments[key] {
+		t.Error("expected collapsedComments to be preserved after reload")
+	}
+}
+
 func TestCommentPersistenceNoStore(t *testing.T) {
 	// Model without store should work without errors
 	pairs := []sidebyside.LinePair{

@@ -141,6 +141,20 @@ func (m *Model) loadPersistedComments() int {
 	return m.matchCommentsForFiles(0, len(m.files))
 }
 
+// reloadComments clears cached comment state and re-reads everything from the
+// git store. This picks up external changes (e.g. comments resolved via CLI).
+func (m *Model) reloadComments() int {
+	if m.commentStore == nil {
+		return 0
+	}
+	m.commentIndex = nil
+	m.comments = make(map[commentKey]*comments.Comment)
+	m.persistedCommentIDs = make(map[commentKey]string)
+	m.loadedCommentIDs = make(map[string]bool)
+	// Keep collapsedComments — user's UI toggle state shouldn't reset.
+	return m.loadPersistedComments()
+}
+
 // getFileLinesForMatching extracts file lines suitable for comment matching.
 // It uses the new/left side line content from the file pairs.
 func getFileLinesForMatching(file sidebyside.FilePair) []string {

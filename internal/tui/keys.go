@@ -200,7 +200,7 @@ func (km KeyMap) BindingGroups() []BindingGroup {
 			{Keys: km.Yank, Desc: "Copy item (SHA / path / comment)"},
 			{Keys: km.YankUnresolved, Desc: "Copy unresolved comments"},
 			{Keys: km.YankAllComments, Desc: "Copy all comments"},
-			{Keys: km.RefreshLayout, Desc: "Refresh layout"},
+			{Keys: km.RefreshLayout, Desc: "Refresh layout & comments"},
 			{Keys: km.SnapshotToggle, Desc: "Toggle snapshot view"},
 			{Keys: km.Snapshot, Desc: "Take snapshot"},
 			{Keys: km.VisualMode, Desc: "Enter visual line mode"},

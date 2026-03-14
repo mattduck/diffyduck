@@ -1571,9 +1571,11 @@ func (m *Model) updateStructuralDiffWidth() {
 	}
 }
 
-// RefreshLayout recalculates all dynamic layout metrics based on actual content.
+// RefreshLayout recalculates all dynamic layout metrics based on actual content
+// and reloads comment state from the git store (picking up external changes).
 // Called by 'r' key and useful in tests to get properly aligned output.
 func (m *Model) RefreshLayout() {
+	m.reloadComments()
 	m.updateMaxLineNumSeen()
 	m.updateMaxNewContentWidth()
 	m.updateColumnWidths()

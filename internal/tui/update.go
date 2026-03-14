@@ -574,6 +574,8 @@ func (m Model) handleSingleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case matchesKey(msg, keys.RefreshLayout):
 		m.RefreshLayout()
+		m.statusMessage = "Refreshed"
+		m.statusMessageTime = time.Now()
 
 	case matchesKey(msg, keys.Snapshot):
 		if cmd := m.handleSnapshot(); cmd != nil {
