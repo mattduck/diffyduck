@@ -33,13 +33,19 @@ func (m *Model) loadCommentIndex() {
 	// Set unconditionally (before the index guard) so the branch filter
 	// works even when the index hasn't been created yet.
 	if m.currentBranch == "" {
-		if branch, err := m.commentStore.CurrentBranch(); err == nil {
+		if branch, err := m.commentStore.CurrentBranch(); err == nil && branch != "" {
 			m.currentBranch = branch
 		}
 	}
 
 	if m.commentIndex != nil {
 		return
+	}
+
+	// First load: warn if detached HEAD means branch filtering is inactive.
+	if m.currentBranch == "" {
+		m.statusMessage = "Comments: showing all branches (detached HEAD)"
+		m.statusMessageTime = time.Now()
 	}
 	idx, err := m.commentStore.ReadIndex()
 	if err != nil {

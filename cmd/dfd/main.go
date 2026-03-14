@@ -1901,26 +1901,18 @@ func runCommentList(args parsedArgs) error {
 			}
 			all = filtered
 		} else if !args.commentAllBranches {
-			// Default: filter by reachability from HEAD
-			reachable, revListErr := store.ReachableCommits("HEAD")
+			// Default: filter by current branch (matching TUI behaviour)
 			currentBranch, _ := store.CurrentBranch()
-
-			if revListErr == nil {
+			if currentBranch != "" {
 				var filtered []*comments.Comment
 				for _, c := range all {
-					if c.CommitSHA != "" {
-						if reachable[c.CommitSHA] {
-							filtered = append(filtered, c)
-						}
-					} else if c.Branch != "" {
-						if c.Branch == currentBranch {
-							filtered = append(filtered, c)
-						}
-					} else {
+					if c.Branch == currentBranch {
 						filtered = append(filtered, c)
 					}
 				}
 				all = filtered
+			} else {
+				fmt.Fprintln(os.Stderr, "warning: detached HEAD — showing comments from all branches")
 			}
 		}
 	}

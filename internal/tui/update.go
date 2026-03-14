@@ -1694,10 +1694,10 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch m.commentBranchFilter {
 		case CommentBranchCurrent:
 			m.commentBranchFilter = CommentBranchAll
-			m.statusMessage = "all comments"
+			m.statusMessage = "Comments: all branches"
 		case CommentBranchAll:
 			m.commentBranchFilter = CommentBranchCurrent
-			m.statusMessage = "branch comments only"
+			m.statusMessage = "Comments: current branch"
 		}
 		m.statusMessageTime = time.Now()
 		m.rebuildAllRowCachesPreservingCursor()
