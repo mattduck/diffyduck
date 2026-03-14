@@ -25,7 +25,7 @@ type completionContext struct {
 // subcommands is the list of completable subcommand names.
 // Aliases (d, l, b, s) are excluded — users who know them don't need completion.
 var subcommands = []string{
-	"diff", "show", "log", "clean", "branch", "status", "config", "comment", "help", "completion",
+	"diff", "show", "log", "clean", "branch", "status", "config", "comment", "note", "help", "completion",
 }
 
 // parseCompletionContext parses a word list from __complete into a context.
@@ -81,7 +81,7 @@ func parseCompletionContext(words []string) completionContext {
 func isSubcommand(w string) bool {
 	switch w {
 	case "diff", "d", "show", "log", "l", "clean", "branch", "b",
-		"config", "status", "s", "comment", "c", "help", "completion":
+		"config", "status", "s", "comment", "c", "note", "n", "help", "completion":
 		return true
 	}
 	return false
@@ -146,7 +146,7 @@ func generateCompletions(ctx completionContext, g git.Git, commentIDs commentIDs
 		return filterPrefix([]string{"bash", "zsh", "fish"}, ctx.current)
 	case "diff", "show", "log":
 		return completeRefs(ctx, g)
-	case "comment":
+	case "comment", "note":
 		// Complete sub-subcommand (list, edit, add) if not yet given.
 		if len(ctx.refs) == 0 {
 			return filterPrefix([]string{"list", "edit", "add", "resolve", "unresolve"}, ctx.current)
@@ -174,7 +174,7 @@ func completeFlagValue(flag, prefix string) []string {
 	case "--status":
 		values = []string{"unresolved", "resolved", "all"}
 	case "--kind":
-		values = []string{"file", "nofile", "all"}
+		values = []string{"file", "note", "all"}
 	case "--resolved":
 		values = []string{"true", "false"}
 	default:
@@ -205,6 +205,8 @@ func flagsForCmd(cmd string) []string {
 		return append(global, "--symbols", "--untracked-files", "--branches")
 	case "comment":
 		return append(global, "-n", "-b", "-m", "--since", "--status", "--kind", "--oneline", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author")
+	case "note":
+		return append(global, "-n", "-b", "-m", "--since", "--status", "--oneline", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author")
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:
