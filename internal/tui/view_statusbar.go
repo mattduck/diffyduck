@@ -123,8 +123,12 @@ func (m *Model) renderCommitLine(info StatusInfo) string {
 	rightWidth := len(rightText)
 
 	// Calculate available width for subject
-	// Layout: sha(7) + sep(1) + subject + gap(1) + rightSection
+	// Layout: sha(7) + sep(1) + subject + gap(1) + rightSection + gap(1)? + commentStats
+	commentSection, commentWidth := m.renderCommentStats()
 	fixedWidth := 7 + 1 + 1 + rightWidth
+	if commentWidth > 0 {
+		fixedWidth += 1 + commentWidth // gap + comment stats
+	}
 	availableWidth := m.width - fixedWidth
 	if availableWidth < 0 {
 		availableWidth = 0
@@ -143,8 +147,20 @@ func (m *Model) renderCommitLine(info StatusInfo) string {
 		subjectWidth = displayWidth(subject)
 	}
 
-	// Place right section immediately after subject with a small gap
-	return sha + " " + subject + " " + rightSection
+	// Build left content: sha + subject + file stats
+	leftContent := sha + " " + subject + " " + rightSection
+
+	// Right-aligned comment count
+	if commentWidth > 0 {
+		leftWidth := 7 + 1 + subjectWidth + 1 + rightWidth
+		padding := m.width - leftWidth - commentWidth
+		if padding < 1 {
+			padding = 1
+		}
+		return leftContent + strings.Repeat(" ", padding) + commentSection
+	}
+
+	return leftContent
 }
 
 // renderFileLine renders the file info line for the top bar.
@@ -195,11 +211,28 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		}
 	}
 
-	// Place right section immediately after content with a small gap
+	// Build left content: file info + file stats
+	var leftContent string
 	if rightSection != "" {
-		return content + " " + rightSection
+		leftContent = content + " " + rightSection
+	} else {
+		leftContent = content
 	}
-	return content
+
+	// Right-aligned comment count (only in non-commit mode; commit mode puts it on the commit line)
+	if !m.hasCommitInfo() {
+		commentSection, commentWidth := m.renderCommentStats()
+		if commentWidth > 0 {
+			leftWidth := lipgloss.Width(leftContent)
+			padding := m.width - leftWidth - commentWidth
+			if padding < 1 {
+				padding = 1
+			}
+			return leftContent + strings.Repeat(" ", padding) + commentSection
+		}
+	}
+
+	return leftContent
 }
 
 // renderBreadcrumbLine renders the breadcrumb line for the top bar.
@@ -219,6 +252,33 @@ func (m Model) renderBreadcrumbLine(info StatusInfo) string {
 		return breadcrumbStyle.Render(info.Breadcrumbs)
 	}
 	return ""
+}
+
+// renderCommentStats returns a styled comment count and its display width.
+// Format: "¶ N M" where N is unresolved (yellow) and M is resolved (grey).
+// Uses cached counts from allStoreComments (loaded once at startup).
+func (m Model) renderCommentStats() (string, int) {
+	unresolved := m.cachedUnresolved
+	resolved := m.cachedResolved
+
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	unresolvedText := fmt.Sprintf("%d", unresolved)
+	resolvedText := fmt.Sprintf("%d", resolved)
+	// ¶ is 1 display column wide (pilcrow sign, U+00B6).
+	rawWidth := 1 + 1 + len(unresolvedText) + 1 + len(resolvedText) // ¶ + space + N + space + M
+
+	// Color the icon yellow if there are unresolved comments, grey otherwise
+	var iconStyled string
+	if unresolved > 0 {
+		iconStyled = commentCheckboxStyle.Render("¶")
+	} else {
+		iconStyled = dimStyle.Render("¶")
+	}
+
+	styled := iconStyled + " " +
+		commentCheckboxStyle.Render(unresolvedText) + " " +
+		dimStyle.Render(resolvedText)
+	return styled, rawWidth
 }
 
 // formatRelativeDate converts an ISO 8601 date string to a relative format like "2d ago".

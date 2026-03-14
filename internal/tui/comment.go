@@ -201,6 +201,10 @@ func (m *Model) toggleResolveComment() bool {
 		}
 	}
 
+	// Update the cached store copy and recount
+	m.upsertStoreComment(c)
+	m.recomputeCommentCounts()
+
 	m.rebuildAllRowCachesPreservingCursor()
 	return true
 }
@@ -212,6 +216,9 @@ func (m *Model) submitComment() {
 
 	if text == "" {
 		// Empty comment = delete
+		if c, ok := m.comments[key]; ok {
+			m.removeStoreComment(c.ID)
+		}
 		delete(m.comments, key)
 		m.deletePersistedComment(key)
 	} else {
@@ -219,6 +226,7 @@ func (m *Model) submitComment() {
 		if c := m.persistComment(key, text); c != nil {
 			m.comments[key] = c
 			m.persistedCommentIDs[key] = c.ID
+			m.upsertStoreComment(c)
 		} else {
 			// No store available — create a minimal in-memory comment
 			now := time.Now()
@@ -229,6 +237,7 @@ func (m *Model) submitComment() {
 			}
 		}
 	}
+	m.recomputeCommentCounts()
 
 	m.w().commentMode = false
 	m.w().commentInput = ""

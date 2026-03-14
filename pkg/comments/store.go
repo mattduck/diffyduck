@@ -212,13 +212,14 @@ func (s *Store) CommentsForFile(filePath string) ([]*Comment, error) {
 }
 
 // AllComments returns all comments in the store.
+// Uses batch reading for efficiency (single git cat-file --batch call).
 func (s *Store) AllComments() ([]*Comment, error) {
 	idx, err := s.ReadIndex()
 	if err != nil {
 		return nil, err
 	}
 
-	return s.ReadComments(idx.All())
+	return s.ReadCommentsBatch(idx.All())
 }
 
 // gitCmd creates an exec.Command for git with a clean environment.

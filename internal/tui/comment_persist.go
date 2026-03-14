@@ -21,6 +21,72 @@ func cleanFilePath(path string) string {
 	return path
 }
 
+// loadAllStoreComments fetches every comment from the store once and caches
+// them for the top-bar count. Call recomputeCommentCounts after this (and
+// after any mutation or filter change) to update the cached totals.
+// Requires loadCommentIndex to have been called first (reuses the cached index
+// to avoid a redundant git call).
+func (m *Model) loadAllStoreComments() {
+	if m.commentStore == nil || m.commentIndex == nil {
+		return
+	}
+	if m.allStoreComments != nil {
+		return // already loaded
+	}
+	ids := m.commentIndex.All()
+	if len(ids) == 0 {
+		m.allStoreComments = []*comments.Comment{}
+		m.recomputeCommentCounts()
+		return
+	}
+	all, err := m.commentStore.ReadCommentsBatch(ids)
+	if err != nil {
+		m.allStoreComments = []*comments.Comment{} // don't retry on error
+		return
+	}
+	m.allStoreComments = all
+	m.recomputeCommentCounts()
+}
+
+// recomputeCommentCounts recalculates cachedUnresolved and cachedResolved
+// from allStoreComments, respecting the current branch filter.
+func (m *Model) recomputeCommentCounts() {
+	var unresolved, resolved int
+	for _, c := range m.allStoreComments {
+		if !m.isCommentIncluded(c) {
+			continue
+		}
+		if c.Resolved {
+			resolved++
+		} else {
+			unresolved++
+		}
+	}
+	m.cachedUnresolved = unresolved
+	m.cachedResolved = resolved
+}
+
+// upsertStoreComment updates or appends a comment in allStoreComments.
+func (m *Model) upsertStoreComment(c *comments.Comment) {
+	for i, sc := range m.allStoreComments {
+		if sc.ID == c.ID {
+			m.allStoreComments[i] = c
+			return
+		}
+	}
+	m.allStoreComments = append(m.allStoreComments, c)
+}
+
+// removeStoreComment removes a comment from allStoreComments by ID.
+func (m *Model) removeStoreComment(id string) {
+	for i, sc := range m.allStoreComments {
+		if sc.ID == id {
+			m.allStoreComments = append(m.allStoreComments[:i], m.allStoreComments[i+1:]...)
+			return
+		}
+	}
+}
+
 // loadCommentIndex loads the comment index from the git store.
 // The index is cheap (one git cat-file call for a small text blob) and maps
 // file paths to comment IDs. It's loaded once and kept in memory.
@@ -170,6 +236,9 @@ func (m *Model) reloadComments() int {
 	m.comments = make(map[commentKey]*comments.Comment)
 	m.persistedCommentIDs = make(map[commentKey]string)
 	m.loadedCommentIDs = make(map[string]bool)
+	m.allStoreComments = nil // force re-fetch from store
+	m.loadCommentIndex()
+	m.loadAllStoreComments()
 	// Keep collapsedComments — user's UI toggle state shouldn't reset.
 	return m.loadPersistedComments()
 }

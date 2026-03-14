@@ -1700,6 +1700,7 @@ func (m Model) handlePendingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMessage = "Comments: current branch"
 		}
 		m.statusMessageTime = time.Now()
+		m.recomputeCommentCounts()
 		m.rebuildAllRowCachesPreservingCursor()
 		return m, nil
 	}

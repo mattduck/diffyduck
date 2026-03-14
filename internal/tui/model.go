@@ -301,6 +301,9 @@ type Model struct {
 	loadedCommentIDs    map[string]bool                  // tracks fetched comment IDs to avoid re-reads
 	commentBranchFilter CommentBranchFilter              // branch-based comment filter mode
 	currentBranch       string                           // current branch name for comment filtering
+	allStoreComments    []*comments.Comment              // all comments from store (loaded once at startup)
+	cachedUnresolved    int                              // cached count of included unresolved comments
+	cachedResolved      int                              // cached count of included resolved comments
 
 	// Conflict state
 	hasConflicts bool // true when repo is in a merge/rebase/cherry-pick conflict state
@@ -752,6 +755,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 	// Load comment index early (before Init, which has a value receiver).
 	// The index is a pointer field, so it must be set here on the real model.
 	m.loadCommentIndex()
+	m.loadAllStoreComments()
 
 	m.calculateTotalLines()
 
