@@ -1832,6 +1832,13 @@ func runCommentList(args parsedArgs) error {
 		return fmt.Errorf("reading comments: %w", err)
 	}
 
+	// Compute short suffix IDs across all store comments for stable uniqueness
+	allIDs := make([]string, len(all))
+	for i, c := range all {
+		allIDs[i] = c.ID
+	}
+	shortIDs := shortSuffixes(allIDs)
+
 	// Filter by suffix if a positional arg was given
 	if args.commentID != "" {
 		var matched []*comments.Comment
@@ -1981,16 +1988,6 @@ func runCommentList(args parsedArgs) error {
 		defer h.Close()
 	}
 
-	// Compute short suffix IDs for oneline display
-	var shortIDs map[string]string
-	if args.commentOneline {
-		ids := make([]string, len(all))
-		for i, c := range all {
-			ids[i] = c.ID
-		}
-		shortIDs = shortSuffixes(ids)
-	}
-
 	// Get terminal width for two-column layout
 	termWidth := 80
 	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
@@ -2009,7 +2006,7 @@ func runCommentList(args parsedArgs) error {
 			if i > 0 {
 				fmt.Print("\n\n")
 			}
-			fmt.Print(formatCommentBlock(c, h, termWidth))
+			fmt.Print(formatCommentBlock(c, h, termWidth, shortIDs[c.ID]))
 		}
 	}
 	return nil
@@ -2093,7 +2090,7 @@ func visibleWidth(s string) int {
 // serialized patch context and metadata. If h is non-nil, context lines are
 // syntax-highlighted based on the comment's file extension. When termWidth is
 // wide enough, metadata is rendered in two columns.
-func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth int) string {
+func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth int, suffix string) string {
 	var b strings.Builder
 
 	// Header line
@@ -2110,7 +2107,13 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	} else {
 		statusLine = fmt.Sprintf("%sStatus:%s unresolved", cGray, cReset)
 	}
-	idLine := fmt.Sprintf("%sID:%s     %s%s%s", cGray, cReset, cGray, c.ID, cReset)
+	var idLine string
+	if suffix != "" && strings.HasSuffix(c.ID, suffix) {
+		prefix := c.ID[:len(c.ID)-len(suffix)]
+		idLine = fmt.Sprintf("%sID:%s     %s%s%s%s%s", cGray, cReset, cGray, prefix, cBrightWhite, suffix, cReset)
+	} else {
+		idLine = fmt.Sprintf("%sID:%s     %s%s%s", cGray, cReset, cGray, c.ID, cReset)
+	}
 
 	// Build right column: File (if attached), Ref
 	var fileLine string
