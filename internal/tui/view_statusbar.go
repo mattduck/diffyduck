@@ -123,7 +123,7 @@ func (m *Model) renderCommitLine(info StatusInfo) string {
 	rightWidth := len(rightText)
 
 	// Calculate available width for subject
-	// Layout: sha(7) + sep(1) + subject + padding(1+) + rightSection
+	// Layout: sha(7) + sep(1) + subject + gap(1) + rightSection
 	fixedWidth := 7 + 1 + 1 + rightWidth
 	availableWidth := m.width - fixedWidth
 	if availableWidth < 0 {
@@ -143,13 +143,8 @@ func (m *Model) renderCommitLine(info StatusInfo) string {
 		subjectWidth = displayWidth(subject)
 	}
 
-	// Calculate padding between subject and right section
-	padding := m.width - 7 - 1 - subjectWidth - rightWidth
-	if padding < 1 {
-		padding = 1
-	}
-
-	return sha + " " + subject + strings.Repeat(" ", padding) + rightSection
+	// Place right section immediately after subject with a small gap
+	return sha + " " + subject + " " + rightSection
 }
 
 // renderFileLine renders the file info line for the top bar.
@@ -163,7 +158,6 @@ func (m Model) renderFileLine(info StatusInfo) string {
 	// Right section: N files +123 -123 (only when no commit info - stats move to commit line otherwise)
 	var rightText string
 	var rightSection string
-	var rightWidth int
 	if !m.hasCommitInfo() {
 		totalAdded := 0
 		totalRemoved := 0
@@ -199,18 +193,13 @@ func (m Model) renderFileLine(info StatusInfo) string {
 		} else {
 			rightSection = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(rightText)
 		}
-		rightWidth = len(rightText)
 	}
 
-	// Calculate widths for padding
-	// Layout: content + padding + rightSection
-	contentWidth := lipgloss.Width(content)
-	padding := m.width - contentWidth - rightWidth
-	if padding < 0 {
-		padding = 0
+	// Place right section immediately after content with a small gap
+	if rightSection != "" {
+		return content + " " + rightSection
 	}
-
-	return content + strings.Repeat(" ", padding) + rightSection
+	return content
 }
 
 // renderBreadcrumbLine renders the breadcrumb line for the top bar.
