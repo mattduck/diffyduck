@@ -456,8 +456,8 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 				p.commentBranch = args[i+1]
 				return 1, nil
 			}
-			// No arg: will resolve to current branch in runCommentList
-			p.commentBranch = "."
+			// No arg: show all branches
+			p.commentAllBranches = true
 		} else {
 			p.showBranches = true
 		}
@@ -525,8 +525,8 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			p.commentBranch = args[i+1]
 			return 1, nil
 		}
-		// No arg: will resolve to current branch in runCommentList
-		p.commentBranch = "."
+		// No arg: show all branches
+		p.commentAllBranches = true
 	case strings.HasPrefix(arg, "--branch="):
 		p.commentBranch = strings.TrimPrefix(arg, "--branch=")
 		if p.commentBranch == "" {
@@ -1143,9 +1143,9 @@ List flags:
       --oneline    Compact single-line output per comment
       --raw        Show raw git blob format for each comment
       --kind <k>   Filter by kind: comment, note, all (default: comment)
-  -b, --branch [b] Filter to a specific branch (default: current branch)
+  -b, --branch [b] Filter to a specific branch, or all branches if no arg given
       --all-branches
-                   Show comments from all branches (default: current branch only)
+                   Alias for -b with no argument
 
 Examples:
   dfd comment add main.go:42 -m "This needs error handling"

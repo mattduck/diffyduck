@@ -1150,15 +1150,17 @@ func TestParseArgs_CommentBranch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "develop", result.commentBranch)
 
-	// --branch with no arg defaults to "." sentinel
+	// --branch with no arg means all branches
 	result, err = parseArgs([]string{"comment", "list", "--branch"})
 	require.NoError(t, err)
-	assert.Equal(t, ".", result.commentBranch)
+	assert.True(t, result.commentAllBranches)
+	assert.Empty(t, result.commentBranch)
 
-	// -b with no arg defaults to "." sentinel
+	// -b with no arg means all branches
 	result, err = parseArgs([]string{"comment", "list", "-b"})
 	require.NoError(t, err)
-	assert.Equal(t, ".", result.commentBranch)
+	assert.True(t, result.commentAllBranches)
+	assert.Empty(t, result.commentBranch)
 
 	// -b in status context means --branches, not --branch
 	result, err = parseArgs([]string{"status", "-b"})
@@ -1169,6 +1171,11 @@ func TestParseArgs_CommentBranch(t *testing.T) {
 
 func TestParseArgs_CommentBranchAllBranchesConflict(t *testing.T) {
 	_, err := parseArgs([]string{"comment", "list", "--branch=main", "--all-branches"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be used together")
+
+	// bare -b (all branches) followed by --branch=main also conflicts
+	_, err = parseArgs([]string{"comment", "list", "-b", "--branch=main"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot be used together")
 }
