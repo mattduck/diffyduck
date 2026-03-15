@@ -2294,7 +2294,7 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	}
 
 	// Build left column: Date, Status, ID
-	dateVal := c.Created.Format(time.RFC3339) + " (" + tui.FormatRelativeAge(now, c.Created) + ")"
+	dateVal := c.Created.Format("Jan 02 15:04") + " " + tui.FormatRelativeAge(now, c.Created)
 	var statusLine string
 	if c.Resolved {
 		statusLine = fmt.Sprintf("%sStatus:%s %sresolved%s", cGray, cReset, cGray, cReset)

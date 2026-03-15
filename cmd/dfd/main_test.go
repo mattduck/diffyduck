@@ -1599,7 +1599,7 @@ func TestFormatCommentBlock(t *testing.T) {
 	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created))
 
 	// Metadata (two-column layout at width 120)
-	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z")
+	assert.Contains(t, block, "┃ Date:   Jan 15 10:30 0m")
 	assert.Contains(t, block, "File:   src/foo.go:42\n")
 	assert.Contains(t, block, "┃ Status: unresolved")
 	assert.Contains(t, block, "Ref:    abc123d on main\n")
@@ -1635,7 +1635,7 @@ func TestFormatCommentBlock_NarrowTerminal(t *testing.T) {
 	block := stripANSI(formatCommentBlock(c, nil, 40, "", c.Created))
 
 	// Each field on its own line
-	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z (0m)\n")
+	assert.Contains(t, block, "┃ Date:   Jan 15 10:30 0m\n")
 	assert.Contains(t, block, "┃ Status: unresolved\n")
 	assert.Contains(t, block, "┃ ID:     1705312200000\n")
 	assert.Contains(t, block, "┃ File:   src/foo.go:42\n")
