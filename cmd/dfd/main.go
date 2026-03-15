@@ -2237,67 +2237,43 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	return out.String()
 }
 
-// shortSuffixes computes the shortest unique suffix for each ID.
-// Given ["1770968997415", "1770881758352"], it might return
-// {"1770968997415": "7415", "1770881758352": "8352"} if 4 chars suffice.
-// Minimum suffix length is 4.
+// shortSuffixes computes the shortest unique suffix for each ID individually.
+// Given ["1770968997415", "1770881758352"], it returns
+// {"1770968997415": "415", "1770881758352": "352"} because 3 chars already
+// distinguish each from every other ID. Minimum suffix length is 3.
 func shortSuffixes(ids []string) map[string]string {
 	result := make(map[string]string, len(ids))
 	if len(ids) == 0 {
 		return result
 	}
-	if len(ids) == 1 {
-		id := ids[0]
-		n := 3
-		if n > len(id) {
-			n = len(id)
-		}
-		result[id] = id[len(id)-n:]
-		return result
-	}
 
-	// Start at 4 chars and increase until all suffixes are unique
-	maxLen := 0
 	for _, id := range ids {
-		if len(id) > maxLen {
-			maxLen = len(id)
+		maxN := len(id)
+		minN := 3
+		if minN > maxN {
+			minN = maxN
 		}
-	}
+		var suffix string
 
-	for n := 3; n <= maxLen; n++ {
-		seen := make(map[string]int)
-		for _, id := range ids {
-			start := len(id) - n
-			if start < 0 {
-				start = 0
+		for n := minN; n <= maxN; n++ {
+			start := maxN - n
+			suffix = id[start:]
+			unique := true
+			for _, other := range ids {
+				if other == id {
+					continue
+				}
+				if strings.HasSuffix(other, suffix) {
+					unique = false
+					break
+				}
 			}
-			suffix := id[start:]
-			seen[suffix]++
-		}
-
-		allUnique := true
-		for _, count := range seen {
-			if count > 1 {
-				allUnique = false
+			if unique {
 				break
 			}
 		}
 
-		if allUnique {
-			for _, id := range ids {
-				start := len(id) - n
-				if start < 0 {
-					start = 0
-				}
-				result[id] = id[start:]
-			}
-			return result
-		}
-	}
-
-	// Fallback: full IDs
-	for _, id := range ids {
-		result[id] = id
+		result[id] = suffix
 	}
 	return result
 }

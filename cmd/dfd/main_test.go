@@ -1457,6 +1457,20 @@ func TestShortSuffixes(t *testing.T) {
 			want: map[string]string{},
 		},
 		{
+			name: "per-ID suffix lengths",
+			ids:  []string{"1770968997415", "1770881757415", "1770000000000"},
+			want: map[string]string{
+				"1770968997415": "97415",
+				"1770881757415": "57415",
+				"1770000000000": "000",
+			},
+		},
+		{
+			name: "differ only in first char",
+			ids:  []string{"xabc", "yabc"},
+			want: map[string]string{"xabc": "xabc", "yabc": "yabc"},
+		},
+		{
 			name: "short IDs",
 			ids:  []string{"abc", "def"},
 			want: map[string]string{"abc": "abc", "def": "def"},
