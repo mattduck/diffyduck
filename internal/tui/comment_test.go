@@ -1000,7 +1000,21 @@ func TestComment_FoldToggle_ContentLine_CollapseExpand(t *testing.T) {
 	assert.True(t, found, "comment rows should reappear after expanding")
 }
 
-// Test: C key resets per-comment overrides before cycling mode (org-mode style)
+// sendCommentToggle sends the "space c tab" chord sequence to cycle comment display mode.
+func sendCommentToggle(m Model) Model {
+	msgs := []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune{' '}},
+		{Type: tea.KeyRunes, Runes: []rune{'c'}},
+		{Type: tea.KeyTab},
+	}
+	for _, msg := range msgs {
+		newM, _ := m.Update(msg)
+		m = newM.(Model)
+	}
+	return m
+}
+
+// Test: comment toggle chord resets per-comment overrides before cycling mode (org-mode style)
 func TestComment_GlobalToggle_ResetsOverridesFirst(t *testing.T) {
 	m := makeCommentableTestModel(10)
 	m.files[0].FoldLevel = sidebyside.FoldHunks
@@ -1015,30 +1029,27 @@ func TestComment_GlobalToggle_ResetsOverridesFirst(t *testing.T) {
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
-	// C with overrides always snaps to unresolved-only default
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
-	model := newM.(Model)
+	// Comment toggle with overrides always snaps to unresolved-only default
+	model := sendCommentToggle(m)
 
 	assert.Equal(t, CommentShowUnresolved, model.commentDisplayMode,
-		"C with overrides should always snap to unresolved-only")
+		"comment toggle with overrides should always snap to unresolved-only")
 	assert.Empty(t, model.collapsedComments,
 		"per-comment overrides should be cleared")
 
-	// Next C (no overrides) cycles normally to ShowAll
-	newM2, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
-	model2 := newM2.(Model)
+	// Next toggle (no overrides) cycles normally to ShowAll
+	model2 := sendCommentToggle(model)
 	assert.Equal(t, CommentShowAll, model2.commentDisplayMode)
 
-	// Tab to hide a comment in ShowAll, then C should snap back to unresolved
+	// Tab to hide a comment in ShowAll, then toggle should snap back to unresolved
 	model2.collapsedComments[key] = true
 	model2.w().rowsCacheValid = false
 	model2.rebuildRowsCache()
 
-	newM3, _ := model2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
-	model3 := newM3.(Model)
+	model3 := sendCommentToggle(model2)
 
 	assert.Equal(t, CommentShowUnresolved, model3.commentDisplayMode,
-		"C from ShowAll with overrides should snap to unresolved-only")
+		"toggle from ShowAll with overrides should snap to unresolved-only")
 	assert.Empty(t, model3.collapsedComments)
 }
 
