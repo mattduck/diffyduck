@@ -352,8 +352,8 @@ func TestGenerateCompletions(t *testing.T) {
 		{
 			name:        "log flags",
 			words:       []string{"log", "--"},
-			wantContain: []string{"--exclude"},
-			wantAbsent:  []string{"--cached", "--since", "--verbose"},
+			wantContain: []string{"--exclude", "--since"},
+			wantAbsent:  []string{"--cached", "--verbose"},
 		},
 		{
 			name:       "flag value --untracked-files",

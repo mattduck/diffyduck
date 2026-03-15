@@ -748,9 +748,9 @@ func (p *parsedArgs) validate() error {
 
 	isCommentCmd := p.cmd == "comment"
 
-	// --since is only valid for branch and comment/note list
-	if p.cmd != "branch" && !isCommentCmd && p.since != "" {
-		return fmt.Errorf("--since is only valid for branch and comment commands")
+	// --since is only valid for branch, log, and comment/note list
+	if p.cmd != "branch" && p.cmd != "log" && !isCommentCmd && p.since != "" {
+		return fmt.Errorf("--since is only valid for branch, log, and comment commands")
 	}
 
 	// --status, --raw, etc. are only valid for comment/note
@@ -1020,12 +1020,15 @@ Flags:
   -n <count>       Limit number of commits
   -e, --exclude <glob>
                    Exclude files matching glob (repeatable)
+      --since <duration>
+                   Only show commits within duration (e.g. 30m, 6h, 7d, 2w, 3M, 1y, all)
 
 Examples:
   dfd log                    Browse recent commits
   dfd log -n 20              Browse last 20 commits
   dfd log main..feature      Commits in feature not in main
   dfd log -- src/            Commits touching src/
+  dfd log --since=2w         Commits from the last 2 weeks
 `
 
 const usageClean = `dfd clean - delete persisted snapshots
@@ -2975,11 +2978,20 @@ func runClean() error {
 func runLogMode(cfg config.Config, args parsedArgs) error {
 	g := git.New()
 
-	// Build extra args for git log (ref range + pathspec)
+	// Build extra args for git log (ref range + --since + pathspec)
 	pathspec := buildPathspec(args.paths, args.excludes)
 	var logArgs []string
 	if len(args.refs) > 0 {
 		logArgs = append(logArgs, args.refs[0])
+	}
+	if args.since != "" {
+		dur, err := parseSinceDuration(args.since)
+		if err != nil {
+			return fmt.Errorf("invalid --since value: %w", err)
+		}
+		if dur > 0 {
+			logArgs = append(logArgs, "--since="+time.Now().Add(-dur).UTC().Format(time.RFC3339))
+		}
 	}
 	logArgs = append(logArgs, pathspec...)
 

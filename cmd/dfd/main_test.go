@@ -395,10 +395,30 @@ func TestParseArgs_BranchSince(t *testing.T) {
 	}
 }
 
+func TestParseArgs_LogSince(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		since string
+	}{
+		{"--since=7d", []string{"log", "--since=7d"}, "7d"},
+		{"--since 2w", []string{"log", "--since", "2w"}, "2w"},
+		{"--since=all", []string{"log", "--since=all"}, "all"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseArgs(tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, "log", result.cmd)
+			assert.Equal(t, tt.since, result.since)
+		})
+	}
+}
+
 func TestParseArgs_SinceOnDiff(t *testing.T) {
 	_, err := parseArgs([]string{"diff", "--since=7d"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "only valid for branch and comment")
+	assert.Contains(t, err.Error(), "only valid for branch, log, and comment")
 }
 
 func TestParseArgs_SinceMissingValue(t *testing.T) {
