@@ -1959,12 +1959,19 @@ func runCommentList(args parsedArgs) error {
 		return all[i].Created.After(all[j].Created)
 	})
 
+	// Show block (verbose) output when -v is passed or when looking up by ID.
+	showBlock := args.commentVerbose || args.commentID != ""
+
 	// Apply -n limiting (skip when looking up by ID)
 	if args.commentID == "" {
 		if !args.commentNSet {
-			// Default: 5 newest
-			if len(all) > 5 {
-				all = all[:5]
+			// Default: 20 for oneline, 5 for verbose/block
+			defaultN := 20
+			if showBlock {
+				defaultN = 5
+			}
+			if len(all) > defaultN {
+				all = all[:defaultN]
 			}
 		} else if args.commentN == 0 {
 			// Uncapped: show all
@@ -1984,9 +1991,6 @@ func runCommentList(args parsedArgs) error {
 	// Reverse to chronological order (oldest first, newest at bottom near prompt)
 	slices.Reverse(all)
 
-	// Show block (verbose) output when -v is passed or when looking up by ID.
-	showBlock := args.commentVerbose || args.commentID != ""
-
 	// Create highlighter for block output (reused across comments)
 	var h *highlight.Highlighter
 	if showBlock {
@@ -2000,19 +2004,26 @@ func runCommentList(args parsedArgs) error {
 		termWidth = w
 	}
 
+	if !args.commentRaw && !showBlock {
+		now := time.Now()
+		cols := computeOnelineCols(all, shortIDs, now)
+		for _, c := range all {
+			fmt.Println(formatCommentOneline(c, shortIDs[c.ID], termWidth, now, cols))
+		}
+		return nil
+	}
+
 	for i, c := range all {
 		if args.commentRaw {
 			if i > 0 {
 				fmt.Print("\n")
 			}
 			fmt.Print(c.Serialize())
-		} else if showBlock {
+		} else {
 			if i > 0 {
 				fmt.Print("\n\n")
 			}
 			fmt.Print(formatCommentBlock(c, h, termWidth, shortIDs[c.ID], time.Now()))
-		} else {
-			fmt.Println(formatCommentOneline(c, shortIDs[c.ID]))
 		}
 	}
 	return nil
@@ -2023,6 +2034,7 @@ const (
 	cReset       = "\033[0m"
 	cBold        = "\033[1m"
 	cDim         = "\033[2m"
+	cStrike      = "\033[9m"
 	cYellow      = "\033[33m"      // fg=3 - commit SHA
 	cGreen       = "\033[38;5;10m" // fg=10 - added/resolved
 	cGray        = "\033[38;5;8m"  // fg=8 - labels, dim text
@@ -2031,21 +2043,109 @@ const (
 	cBrightWhite = "\033[38;5;15m" // fg=15 - basename, header text
 )
 
-// formatCommentOneline formats a single comment as a compact one-liner.
-// displayID is the short suffix ID to show (or full ID if empty).
-func formatCommentOneline(c *comments.Comment, displayID string) string {
+// onelineCols holds the computed column widths for oneline output,
+// derived from the actual content of all comments being displayed.
+type onelineCols struct {
+	id     int // width of ID column
+	date   int // width of date column
+	commit int // width of commit SHA column
+	branch int // width of branch column (0 if no comments have branches)
+	file   int // width of file column (0 if no comments have files)
+}
+
+// computeOnelineCols scans all comments to determine the column widths.
+// Each column is sized to fit the widest value, capped at a maximum.
+func computeOnelineCols(all []*comments.Comment, shortIDs map[string]string, now time.Time) onelineCols {
+	var cols onelineCols
+	for _, c := range all {
+		id := shortIDs[c.ID]
+		if id == "" {
+			id = c.ID
+		}
+		if w := len(id); w > cols.id {
+			cols.id = w
+		}
+
+		dateStr := c.Created.Format("Jan 02 15:04")
+		age := tui.FormatRelativeAge(now, c.Created)
+		if w := len(dateStr) + 1 + len(age); w > cols.date {
+			cols.date = w
+		}
+
+		commitShort := c.CommitSHA
+		if len(commitShort) > 7 {
+			commitShort = commitShort[:7]
+		}
+		if commitShort == "" {
+			commitShort = "-"
+		}
+		if w := len(commitShort); w > cols.commit {
+			cols.commit = w
+		}
+
+		if w := len(c.Branch); w > cols.branch {
+			cols.branch = w
+		}
+
+		if !c.IsStandalone() {
+			raw := fmt.Sprintf("%s:%d", c.File, c.Line)
+			if w := len(raw); w > cols.file {
+				cols.file = w
+			}
+		}
+	}
+	// Apply max caps
+	if cols.id > 8 {
+		cols.id = 8
+	}
+	if cols.date > 18 {
+		cols.date = 18
+	}
+	if cols.commit > 7 {
+		cols.commit = 7
+	}
+	if cols.branch > 20 {
+		cols.branch = 20
+	}
+	if cols.file > 30 {
+		cols.file = 30
+	}
+	return cols
+}
+
+// formatCommentOneline formats a single comment as a compact one-liner with
+// dynamically-sized columns: ID, date, commit, branch, file, title.
+// The title column fills remaining terminal width and is truncated to fit.
+func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, now time.Time, cols onelineCols) string {
 	if displayID == "" {
 		displayID = c.ID
 	}
-	// First line of text, truncated to 60 chars
-	text := c.Text
-	if idx := strings.IndexByte(text, '\n'); idx >= 0 {
-		text = text[:idx]
+
+	// Column 1: ID (strikethrough if resolved)
+	idCol := displayID
+	if len(idCol) > cols.id {
+		idCol = idCol[:cols.id]
 	}
-	if len(text) > 60 {
-		text = text[:57] + "..."
+	idStyled := fmt.Sprintf("%s%s%s%s", cBrightWhite, cBold, idCol, cReset)
+	if c.Resolved {
+		idStyled = fmt.Sprintf("%s%s%s%s%s", cBrightWhite, cBold, cStrike, idCol, cReset)
 	}
 
+	// Column 2: date with relative age (strikethrough if resolved)
+	dateStr := c.Created.Format("Jan 02 15:04")
+	age := tui.FormatRelativeAge(now, c.Created)
+	dateCol := fmt.Sprintf("%s %s", dateStr, age)
+	if len(dateCol) > cols.date {
+		dateCol = dateCol[:cols.date]
+	}
+	var dateStyled string
+	if c.Resolved {
+		dateStyled = fmt.Sprintf("%s%s%s%s", cGray, cStrike, dateCol, cReset)
+	} else {
+		dateStyled = fmt.Sprintf("%s%s%s", cGray, dateCol, cReset)
+	}
+
+	// Column 3: commit SHA (strikethrough if resolved)
 	commitShort := c.CommitSHA
 	if len(commitShort) > 7 {
 		commitShort = commitShort[:7]
@@ -2053,35 +2153,120 @@ func formatCommentOneline(c *comments.Comment, displayID string) string {
 	if commitShort == "" {
 		commitShort = "-"
 	}
-
-	resolved := ""
+	var commitStyled string
 	if c.Resolved {
-		resolved = cGreen + " [resolved]" + cReset
+		commitStyled = fmt.Sprintf("%s%s%s%s", cYellow, cStrike, commitShort, cReset)
+	} else {
+		commitStyled = fmt.Sprintf("%s%s%s", cYellow, commitShort, cReset)
+	}
+	commitPlainWidth := len(commitShort)
+
+	// Column 4: branch (strikethrough if resolved)
+	branchPart := c.Branch
+	if cols.branch > 0 && len(branchPart) > cols.branch {
+		branchPart = branchPart[:cols.branch-1] + "…"
+	}
+	var branchStyled string
+	branchPlainWidth := len(branchPart)
+	if branchPart != "" {
+		if c.Resolved {
+			branchStyled = fmt.Sprintf("%s%s%s%s", cCyan, cStrike, branchPart, cReset)
+		} else {
+			branchStyled = fmt.Sprintf("%s%s%s", cCyan, branchPart, cReset)
+		}
 	}
 
-	branchPart := ""
-	if c.Branch != "" {
-		branchPart = fmt.Sprintf(" %s%s%s", cCyan, c.Branch, cReset)
+	// Column 5: file (optional, strikethrough if resolved)
+	var fileStyled string
+	var filePlainWidth int
+	if !c.IsStandalone() && cols.file > 0 {
+		filePart := styleCommentPath(c.File, c.Line)
+		filePlainWidth = visibleWidth(filePart)
+		if filePlainWidth > cols.file {
+			raw := fmt.Sprintf("%s:%d", c.File, c.Line)
+			if len(raw) > cols.file-1 {
+				raw = raw[:cols.file-2] + "…"
+			}
+			filePart = cDirWhite + raw + cReset
+			filePlainWidth = len(raw)
+		}
+		if c.Resolved {
+			raw := fmt.Sprintf("%s:%d", c.File, c.Line)
+			if len(raw) > cols.file {
+				raw = raw[:cols.file-1] + "…"
+			}
+			filePart = cStrike + cDirWhite + raw + cReset
+			filePlainWidth = len(raw)
+		}
+		fileStyled = filePart
 	}
 
+	// Last column: author + title (fills remaining width; gray text if resolved)
 	authorPart := ""
+	authorWidth := 0
 	if c.Author != "" {
-		authorPart = fmt.Sprintf(" %s[%s]%s", cGray, c.Author, cReset)
+		authorPart = fmt.Sprintf("%s[%s]%s ", cGray, c.Author, cReset)
+		authorWidth = len(c.Author) + 3 // "[author] "
 	}
 
-	pathPart := styleCommentPath(c.File, c.Line)
-	if c.IsStandalone() {
-		pathPart = cGray + "(standalone)" + cReset
+	// Calculate remaining width for title
+	usedWidth := cols.id + 1 + cols.date + 1 + cols.commit + 1
+	if cols.branch > 0 {
+		usedWidth += cols.branch + 1
+	}
+	if cols.file > 0 {
+		usedWidth += cols.file + 1
+	}
+	usedWidth += authorWidth
+
+	text := c.Text
+	if idx := strings.IndexByte(text, '\n'); idx >= 0 {
+		text = text[:idx]
+	}
+	titleMax := termWidth - usedWidth
+	if titleMax < 10 {
+		titleMax = 10
+	}
+	if len(text) > titleMax {
+		if titleMax > 3 {
+			text = text[:titleMax-3] + "..."
+		} else {
+			text = text[:titleMax]
+		}
+	}
+	if c.Resolved {
+		text = cGray + text + cReset
 	}
 
-	return fmt.Sprintf("%s%s%s%s %s %s%s%s%s%s%s %s",
-		cBrightWhite, cBold, displayID, cReset,
-		pathPart,
-		cYellow, commitShort, cReset,
-		branchPart,
-		resolved,
-		authorPart,
-		text)
+	// Build the line with padded columns
+	var b strings.Builder
+	b.WriteString(idStyled)
+	b.WriteString(strings.Repeat(" ", cols.id-len(idCol)))
+	b.WriteByte(' ')
+	b.WriteString(dateStyled)
+	b.WriteString(strings.Repeat(" ", cols.date-len(dateCol)))
+	b.WriteByte(' ')
+	b.WriteString(commitStyled)
+	b.WriteString(strings.Repeat(" ", cols.commit-commitPlainWidth))
+	b.WriteByte(' ')
+	if cols.branch > 0 {
+		b.WriteString(branchStyled)
+		if branchPlainWidth < cols.branch {
+			b.WriteString(strings.Repeat(" ", cols.branch-branchPlainWidth))
+		}
+		b.WriteByte(' ')
+	}
+	if cols.file > 0 {
+		b.WriteString(fileStyled)
+		if filePlainWidth < cols.file {
+			b.WriteString(strings.Repeat(" ", cols.file-filePlainWidth))
+		}
+		b.WriteByte(' ')
+	}
+	b.WriteString(authorPart)
+	b.WriteString(text)
+
+	return b.String()
 }
 
 // ansiEscRe matches ANSI escape sequences.

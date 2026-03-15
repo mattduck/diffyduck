@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -1346,11 +1347,22 @@ index abc..def 100644
 	assert.False(t, isLineInDiff("", "main.go", 1))
 }
 
+// testOneline is a helper that computes cols from a single comment and formats it.
+func testOneline(c *comments.Comment, displayID string, termWidth int, now time.Time) string {
+	ids := map[string]string{}
+	if displayID != "" {
+		ids[c.ID] = displayID
+	}
+	cols := computeOnelineCols([]*comments.Comment{c}, ids, now)
+	return formatCommentOneline(c, displayID, termWidth, now, cols)
+}
+
 func TestFormatCommentOneline(t *testing.T) {
 	tests := []struct {
-		name     string
-		comment  *comments.Comment
-		contains []string
+		name      string
+		comment   *comments.Comment
+		termWidth int
+		contains  []string
 	}{
 		{
 			name: "basic",
@@ -1361,7 +1373,8 @@ func TestFormatCommentOneline(t *testing.T) {
 				CommitSHA: "abc123def456",
 				Text:      "Fix this bug",
 			},
-			contains: []string{"1705312200000", "src/foo.go:42", "abc123d", "Fix this bug"},
+			termWidth: 120,
+			contains:  []string{"17053122", "src/foo.go:42", "abc123d", "Fix this bug"},
 		},
 		{
 			name: "resolved",
@@ -1373,7 +1386,8 @@ func TestFormatCommentOneline(t *testing.T) {
 				Resolved:  true,
 				Text:      "Done",
 			},
-			contains: []string{"[resolved]", "Done"},
+			termWidth: 120,
+			contains:  []string{"Done"},
 		},
 		{
 			name: "no commit",
@@ -1383,7 +1397,8 @@ func TestFormatCommentOneline(t *testing.T) {
 				Line: 1,
 				Text: "No commit",
 			},
-			contains: []string{" - "},
+			termWidth: 120,
+			contains:  []string{" - "},
 		},
 		{
 			name: "long text truncated",
@@ -1394,7 +1409,8 @@ func TestFormatCommentOneline(t *testing.T) {
 				CommitSHA: "abc1234",
 				Text:      "This is a very long comment that should be truncated after sixty characters total",
 			},
-			contains: []string{"..."},
+			termWidth: 80,
+			contains:  []string{"..."},
 		},
 		{
 			name: "multiline uses first line",
@@ -1405,17 +1421,63 @@ func TestFormatCommentOneline(t *testing.T) {
 				CommitSHA: "abc1234",
 				Text:      "First line\nSecond line\nThird line",
 			},
-			contains: []string{"First line"},
+			termWidth: 120,
+			contains:  []string{"First line"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			line := stripANSI(formatCommentOneline(tt.comment, ""))
+			line := stripANSI(testOneline(tt.comment, "", tt.termWidth, time.Now()))
 			for _, s := range tt.contains {
 				assert.Contains(t, line, s)
 			}
 		})
 	}
+}
+
+func TestFormatCommentOneline_Standalone(t *testing.T) {
+	c := &comments.Comment{
+		ID:        "200",
+		CommitSHA: "abc1234",
+		Text:      "A general note",
+	}
+	line := stripANSI(testOneline(c, "", 120, time.Now()))
+	assert.NotContains(t, line, "(standalone)")
+	assert.Contains(t, line, "A general note")
+}
+
+func TestFormatCommentOneline_ResolvedStyling(t *testing.T) {
+	c := &comments.Comment{
+		ID:        "400",
+		File:      "test.go",
+		Line:      1,
+		CommitSHA: "abc1234",
+		Branch:    "main",
+		Resolved:  true,
+		Text:      "Done with this",
+	}
+	raw := testOneline(c, "", 120, time.Now())
+	// ID, date, commit, branch, file should have strikethrough (\033[9m)
+	assert.Equal(t, 5, strings.Count(raw, "\033[9m"), "expected 5 strikethrough sequences (ID, date, commit, branch, file)")
+	// Text should be wrapped in gray (\033[38;5;8m)
+	assert.Contains(t, raw, "\033[38;5;8mDone with this")
+	// No [resolved] tag
+	assert.NotContains(t, stripANSI(raw), "[resolved]")
+}
+
+func TestFormatCommentOneline_DateColumn(t *testing.T) {
+	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	c := &comments.Comment{
+		ID:        "300",
+		File:      "test.go",
+		Line:      1,
+		CommitSHA: "abc1234",
+		Created:   time.Date(2026, 3, 10, 14, 30, 0, 0, time.UTC),
+		Text:      "Date test",
+	}
+	line := stripANSI(testOneline(c, "", 120, now))
+	assert.Contains(t, line, "Mar 10 14:30")
+	assert.Contains(t, line, "4d")
 }
 
 func TestFormatCommentOneline_MultilineExcludesSecond(t *testing.T) {
@@ -1426,7 +1488,7 @@ func TestFormatCommentOneline_MultilineExcludesSecond(t *testing.T) {
 		CommitSHA: "abc1234",
 		Text:      "First line\nSecond line",
 	}
-	line := stripANSI(formatCommentOneline(c, ""))
+	line := stripANSI(testOneline(c, "", 120, time.Now()))
 	assert.NotContains(t, line, "Second line")
 }
 
@@ -1492,7 +1554,7 @@ func TestFormatCommentOneline_ShortID(t *testing.T) {
 		CommitSHA: "abc1234",
 		Text:      "Hello",
 	}
-	line := stripANSI(formatCommentOneline(c, "7415"))
+	line := stripANSI(testOneline(c, "7415", 120, time.Now()))
 	assert.Contains(t, line, "7415")
 	assert.NotContains(t, line, "1770968997415")
 }
@@ -1650,7 +1712,7 @@ func TestFormatCommentOneline_WithAuthor(t *testing.T) {
 		Author:    "Claude",
 		Text:      "Review note",
 	}
-	line := stripANSI(formatCommentOneline(c, ""))
+	line := stripANSI(testOneline(c, "", 120, time.Now()))
 	assert.Contains(t, line, "[Claude]")
 	assert.Contains(t, line, "Review note")
 }
@@ -1663,7 +1725,7 @@ func TestFormatCommentOneline_WithoutAuthor(t *testing.T) {
 		CommitSHA: "abc1234",
 		Text:      "Human note",
 	}
-	line := stripANSI(formatCommentOneline(c, ""))
+	line := stripANSI(testOneline(c, "", 120, time.Now()))
 	assert.NotContains(t, line, "[")
 	assert.Contains(t, line, "Human note")
 }
