@@ -933,6 +933,18 @@ func TestParseArgs_CommentResolvedOnlyValidForEdit(t *testing.T) {
 	assert.Contains(t, err.Error(), "--resolved is only valid for comment edit")
 }
 
+func TestParseArgs_CommentResolvedWithResolveSubcommand(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "resolve", "abc", "--resolved=true"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--resolved cannot be combined with comment resolve")
+}
+
+func TestParseArgs_CommentResolvedWithUnresolveSubcommand(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "unresolve", "abc", "--resolved=false"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--resolved cannot be combined with comment unresolve")
+}
+
 func TestParseArgs_CommentResolvedInvalidValue(t *testing.T) {
 	_, err := parseArgs([]string{"comment", "edit", "abc", "--resolved=maybe"})
 	assert.Error(t, err)

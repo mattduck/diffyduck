@@ -696,6 +696,9 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("%s %s requires a comment ID", p.cmdAlias, p.commentSub)
 		}
 		if p.commentResolved != nil && p.commentSub != "edit" {
+			if p.commentSub == "resolve" || p.commentSub == "unresolve" {
+				return fmt.Errorf("--resolved cannot be combined with %s %s (it already sets resolved state)", p.cmdAlias, p.commentSub)
+			}
 			return fmt.Errorf("--resolved is only valid for %s edit", p.cmdAlias)
 		}
 		if p.commentKind != "" && p.commentSub != "list" {
