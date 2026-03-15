@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -691,9 +692,9 @@ func TestBranchFilterCurrentBranch(t *testing.T) {
 	}
 
 	writeComment := func(line int, branch string) {
-		ctx := comments.LineContext{Line: "line " + string(rune('0'+line))}
+		ctx := comments.LineContext{Line: "line " + fmt.Sprintf("%d", line)}
 		c := &comments.Comment{
-			Text:    "comment on line " + string(rune('0'+line)),
+			Text:    "comment on line " + fmt.Sprintf("%d", line),
 			File:    "test.go",
 			Line:    line,
 			Context: ctx,
