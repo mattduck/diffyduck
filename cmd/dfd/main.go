@@ -119,7 +119,7 @@ type parsedArgs struct {
 	commentN           int    // -n count: positive=newest, negative=oldest, 0=uncapped
 	commentNSet        bool   // true if -n was explicitly passed
 	commentStatus      string // --status: "unresolved" (default), "resolved", "all"
-	commentOneline     bool   // --oneline: compact single-line output
+	commentVerbose     bool   // -v/--verbose: show full block output (default is oneline)
 	commentRaw         bool   // --raw: show raw git blob serialization
 	commentAllBranches bool   // --all-branches: show comments from all branches
 	commentBranch      string // --branch: filter to specific branch
@@ -495,8 +495,6 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		}
 
 	// comment flags
-	case arg == "--oneline":
-		p.commentOneline = true
 	case arg == "--raw":
 		p.commentRaw = true
 	case arg == "--all-branches":
@@ -615,7 +613,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("-n is only valid for log command")
 		}
 		if p.verbose {
-			return fmt.Errorf("-v is only valid for branch command")
+			return fmt.Errorf("-v is only valid for branch and comment commands")
 		}
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
@@ -637,7 +635,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("-n is only valid for log command")
 		}
 		if p.verbose {
-			return fmt.Errorf("-v is only valid for branch command")
+			return fmt.Errorf("-v is only valid for branch and comment commands")
 		}
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
@@ -656,7 +654,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("--snapshots/--no-snapshots are only valid for diff command")
 		}
 		if p.verbose {
-			return fmt.Errorf("-v is only valid for branch command")
+			return fmt.Errorf("-v is only valid for branch and comment commands")
 		}
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
@@ -678,19 +676,15 @@ func (p *parsedArgs) validate() error {
 		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
 			return fmt.Errorf("branch only accepts -v/--verbose and --since")
 		}
-	case "status":
-		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
-			return fmt.Errorf("status does not accept arguments")
-		}
-		if p.cached || p.unstaged || p.count > 0 || p.verbose || p.allMode {
-			return fmt.Errorf("status only accepts -S/--symbols, -u/--untracked-files, and -b/--branches")
-		}
 	case "comment":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("%s does not accept ref or path arguments", p.cmdAlias)
 		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
-			return fmt.Errorf("%s only accepts -n and --status", p.cmdAlias)
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
+			return fmt.Errorf("%s does not accept diff/log/status flags", p.cmdAlias)
+		}
+		if p.verbose {
+			p.commentVerbose = true
 		}
 		if commentSubTakesID(p.commentSub, true) && p.commentID == "" {
 			return fmt.Errorf("%s %s requires a comment ID", p.cmdAlias, p.commentSub)
@@ -718,6 +712,13 @@ func (p *parsedArgs) validate() error {
 		}
 		if p.cmdAlias == "note" && p.commentSub == "add" && p.commentAddTarget != "" {
 			return fmt.Errorf("note add does not accept a file:line argument (use comment add instead)")
+		}
+	case "status":
+		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
+			return fmt.Errorf("status does not accept arguments")
+		}
+		if p.cached || p.unstaged || p.count > 0 || p.verbose || p.allMode {
+			return fmt.Errorf("status only accepts -S/--symbols, -u/--untracked-files, and -b/--branches")
 		}
 	case "config":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
@@ -752,12 +753,9 @@ func (p *parsedArgs) validate() error {
 		return fmt.Errorf("--since is only valid for branch and comment commands")
 	}
 
-	// --status, --oneline, etc. are only valid for comment/note
+	// --status, --raw, etc. are only valid for comment/note
 	if !isCommentCmd && p.commentStatus != "" {
 		return fmt.Errorf("--status is only valid for comment command")
-	}
-	if !isCommentCmd && p.commentOneline {
-		return fmt.Errorf("--oneline is only valid for comment command")
 	}
 	if !isCommentCmd && p.commentRaw {
 		return fmt.Errorf("--raw is only valid for comment command")
@@ -1141,9 +1139,9 @@ Edit flags:
 
 List flags:
   -n <count>       Positive: newest N, negative: oldest |N|, 0: uncapped (default: 5)
+  -v, --verbose    Show full detail (default when looking up by ID)
       --status <s> Filter: unresolved (default), resolved, all
       --since <d>  Only show comments created within duration (e.g. 30m, 6h, 7d, 2w, 3M, 1y, all)
-      --oneline    Compact single-line output per comment
       --raw        Show raw git blob format for each comment
       --kind <k>   Filter by kind: comment, note, all (default: comment)
   -b, --branch [b] Filter to a specific branch, or all branches if no arg given
@@ -1164,8 +1162,8 @@ Examples:
   dfd comment list --status all       Include resolved
   dfd comment list --status resolved  Only resolved
   dfd comment list --since 2w         Comments from last 2 weeks
-  dfd comment list --oneline          Compact output
-  dfd comment list 415                Show comment(s) matching suffix
+  dfd comment list -v                 Full detail output
+  dfd comment list 415                Show comment(s) matching suffix (full detail)
   dfd comment edit <id>               Edit in $EDITOR
   dfd comment resolve <id>            Mark as resolved
   dfd comment unresolve <id>          Mark as unresolved
@@ -1986,9 +1984,12 @@ func runCommentList(args parsedArgs) error {
 	// Reverse to chronological order (oldest first, newest at bottom near prompt)
 	slices.Reverse(all)
 
-	// Create highlighter for multiline output (reused across comments)
+	// Show block (verbose) output when -v is passed or when looking up by ID.
+	showBlock := args.commentVerbose || args.commentID != ""
+
+	// Create highlighter for block output (reused across comments)
 	var h *highlight.Highlighter
-	if !args.commentOneline {
+	if showBlock {
 		h = highlight.New()
 		defer h.Close()
 	}
@@ -2005,13 +2006,13 @@ func runCommentList(args parsedArgs) error {
 				fmt.Print("\n")
 			}
 			fmt.Print(c.Serialize())
-		} else if args.commentOneline {
-			fmt.Println(formatCommentOneline(c, shortIDs[c.ID]))
-		} else {
+		} else if showBlock {
 			if i > 0 {
 				fmt.Print("\n\n")
 			}
 			fmt.Print(formatCommentBlock(c, h, termWidth, shortIDs[c.ID], time.Now()))
+		} else {
+			fmt.Println(formatCommentOneline(c, shortIDs[c.ID]))
 		}
 	}
 	return nil

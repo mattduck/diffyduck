@@ -299,8 +299,8 @@ func TestGenerateCompletions(t *testing.T) {
 		{
 			name:        "comment flags after sub-subcommand",
 			words:       []string{"comment", "list", "--"},
-			wantContain: []string{"--since", "--status", "--oneline", "--all-branches"},
-			wantAbsent:  []string{"--cached", "--verbose"},
+			wantContain: []string{"--since", "--status", "--verbose", "--all-branches"},
+			wantAbsent:  []string{"--cached", "--oneline"},
 		},
 		{
 			name:        "comment --status value",

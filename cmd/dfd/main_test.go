@@ -441,7 +441,7 @@ func TestParseSinceDuration(t *testing.T) {
 func TestParseArgs_VerboseOnDiff(t *testing.T) {
 	_, err := parseArgs([]string{"diff", "-v"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "only valid for branch")
+	assert.Contains(t, err.Error(), "only valid for branch and comment")
 }
 
 func TestParseArgs_MissingExcludeValue(t *testing.T) {
@@ -989,23 +989,23 @@ func TestParseArgs_CommentUnresolveMissingID(t *testing.T) {
 func TestParseArgs_CommentWithDiffFlags(t *testing.T) {
 	_, err := parseArgs([]string{"comment", "--cached"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "only accepts")
+	assert.Contains(t, err.Error(), "does not accept diff/log/status flags")
 }
 
-func TestParseArgs_CommentOneline(t *testing.T) {
-	result, err := parseArgs([]string{"comment", "list", "--oneline"})
+func TestParseArgs_CommentVerbose(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list", "-v"})
 	require.NoError(t, err)
-	assert.True(t, result.commentOneline)
+	assert.True(t, result.commentVerbose)
+}
+
+func TestParseArgs_CommentVerboseLong(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list", "--verbose"})
+	require.NoError(t, err)
+	assert.True(t, result.commentVerbose)
 }
 
 func TestParseArgs_CommentStatusOnDiff(t *testing.T) {
 	_, err := parseArgs([]string{"diff", "--status", "all"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "only valid for comment")
-}
-
-func TestParseArgs_CommentOnelineOnDiff(t *testing.T) {
-	_, err := parseArgs([]string{"diff", "--oneline"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "only valid for comment")
 }
@@ -1102,13 +1102,13 @@ func TestParseArgs_NoteDefault(t *testing.T) {
 
 func TestParseArgs_NoteListFlags(t *testing.T) {
 	// Shared flags should work with note command
-	result, err := parseArgs([]string{"note", "list", "--since", "2w", "--status", "all", "--oneline"})
+	result, err := parseArgs([]string{"note", "list", "--since", "2w", "--status", "all", "-v"})
 	require.NoError(t, err)
 	assert.Equal(t, "comment", result.cmd)
 	assert.Equal(t, "note", result.cmdAlias)
 	assert.Equal(t, "2w", result.since)
 	assert.Equal(t, "all", result.commentStatus)
-	assert.True(t, result.commentOneline)
+	assert.True(t, result.commentVerbose)
 }
 
 func TestParseArgs_NoteResolve(t *testing.T) {
