@@ -243,23 +243,23 @@ func TestGenerateCompletions(t *testing.T) {
 		{
 			name:        "flag value --since",
 			words:       []string{"branch", "--since", ""},
-			wantContain: []string{"7d", "2w", "1m", "3m", "1y", "all"},
+			wantContain: []string{"30m", "7d", "2w", "3M", "1y", "all"},
 		},
 		{
 			name:        "flag value --since with prefix",
-			words:       []string{"branch", "--since", "1"},
-			wantContain: []string{"1m", "1y"},
-			wantAbsent:  []string{"7d", "2w", "3m", "all"},
+			words:       []string{"branch", "--since", "3"},
+			wantContain: []string{"30m", "3M"},
+			wantAbsent:  []string{"7d", "2w", "1y", "all"},
 		},
 		{
 			name:        "inline --since=value",
 			words:       []string{"branch", "--since="},
-			wantContain: []string{"--since=7d", "--since=2w", "--since=1m"},
+			wantContain: []string{"--since=7d", "--since=2w", "--since=30m"},
 		},
 		{
 			name:        "inline --since=partial",
-			words:       []string{"branch", "--since=1"},
-			wantContain: []string{"--since=1m", "--since=1y"},
+			words:       []string{"branch", "--since=3"},
+			wantContain: []string{"--since=30m", "--since=3M"},
 			wantAbsent:  []string{"--since=7d"},
 		},
 		{

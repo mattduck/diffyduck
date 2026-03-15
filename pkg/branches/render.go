@@ -288,7 +288,7 @@ func relativeTime(t time.Time, now time.Time) string {
 	case d < 30*24*time.Hour:
 		return fmt.Sprintf("%dw ago", int(d.Hours()/(24*7)))
 	case d < 365*24*time.Hour:
-		return fmt.Sprintf("%dmo ago", int(d.Hours()/(24*30)))
+		return fmt.Sprintf("%dM ago", int(d.Hours()/(24*30)))
 	default:
 		return fmt.Sprintf("%dy ago", int(d.Hours()/(24*365)))
 	}

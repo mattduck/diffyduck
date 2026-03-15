@@ -412,10 +412,11 @@ func TestParseSinceDuration(t *testing.T) {
 		want  time.Duration
 		err   bool
 	}{
+		{"30m", 30 * time.Minute, false},
 		{"6h", 6 * time.Hour, false},
 		{"7d", 7 * 24 * time.Hour, false},
 		{"2w", 14 * 24 * time.Hour, false},
-		{"3m", 90 * 24 * time.Hour, false},
+		{"3M", 90 * 24 * time.Hour, false},
 		{"1y", 365 * 24 * time.Hour, false},
 		{"all", 0, false},
 		{"", 0, false},
@@ -1499,7 +1500,7 @@ func TestFormatCommentBlock(t *testing.T) {
 		},
 	}
 
-	block := stripANSI(formatCommentBlock(c, nil, 120, ""))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created))
 
 	// Metadata (two-column layout at width 120)
 	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z")
@@ -1535,10 +1536,10 @@ func TestFormatCommentBlock_NarrowTerminal(t *testing.T) {
 	}
 
 	// Narrow terminal forces single-column layout
-	block := stripANSI(formatCommentBlock(c, nil, 40, ""))
+	block := stripANSI(formatCommentBlock(c, nil, 40, "", c.Created))
 
 	// Each field on its own line
-	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z\n")
+	assert.Contains(t, block, "┃ Date:   2026-01-15T10:30:00Z (0m)\n")
 	assert.Contains(t, block, "┃ Status: unresolved\n")
 	assert.Contains(t, block, "┃ ID:     1705312200000\n")
 	assert.Contains(t, block, "┃ File:   src/foo.go:42\n")
@@ -1555,7 +1556,7 @@ func TestFormatCommentBlock_Resolved(t *testing.T) {
 		Text:     "Done",
 		Context:  comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil, 120, ""))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created))
 	assert.Contains(t, block, "┃ Status: resolved\n")
 	assert.Contains(t, block, "┃ ID:     100\n")
 }
@@ -1569,7 +1570,7 @@ func TestFormatCommentBlock_NoCommit(t *testing.T) {
 		Text:    "No commit",
 		Context: comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil, 120, ""))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created))
 	assert.NotContains(t, block, "Ref:")
 }
 
@@ -1591,7 +1592,7 @@ func TestFormatCommentBlock_Highlighted(t *testing.T) {
 	}
 
 	// With highlighter: should produce valid output (ANSI codes present)
-	block := formatCommentBlock(c, h, 120, "")
+	block := formatCommentBlock(c, h, 120, "", c.Created)
 	stripped := stripANSI(block)
 
 	// Content should be the same after stripping ANSI
@@ -1602,7 +1603,7 @@ func TestFormatCommentBlock_Highlighted(t *testing.T) {
 	assert.Greater(t, len(block), len(stripped), "highlighting should add ANSI codes")
 
 	// Nil highlighter should also work (plain text)
-	plain := formatCommentBlock(c, nil, 120, "")
+	plain := formatCommentBlock(c, nil, 120, "", c.Created)
 	plainStripped := stripANSI(plain)
 	assert.Equal(t, stripped, plainStripped, "stripped output should match regardless of highlighter")
 }
@@ -1621,7 +1622,7 @@ func TestFormatCommentBlock_UnsupportedLanguage(t *testing.T) {
 	}
 
 	// Should gracefully fall back to plain text
-	block := formatCommentBlock(c, h, 120, "")
+	block := formatCommentBlock(c, h, 120, "", c.Created)
 	stripped := stripANSI(block)
 	assert.Contains(t, stripped, "some content")
 }
@@ -1664,7 +1665,7 @@ func TestFormatCommentBlock_WithAuthor(t *testing.T) {
 		Text:    "Check this",
 		Context: comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil, 120, ""))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created))
 	// Author should appear in the right column as a header
 	assert.Contains(t, block, "Author: Claude")
 	// Should NOT appear as a separate "commented" header line
@@ -1680,7 +1681,7 @@ func TestFormatCommentBlock_WithoutAuthor(t *testing.T) {
 		Text:    "No author",
 		Context: comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil, 120, ""))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created))
 	assert.NotContains(t, block, "Author:")
 }
 
@@ -1695,6 +1696,6 @@ func TestFormatCommentBlock_AuthorNarrowTerminal(t *testing.T) {
 		Context: comments.LineContext{Line: "code"},
 	}
 	// Single column fallback
-	block := stripANSI(formatCommentBlock(c, nil, 40, ""))
+	block := stripANSI(formatCommentBlock(c, nil, 40, "", c.Created))
 	assert.Contains(t, block, "Author: Bot")
 }

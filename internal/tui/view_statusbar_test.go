@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
@@ -1750,4 +1751,34 @@ func TestFormatSignatureStyled_NoParams(t *testing.T) {
 	result := formatSignatureStyled(entry, 0, nameStyle, typeStyle, punctStyle)
 	stripped := strip(result)
 	assert.Equal(t, "Close() -> error", stripped)
+}
+
+func TestFormatRelativeAge(t *testing.T) {
+	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		t    time.Time
+		want string
+	}{
+		{"just now", now, "0m"},
+		{"30 seconds", now.Add(-30 * time.Second), "0m"},
+		{"5 minutes", now.Add(-5 * time.Minute), "5m"},
+		{"59 minutes", now.Add(-59 * time.Minute), "59m"},
+		{"1 hour", now.Add(-time.Hour), "1h"},
+		{"23 hours", now.Add(-23 * time.Hour), "23h"},
+		{"1 day", now.Add(-24 * time.Hour), "1d"},
+		{"6 days", now.Add(-6 * 24 * time.Hour), "6d"},
+		{"1 week", now.Add(-7 * 24 * time.Hour), "1w"},
+		{"3 weeks", now.Add(-21 * 24 * time.Hour), "3w"},
+		{"30 days", now.Add(-30 * 24 * time.Hour), "1M"},
+		{"90 days", now.Add(-90 * 24 * time.Hour), "3M"},
+		{"365 days", now.Add(-365 * 24 * time.Hour), "1y"},
+		{"2 years", now.Add(-730 * 24 * time.Hour), "2y"},
+		{"future", now.Add(time.Hour), "0m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, FormatRelativeAge(now, tt.t))
+		})
+	}
 }

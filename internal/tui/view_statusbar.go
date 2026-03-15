@@ -330,9 +330,9 @@ func formatRelativeDate(isoDate string) string {
 	case diff < 365*24*time.Hour:
 		months := int(diff.Hours() / 24 / 30)
 		if months == 1 {
-			return "1mo ago"
+			return "1M ago"
 		}
-		return fmt.Sprintf("%dmo ago", months)
+		return fmt.Sprintf("%dM ago", months)
 	default:
 		years := int(diff.Hours() / 24 / 365)
 		if years == 1 {
@@ -342,9 +342,36 @@ func formatRelativeDate(isoDate string) string {
 	}
 }
 
+// FormatRelativeAge returns a compact relative age string:
+// "0m", "34m", "2h", "3d", "2w", "3M", "1y".
+func FormatRelativeAge(now, t time.Time) string {
+	d := now.Sub(t)
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Hour:
+		m := int(d.Minutes())
+		if m < 1 {
+			return "0m"
+		}
+		return fmt.Sprintf("%dm", m)
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dw", int(d.Hours()/(7*24)))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dM", int(d.Hours()/(30*24)))
+	default:
+		return fmt.Sprintf("%dy", int(d.Hours()/(365*24)))
+	}
+}
+
 // formatShortRelativeDate returns abbreviated relative time without "ago".
 // Used in commit header rows for compact display.
-// Format: "now", "1m", "4h", "2d", "3w", "1mo", "1y"
+// Format: "now", "1m", "4h", "2d", "3w", "1M", "1y"
 func formatShortRelativeDate(isoDate string) string {
 	if isoDate == "" {
 		return ""
@@ -365,24 +392,10 @@ func formatShortRelativeDate(isoDate string) string {
 	}
 
 	now := time.Now()
-	diff := now.Sub(t)
-
-	switch {
-	case diff < time.Minute:
+	if now.Sub(t) < time.Minute {
 		return "now"
-	case diff < time.Hour:
-		return fmt.Sprintf("%dm", int(diff.Minutes()))
-	case diff < 24*time.Hour:
-		return fmt.Sprintf("%dh", int(diff.Hours()))
-	case diff < 7*24*time.Hour:
-		return fmt.Sprintf("%dd", int(diff.Hours()/24))
-	case diff < 30*24*time.Hour:
-		return fmt.Sprintf("%dw", int(diff.Hours()/24/7))
-	case diff < 365*24*time.Hour:
-		return fmt.Sprintf("%dmo", int(diff.Hours()/24/30))
-	default:
-		return fmt.Sprintf("%dy", int(diff.Hours()/24/365))
 	}
+	return FormatRelativeAge(now, t)
 }
 
 // formatAbsoluteTime returns a compact absolute time string.

@@ -22,7 +22,7 @@ func TestRelativeTime(t *testing.T) {
 		{"hours", now.Add(-2 * time.Hour), "2h ago"},
 		{"days", now.Add(-3 * 24 * time.Hour), "3d ago"},
 		{"weeks", now.Add(-14 * 24 * time.Hour), "2w ago"},
-		{"months", now.Add(-60 * 24 * time.Hour), "2mo ago"},
+		{"months", now.Add(-60 * 24 * time.Hour), "2M ago"},
 		{"years", now.Add(-400 * 24 * time.Hour), "1y ago"},
 		{"zero", time.Time{}, ""},
 	}

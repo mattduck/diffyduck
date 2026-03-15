@@ -111,7 +111,7 @@ type parsedArgs struct {
 
 	// branch-specific
 	verbose bool   // -v/--verbose
-	since   string // --since duration (e.g. "30d", "2w", "3m", "all")
+	since   string // --since duration (e.g. "30d", "2w", "3M", "all")
 
 	// comment-specific
 	commentSub         string // "list", "edit", or "add"
@@ -318,7 +318,7 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		p.since = strings.TrimPrefix(arg, "--since=")
 	case arg == "--since":
 		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--since requires a duration (e.g. 30d, 2w, 3m, 1y, all)")
+			return 0, fmt.Errorf("--since requires a duration (e.g. 30m, 6h, 30d, 2w, 3M, 1y, all)")
 		}
 		p.since = args[i+1]
 		return 1, nil
@@ -1051,7 +1051,7 @@ branch, default branch, and worktree branches are always included.
 Flags:
   -v, --verbose          Show commit subject for each branch
       --since <duration> Only show branches active within duration (default: 30d)
-                         Accepts: 6h (hours), 7d (days), 2w (weeks), 3m (months), 1y (years), all
+                         Accepts: 30m (minutes), 6h (hours), 7d (days), 2w (weeks), 3M (months), 1y (years), all
 
 Examples:
   dfd branch                Show branch tree (last 30 days)
@@ -1142,7 +1142,7 @@ Edit flags:
 List flags:
   -n <count>       Positive: newest N, negative: oldest |N|, 0: uncapped (default: 5)
       --status <s> Filter: unresolved (default), resolved, all
-      --since <d>  Only show comments created within duration (e.g. 6h, 7d, 2w, 3m, 1y, all)
+      --since <d>  Only show comments created within duration (e.g. 30m, 6h, 7d, 2w, 3M, 1y, all)
       --oneline    Compact single-line output per comment
       --raw        Show raw git blob format for each comment
       --kind <k>   Filter by kind: comment, note, all (default: comment)
@@ -1501,34 +1501,36 @@ func run() error {
 }
 
 // parseSinceDuration parses a human-friendly duration string.
-// Accepts: "6h" (hours), "7d" (days), "2w" (weeks), "3m" (months), "1y" (years), "all" (no filter).
+// Accepts: "30m" (minutes), "6h" (hours), "7d" (days), "2w" (weeks), "3M" (months), "1y" (years), "all" (no filter).
 // Returns 0 for "all" or empty string (caller should skip filtering).
 func parseSinceDuration(s string) (time.Duration, error) {
 	if s == "" || s == "all" {
 		return 0, nil
 	}
 	if len(s) < 2 {
-		return 0, fmt.Errorf("invalid duration %q: expected number + unit (h/d/w/m/y)", s)
+		return 0, fmt.Errorf("invalid duration %q: expected number + unit (m/h/d/w/M/y)", s)
 	}
 	numStr := s[:len(s)-1]
 	unit := s[len(s)-1]
 	n, err := strconv.Atoi(numStr)
 	if err != nil || n <= 0 {
-		return 0, fmt.Errorf("invalid duration %q: expected positive number + unit (h/d/w/m/y)", s)
+		return 0, fmt.Errorf("invalid duration %q: expected positive number + unit (m/h/d/w/M/y)", s)
 	}
 	switch unit {
+	case 'm':
+		return time.Duration(n) * time.Minute, nil
 	case 'h':
 		return time.Duration(n) * time.Hour, nil
 	case 'd':
 		return time.Duration(n) * 24 * time.Hour, nil
 	case 'w':
 		return time.Duration(n) * 7 * 24 * time.Hour, nil
-	case 'm':
+	case 'M':
 		return time.Duration(n) * 30 * 24 * time.Hour, nil
 	case 'y':
 		return time.Duration(n) * 365 * 24 * time.Hour, nil
 	default:
-		return 0, fmt.Errorf("invalid duration unit %q: expected h, d, w, m, or y", string(unit))
+		return 0, fmt.Errorf("invalid duration unit %q: expected m, h, d, w, M, or y", string(unit))
 	}
 }
 
@@ -2009,7 +2011,7 @@ func runCommentList(args parsedArgs) error {
 			if i > 0 {
 				fmt.Print("\n\n")
 			}
-			fmt.Print(formatCommentBlock(c, h, termWidth, shortIDs[c.ID]))
+			fmt.Print(formatCommentBlock(c, h, termWidth, shortIDs[c.ID], time.Now()))
 		}
 	}
 	return nil
@@ -2093,7 +2095,7 @@ func visibleWidth(s string) int {
 // serialized patch context and metadata. If h is non-nil, context lines are
 // syntax-highlighted based on the comment's file extension. When termWidth is
 // wide enough, metadata is rendered in two columns.
-func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth int, suffix string) string {
+func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth int, suffix string, now time.Time) string {
 	var b strings.Builder
 
 	// Header line
@@ -2103,7 +2105,7 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	}
 
 	// Build left column: Date, Status, ID
-	dateVal := c.Created.Format(time.RFC3339)
+	dateVal := c.Created.Format(time.RFC3339) + " (" + tui.FormatRelativeAge(now, c.Created) + ")"
 	var statusLine string
 	if c.Resolved {
 		statusLine = fmt.Sprintf("%sStatus:%s %sresolved%s", cGray, cReset, cGray, cReset)
