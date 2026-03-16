@@ -1,0 +1,13 @@
+{
+  "name": "dfd",
+  "owner": {
+    "name": "dfd"
+  },
+  "plugins": [
+    {
+      "name": "dfd",
+      "source": "./",
+      "description": "Claude Code skills for dfd code review comments"
+    }
+  ]
+}
