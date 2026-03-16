@@ -53,6 +53,9 @@ func (m *Model) loadAllStoreComments() {
 func (m *Model) recomputeCommentCounts() {
 	var unresolved, resolved int
 	for _, c := range m.allStoreComments {
+		if c.IsStandalone() {
+			continue
+		}
 		if !m.isCommentIncluded(c) {
 			continue
 		}
