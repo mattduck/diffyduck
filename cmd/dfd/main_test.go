@@ -1293,31 +1293,45 @@ func TestParseArgs_CommentAddAuthor(t *testing.T) {
 	result, err := parseArgs([]string{"comment", "add", "main.go:42", "-m", "Note", "--author", "Claude"})
 	require.NoError(t, err)
 	assert.Equal(t, "add", result.commentSub)
-	assert.Equal(t, "Claude", result.commentAddAuthor)
+	assert.Equal(t, "Claude", result.commentAuthor)
 }
 
 func TestParseArgs_CommentAddAuthorEquals(t *testing.T) {
 	result, err := parseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--author=Bot"})
 	require.NoError(t, err)
-	assert.Equal(t, "Bot", result.commentAddAuthor)
+	assert.Equal(t, "Bot", result.commentAuthor)
 }
 
-func TestParseArgs_CommentAddAuthorOnNonAdd(t *testing.T) {
-	_, err := parseArgs([]string{"comment", "list", "--author", "Claude"})
+func TestParseArgs_CommentAuthorOnList(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list", "--author", "Claude"})
+	require.NoError(t, err)
+	assert.Equal(t, "list", result.commentSub)
+	assert.Equal(t, "Claude", result.commentAuthor)
+}
+
+func TestParseArgs_CommentAuthorOnEdit(t *testing.T) {
+	_, err := parseArgs([]string{"comment", "edit", "abc123", "--author", "Claude"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--author is only valid for comment add")
+	assert.Contains(t, err.Error(), "--author is only valid for")
 }
 
-func TestParseArgs_CommentAddAuthorMissing(t *testing.T) {
+func TestParseArgs_CommentAddBareAuthor(t *testing.T) {
 	_, err := parseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--author"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--author requires an author argument")
 }
 
+func TestParseArgs_CommentListBareAuthor(t *testing.T) {
+	result, err := parseArgs([]string{"comment", "list", "--author"})
+	require.NoError(t, err)
+	assert.True(t, result.commentAuthorSet)
+	assert.Equal(t, "", result.commentAuthor)
+}
+
 func TestParseArgs_CommentAddAuthorEmptyEquals(t *testing.T) {
 	_, err := parseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--author="})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--author requires an author argument")
+	assert.Contains(t, err.Error(), "--author requires a value when using = syntax")
 }
 
 func TestParseCommentTarget(t *testing.T) {

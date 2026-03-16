@@ -131,7 +131,8 @@ type parsedArgs struct {
 	commentAddTarget  string // file:line positional arg
 	commentAddMessage string // -m message
 	commentAddRef     string // --ref: commit/branch/tag to comment on
-	commentAddAuthor  string // --author: author identifier
+	commentAuthor     string // --author: author identifier (add: set author, list: filter by author)
+	commentAuthorSet  bool   // true if --author was explicitly passed (bare --author on list = filter to empty author)
 
 	// config-specific
 	configInit  bool // --init
@@ -493,16 +494,19 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			return 0, fmt.Errorf("--ref requires a ref argument")
 		}
 	case arg == "--author":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--author requires an author argument")
+		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			p.commentAuthor = args[i+1]
+			p.commentAuthorSet = true
+			return 1, nil
 		}
-		p.commentAddAuthor = args[i+1]
-		return 1, nil
+		// Bare --author with no arg: filter to comments with no author
+		p.commentAuthorSet = true
 	case strings.HasPrefix(arg, "--author="):
-		p.commentAddAuthor = strings.TrimPrefix(arg, "--author=")
-		if p.commentAddAuthor == "" {
-			return 0, fmt.Errorf("--author requires an author argument")
+		p.commentAuthor = strings.TrimPrefix(arg, "--author=")
+		if p.commentAuthor == "" {
+			return 0, fmt.Errorf("--author requires a value when using = syntax")
 		}
+		p.commentAuthorSet = true
 
 	// comment flags
 	case arg == "--raw":
@@ -717,8 +721,11 @@ func (p *parsedArgs) validate() error {
 		if p.commentAddRef != "" && p.commentSub != "add" {
 			return fmt.Errorf("--ref is only valid for %s add", p.cmdAlias)
 		}
-		if p.commentAddAuthor != "" && p.commentSub != "add" {
-			return fmt.Errorf("--author is only valid for %s add", p.cmdAlias)
+		if p.commentAuthorSet && p.commentSub != "add" && p.commentSub != "list" && p.commentSub != "" {
+			return fmt.Errorf("--author is only valid for %s add and %s list", p.cmdAlias, p.cmdAlias)
+		}
+		if p.commentSub == "add" && p.commentAuthorSet && p.commentAuthor == "" {
+			return fmt.Errorf("--author requires an author argument for %s add", p.cmdAlias)
 		}
 		if p.cmdAlias == "note" && p.commentSub == "add" && p.commentAddTarget != "" {
 			return fmt.Errorf("note add does not accept a file:line argument (use comment add instead)")
@@ -1160,6 +1167,7 @@ List flags:
   -b, --branch [b] Filter to a specific branch, or all branches if no arg given
       --all-branches
                    Alias for -b with no argument
+      --author [s] Filter by author (case-insensitive substring), or no-author if bare
 
 Examples:
   dfd comment add main.go:42 -m "This needs error handling"
@@ -1955,6 +1963,29 @@ func runCommentList(args parsedArgs, cc commentColors) error {
 				all = filtered
 			} else {
 				fmt.Fprintln(os.Stderr, "warning: detached HEAD — showing comments from all branches")
+			}
+		}
+
+		// Filter by --author
+		if args.commentAuthorSet {
+			if args.commentAuthor == "" {
+				// Bare --author: show only comments with no author
+				var filtered []*comments.Comment
+				for _, c := range all {
+					if c.Author == "" {
+						filtered = append(filtered, c)
+					}
+				}
+				all = filtered
+			} else {
+				needle := strings.ToLower(args.commentAuthor)
+				var filtered []*comments.Comment
+				for _, c := range all {
+					if strings.Contains(strings.ToLower(c.Author), needle) {
+						filtered = append(filtered, c)
+					}
+				}
+				all = filtered
 			}
 		}
 	}
@@ -2809,7 +2840,7 @@ func runCommentAddStandalone(args parsedArgs) error {
 		Updated:   now,
 		CommitSHA: commitSHA,
 		Branch:    branch,
-		Author:    args.commentAddAuthor,
+		Author:    args.commentAuthor,
 	}
 
 	store := comments.NewStore("")
@@ -2914,7 +2945,7 @@ func runCommentAddFile(args parsedArgs) error {
 		Updated:   now,
 		CommitSHA: commitSHA,
 		Branch:    branch,
-		Author:    args.commentAddAuthor,
+		Author:    args.commentAuthor,
 	}
 
 	// Write to store
