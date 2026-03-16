@@ -16,6 +16,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/user/diffyduck/internal/tui"
 	"github.com/user/diffyduck/pkg/branches"
 	"github.com/user/diffyduck/pkg/comments"
@@ -2458,13 +2459,31 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 		}
 	}
 
-	// Comment text
+	// Comment text — word-wrap long lines to fit within terminal width.
+	// Subtract 2 for the "┃ " left margin bar added below.
+	wrapWidth := termWidth - 2
+	if wrapWidth > 70 {
+		wrapWidth = 70
+	}
+	if wrapWidth < 20 {
+		wrapWidth = 20
+	}
 	b.WriteString("\n")
+	inCodeBlock := false
 	for _, line := range strings.Split(c.Text, "\n") {
-		if c.Resolved {
-			fmt.Fprintf(&b, "%s%s%s\n", cc.label, line, cReset)
-		} else {
-			fmt.Fprintf(&b, "%s\n", line)
+		if strings.HasPrefix(line, "```") {
+			inCodeBlock = !inCodeBlock
+		}
+		out := line
+		if !inCodeBlock && !strings.HasPrefix(line, "```") {
+			out = ansi.Wordwrap(line, wrapWidth, "")
+		}
+		for _, wl := range strings.Split(out, "\n") {
+			if c.Resolved {
+				fmt.Fprintf(&b, "%s%s%s\n", cc.label, wl, cReset)
+			} else {
+				fmt.Fprintf(&b, "%s\n", wl)
+			}
 		}
 	}
 
