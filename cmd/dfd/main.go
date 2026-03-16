@@ -357,17 +357,26 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 
 	// Count: -n <count>, -n<count>
 	case arg == "-n":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("-n requires a count argument")
-		}
 		if p.cmd == "comment" {
+			// Bare -n (no following integer) is treated as -n0.
+			if i+1 >= len(args) {
+				p.commentN = 0
+				p.commentNSet = true
+				return 0, nil
+			}
 			n, err := strconv.Atoi(args[i+1])
 			if err != nil {
-				return 0, fmt.Errorf("-n requires an integer, got %q", args[i+1])
+				// Next arg isn't a number; treat as bare -n.
+				p.commentN = 0
+				p.commentNSet = true
+				return 0, nil
 			}
 			p.commentN = n
 			p.commentNSet = true
 			return 1, nil
+		}
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("-n requires a count argument")
 		}
 		n, err := strconv.Atoi(args[i+1])
 		if err != nil || n <= 0 {

@@ -868,6 +868,8 @@ func TestParseArgs_CommentListN(t *testing.T) {
 		{"positive", []string{"comment", "list", "-n", "10"}, 10, true},
 		{"negative", []string{"comment", "list", "-n", "-3"}, -3, true},
 		{"zero", []string{"comment", "list", "-n", "0"}, 0, true},
+		{"bare -n", []string{"comment", "list", "-n"}, 0, true},
+		{"bare -n before flag", []string{"comment", "list", "-n", "--verbose"}, 0, true}, // also check commentVerbose below
 		{"attached positive", []string{"comment", "list", "-n10"}, 10, true},
 		{"attached negative", []string{"c", "list", "-n-5"}, -5, true},
 	}
@@ -879,6 +881,13 @@ func TestParseArgs_CommentListN(t *testing.T) {
 			assert.Equal(t, tt.wantSet, result.commentNSet)
 		})
 	}
+
+	// Verify bare -n doesn't swallow the following flag.
+	t.Run("bare -n before flag parses verbose", func(t *testing.T) {
+		result, err := parseArgs([]string{"comment", "list", "-n", "--verbose"})
+		require.NoError(t, err)
+		assert.True(t, result.commentVerbose)
+	})
 }
 
 func TestParseArgs_CommentListStatus(t *testing.T) {
