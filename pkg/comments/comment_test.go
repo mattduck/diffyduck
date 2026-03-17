@@ -88,16 +88,16 @@ func TestCommentSerializeAndParse(t *testing.T) {
 	updated := time.Date(2026, 1, 15, 11, 0, 0, 0, time.UTC)
 
 	original := &Comment{
-		ID:        "1705312200000",
-		Text:      "This is a test comment\nwith multiple lines",
-		File:      "src/foo.go",
-		Line:      42,
-		Anchor:    "abcd1234abcd1234abcd1234abcd1234",
-		Created:   created,
-		Updated:   updated,
-		CommitSHA: "abc123def456",
-		Branch:    "feature-branch",
-		HeadSHA:   "xyz789",
+		ID:         "1705312200000",
+		Text:       "This is a test comment\nwith multiple lines",
+		File:       "src/foo.go",
+		Line:       42,
+		Anchor:     "abcd1234abcd1234abcd1234abcd1234",
+		Created:    created,
+		Updated:    updated,
+		CommitSHA:  "abc123def456",
+		Branch:     "feature-branch",
+		BranchHead: "xyz789",
 		Context: LineContext{
 			Above: []string{"context above 1", "context above 2"},
 			Line:  "the commented line",
@@ -138,6 +138,9 @@ func TestCommentSerializeAndParse(t *testing.T) {
 	}
 	if !strings.Contains(serialized, "# BRANCH: feature-branch") {
 		t.Error("serialized missing BRANCH")
+	}
+	if !strings.Contains(serialized, "# BRANCH_HEAD: xyz789") {
+		t.Error("serialized missing BRANCH_HEAD")
 	}
 	if !strings.Contains(serialized, "# LINE: 42") {
 		t.Error("serialized missing LINE")
@@ -180,8 +183,8 @@ func TestCommentSerializeAndParse(t *testing.T) {
 	if parsed.Branch != original.Branch {
 		t.Errorf("Branch mismatch: got %s, want %s", parsed.Branch, original.Branch)
 	}
-	if parsed.HeadSHA != original.HeadSHA {
-		t.Errorf("HeadSHA mismatch: got %s, want %s", parsed.HeadSHA, original.HeadSHA)
+	if parsed.BranchHead != original.BranchHead {
+		t.Errorf("BranchHead mismatch: got %s, want %s", parsed.BranchHead, original.BranchHead)
 	}
 	if parsed.Context.Line != original.Context.Line {
 		t.Errorf("Context.Line mismatch: got %q, want %q", parsed.Context.Line, original.Context.Line)

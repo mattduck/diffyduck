@@ -331,6 +331,13 @@ func (m *Model) persistComment(key commentKey, text string) *comments.Comment {
 		c.CommitSHA = m.commits[0].Info.SHA
 	}
 
+	// Record branch tip when not viewing a specific commit
+	if c.CommitSHA == "" && m.git != nil {
+		if head, err := m.git.RevParse("HEAD"); err == nil {
+			c.BranchHead = head
+		}
+	}
+
 	// Write to store
 	id, err := m.commentStore.WriteComment(c)
 	if err != nil {

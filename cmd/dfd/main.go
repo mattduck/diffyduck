@@ -2167,6 +2167,12 @@ func computeOnelineCols(all []*comments.Comment, shortIDs map[string]string, now
 		if len(commitShort) > 7 {
 			commitShort = commitShort[:7]
 		}
+		if commitShort == "" && c.BranchHead != "" {
+			commitShort = c.BranchHead
+			if len(commitShort) > 7 {
+				commitShort = commitShort[:7]
+			}
+		}
 		if commitShort == "" {
 			commitShort = "-"
 		}
@@ -2237,20 +2243,35 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 	}
 
 	// Column 3: commit SHA (strikethrough if resolved)
+	// When no explicit ref but BranchHead is available, show it dim in parens.
 	commitShort := c.CommitSHA
 	if len(commitShort) > 7 {
 		commitShort = commitShort[:7]
+	}
+	isBranchHead := false
+	if commitShort == "" && c.BranchHead != "" {
+		commitShort = c.BranchHead
+		if len(commitShort) > 7 {
+			commitShort = commitShort[:7]
+		}
+		isBranchHead = true
 	}
 	if commitShort == "" {
 		commitShort = "-"
 	}
 	var commitStyled string
-	if c.Resolved {
+	commitPlainWidth := len(commitShort)
+	if isBranchHead {
+		if c.Resolved {
+			commitStyled = fmt.Sprintf("%s%s%s%s%s", cDim, cc.commit, cStrike, commitShort, cReset)
+		} else {
+			commitStyled = fmt.Sprintf("%s%s%s%s", cDim, cc.commit, commitShort, cReset)
+		}
+	} else if c.Resolved {
 		commitStyled = fmt.Sprintf("%s%s%s%s", cc.commit, cStrike, commitShort, cReset)
 	} else {
 		commitStyled = fmt.Sprintf("%s%s%s", cc.commit, commitShort, cReset)
 	}
-	commitPlainWidth := len(commitShort)
 
 	// Column 4: branch (strikethrough if resolved)
 	branchPart := c.Branch
@@ -2407,6 +2428,18 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 		refLine = fmt.Sprintf("%sRef:%s    %s%s%s on %s%s%s", cc.label, cReset, cc.commit, commitShort, cReset, cc.branch, c.Branch, cReset)
 	} else if commitShort != "" {
 		refLine = fmt.Sprintf("%sRef:%s    %s%s%s", cc.label, cReset, cc.commit, commitShort, cReset)
+	} else if c.BranchHead != "" && c.Branch != "" {
+		bh := c.BranchHead
+		if len(bh) > 7 {
+			bh = bh[:7]
+		}
+		refLine = fmt.Sprintf("%sRef:%s    %s%s%s on %s%s%s", cc.label, cReset, cDim, bh, cReset, cc.branch, c.Branch, cReset)
+	} else if c.BranchHead != "" {
+		bh := c.BranchHead
+		if len(bh) > 7 {
+			bh = bh[:7]
+		}
+		refLine = fmt.Sprintf("%sRef:%s    %s%s%s", cc.label, cReset, cDim, bh, cReset)
 	} else if c.Branch != "" {
 		refLine = fmt.Sprintf("%sRef:%s    %s%s%s", cc.label, cReset, cc.branch, c.Branch, cReset)
 	}
@@ -2804,14 +2837,23 @@ func runCommentAddStandalone(args parsedArgs) error {
 		}
 	}
 
+	// Record branch tip when not viewing a specific commit
+	var branchHead string
+	if commitSHA == "" {
+		if head, err := g.RevParse("HEAD"); err == nil {
+			branchHead = head
+		}
+	}
+
 	now := time.Now()
 	c := &comments.Comment{
-		Text:      text,
-		Created:   now,
-		Updated:   now,
-		CommitSHA: commitSHA,
-		Branch:    branch,
-		Author:    args.commentAuthor,
+		Text:       text,
+		Created:    now,
+		Updated:    now,
+		CommitSHA:  commitSHA,
+		Branch:     branch,
+		BranchHead: branchHead,
+		Author:     args.commentAuthor,
 	}
 
 	store := comments.NewStore("")
@@ -2905,18 +2947,28 @@ func runCommentAddFile(args parsedArgs) error {
 
 	// Build comment
 	ctx := comments.ExtractContextForLine(fileLines, lineNum)
+
+	// Record branch tip when not viewing a specific commit
+	var branchHead string
+	if commitSHA == "" {
+		if head, err := g.RevParse("HEAD"); err == nil {
+			branchHead = head
+		}
+	}
+
 	now := time.Now()
 	c := &comments.Comment{
-		Text:      text,
-		File:      relPath,
-		Line:      lineNum,
-		Context:   ctx,
-		Anchor:    ctx.ComputeAnchor(),
-		Created:   now,
-		Updated:   now,
-		CommitSHA: commitSHA,
-		Branch:    branch,
-		Author:    args.commentAuthor,
+		Text:       text,
+		File:       relPath,
+		Line:       lineNum,
+		Context:    ctx,
+		Anchor:     ctx.ComputeAnchor(),
+		Created:    now,
+		Updated:    now,
+		CommitSHA:  commitSHA,
+		Branch:     branch,
+		BranchHead: branchHead,
+		Author:     args.commentAuthor,
 	}
 
 	// Write to store

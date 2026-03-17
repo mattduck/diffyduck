@@ -756,19 +756,19 @@ type displayRow struct {
 	commitInfoLine     string               // text content for info body lines
 	dateParts          sidebyside.DateParts // structured date parts for styled rendering
 	// Comment fields (for RowKindComment rows)
-	commentText      string    // text of the comment (for rendering)
-	commentLineNum   int       // line number this comment belongs to (for association)
-	commentRowIndex  int       // index within the comment box (0=top border, 1..n-2=content, n-1=bottom border)
-	commentRowCount  int       // total rows in this comment box
-	commentLineIndex int       // which line of comment content this is (for content rows, -1 for borders)
-	commentCreated   time.Time // when the comment was created
-	commentResolved  bool      // whether the comment is resolved
-	commentCommitSHA string    // commit SHA when comment was created
-	commentHeadSHA   string    // HEAD SHA when comment was created
-	commentBranch    string    // branch when comment was created
-	commentAuthor    string    // author identifier (empty = no author)
-	commentID        string    // comment ID (for display)
-	commentSuffix    string    // unique suffix of the comment ID (for highlighting)
+	commentText       string    // text of the comment (for rendering)
+	commentLineNum    int       // line number this comment belongs to (for association)
+	commentRowIndex   int       // index within the comment box (0=top border, 1..n-2=content, n-1=bottom border)
+	commentRowCount   int       // total rows in this comment box
+	commentLineIndex  int       // which line of comment content this is (for content rows, -1 for borders)
+	commentCreated    time.Time // when the comment was created
+	commentResolved   bool      // whether the comment is resolved
+	commentCommitSHA  string    // commit SHA when comment was created
+	commentBranchHead string    // branch tip commit when comment was created
+	commentBranch     string    // branch when comment was created
+	commentAuthor     string    // author identifier (empty = no author)
+	commentID         string    // comment ID (for display)
+	commentSuffix     string    // unique suffix of the comment ID (for highlighting)
 	// Conflict block fields
 	conflictZone conflictZone // which part of a conflict block this row is in (zero = not in conflict)
 	// Structural diff fields (for RowKindStructuralDiff rows)
@@ -842,7 +842,7 @@ func formatCommentMeta(row displayRow, contentWidth int) string {
 	// Commit ref + branch: "@ abc1234, main" (using CLI-matching colors)
 	sha := row.commentCommitSHA
 	if sha == "" {
-		sha = row.commentHeadSHA
+		sha = row.commentBranchHead
 	}
 	if sha != "" || row.commentBranch != "" {
 		meta += " " + dtStyle.Render("@")
@@ -916,20 +916,20 @@ func buildCommentRows(fileIndex int, lineNum int, c *comments.Comment, contentWi
 	rows := make([]displayRow, rowCount)
 
 	base := displayRow{
-		kind:             RowKindComment,
-		fileIndex:        fileIndex,
-		commentText:      c.Text,
-		commentLineNum:   lineNum,
-		commentRowCount:  rowCount,
-		commentCreated:   c.Created,
-		commentResolved:  c.Resolved,
-		commentCommitSHA: c.CommitSHA,
-		commentHeadSHA:   c.HeadSHA,
-		commentBranch:    c.Branch,
-		commentAuthor:    c.Author,
-		commentID:        c.ID,
-		commentSuffix:    suffix,
-		treePath:         treePath,
+		kind:              RowKindComment,
+		fileIndex:         fileIndex,
+		commentText:       c.Text,
+		commentLineNum:    lineNum,
+		commentRowCount:   rowCount,
+		commentCreated:    c.Created,
+		commentResolved:   c.Resolved,
+		commentCommitSHA:  c.CommitSHA,
+		commentBranchHead: c.BranchHead,
+		commentBranch:     c.Branch,
+		commentAuthor:     c.Author,
+		commentID:         c.ID,
+		commentSuffix:     suffix,
+		treePath:          treePath,
 	}
 
 	// Top border

@@ -51,8 +51,8 @@ type Comment struct {
 	// Branch is the branch that was checked out when the comment was created.
 	Branch string
 
-	// HeadSHA is the HEAD commit when the comment was created (for pre-commit association).
-	HeadSHA string
+	// BranchHead is the tip commit of the branch when the comment was created.
+	BranchHead string
 
 	// Resolved marks the comment as resolved (addressed/done).
 	Resolved bool
@@ -188,8 +188,8 @@ func (c *Comment) Serialize() string {
 	if c.Branch != "" {
 		b.WriteString(fmt.Sprintf("# BRANCH: %s\n", c.Branch))
 	}
-	if c.HeadSHA != "" {
-		b.WriteString(fmt.Sprintf("# HEAD: %s\n", c.HeadSHA))
+	if c.BranchHead != "" {
+		b.WriteString(fmt.Sprintf("# BRANCH_HEAD: %s\n", c.BranchHead))
 	}
 	if c.Author != "" {
 		b.WriteString(fmt.Sprintf("# AUTHOR: %s\n", c.Author))
@@ -242,8 +242,13 @@ func ParseComment(id string, data string) (*Comment, error) {
 			c.Branch = strings.TrimPrefix(line, "# BRANCH: ")
 			continue
 		}
+		if strings.HasPrefix(line, "# BRANCH_HEAD: ") {
+			c.BranchHead = strings.TrimPrefix(line, "# BRANCH_HEAD: ")
+			continue
+		}
 		if strings.HasPrefix(line, "# HEAD: ") {
-			c.HeadSHA = strings.TrimPrefix(line, "# HEAD: ")
+			// Backward compat with old format
+			c.BranchHead = strings.TrimPrefix(line, "# HEAD: ")
 			continue
 		}
 		if strings.HasPrefix(line, "# FILE: ") {
@@ -290,6 +295,7 @@ func ParseComment(id string, data string) (*Comment, error) {
 				strings.HasPrefix(rest, "UPDATED:") ||
 				strings.HasPrefix(rest, "COMMIT:") ||
 				strings.HasPrefix(rest, "BRANCH:") ||
+				strings.HasPrefix(rest, "BRANCH_HEAD:") ||
 				strings.HasPrefix(rest, "HEAD:") ||
 				strings.HasPrefix(rest, "FILE:") ||
 				strings.HasPrefix(rest, "LINE:") ||
