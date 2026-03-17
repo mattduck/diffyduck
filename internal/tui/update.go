@@ -520,7 +520,6 @@ func (m Model) dispatchAction(action Action) (tea.Model, tea.Cmd) {
 	case ActionScrollUp:
 		m.w().scroll--
 		m.clampScroll()
-		m.skipCommentRowsUp()
 		m.resetSearchMatchForRow()
 
 	case ActionScrollDown:

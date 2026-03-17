@@ -1097,21 +1097,6 @@ func (m *Model) clampScroll() {
 	}
 }
 
-// skipCommentRowsUp adjusts scroll upward past comment rows so that the cursor
-// lands on the content line the comment belongs to, not inside the comment box.
-func (m *Model) skipCommentRowsUp() {
-	rows := m.getRows()
-	pos := m.cursorLine()
-	if pos < 0 || pos >= len(rows) {
-		return
-	}
-	for pos > 0 && rows[pos].kind == RowKindComment {
-		pos--
-	}
-	m.w().scroll = pos
-	m.clampScroll()
-}
-
 // StatusInfo contains information for the status bar.
 type StatusInfo struct {
 	CurrentFile       int                  // 1-based index of current file
