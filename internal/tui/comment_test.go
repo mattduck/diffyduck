@@ -2794,7 +2794,7 @@ func TestComment_BuildCommentRows_PropagatesTreePath(t *testing.T) {
 		},
 	}
 
-	rows := buildCommentRows(0, 1, &comments.Comment{Text: "hello"}, 40, tp)
+	rows := buildCommentRows(0, 1, &comments.Comment{Text: "hello"}, 40, tp, "")
 	require.GreaterOrEqual(t, len(rows), 3, "should have top border, content, and bottom border")
 
 	for i, r := range rows {
@@ -2806,7 +2806,7 @@ func TestComment_BuildCommentRows_PropagatesTreePath(t *testing.T) {
 func TestComment_BuildCommentRows_EmptyTreePath(t *testing.T) {
 	tp := TreePath{}
 
-	rows := buildCommentRows(0, 1, &comments.Comment{Text: "hello"}, 40, tp)
+	rows := buildCommentRows(0, 1, &comments.Comment{Text: "hello"}, 40, tp, "")
 	require.GreaterOrEqual(t, len(rows), 3)
 
 	for i, r := range rows {
@@ -3077,11 +3077,11 @@ func TestComment_FormatCommentMeta_WithAuthor(t *testing.T) {
 		commentBranch:    "main",
 		commentCommitSHA: "abc1234567890",
 	}
-	meta := formatCommentMeta(row)
+	meta := formatCommentMeta(row, 80)
 	// Should contain author prefix with "commented" and pipe separator
 	assert.Contains(t, meta, "Claude commented")
 	assert.Contains(t, meta, "|")
-	assert.Contains(t, meta, "Mar 10")
+	assert.Contains(t, meta, "Mar 10 00:00")
 	assert.Contains(t, meta, "abc1234")
 }
 
@@ -3090,10 +3090,10 @@ func TestComment_FormatCommentMeta_WithoutAuthor(t *testing.T) {
 		commentCreated: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC),
 		commentBranch:  "main",
 	}
-	meta := formatCommentMeta(row)
+	meta := formatCommentMeta(row, 80)
 	assert.NotContains(t, meta, "commented")
 	assert.NotContains(t, meta, "|")
-	assert.Contains(t, meta, "Mar 10")
+	assert.Contains(t, meta, "Mar 10 00:00")
 }
 
 func TestComment_BuildCommentRows_PropagatesAuthor(t *testing.T) {
@@ -3101,7 +3101,7 @@ func TestComment_BuildCommentRows_PropagatesAuthor(t *testing.T) {
 		Text:   "hello",
 		Author: "Bot",
 	}
-	rows := buildCommentRows(0, 1, c, 40, TreePath{})
+	rows := buildCommentRows(0, 1, c, 40, TreePath{}, "")
 	require.GreaterOrEqual(t, len(rows), 3)
 
 	for i, r := range rows {
@@ -3113,7 +3113,7 @@ func TestComment_BuildCommentRows_EmptyAuthor(t *testing.T) {
 	c := &comments.Comment{
 		Text: "hello",
 	}
-	rows := buildCommentRows(0, 1, c, 40, TreePath{})
+	rows := buildCommentRows(0, 1, c, 40, TreePath{}, "")
 	require.GreaterOrEqual(t, len(rows), 3)
 
 	for i, r := range rows {

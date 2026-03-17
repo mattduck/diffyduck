@@ -253,14 +253,14 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 
 	var renderedContent string
 	if lineIdx == 0 {
-		// Metadata line: pre-styled by formatCommentMeta, just pad to fill
-		meta := formatCommentMeta(row)
-		metaWidth := ansi.StringWidth(meta)
+		// Metadata line: pre-styled by formatCommentMeta with right-aligned ID
+		renderedContent = formatCommentMeta(row, contentWidth)
+		metaWidth := ansi.StringWidth(renderedContent)
 		padding := contentWidth - metaWidth
 		if padding < 0 {
 			padding = 0
 		}
-		renderedContent = meta + strings.Repeat(" ", padding)
+		renderedContent = renderedContent + strings.Repeat(" ", padding)
 	} else if lineIdx == 1 {
 		// Blank separator line
 		renderedContent = strings.Repeat(" ", contentWidth)

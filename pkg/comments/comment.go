@@ -94,6 +94,45 @@ func (c *Comment) IsStandalone() bool {
 	return c.File == ""
 }
 
+// ShortSuffixes computes the shortest unique suffix for each comment ID.
+// The minimum suffix length is 3 characters (or the full ID if shorter).
+func ShortSuffixes(ids []string) map[string]string {
+	result := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return result
+	}
+
+	for _, id := range ids {
+		maxN := len(id)
+		minN := 3
+		if minN > maxN {
+			minN = maxN
+		}
+		var suffix string
+
+		for n := minN; n <= maxN; n++ {
+			start := maxN - n
+			suffix = id[start:]
+			unique := true
+			for _, other := range ids {
+				if other == id {
+					continue
+				}
+				if strings.HasSuffix(other, suffix) {
+					unique = false
+					break
+				}
+			}
+			if unique {
+				break
+			}
+		}
+
+		result[id] = suffix
+	}
+	return result
+}
+
 // Serialize converts a Comment to its blob format (patch with metadata).
 func (c *Comment) Serialize() string {
 	var b strings.Builder

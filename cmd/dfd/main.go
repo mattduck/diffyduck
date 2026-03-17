@@ -2531,45 +2531,9 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	return out.String()
 }
 
-// shortSuffixes computes the shortest unique suffix for each ID individually.
-// Given ["1770968997415", "1770881758352"], it returns
-// {"1770968997415": "415", "1770881758352": "352"} because 3 chars already
-// distinguish each from every other ID. Minimum suffix length is 3.
+// shortSuffixes forwards to comments.ShortSuffixes.
 func shortSuffixes(ids []string) map[string]string {
-	result := make(map[string]string, len(ids))
-	if len(ids) == 0 {
-		return result
-	}
-
-	for _, id := range ids {
-		maxN := len(id)
-		minN := 3
-		if minN > maxN {
-			minN = maxN
-		}
-		var suffix string
-
-		for n := minN; n <= maxN; n++ {
-			start := maxN - n
-			suffix = id[start:]
-			unique := true
-			for _, other := range ids {
-				if other == id {
-					continue
-				}
-				if strings.HasSuffix(other, suffix) {
-					unique = false
-					break
-				}
-			}
-			if unique {
-				break
-			}
-		}
-
-		result[id] = suffix
-	}
-	return result
+	return comments.ShortSuffixes(ids)
 }
 
 // resolveCommentID resolves a (possibly short) suffix to a full comment ID.

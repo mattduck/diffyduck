@@ -69,8 +69,9 @@ var (
 	commentBorderStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for borders
 	commentTextStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for text
 	commentRightDimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Faint(true)
-	commentCheckboxStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow for checkbox
-	commentDateStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // dim for date
+	commentCheckboxStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))  // yellow for checkbox
+	commentDateStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))  // dim for date
+	commentAgeStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white for relative age
 
 	// Tree hierarchy styles
 	commitTreeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow for commit level
@@ -766,6 +767,8 @@ type displayRow struct {
 	commentHeadSHA   string    // HEAD SHA when comment was created
 	commentBranch    string    // branch when comment was created
 	commentAuthor    string    // author identifier (empty = no author)
+	commentID        string    // comment ID (for display)
+	commentSuffix    string    // unique suffix of the comment ID (for highlighting)
 	// Conflict block fields
 	conflictZone conflictZone // which part of a conflict block this row is in (zero = not in conflict)
 	// Structural diff fields (for RowKindStructuralDiff rows)
@@ -780,9 +783,24 @@ type displayRow struct {
 	hasComment bool // true if this content row has any comment in m.comments (for * gutter marker)
 }
 
+// commentSuffixMap computes the shortest unique suffix for each comment ID
+// across all comments in the model.
+func (m Model) commentSuffixMap() map[string]string {
+	ids := make([]string, 0, len(m.comments))
+	for _, c := range m.comments {
+		if c.ID != "" {
+			ids = append(ids, c.ID)
+		}
+	}
+	return comments.ShortSuffixes(ids)
+}
+
 // formatCommentMeta returns the metadata line for a comment row.
-// Format: "[ ] Feb 14 @ abc1234, main" (with optional parts omitted when empty).
-func formatCommentMeta(row displayRow) string {
+// Left side: "[ ] Jan 02 15:04 3d @ abc1234, main" with colored refs and white relative age.
+// Right side (space permitting): full comment ID with highlighted unique suffix, or suffix only.
+func formatCommentMeta(row displayRow, contentWidth int) string {
+	now := time.Now()
+
 	checkbox := "[ ]"
 	if row.commentResolved {
 		checkbox = "[X]"
@@ -790,11 +808,22 @@ func formatCommentMeta(row displayRow) string {
 
 	cbStyle := commentCheckboxStyle
 	dtStyle := commentDateStyle
+	// Styles for commit SHA and branch (matching CLI comment list colors)
+	commitStyle := commitTreeStyle
+	branchStyle := localRefStyle
+	ageStyle := commentAgeStyle
+	// Style for ID suffix (header color, bold — distinct from dim prefix)
+	idSuffixStyle := headerStyle
 	if row.commentResolved {
 		cbStyle = cbStyle.Strikethrough(true)
 		dtStyle = dtStyle.Strikethrough(true)
+		commitStyle = commitStyle.Strikethrough(true)
+		branchStyle = branchStyle.Strikethrough(true)
+		ageStyle = ageStyle.Strikethrough(true)
+		idSuffixStyle = idSuffixStyle.Strikethrough(true)
 	}
 
+	// Build left side: checkbox + author + date + ref
 	meta := cbStyle.Render(checkbox)
 
 	// Author prefix
@@ -803,42 +832,74 @@ func formatCommentMeta(row displayRow) string {
 		meta += " " + dtStyle.Render("|")
 	}
 
-	// Date
+	// Date: "Jan 02 15:04 3d" (absolute + relative age, age in white)
 	if !row.commentCreated.IsZero() {
-		var dateStr string
-		if row.commentCreated.Year() == time.Now().Year() {
-			dateStr = row.commentCreated.Format("Jan 2")
-		} else {
-			dateStr = row.commentCreated.Format("Jan 2 '06")
-		}
-		meta += " " + dtStyle.Render(dateStr)
+		dateStr := row.commentCreated.Format("Jan 02 15:04")
+		age := FormatRelativeAge(now, row.commentCreated)
+		meta += " " + dtStyle.Render(dateStr) + " " + ageStyle.Render(age)
 	}
 
-	// Commit ref + branch: "@ abc1234, main"
+	// Commit ref + branch: "@ abc1234, main" (using CLI-matching colors)
 	sha := row.commentCommitSHA
 	if sha == "" {
 		sha = row.commentHeadSHA
 	}
 	if sha != "" || row.commentBranch != "" {
-		var refParts []string
+		meta += " " + dtStyle.Render("@")
 		if sha != "" {
 			if len(sha) > 7 {
 				sha = sha[:7]
 			}
-			refParts = append(refParts, sha)
+			meta += " " + commitStyle.Render(sha)
 		}
 		if row.commentBranch != "" {
-			refParts = append(refParts, row.commentBranch)
+			if sha != "" {
+				meta += dtStyle.Render(",")
+			}
+			meta += " " + branchStyle.Render(row.commentBranch)
 		}
-		meta += " " + dtStyle.Render("@ "+strings.Join(refParts, ", "))
 	}
 
+	// Build right side: comment ID with highlighted unique suffix
+	if row.commentID == "" {
+		return meta
+	}
+
+	metaWidth := ansi.StringWidth(meta)
+	suffix := row.commentSuffix
+	fullID := row.commentID
+
+	// Try full ID with highlighted suffix first
+	idPrefixStyle := dtStyle
+
+	prefixPart := ""
+	if len(suffix) < len(fullID) {
+		prefixPart = fullID[:len(fullID)-len(suffix)]
+	}
+	fullIDRendered := idPrefixStyle.Render(prefixPart) + idSuffixStyle.Render(suffix)
+	fullIDWidth := len(prefixPart) + len(suffix) // plain text width
+
+	// Need at least 1 space gap between left meta and right ID
+	gap := contentWidth - metaWidth - fullIDWidth
+	if gap >= 1 {
+		return meta + strings.Repeat(" ", gap) + fullIDRendered
+	}
+
+	// Fall back to suffix only
+	suffixRendered := idSuffixStyle.Render(suffix)
+	suffixWidth := len(suffix)
+	gap = contentWidth - metaWidth - suffixWidth
+	if gap >= 1 {
+		return meta + strings.Repeat(" ", gap) + suffixRendered
+	}
+
+	// Not enough room — skip the ID
 	return meta
 }
 
 // buildCommentRows creates displayRow entries for a comment box.
 // contentWidth is the text width available inside the box; lines are word-wrapped to fit.
-func buildCommentRows(fileIndex int, lineNum int, c *comments.Comment, contentWidth int, treePath TreePath) []displayRow {
+func buildCommentRows(fileIndex int, lineNum int, c *comments.Comment, contentWidth int, treePath TreePath, suffix string) []displayRow {
 	if c == nil || c.Text == "" {
 		return nil
 	}
@@ -866,6 +927,8 @@ func buildCommentRows(fileIndex int, lineNum int, c *comments.Comment, contentWi
 		commentHeadSHA:   c.HeadSHA,
 		commentBranch:    c.Branch,
 		commentAuthor:    c.Author,
+		commentID:        c.ID,
+		commentSuffix:    suffix,
 		treePath:         treePath,
 	}
 
@@ -900,6 +963,7 @@ func commitHeaderSearchText(commit sidebyside.CommitSet) string {
 
 // buildRows creates all displayable rows from the model data.
 func (m Model) buildRows() []displayRow {
+	suffixes := m.commentSuffixMap()
 	var rows []displayRow
 
 	// Handle legacy case where Model was created without using New/NewWithCommits
@@ -1189,7 +1253,7 @@ func (m Model) buildRows() []displayRow {
 				continue
 			}
 			fp := m.files[fileIdx]
-			rows = m.buildFileRows(rows, fileIdx, fp, startIdx, endIdx, headerBoxWidth)
+			rows = m.buildFileRows(rows, fileIdx, fp, startIdx, endIdx, headerBoxWidth, suffixes)
 		}
 
 		// Add separator row between commits (blank line after last file, before next commit)
@@ -1251,6 +1315,7 @@ func (m Model) buildRows() []displayRow {
 // buildRowsLegacy handles the case where Model was created without using New/NewWithCommits.
 // This maintains backward compatibility with tests that directly set m.files.
 func (m Model) buildRowsLegacy() []displayRow {
+	suffixes := m.commentSuffixMap()
 	var rows []displayRow
 
 	// Calculate consistent header box width for borders from max per-file width
@@ -1301,7 +1366,7 @@ func (m Model) buildRowsLegacy() []displayRow {
 		if !m.w().narrow.IncludesFile(fileIdx) {
 			continue
 		}
-		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), headerBoxWidth)
+		rows = m.buildFileRows(rows, fileIdx, fp, 0, len(m.files), headerBoxWidth, suffixes)
 	}
 
 	// Add truncation indicator if files were omitted
@@ -1318,7 +1383,7 @@ func (m Model) buildRowsLegacy() []displayRow {
 }
 
 // buildFileRows adds all rows for a single file to the rows slice.
-func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FilePair, commitStartIdx, commitEndIdx int, headerBoxWidth int) []displayRow {
+func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FilePair, commitStartIdx, commitEndIdx int, headerBoxWidth int, suffixes map[string]string) []displayRow {
 	added, removed := countFileStats(fp)
 	status := fileStatusFromPair(fp)
 
@@ -1351,7 +1416,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 
 	if isFolded {
 		// Folded path: header (no border) → body content → margin
-		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth)
+		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth, suffixes)
 
 		// Last file with no content below: use └ (IsLast=true), no terminator needed
 		foldedHeaderIsLast := isLastFile && len(bodyRows) == 0
@@ -1379,7 +1444,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 		// Note: First file's top border is added after commit body rows, not here
 		// This prevents content shift when first file is unfolded
 		foldLevel := m.fileFoldLevel(fileIdx)
-		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth)
+		bodyRows := m.buildFileBodyRows(fp, fileIdx, contentIsLast, isLastFile, isFolded, headerBoxWidth, suffixes)
 
 		// FoldStructure with no structural diff content: treat like folded path
 		// (header only, no spacer/margin/top-border) but keep the ━━━━◐ trailing.
@@ -1436,7 +1501,7 @@ func (m Model) buildFileRows(rows []displayRow, fileIdx int, fp sidebyside.FileP
 
 // buildFileBodyRows dispatches to the appropriate content builder based on fold level.
 // Returns content rows (structural diff or hunks) without header/spacer/margin.
-func (m Model) buildFileBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool, isFolded bool, headerBoxWidth int) []displayRow {
+func (m Model) buildFileBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool, isFolded bool, headerBoxWidth int, suffixes map[string]string) []displayRow {
 	foldLevel := m.fileFoldLevel(fileIdx)
 	switch foldLevel {
 	case sidebyside.FoldHeader:
@@ -1448,16 +1513,16 @@ func (m Model) buildFileBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsL
 	default: // FoldHunks
 		// Full-file content view (Shift+F) when content is available
 		if fp.ShowFullFile && fp.HasContent() {
-			return m.buildExpandedBodyRows(fp, fileIdx, contentIsLast, isLastFile)
+			return m.buildExpandedBodyRows(fp, fileIdx, contentIsLast, isLastFile, suffixes)
 		}
 		// Default: diff hunks
-		return m.buildHunkRows(fp, fileIdx, contentIsLast, isLastFile)
+		return m.buildHunkRows(fp, fileIdx, contentIsLast, isLastFile, suffixes)
 	}
 }
 
 // buildHunkRows creates content rows from diff hunks (Pairs), including hunk separators,
 // comment rows, binary indicators, and truncation indicators.
-func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool) []displayRow {
+func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool, suffixes map[string]string) []displayRow {
 	var rows []displayRow
 
 	if fp.IsBinary {
@@ -1547,7 +1612,7 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 				r.hasComment = true
 				rows[lastIdx] = r
 				if m.isCommentExpanded(key, c) {
-					commentRows := buildCommentRows(fileIdx, pair.New.Num, c, m.commentContentWidth(), contentTreePath)
+					commentRows := buildCommentRows(fileIdx, pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
 					rows = append(rows, commentRows...)
 				}
 			}
@@ -1588,7 +1653,7 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 
 // buildExpandedBodyRows creates content rows from full file content, with comment rows interleaved
 // and truncation indicators appended.
-func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool) []displayRow {
+func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, contentIsLast bool, isLastFile bool, suffixes map[string]string) []displayRow {
 	contentTreePath := m.buildFileTreePath(fileIdx, contentIsLast, false, TreeRowContent)
 
 	expandedRows := m.buildExpandedRows(fp)
@@ -1615,7 +1680,7 @@ func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, conten
 				expRow.hasComment = true
 				if m.isCommentExpanded(key, c) {
 					rows = append(rows, expRow)
-					commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, c, m.commentContentWidth(), contentTreePath)
+					commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
 					rows = append(rows, commentRows...)
 					continue
 				}
