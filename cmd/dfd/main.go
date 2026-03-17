@@ -2718,6 +2718,13 @@ func normalizeFilePath(g *git.RealGit, path string) (relPath, repoRoot string, e
 	}
 	absPath = filepath.Clean(absPath)
 
+	// Resolve symlinks so we can compare against topLevel, which is already
+	// resolved by git rev-parse --show-toplevel.
+	absPath, err = filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", "", fmt.Errorf("cannot resolve path %s: %w", path, err)
+	}
+
 	rel, err := filepath.Rel(topLevel, absPath)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot make path relative to repo root: %w", err)
