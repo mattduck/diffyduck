@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLineContextComputeAnchor(t *testing.T) {
@@ -127,7 +129,7 @@ func TestCommentSerializeAndParse(t *testing.T) {
 	if !strings.Contains(serialized, "# COMMENT:") {
 		t.Error("serialized missing COMMENT marker")
 	}
-	if !strings.Contains(serialized, "# This is a test comment") {
+	if !strings.Contains(serialized, "#| This is a test comment") {
 		t.Error("serialized missing comment text")
 	}
 	if !strings.Contains(serialized, "# CREATED: 2026-01-15T10:30:00Z") {
@@ -584,4 +586,115 @@ func TestCommentAuthorInCommentTextNotConfused(t *testing.T) {
 	if parsed.Text != "the AUTHOR: field is new" {
 		t.Errorf("expected text preserved, got %q", parsed.Text)
 	}
+}
+
+func TestParseCommentUnknownFieldsIgnored(t *testing.T) {
+	t.Run("before COMMENT in metadata section", func(t *testing.T) {
+		// Unknown fields before COMMENT: are silently skipped by the
+		// top-level parser (they don't match any known prefix).
+		data := `--- a/test.go
++++ b/test.go
+@@ -1,1 +1,1 @@
++code
+# ID: 600
+# CREATED: 2026-01-01T00:00:00Z
+# UPDATED: 2026-01-01T00:00:00Z
+# PRIORITY: high
+# RESOLVED: false
+# CATEGORY: bug
+# FILE: test.go
+# LINE: 1
+# ANCHOR: abc
+# COMMENT:
+# hello world
+`
+		c, err := ParseComment("600", data)
+		if err != nil {
+			t.Fatalf("ParseComment failed: %v", err)
+		}
+		assert.Equal(t, "hello world", c.Text)
+		assert.Equal(t, "test.go", c.File)
+		assert.Equal(t, 1, c.Line)
+	})
+
+	t.Run("after COMMENT in old-format blob", func(t *testing.T) {
+		// Unknown fields between comment text and known metadata in
+		// old-format blobs (# prefix) must not leak into comment text.
+		data := `--- a/test.go
++++ b/test.go
+@@ -1,1 +1,1 @@
++code
+# ID: 601
+# COMMENT:
+# new matt test
+# BRANCH_HEAD: 17b17f73f03b9be2c9e0832f205b7a323b46ecec
+# CREATED: 2026-01-01T00:00:00Z
+# UPDATED: 2026-01-01T00:00:00Z
+# RESOLVED: false
+# FILE: test.go
+# LINE: 1
+# ANCHOR: abc
+`
+		c, err := ParseComment("601", data)
+		if err != nil {
+			t.Fatalf("ParseComment failed: %v", err)
+		}
+		assert.Equal(t, "new matt test", c.Text)
+		assert.Equal(t, "test.go", c.File)
+		assert.Equal(t, 1, c.Line)
+	})
+
+	t.Run("old-format comment text with all-caps words preserved", func(t *testing.T) {
+		// Comment text starting with all-caps words (e.g. "FIX:", "TODO:")
+		// must not be mistakenly stripped as unknown metadata.
+		data := `--- a/test.go
++++ b/test.go
+@@ -1,1 +1,1 @@
++code
+# ID: 602
+# COMMENT:
+# FIX: use the correct buffer size
+# NOTE: this is important
+# CREATED: 2026-01-01T00:00:00Z
+# UPDATED: 2026-01-01T00:00:00Z
+# RESOLVED: false
+# FILE: test.go
+# LINE: 1
+# ANCHOR: abc
+`
+		c, err := ParseComment("602", data)
+		if err != nil {
+			t.Fatalf("ParseComment failed: %v", err)
+		}
+		assert.Equal(t, "FIX: use the correct buffer size\nNOTE: this is important", c.Text)
+	})
+}
+
+func TestParseOldFormatNonCreatedFieldEndsComment(t *testing.T) {
+	// Old-format blob where a non-CREATED metadata field is the first one
+	// after COMMENT text. The field that ends the comment section must still
+	// have its value correctly parsed (not silently lost).
+	data := `--- a/test.go
++++ b/test.go
+@@ -1,1 +1,1 @@
++code
+# ID: 700
+# COMMENT:
+# review this
+# FILE: test.go
+# LINE: 42
+# ANCHOR: def456
+# CREATED: 2026-01-01T00:00:00Z
+# UPDATED: 2026-01-01T00:00:00Z
+# RESOLVED: false
+`
+	c, err := ParseComment("700", data)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	assert.Equal(t, "review this", c.Text)
+	assert.Equal(t, "test.go", c.File)
+	assert.Equal(t, 42, c.Line)
+	assert.Equal(t, "def456", c.Anchor)
+	assert.Equal(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), c.Created)
 }

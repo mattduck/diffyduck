@@ -133,6 +133,47 @@ func ShortSuffixes(ids []string) map[string]string {
 	return result
 }
 
+// isKnownMetadataField reports whether s starts with a known metadata key.
+func isKnownMetadataField(s string) bool {
+	return strings.HasPrefix(s, "CREATED:") ||
+		strings.HasPrefix(s, "UPDATED:") ||
+		strings.HasPrefix(s, "COMMIT:") ||
+		strings.HasPrefix(s, "BRANCH:") ||
+		strings.HasPrefix(s, "BRANCH_HEAD:") ||
+		strings.HasPrefix(s, "HEAD:") ||
+		strings.HasPrefix(s, "FILE:") ||
+		strings.HasPrefix(s, "LINE:") ||
+		strings.HasPrefix(s, "ANCHOR:") ||
+		strings.HasPrefix(s, "AUTHOR:") ||
+		strings.HasPrefix(s, "RESOLVED:")
+}
+
+// looksLikeMetadataField reports whether s looks like an unknown metadata
+// field (e.g. "BRANCH_HEAD: abc123"). The key must be all uppercase letters
+// and underscores, and the value must be a single token (no spaces) to
+// distinguish from comment text like "FIX: use the correct buffer".
+// Known fields are handled by isKnownMetadataField and don't go through
+// this heuristic.
+func looksLikeMetadataField(s string) bool {
+	idx := strings.IndexByte(s, ':')
+	if idx <= 0 {
+		return false
+	}
+	key := s[:idx]
+	for _, r := range key {
+		if !((r >= 'A' && r <= 'Z') || r == '_') {
+			return false
+		}
+	}
+	// Require the value to be a single token — metadata values are
+	// typically SHAs, timestamps, paths, or booleans, not prose.
+	val := strings.TrimPrefix(s[idx+1:], " ")
+	if val == "" {
+		return true
+	}
+	return !strings.Contains(val, " ")
+}
+
 // Serialize converts a Comment to its blob format (patch with metadata).
 func (c *Comment) Serialize() string {
 	var b strings.Builder
@@ -171,15 +212,9 @@ func (c *Comment) Serialize() string {
 	// Write ID first so it's easy to find
 	b.WriteString(fmt.Sprintf("# ID: %s\n", c.ID))
 
-	// Write comment text with # prefix
-	b.WriteString("# COMMENT:\n")
-	for _, line := range strings.Split(c.Text, "\n") {
-		b.WriteString("# ")
-		b.WriteString(line)
-		b.WriteString("\n")
-	}
-
-	// Write metadata
+	// Write metadata before comment text so that unknown fields added by
+	// newer versions appear in the metadata section (before COMMENT:) and
+	// are naturally skipped by older parsers that don't recognise them.
 	b.WriteString(fmt.Sprintf("# CREATED: %s\n", c.Created.Format(time.RFC3339)))
 	b.WriteString(fmt.Sprintf("# UPDATED: %s\n", c.Updated.Format(time.RFC3339)))
 	if c.CommitSHA != "" {
@@ -199,6 +234,14 @@ func (c *Comment) Serialize() string {
 	b.WriteString(fmt.Sprintf("# LINE: %d\n", c.Line))
 	b.WriteString(fmt.Sprintf("# ANCHOR: %s\n", c.Anchor))
 
+	// Write comment text last with #| prefix to distinguish from metadata
+	b.WriteString("# COMMENT:\n")
+	for _, line := range strings.Split(c.Text, "\n") {
+		b.WriteString("#| ")
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+
 	return b.String()
 }
 
@@ -215,6 +258,39 @@ func ParseComment(id string, data string) (*Comment, error) {
 	var seenCommentedLine bool
 
 	for _, line := range lines {
+		// Parse comment text (checked first so metadata-like lines inside
+		// the comment section aren't consumed by the handlers below).
+		if line == "# COMMENT:" {
+			inComment = true
+			continue
+		}
+		// New format: #| prefix is unambiguously comment text
+		if inComment && strings.HasPrefix(line, "#| ") {
+			commentLines = append(commentLines, strings.TrimPrefix(line, "#| "))
+			continue
+		}
+		if inComment && strings.HasPrefix(line, "# ") {
+			// Old format: # prefix for comment text. Check if this is a
+			// known metadata line (ends the comment section).
+			rest := strings.TrimPrefix(line, "# ")
+			if isKnownMetadataField(rest) {
+				inComment = false
+				// Trim trailing lines that look like unknown metadata
+				// fields (e.g. BRANCH_HEAD:) so they don't leak into
+				// the displayed comment text. Only trim from the end
+				// to avoid false-positives on comment text like
+				// "FIX: something" in the middle of the comment.
+				for len(commentLines) > 0 && looksLikeMetadataField(commentLines[len(commentLines)-1]) {
+					commentLines = commentLines[:len(commentLines)-1]
+				}
+				// Fall through to the metadata handlers below so this
+				// line's value is parsed.
+			} else {
+				commentLines = append(commentLines, rest)
+				continue
+			}
+		}
+
 		// Parse metadata lines
 		if strings.HasPrefix(line, "# ID: ") {
 			// ID is already set from the blob name; skip this line.
@@ -280,40 +356,6 @@ func ParseComment(id string, data string) (*Comment, error) {
 			default:
 				return nil, fmt.Errorf("invalid RESOLVED value %q: expected true or false", val)
 			}
-			continue
-		}
-
-		// Parse comment text
-		if line == "# COMMENT:" {
-			inComment = true
-			continue
-		}
-		if inComment && strings.HasPrefix(line, "# ") {
-			// Check if this is a metadata line (ends the comment section)
-			rest := strings.TrimPrefix(line, "# ")
-			if strings.HasPrefix(rest, "CREATED:") ||
-				strings.HasPrefix(rest, "UPDATED:") ||
-				strings.HasPrefix(rest, "COMMIT:") ||
-				strings.HasPrefix(rest, "BRANCH:") ||
-				strings.HasPrefix(rest, "BRANCH_HEAD:") ||
-				strings.HasPrefix(rest, "HEAD:") ||
-				strings.HasPrefix(rest, "FILE:") ||
-				strings.HasPrefix(rest, "LINE:") ||
-				strings.HasPrefix(rest, "ANCHOR:") ||
-				strings.HasPrefix(rest, "AUTHOR:") ||
-				strings.HasPrefix(rest, "RESOLVED:") {
-				inComment = false
-				// Re-process this line as metadata
-				if strings.HasPrefix(line, "# CREATED: ") {
-					t, err := time.Parse(time.RFC3339, strings.TrimPrefix(line, "# CREATED: "))
-					if err == nil {
-						c.Created = t
-					}
-				}
-				// Other metadata cases handled by the main loop on next iteration
-				continue
-			}
-			commentLines = append(commentLines, strings.TrimPrefix(line, "# "))
 			continue
 		}
 
