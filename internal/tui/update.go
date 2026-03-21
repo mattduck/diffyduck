@@ -717,7 +717,7 @@ func (m Model) dispatchAction(action Action) (tea.Model, tea.Cmd) {
 
 	case ActionCommentToggle:
 		if len(m.collapsedComments) > 0 {
-			m.collapsedComments = make(map[commentKey]bool)
+			m.collapsedComments = make(map[string]bool)
 			m.commentDisplayMode = CommentShowUnresolved
 			m.statusMessage = "Comments: unresolved only"
 			m.statusMessageTime = time.Now()
@@ -842,8 +842,9 @@ type cursorRowIdentity struct {
 	commitInfoBodyIndex int
 	// For structural diff rows, which row within the file's structural diff area (0-indexed)
 	structuralDiffIndex int
-	// For comment rows, identify by the line they belong to and position within the box
+	// For comment rows, identify by the line they belong to, comment ID, and position within the box
 	commentLineNum  int
+	commentID       string
 	commentRowIndex int
 	// For content rows, the line numbers to match
 	oldNum int
@@ -929,6 +930,7 @@ func (m Model) getCursorRowIdentity() cursorRowIdentity {
 		commitInfoBodyIndex: commitInfoBodyIndex,
 		structuralDiffIndex: structuralDiffIndex,
 		commentLineNum:      row.commentLineNum,
+		commentID:           row.commentID,
 		commentRowIndex:     row.commentRowIndex,
 		oldNum:              row.pair.Old.Num,
 		newNum:              row.pair.New.Num,
@@ -1098,9 +1100,9 @@ func (m Model) rowMatchesIdentity(row displayRow, identity cursorRowIdentity, bl
 		// Match the specific structural diff row by index within the file
 		return row.kind == RowKindStructuralDiff && structuralDiffSeen == identity.structuralDiffIndex
 	case RowKindComment:
-		// Match by the line the comment belongs to and position within the box
+		// Match by the line the comment belongs to, comment ID, and position within the box
 		return row.kind == RowKindComment && row.commentLineNum == identity.commentLineNum &&
-			row.commentRowIndex == identity.commentRowIndex
+			row.commentID == identity.commentID && row.commentRowIndex == identity.commentRowIndex
 	case RowKindContent:
 		// For content rows, match by line numbers
 		// Handle cases where one side might be 0 (added/removed lines)
@@ -1159,11 +1161,28 @@ func (m Model) handleFoldToggle() (tea.Model, tea.Cmd) {
 		return m.handleCommitFoldCycle()
 	}
 
-	// If on a content line with a comment, toggle per-comment collapse
+	// If on a comment box row, toggle fold for that individual comment
 	if !m.isOnFileHeader() {
+		rows := m.getRows()
+		cursorPos := m.cursorLine()
+		if cursorPos >= 0 && cursorPos < len(rows) {
+			row := rows[cursorPos]
+			if row.kind == RowKindComment && row.commentID != "" {
+				m.collapsedComments[row.commentID] = !m.collapsedComments[row.commentID]
+				m.rebuildAllRowCachesPreservingCursor()
+				return m, nil
+			}
+		}
+
+		// If on a content line with a comment thread, toggle all comments in thread
 		if key, ok := m.findCommentForContentLine(); ok {
-			if c, exists := m.comments[key]; exists && c.Text != "" {
-				m.collapsedComments[key] = !m.collapsedComments[key]
+			thread := m.comments[key]
+			if len(thread) > 0 {
+				for _, c := range thread {
+					if c.ID != "" {
+						m.collapsedComments[c.ID] = !m.collapsedComments[c.ID]
+					}
+				}
 				m.rebuildAllRowCachesPreservingCursor()
 				return m, nil
 			}
@@ -2019,6 +2038,13 @@ func (m *Model) goToPrevChange() {
 	m.adjustScrollToRow(i)
 }
 
+// commentTarget identifies a specific comment for navigation.
+type commentTarget struct {
+	key       commentKey
+	commentID string
+	created   time.Time // cached for efficient sorting
+}
+
 // goToNextComment moves the cursor to the next comment, even if the
 // containing file or commit is folded. Unfolds as needed. Does not wrap.
 func (m *Model) goToNextComment(includeAll bool) {
@@ -2026,7 +2052,7 @@ func (m *Model) goToNextComment(includeAll bool) {
 	if !ok {
 		return
 	}
-	m.navigateToComment(target)
+	m.navigateToComment(target.key, target.commentID)
 }
 
 // goToPrevComment moves the cursor to the previous comment, even if the
@@ -2036,7 +2062,7 @@ func (m *Model) goToPrevComment(includeAll bool) {
 	if !ok {
 		return
 	}
-	m.navigateToComment(target)
+	m.navigateToComment(target.key, target.commentID)
 }
 
 // cursorFilePosition returns the file index and line number at the cursor.
@@ -2079,11 +2105,31 @@ func (m *Model) sortedCommentKeys() []commentKey {
 	return keys
 }
 
-// findNextCommentTarget finds the next (or previous) comment target,
+// sortedCommentTargets returns a flat list of all individual comments sorted by
+// (fileIndex, lineNum, Created).
+func (m *Model) sortedCommentTargets() []commentTarget {
+	var targets []commentTarget
+	for key, thread := range m.comments {
+		for _, c := range thread {
+			targets = append(targets, commentTarget{key: key, commentID: c.ID, created: c.Created})
+		}
+	}
+	sort.Slice(targets, func(i, j int) bool {
+		if targets[i].key.fileIndex != targets[j].key.fileIndex {
+			return targets[i].key.fileIndex < targets[j].key.fileIndex
+		}
+		if targets[i].key.newLineNum != targets[j].key.newLineNum {
+			return targets[i].key.newLineNum < targets[j].key.newLineNum
+		}
+		return targets[i].created.Before(targets[j].created)
+	})
+	return targets
+}
+
+// findNextCommentTarget finds the next (or previous) individual comment target,
 // checking both loaded comments (m.comments) and skeleton files
-// (m.commentIndex). Returns the target commentKey and true, or false
-// if no comment found.
-func (m *Model) findNextCommentTarget(forward bool, includeAll bool) (commentKey, bool) {
+// (m.commentIndex). Returns the target and true, or false if no comment found.
+func (m *Model) findNextCommentTarget(forward bool, includeAll bool) (commentTarget, bool) {
 	curFileIdx, curLineNum := m.cursorFilePosition()
 
 	// On non-content rows (lineNum == 0), going backward means the cursor is
@@ -2093,24 +2139,66 @@ func (m *Model) findNextCommentTarget(forward bool, includeAll bool) (commentKey
 		curLineNum = math.MaxInt
 	}
 
+	// Determine current comment's Created time (for same-line navigation).
+	// If cursor is on a comment row, we use its Created to navigate between
+	// individual comments on the same line.
+	var curCreated time.Time
+	rows := m.getRows()
+	cursorPos := m.cursorLine()
+	if cursorPos >= 0 && cursorPos < len(rows) {
+		row := rows[cursorPos]
+		if row.kind == RowKindComment {
+			curCreated = row.commentCreated
+		}
+	}
+
 	// Phase 1: Check loaded comments (filtered by branch + resolved state)
-	sorted := m.sortedCommentKeys()
+	targets := m.sortedCommentTargets()
+
+	isAfterCursor := func(t commentTarget) bool {
+		if t.key.fileIndex != curFileIdx {
+			return t.key.fileIndex > curFileIdx
+		}
+		if t.key.newLineNum != curLineNum {
+			return t.key.newLineNum > curLineNum
+		}
+		// Same line: only navigate between individual comments if cursor is on a comment row
+		if !curCreated.IsZero() {
+			return t.created.After(curCreated)
+		}
+		return false
+	}
+
+	isBeforeCursor := func(t commentTarget) bool {
+		if t.key.fileIndex != curFileIdx {
+			return t.key.fileIndex < curFileIdx
+		}
+		if t.key.newLineNum != curLineNum {
+			return t.key.newLineNum < curLineNum
+		}
+		// Same line: only navigate between individual comments if cursor is on a comment row
+		if !curCreated.IsZero() {
+			return t.created.Before(curCreated)
+		}
+		return false
+	}
+
 	if forward {
-		for _, k := range sorted {
-			if k.fileIndex > curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum > curLineNum) {
-				c := m.comments[k]
-				if m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
-					return k, true
+		for _, t := range targets {
+			if isAfterCursor(t) {
+				c := m.findCommentInThread(t.key, t.commentID)
+				if c != nil && m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
+					return t, true
 				}
 			}
 		}
 	} else {
-		for i := len(sorted) - 1; i >= 0; i-- {
-			k := sorted[i]
-			if k.fileIndex < curFileIdx || (k.fileIndex == curFileIdx && k.newLineNum < curLineNum) {
-				c := m.comments[k]
-				if m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
-					return k, true
+		for i := len(targets) - 1; i >= 0; i-- {
+			t := targets[i]
+			if isBeforeCursor(t) {
+				c := m.findCommentInThread(t.key, t.commentID)
+				if c != nil && m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
+					return t, true
 				}
 			}
 		}
@@ -2118,7 +2206,7 @@ func (m *Model) findNextCommentTarget(forward bool, includeAll bool) (commentKey
 
 	// Phase 2: Check skeleton files for comments via the index
 	if m.commentIndex == nil || m.git == nil {
-		return commentKey{}, false
+		return commentTarget{}, false
 	}
 
 	if forward {
@@ -2131,7 +2219,7 @@ func (m *Model) findNextCommentTarget(forward bool, includeAll bool) (commentKey
 // m.commentIndex. If found, loads the commit diff and returns the first
 // matching comment from m.comments. When includeAll is false, resolved
 // comments are skipped.
-func (m *Model) findSkeletonComment(curFileIdx int, forward, includeAll bool) (commentKey, bool) {
+func (m *Model) findSkeletonComment(curFileIdx int, forward, includeAll bool) (commentTarget, bool) {
 	if forward {
 		for i := curFileIdx + 1; i < len(m.files); i++ {
 			if target, ok := m.tryLoadSkeletonForComment(i, true, includeAll); ok {
@@ -2145,20 +2233,20 @@ func (m *Model) findSkeletonComment(curFileIdx int, forward, includeAll bool) (c
 			}
 		}
 	}
-	return commentKey{}, false
+	return commentTarget{}, false
 }
 
 // tryLoadSkeletonForComment checks if a file's path has comments in the
 // index and its commit hasn't been loaded yet. If so, loads the commit
 // diff and returns the first/last matching comment in the newly loaded range.
 // When includeAll is false, resolved comments are skipped.
-func (m *Model) tryLoadSkeletonForComment(fileIdx int, first, includeAll bool) (commentKey, bool) {
+func (m *Model) tryLoadSkeletonForComment(fileIdx int, first, includeAll bool) (commentTarget, bool) {
 	commitIdx := m.commitForFile(fileIdx)
 	if commitIdx < 0 || commitIdx >= len(m.commits) {
-		return commentKey{}, false
+		return commentTarget{}, false
 	}
 	if m.commits[commitIdx].FilesLoaded {
-		return commentKey{}, false // Already loaded — comments already in m.comments
+		return commentTarget{}, false // Already loaded — comments already in m.comments
 	}
 
 	// Check if this file's path has comments in the index
@@ -2180,7 +2268,7 @@ func (m *Model) tryLoadSkeletonForComment(fileIdx int, first, includeAll bool) (
 		}
 	}
 	if !hasComments {
-		return commentKey{}, false
+		return commentTarget{}, false
 	}
 
 	// Load the commit diff — this also calls matchCommentsForFiles
@@ -2194,34 +2282,35 @@ func (m *Model) tryLoadSkeletonForComment(fileIdx int, first, includeAll bool) (
 	}
 
 	// Find the first/last matching comment in the loaded range
+	targets := m.sortedCommentTargets()
 	if first {
-		for _, k := range m.sortedCommentKeys() {
-			if k.fileIndex >= startIdx && k.fileIndex < endIdx {
-				c := m.comments[k]
-				if m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
-					return k, true
+		for _, t := range targets {
+			if t.key.fileIndex >= startIdx && t.key.fileIndex < endIdx {
+				c := m.findCommentInThread(t.key, t.commentID)
+				if c != nil && m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
+					return t, true
 				}
 			}
 		}
 	} else {
-		sorted := m.sortedCommentKeys()
-		for i := len(sorted) - 1; i >= 0; i-- {
-			k := sorted[i]
-			if k.fileIndex >= startIdx && k.fileIndex < endIdx {
-				c := m.comments[k]
-				if m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
-					return k, true
+		for i := len(targets) - 1; i >= 0; i-- {
+			t := targets[i]
+			if t.key.fileIndex >= startIdx && t.key.fileIndex < endIdx {
+				c := m.findCommentInThread(t.key, t.commentID)
+				if c != nil && m.isCommentIncluded(c) && (includeAll || !c.Resolved) {
+					return t, true
 				}
 			}
 		}
 	}
 
-	return commentKey{}, false
+	return commentTarget{}, false
 }
 
 // navigateToComment unfolds the target file/commit if needed and scrolls
-// to the comment row.
-func (m *Model) navigateToComment(key commentKey) {
+// to the comment row. If commentID is non-empty, navigates to that specific
+// comment box; otherwise navigates to the content line.
+func (m *Model) navigateToComment(key commentKey, commentID string) {
 	if key.fileIndex < 0 || key.fileIndex >= len(m.files) {
 		return
 	}
@@ -2252,8 +2341,20 @@ func (m *Model) navigateToComment(key commentKey) {
 	// Rebuild rows
 	m.calculateTotalLines()
 
-	// Find the content line for this comment and navigate to it
 	rows := m.getRows()
+
+	// Try to navigate to the specific comment row first
+	if commentID != "" {
+		for i, row := range rows {
+			if row.kind == RowKindComment && row.fileIndex == key.fileIndex &&
+				row.commentID == commentID {
+				m.adjustScrollToRow(i)
+				return
+			}
+		}
+	}
+
+	// Fall back to the content line for this comment
 	for i, row := range rows {
 		if row.kind == RowKindContent && row.fileIndex == key.fileIndex &&
 			row.pair.New.Num == key.newLineNum {

@@ -213,8 +213,7 @@ func (m *Model) matchCommentsForFiles(startIdx, endIdx int) int {
 				fileIndex:  mapping.fileIdx,
 				newLineNum: result.Line,
 			}
-			m.comments[key] = c
-			m.persistedCommentIDs[key] = c.ID
+			m.appendCommentToThread(key, c)
 			loaded++
 		}
 	}
@@ -236,8 +235,7 @@ func (m *Model) reloadComments() int {
 		return 0
 	}
 	m.commentIndex = nil
-	m.comments = make(map[commentKey]*comments.Comment)
-	m.persistedCommentIDs = make(map[commentKey]string)
+	m.comments = make(map[commentKey][]*comments.Comment)
 	m.loadedCommentIDs = make(map[string]bool)
 	m.allStoreComments = nil // force re-fetch from store
 	m.loadCommentIndex()
@@ -300,7 +298,7 @@ func (m *Model) persistComment(key commentKey, text string) *comments.Comment {
 	now := time.Now()
 
 	// Check if we're updating an existing persisted comment
-	existingID := m.persistedCommentIDs[key]
+	existingID := m.w().commentEditID
 
 	c := &comments.Comment{
 		ID:      existingID, // Empty for new, existing ID for update
@@ -315,7 +313,7 @@ func (m *Model) persistComment(key commentKey, text string) *comments.Comment {
 	// Preserve created time from existing comment, or set for new
 	if existingID == "" {
 		c.Created = now
-	} else if existing, ok := m.comments[key]; ok {
+	} else if existing := m.findCommentInThread(key, existingID); existing != nil {
 		c.Created = existing.Created
 	}
 
@@ -354,24 +352,18 @@ func (m *Model) persistComment(key commentKey, text string) *comments.Comment {
 	return c
 }
 
-// deletePersistedComment removes a comment from the git store.
-func (m *Model) deletePersistedComment(key commentKey) {
-	if m.commentStore == nil {
-		return
-	}
-
-	id, ok := m.persistedCommentIDs[key]
-	if !ok {
+// deletePersistedComment removes a specific comment from the git store by ID.
+func (m *Model) deletePersistedComment(key commentKey, commentID string) {
+	if m.commentStore == nil || commentID == "" {
 		return
 	}
 
 	// Delete from store (ignore errors - best effort)
-	_ = m.commentStore.DeleteComment(id)
-	delete(m.persistedCommentIDs, key)
+	_ = m.commentStore.DeleteComment(commentID)
 
 	// Keep in-memory index in sync
 	if m.commentIndex != nil && key.fileIndex >= 0 && key.fileIndex < len(m.files) {
 		file := m.files[key.fileIndex]
-		m.commentIndex.Remove(cleanFilePath(file.NewPath), id)
+		m.commentIndex.Remove(cleanFilePath(file.NewPath), commentID)
 	}
 }

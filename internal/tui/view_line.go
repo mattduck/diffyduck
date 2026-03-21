@@ -14,6 +14,14 @@ import (
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
+// commentMarkerIcon returns the pilcrow icon styled for resolved (dim) or unresolved (yellow).
+func commentMarkerIcon(resolved bool) string {
+	if resolved {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("¶")
+	}
+	return commentCheckboxStyle.Render("¶")
+}
+
 // renderTruncationIndicator renders a row indicating content was truncated.
 // Shows truncation on left side if truncateOld is true, right side if truncateNew is true.
 func (m Model) renderTruncationIndicator(message string, isCursorRow bool, truncateOld, truncateNew bool) string {
@@ -233,12 +241,21 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	}
 	rightContent := commentRightDimStyle.Render(strings.Repeat("░", rightContentWidth))
 
+	// Folded comment: single line with just the comment icon
+	if row.commentFolded {
+		marker := commentMarkerIcon(row.commentResolved)
+		// Icon + indicator space, then blank padding to fill the box width
+		leftContent := marker + strings.Repeat(" ", boxWidth-1)
+		return treeContinuation + leftGutter + leftContent + sep + rightGutter + rightContent
+	}
+
 	// Determine which part of the comment box this row is
 	isTopBorder := row.commentRowIndex == 0
 	isBottomBorder := row.commentRowIndex == row.commentRowCount-1
 
 	if isTopBorder {
-		topBorder := "╓" + strings.Repeat("─", boxWidth-2) + "╖"
+		marker := commentMarkerIcon(row.commentResolved)
+		topBorder := marker + "╓" + strings.Repeat("─", boxWidth-3) + "╖"
 		return treeContinuation + leftGutter + commentBorderStyle.Render(topBorder) + sep + rightGutter + rightContent
 	}
 
@@ -333,12 +350,8 @@ func (m Model) renderLinePair(pair sidebyside.LinePair, fileIndex, leftHalfWidth
 	var commentMarker string
 	if hasComment && pair.New.Num > 0 {
 		key := commentKey{fileIndex: fileIndex, newLineNum: pair.New.Num}
-		if c, ok := m.comments[key]; ok && m.isCommentIncluded(c) {
-			if c.Resolved {
-				commentMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("¶")
-			} else {
-				commentMarker = commentCheckboxStyle.Render("¶")
-			}
+		if m.threadHasIncludedComment(key) {
+			commentMarker = commentMarkerIcon(m.threadAggregateResolved(key))
 		}
 	}
 

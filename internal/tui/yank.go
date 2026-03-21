@@ -38,12 +38,12 @@ func (m Model) handleYank() (tea.Model, tea.Cmd) {
 		return m.yankFilePath(row.fileIndex)
 	}
 
-	// Comment / content rows: copy comment as diff snippet
-	ck, found := m.findCommentForCursor()
-	if !found {
+	// Comment rows: copy comment as diff snippet (only works on comment box rows)
+	ck, commentID, found := m.findCommentForCursor()
+	if !found || commentID == "" {
 		return m, nil
 	}
-	c := m.comments[ck]
+	c := m.findCommentInThread(ck, commentID)
 	if c == nil || c.Text == "" {
 		return m, nil
 	}
@@ -224,9 +224,10 @@ func (m Model) handleYankComments(includeAll bool) (tea.Model, tea.Cmd) {
 	return m, m.clearStatusAfter(now)
 }
 
-// commentWithKey pairs a comment key for sorting.
+// commentWithKey pairs a comment key with a specific comment ID for sorting.
 type commentWithKey struct {
-	key commentKey
+	key       commentKey
+	commentID string
 }
 
 // buildCommentsSnippet generates a unified diff patch containing comments.
@@ -237,14 +238,16 @@ type commentWithKey struct {
 func (m Model) buildCommentsSnippet(includeAll bool) (string, int) {
 	// Collect and sort comments by (fileIndex, newLineNum).
 	var sorted []commentWithKey
-	for ck, c := range m.comments {
-		if !m.isCommentIncluded(c) {
-			continue
+	for ck, thread := range m.comments {
+		for _, c := range thread {
+			if !m.isCommentIncluded(c) {
+				continue
+			}
+			if !includeAll && c.Resolved {
+				continue
+			}
+			sorted = append(sorted, commentWithKey{key: ck, commentID: c.ID})
 		}
-		if !includeAll && c.Resolved {
-			continue
-		}
-		sorted = append(sorted, commentWithKey{key: ck})
 	}
 	sort.Slice(sorted, func(i, j int) bool {
 		if sorted[i].key.fileIndex != sorted[j].key.fileIndex {
@@ -347,22 +350,27 @@ func (m Model) writeFileCommentHunks(sb *strings.Builder, fp sidebyside.FilePair
 		sb.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n", oldStart, oldCount, newStart, newCount))
 
 		// Build a set of commented line numbers for quick lookup
-		commentsByLine := make(map[int]commentWithKey)
+		commentsByLine := make(map[int][]commentWithKey)
 		for _, cwk := range hr.comments {
-			commentsByLine[cwk.key.newLineNum] = cwk
+			commentsByLine[cwk.key.newLineNum] = append(commentsByLine[cwk.key.newLineNum], cwk)
 		}
 
 		for i := hr.startIdx; i <= hr.endIdx; i++ {
 			pair := fp.Pairs[i]
 			m.writeDiffLines(sb, pair)
 
-			if cwk, ok := commentsByLine[pair.New.Num]; ok {
-				c := m.comments[cwk.key]
-				sb.WriteString(fmt.Sprintf("# COMMENT_ID %s:\n", c.ID))
-				for _, line := range strings.Split(c.Text, "\n") {
-					sb.WriteString("# " + line + "\n")
+			if cwks, ok := commentsByLine[pair.New.Num]; ok {
+				for _, cwk := range cwks {
+					c := m.findCommentInThread(cwk.key, cwk.commentID)
+					if c == nil {
+						continue
+					}
+					sb.WriteString(fmt.Sprintf("# COMMENT_ID %s:\n", c.ID))
+					for _, line := range strings.Split(c.Text, "\n") {
+						sb.WriteString("# " + line + "\n")
+					}
+					sb.WriteString("#\n#\n")
 				}
-				sb.WriteString("#\n#\n")
 			}
 		}
 	}
@@ -384,10 +392,8 @@ func (m Model) clearStatusAfter(_ time.Time) tea.Cmd {
 	return nil
 }
 
-// findCommentForCursor returns the comment key for the current cursor position.
-// Returns false if the cursor is not on a line with a comment.
 // findCommentForContentLine returns the comment key if the cursor is on a
-// content line that has a comment. Unlike findCommentForCursor, it does NOT
+// content line that has a comment thread. Unlike findCommentForCursor, it does NOT
 // match when the cursor is on a comment row.
 func (m Model) findCommentForContentLine() (commentKey, bool) {
 	rows := m.getRows()
@@ -398,39 +404,33 @@ func (m Model) findCommentForContentLine() (commentKey, bool) {
 	row := rows[cursorPos]
 	if row.kind == RowKindContent && row.pair.New.Num > 0 {
 		key := commentKey{fileIndex: row.fileIndex, newLineNum: row.pair.New.Num}
-		if _, ok := m.comments[key]; ok {
+		if len(m.comments[key]) > 0 {
 			return key, true
 		}
 	}
 	return commentKey{}, false
 }
 
-func (m Model) findCommentForCursor() (commentKey, bool) {
+// findCommentForCursor returns the comment key and comment ID for the current cursor position.
+// Only matches when the cursor is on a comment box row (not content rows).
+// Returns (key, commentID, found).
+func (m Model) findCommentForCursor() (commentKey, string, bool) {
 	rows := m.getRows()
 	cursorPos := m.cursorLine()
 	if cursorPos < 0 || cursorPos >= len(rows) {
-		return commentKey{}, false
+		return commentKey{}, "", false
 	}
 
 	row := rows[cursorPos]
 
-	if row.kind == RowKindComment {
-		// Cursor is on a comment row
+	if row.kind == RowKindComment && row.commentID != "" {
 		key := commentKey{fileIndex: row.fileIndex, newLineNum: row.commentLineNum}
-		if _, ok := m.comments[key]; ok {
-			return key, true
-		}
-	} else if row.kind == RowKindContent {
-		// Cursor is on content, check if it has a comment
-		if row.pair.New.Num > 0 {
-			key := commentKey{fileIndex: row.fileIndex, newLineNum: row.pair.New.Num}
-			if _, ok := m.comments[key]; ok {
-				return key, true
-			}
+		if len(m.comments[key]) > 0 {
+			return key, row.commentID, true
 		}
 	}
 
-	return commentKey{}, false
+	return commentKey{}, "", false
 }
 
 // buildDiffSnippet generates a unified diff snippet with the comment.

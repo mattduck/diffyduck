@@ -3443,8 +3443,7 @@ func TestWindowCommentSync(t *testing.T) {
 	// Window 0 is active, add a comment
 	m.activeWindowIdx = 0
 	key := commentKey{fileIndex: 0, newLineNum: 5}
-	m.comments[key] = &comments.Comment{Text: "Test comment from window 0"}
-
+	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment from window 0"})
 	// Rebuild all caches (simulating what submitComment does)
 	m.rebuildAllRowCachesPreservingCursor()
 
@@ -3521,7 +3520,7 @@ func TestWindowCursorPreservedOnCommentAdd(t *testing.T) {
 
 	// Add a comment near the top (should shift rows below it)
 	key := commentKey{fileIndex: 0, newLineNum: 2}
-	m.comments[key] = &comments.Comment{Text: "Comment that shifts rows"}
+	m.appendCommentToThread(key, &comments.Comment{Text: "Comment that shifts rows"})
 	m.rebuildAllRowCachesPreservingCursor()
 
 	// Both windows should still be on their original logical rows (same line numbers)
@@ -4492,8 +4491,7 @@ func TestLoadCommitDiff_ShiftsHighlightMaps(t *testing.T) {
 	m.loadingFiles[1] = now
 
 	// Also store a comment for C1's file
-	m.comments[commentKey{fileIndex: 1, newLineNum: 1}] = &comments.Comment{Text: "test comment"}
-
+	m.appendCommentToThread(commentKey{fileIndex: 1, newLineNum: 1}, &comments.Comment{Text: "test comment"})
 	// --- Act: load C0's diff (2 files replace 1 skeleton → delta +1) ---
 	m.loadCommitDiff(0)
 
@@ -4513,7 +4511,7 @@ func TestLoadCommitDiff_ShiftsHighlightMaps(t *testing.T) {
 	assert.False(t, hasOldLoading, "loadingFiles at index 1 should be cleared")
 
 	// Comment should also shift
-	assert.Equal(t, "test comment", m.comments[commentKey{fileIndex: 2, newLineNum: 1}].Text,
+	assert.Equal(t, "test comment", m.comments[commentKey{fileIndex: 2, newLineNum: 1}][0].Text,
 		"comment for C1 should shift to fileIndex 2")
 	_, hasOldComment := m.comments[commentKey{fileIndex: 1, newLineNum: 1}]
 	assert.False(t, hasOldComment, "comment at old fileIndex 1 should be cleared")

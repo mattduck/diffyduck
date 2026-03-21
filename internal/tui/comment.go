@@ -131,7 +131,8 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // startComment enters comment mode for the current line.
-// If there's an existing comment, loads it for editing.
+// On a comment box row: edits that specific comment.
+// On a content row: always adds a new comment (even if others exist on that line).
 func (m *Model) startComment() bool {
 	cursorRow := m.cursorLine()
 
@@ -146,29 +147,31 @@ func (m *Model) startComment() bool {
 
 	row := rows[cursorRow]
 
-	// If cursor is on a comment row, edit that comment
+	// If cursor is on a comment row, edit that specific comment
 	if row.kind == RowKindComment {
 		m.w().commentKey = commentKey{
 			fileIndex:  row.fileIndex,
 			newLineNum: row.commentLineNum,
 		}
+		m.w().commentEditID = row.commentID
+		if existing := m.findCommentInThread(m.w().commentKey, row.commentID); existing != nil {
+			m.w().commentInput = existing.Text
+			m.w().commentCursor = len(existing.Text)
+		} else {
+			m.w().commentInput = ""
+			m.w().commentCursor = 0
+		}
 	} else if m.canComment(row) {
-		// Set up comment key for this content line
+		// Content row: always add a new comment
 		m.w().commentKey = commentKey{
 			fileIndex:  row.fileIndex,
 			newLineNum: row.pair.New.Num,
 		}
-	} else {
-		return false
-	}
-
-	// Load existing comment if any
-	if existing, ok := m.comments[m.w().commentKey]; ok {
-		m.w().commentInput = existing.Text
-		m.w().commentCursor = len(existing.Text)
-	} else {
+		m.w().commentEditID = ""
 		m.w().commentInput = ""
 		m.w().commentCursor = 0
+	} else {
+		return false
 	}
 
 	m.w().commentMode = true
@@ -178,16 +181,16 @@ func (m *Model) startComment() bool {
 }
 
 // toggleResolveComment toggles the resolved state of the comment at cursor.
-// Works on content lines with comments and on comment rows.
+// Only works when cursor is on a comment box row (not content rows).
 // Returns true if a comment was toggled.
 func (m *Model) toggleResolveComment() bool {
-	key, found := m.findCommentForCursor()
-	if !found {
+	key, commentID, found := m.findCommentForCursor()
+	if !found || commentID == "" {
 		return false
 	}
 
-	c, ok := m.comments[key]
-	if !ok {
+	c := m.findCommentInThread(key, commentID)
+	if c == nil {
 		return false
 	}
 
@@ -195,10 +198,8 @@ func (m *Model) toggleResolveComment() bool {
 	c.Updated = time.Now()
 
 	// Re-persist to git store
-	if m.commentStore != nil {
-		if id, ok := m.persistedCommentIDs[key]; ok && id != "" {
-			_, _ = m.commentStore.WriteComment(c)
-		}
+	if m.commentStore != nil && c.ID != "" {
+		_, _ = m.commentStore.WriteComment(c)
 	}
 
 	// Update the cached store copy and recount
@@ -213,28 +214,37 @@ func (m *Model) toggleResolveComment() bool {
 func (m *Model) submitComment() {
 	text := strings.TrimSpace(m.w().commentInput)
 	key := m.w().commentKey
+	editID := m.w().commentEditID
 
-	if text == "" {
-		// Empty comment = delete
-		if c, ok := m.comments[key]; ok {
-			m.removeStoreComment(c.ID)
+	if editID != "" {
+		// Editing an existing comment
+		if text == "" {
+			// Empty text = delete this specific comment
+			m.deletePersistedComment(key, editID)
+			m.removeStoreComment(editID)
+			m.removeCommentFromThread(key, editID)
+		} else {
+			// Update existing comment
+			if c := m.persistComment(key, text); c != nil {
+				// Replace the old comment in the thread
+				m.removeCommentFromThread(key, editID)
+				m.appendCommentToThread(key, c)
+				m.upsertStoreComment(c)
+			}
 		}
-		delete(m.comments, key)
-		m.deletePersistedComment(key)
-	} else {
-		// Persist to git store (returns full comment object with metadata)
+	} else if text != "" {
+		// Adding a new comment
 		if c := m.persistComment(key, text); c != nil {
-			m.comments[key] = c
-			m.persistedCommentIDs[key] = c.ID
+			m.appendCommentToThread(key, c)
 			m.upsertStoreComment(c)
 		} else {
 			// No store available — create a minimal in-memory comment
 			now := time.Now()
-			m.comments[key] = &comments.Comment{
+			m.appendCommentToThread(key, &comments.Comment{
 				Text:    text,
 				Created: now,
 				Updated: now,
-			}
+			})
 		}
 	}
 	m.recomputeCommentCounts()
@@ -243,6 +253,7 @@ func (m *Model) submitComment() {
 	m.w().commentInput = ""
 	m.w().commentCursor = 0
 	m.w().commentScroll = 0
+	m.w().commentEditID = ""
 
 	// Rebuild row cache for ALL windows so they all see the new comment.
 	// Each window's cursor is preserved on its same logical row.
@@ -255,6 +266,7 @@ func (m *Model) cancelComment() {
 	m.w().commentInput = ""
 	m.w().commentCursor = 0
 	m.w().commentScroll = 0
+	m.w().commentEditID = ""
 }
 
 // canComment returns true if the given row can have a comment attached.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -76,16 +77,93 @@ func (m Model) isCommentVisible(c *comments.Comment) bool {
 	}
 }
 
-// isCommentExpanded returns true if the comment box should be rendered.
+// isCommentExpanded returns true if the comment box should be rendered fully.
 // Per-comment toggle (Tab) acts as an override of the global display mode:
-// if collapsedComments[key] is true, the visibility is flipped from global default.
-func (m Model) isCommentExpanded(key commentKey, c *comments.Comment) bool {
+// if collapsedComments[id] is true, the visibility is flipped from global default.
+func (m Model) isCommentExpanded(commentID string, c *comments.Comment) bool {
 	if c == nil || c.Text == "" {
 		return false
 	}
 	globalVisible := m.isCommentVisible(c)
 	// XOR: per-comment toggle flips the global state
-	return globalVisible != m.collapsedComments[key]
+	return globalVisible != m.collapsedComments[commentID]
+}
+
+// threadIncludedComments returns the comments in a thread that pass the branch filter,
+// sorted by Created ascending (oldest first).
+func (m Model) threadIncludedComments(key commentKey) []*comments.Comment {
+	thread := m.comments[key]
+	if len(thread) == 0 {
+		return nil
+	}
+	var included []*comments.Comment
+	for _, c := range thread {
+		if m.isCommentIncluded(c) {
+			included = append(included, c)
+		}
+	}
+	return included
+}
+
+// threadHasIncludedComment returns true if any comment in the thread passes the branch filter.
+func (m Model) threadHasIncludedComment(key commentKey) bool {
+	for _, c := range m.comments[key] {
+		if m.isCommentIncluded(c) {
+			return true
+		}
+	}
+	return false
+}
+
+// threadAggregateResolved returns true only if ALL included comments in the thread are resolved.
+// Returns false if the thread is empty or has no included comments.
+func (m Model) threadAggregateResolved(key commentKey) bool {
+	hasIncluded := false
+	for _, c := range m.comments[key] {
+		if m.isCommentIncluded(c) {
+			if !c.Resolved {
+				return false
+			}
+			hasIncluded = true
+		}
+	}
+	return hasIncluded
+}
+
+// findCommentInThread finds a specific comment by ID in the thread.
+func (m Model) findCommentInThread(key commentKey, id string) *comments.Comment {
+	for _, c := range m.comments[key] {
+		if c.ID == id {
+			return c
+		}
+	}
+	return nil
+}
+
+// removeCommentFromThread removes a comment by ID from the thread.
+// If the thread becomes empty, the map entry is deleted.
+func (m *Model) removeCommentFromThread(key commentKey, id string) {
+	thread := m.comments[key]
+	for i, c := range thread {
+		if c.ID == id {
+			m.comments[key] = append(thread[:i], thread[i+1:]...)
+			break
+		}
+	}
+	if len(m.comments[key]) == 0 {
+		delete(m.comments, key)
+	}
+}
+
+// appendCommentToThread appends a comment to the thread and keeps it sorted by Created ascending.
+func (m *Model) appendCommentToThread(key commentKey, c *comments.Comment) {
+	thread := m.comments[key]
+	thread = append(thread, c)
+	// Insertion sort to maintain Created order
+	sort.Slice(thread, func(i, j int) bool {
+		return thread[i].Created.Before(thread[j].Created)
+	})
+	m.comments[key] = thread
 }
 
 // commentKey identifies a line that can have a comment.
@@ -189,6 +267,7 @@ type Window struct {
 	commentCursor int        // cursor position in commentInput (byte offset)
 	commentScroll int        // vertical scroll offset in comment editor
 	commentKey    commentKey // identifies which line the comment is attached to
+	commentEditID string     // ID of comment being edited ("" = new comment)
 
 	// Visual selection mode (per-window so each split can have independent selection)
 	visualSelection VisualSelection
@@ -292,18 +371,17 @@ type Model struct {
 	clipboard Clipboard // clipboard interface for copy/paste
 
 	// Comment data - shared across windows (the actual stored comments)
-	commentDisplayMode  CommentDisplayMode               // which comments to display (unresolved/all/none)
-	collapsedComments   map[commentKey]bool              // individually collapsed comments (tab toggle)
-	comments            map[commentKey]*comments.Comment // stored comments (full objects with metadata)
-	commentStore        *comments.Store                  // git-backed persistent storage
-	persistedCommentIDs map[commentKey]string            // maps in-memory comment to persisted comment ID
-	commentIndex        *comments.Index                  // full index loaded once at startup
-	loadedCommentIDs    map[string]bool                  // tracks fetched comment IDs to avoid re-reads
-	commentBranchFilter CommentBranchFilter              // branch-based comment filter mode
-	currentBranch       string                           // current branch name for comment filtering
-	allStoreComments    []*comments.Comment              // all comments from store (loaded once at startup)
-	cachedUnresolved    int                              // cached count of included unresolved comments
-	cachedResolved      int                              // cached count of included resolved comments
+	commentDisplayMode  CommentDisplayMode                 // which comments to display (unresolved/all/none)
+	collapsedComments   map[string]bool                    // individually collapsed comments, keyed by comment ID
+	comments            map[commentKey][]*comments.Comment // comment threads per line (sorted by Created asc)
+	commentStore        *comments.Store                    // git-backed persistent storage
+	commentIndex        *comments.Index                    // full index loaded once at startup
+	loadedCommentIDs    map[string]bool                    // tracks fetched comment IDs to avoid re-reads
+	commentBranchFilter CommentBranchFilter                // branch-based comment filter mode
+	currentBranch       string                             // current branch name for comment filtering
+	allStoreComments    []*comments.Comment                // all comments from store (loaded once at startup)
+	cachedUnresolved    int                                // cached count of included unresolved comments
+	cachedResolved      int                                // cached count of included resolved comments
 
 	// Conflict state
 	hasConflicts bool // true when repo is in a merge/rebase/cherry-pick conflict state
@@ -706,33 +784,32 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 	s.Spinner.FPS = time.Second / 6 // 6 fps
 
 	m := Model{
-		commits:             commits,
-		windows:             []*Window{newWindow()}, // start with one window
-		activeWindowIdx:     0,
-		windowSplitRatio:    0.5,  // default 50/50 vertical split
-		windowSplitRatioH:   0.5,  // default 50/50 horizontal split
-		windowSplitV:        true, // default to vertical split when created
-		keys:                DefaultKeyMap(),
-		hscrollStep:         DefaultHScrollStep,
-		chordTimeout:        time.Duration(config.DefaultChordTimeoutMs) * time.Millisecond,
-		expandAllBudget:     config.DefaultExpandAllBudget,
-		autoUnfoldLimit:     config.DefaultAutoUnfoldLimit,
-		moveDetectMin:       config.DefaultMoveDetectMin,
-		highlighter:         highlight.New(),
-		highlightSpans:      make(map[int]*FileHighlight),
-		structureMaps:       make(map[int]*FileStructure),
-		inlineDiffCache:     make(map[inlineDiffKey]inlineDiffResult),
-		spinner:             s,
-		loadingFiles:        make(map[int]time.Time),
-		focused:             true,
-		focusColour:         false,
-		clipboard:           &SystemClipboard{},
-		comments:            make(map[commentKey]*comments.Comment),
-		collapsedComments:   make(map[commentKey]bool),
-		persistedCommentIDs: make(map[commentKey]string),
-		loadedCommentIDs:    make(map[string]bool),
-		maxNewContentWidth:  90,   // sensible default; recalculated on 'r' refresh
-		maxLineNumSeen:      9999, // default gives 4-digit gutter; recalculated on 'r' refresh
+		commits:            commits,
+		windows:            []*Window{newWindow()}, // start with one window
+		activeWindowIdx:    0,
+		windowSplitRatio:   0.5,  // default 50/50 vertical split
+		windowSplitRatioH:  0.5,  // default 50/50 horizontal split
+		windowSplitV:       true, // default to vertical split when created
+		keys:               DefaultKeyMap(),
+		hscrollStep:        DefaultHScrollStep,
+		chordTimeout:       time.Duration(config.DefaultChordTimeoutMs) * time.Millisecond,
+		expandAllBudget:    config.DefaultExpandAllBudget,
+		autoUnfoldLimit:    config.DefaultAutoUnfoldLimit,
+		moveDetectMin:      config.DefaultMoveDetectMin,
+		highlighter:        highlight.New(),
+		highlightSpans:     make(map[int]*FileHighlight),
+		structureMaps:      make(map[int]*FileStructure),
+		inlineDiffCache:    make(map[inlineDiffKey]inlineDiffResult),
+		spinner:            s,
+		loadingFiles:       make(map[int]time.Time),
+		focused:            true,
+		focusColour:        false,
+		clipboard:          &SystemClipboard{},
+		comments:           make(map[commentKey][]*comments.Comment),
+		collapsedComments:  make(map[string]bool),
+		loadedCommentIDs:   make(map[string]bool),
+		maxNewContentWidth: 90,   // sensible default; recalculated on 'r' refresh
+		maxLineNumSeen:     9999, // default gives 4-digit gutter; recalculated on 'r' refresh
 		// Column width defaults - recalculated on 'r' refresh
 		cachedCommitFileCount:    2,   // "99" files
 		cachedCommitAddWidth:     5,   // "+9999"
@@ -3308,9 +3385,9 @@ func (m *Model) shiftFileIndexMapsFrom(fromIdx, delta int) {
 		m.loadingFiles = newMap
 	}
 
-	// Shift comments
+	// Shift comments (commentKey includes fileIndex)
 	if len(m.comments) > 0 {
-		newMap := make(map[commentKey]*comments.Comment, len(m.comments))
+		newMap := make(map[commentKey][]*comments.Comment, len(m.comments))
 		for k, v := range m.comments {
 			if k.fileIndex >= fromIdx {
 				newMap[commentKey{fileIndex: k.fileIndex + delta, newLineNum: k.newLineNum}] = v
@@ -3319,17 +3396,6 @@ func (m *Model) shiftFileIndexMapsFrom(fromIdx, delta int) {
 			}
 		}
 		m.comments = newMap
-	}
-	if len(m.persistedCommentIDs) > 0 {
-		newMap := make(map[commentKey]string, len(m.persistedCommentIDs))
-		for k, v := range m.persistedCommentIDs {
-			if k.fileIndex >= fromIdx {
-				newMap[commentKey{fileIndex: k.fileIndex + delta, newLineNum: k.newLineNum}] = v
-			} else {
-				newMap[k] = v
-			}
-		}
-		m.persistedCommentIDs = newMap
 	}
 
 	// Clear inlineDiffCache — it uses fileIndex in keys; clearing is safe since it's
@@ -3369,20 +3435,13 @@ func (m *Model) shiftFileIndexMaps(offset int) {
 		m.loadingFiles = newMap
 	}
 
-	// Shift comments and persistedCommentIDs (commentKey includes fileIndex)
+	// Shift comments (commentKey includes fileIndex)
 	if len(m.comments) > 0 {
-		newMap := make(map[commentKey]*comments.Comment, len(m.comments))
+		newMap := make(map[commentKey][]*comments.Comment, len(m.comments))
 		for k, v := range m.comments {
 			newMap[commentKey{fileIndex: k.fileIndex + offset, newLineNum: k.newLineNum}] = v
 		}
 		m.comments = newMap
-	}
-	if len(m.persistedCommentIDs) > 0 {
-		newMap := make(map[commentKey]string, len(m.persistedCommentIDs))
-		for k, v := range m.persistedCommentIDs {
-			newMap[commentKey{fileIndex: k.fileIndex + offset, newLineNum: k.newLineNum}] = v
-		}
-		m.persistedCommentIDs = newMap
 	}
 
 	// Clear inlineDiffCache - it uses fileIndex in its keys and shifting

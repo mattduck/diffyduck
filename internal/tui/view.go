@@ -813,15 +813,19 @@ type displayRow struct {
 	structuralDiffIsTruncated bool                 // true if this is a "...N more" overflow row
 	// Comment indicator on content rows
 	hasComment bool // true if this content row has any comment in m.comments (for * gutter marker)
+	// Comment folded state (one-liner representation)
+	commentFolded bool // true = render as a single line with just the comment icon
 }
 
 // commentSuffixMap computes the shortest unique suffix for each comment ID
 // across all comments in the model.
 func (m Model) commentSuffixMap() map[string]string {
-	ids := make([]string, 0, len(m.comments))
-	for _, c := range m.comments {
-		if c.ID != "" {
-			ids = append(ids, c.ID)
+	var ids []string
+	for _, thread := range m.comments {
+		for _, c := range thread {
+			if c.ID != "" {
+				ids = append(ids, c.ID)
+			}
 		}
 	}
 	return comments.ShortSuffixes(ids)
@@ -982,6 +986,24 @@ func buildCommentRows(fileIndex int, lineNum int, c *comments.Comment, contentWi
 	rows[rowCount-1].commentLineIndex = -1
 
 	return rows
+}
+
+// buildFoldedCommentRow creates a single displayRow representing a collapsed comment.
+// Renders as just the comment icon character on an otherwise blank line.
+func buildFoldedCommentRow(fileIndex int, lineNum int, c *comments.Comment, treePath TreePath) displayRow {
+	return displayRow{
+		kind:            RowKindComment,
+		fileIndex:       fileIndex,
+		commentLineNum:  lineNum,
+		commentRowIndex: 0,
+		commentRowCount: 1,
+		commentFolded:   true,
+		commentResolved: c.Resolved,
+		commentID:       c.ID,
+		commentAuthor:   c.Author,
+		commentCreated:  c.Created,
+		treePath:        treePath,
+	}
 }
 
 // commitHeaderSearchText builds the searchable text for a commit header row.
@@ -1634,18 +1656,25 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 			}
 		}
 
-		// Add comment rows if this line has an included comment
+		// Add comment rows if this line has an included comment thread
 		if pair.New.Num > 0 {
 			key := commentKey{fileIndex: fileIdx, newLineNum: pair.New.Num}
-			if c, ok := m.comments[key]; ok && m.isCommentIncluded(c) {
-				// Mark the content row as having a comment (for * gutter indicator)
+			thread := m.threadIncludedComments(key)
+			if len(thread) > 0 {
+				// Mark the content row as having a comment (for gutter indicator)
 				lastIdx := len(rows) - 1
 				r := rows[lastIdx]
 				r.hasComment = true
 				rows[lastIdx] = r
-				if m.isCommentExpanded(key, c) {
-					commentRows := buildCommentRows(fileIdx, pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
-					rows = append(rows, commentRows...)
+				if m.commentDisplayMode != CommentShowNone {
+					for _, c := range thread {
+						if m.isCommentExpanded(c.ID, c) {
+							commentRows := buildCommentRows(fileIdx, pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
+							rows = append(rows, commentRows...)
+						} else {
+							rows = append(rows, buildFoldedCommentRow(fileIdx, pair.New.Num, c, contentTreePath))
+						}
+					}
 				}
 			}
 		}
@@ -1705,17 +1734,24 @@ func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, conten
 	// Append expanded rows with comment rows interleaved
 	var rows []displayRow
 	for _, expRow := range expandedRows {
-		// Mark content rows that have an included comment and interleave visible comment rows
+		// Mark content rows that have an included comment thread and interleave visible comment rows
 		if expRow.kind == RowKindContent && expRow.pair.New.Num > 0 {
 			key := commentKey{fileIndex: fileIdx, newLineNum: expRow.pair.New.Num}
-			if c, ok := m.comments[key]; ok && m.isCommentIncluded(c) {
+			thread := m.threadIncludedComments(key)
+			if len(thread) > 0 {
 				expRow.hasComment = true
-				if m.isCommentExpanded(key, c) {
-					rows = append(rows, expRow)
-					commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
-					rows = append(rows, commentRows...)
-					continue
+				rows = append(rows, expRow)
+				if m.commentDisplayMode != CommentShowNone {
+					for _, c := range thread {
+						if m.isCommentExpanded(c.ID, c) {
+							commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
+							rows = append(rows, commentRows...)
+						} else {
+							rows = append(rows, buildFoldedCommentRow(fileIdx, expRow.pair.New.Num, c, contentTreePath))
+						}
+					}
 				}
+				continue
 			}
 		}
 		rows = append(rows, expRow)

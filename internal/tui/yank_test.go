@@ -26,7 +26,7 @@ func makeYankTestModel() Model {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey]*comments.Comment)
+	m.comments = make(map[commentKey][]*comments.Comment)
 	m.clipboard = &MemoryClipboard{}
 	return m
 }
@@ -39,21 +39,21 @@ func TestYank_FindCommentForCursor_NoComment(t *testing.T) {
 	// Move to a content line
 	m.w().scroll = 3 // Skip header rows
 
-	_, found := m.findCommentForCursor()
+	_, _, found := m.findCommentForCursor()
 	assert.False(t, found, "should not find comment when none exists")
 }
 
-// Test: findCommentForCursor returns true when cursor is on line with comment
+// Test: findCommentForCursor returns false when cursor is on content line (only works on comment rows)
 func TestYank_FindCommentForCursor_OnCommentedLine(t *testing.T) {
 	m := makeYankTestModel()
 	m.calculateTotalLines()
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = &comments.Comment{ID: "1700000000000", Text: "test comment"}
+	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000000", Text: "test comment"})
 	m.rebuildRowsCache()
 
-	// Find the row index for line 3
+	// Find the row index for line 3 (content line)
 	rows := m.getRows()
 	var lineRowIdx int
 	for i, row := range rows {
@@ -63,12 +63,11 @@ func TestYank_FindCommentForCursor_OnCommentedLine(t *testing.T) {
 		}
 	}
 
-	// Position cursor on the commented line (scroll = rowIdx - cursorOffset)
+	// Position cursor on the content line
 	m.w().scroll = lineRowIdx
 
-	ck, found := m.findCommentForCursor()
-	assert.True(t, found, "should find comment when cursor is on commented line")
-	assert.Equal(t, 3, ck.newLineNum, "should return correct line number")
+	_, _, found := m.findCommentForCursor()
+	assert.False(t, found, "findCommentForCursor should not work from content line")
 }
 
 // Test: findCommentForCursor returns true when cursor is on comment row
@@ -78,7 +77,7 @@ func TestYank_FindCommentForCursor_OnCommentRow(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = &comments.Comment{ID: "1700000000000", Text: "test comment"}
+	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000000", Text: "test comment"})
 	m.rebuildRowsCache()
 
 	// Find the comment row index
@@ -94,7 +93,7 @@ func TestYank_FindCommentForCursor_OnCommentRow(t *testing.T) {
 	// Position cursor on the comment row (scroll = rowIdx - cursorOffset)
 	m.w().scroll = commentRowIdx
 
-	ck, found := m.findCommentForCursor()
+	ck, _, found := m.findCommentForCursor()
 	assert.True(t, found, "should find comment when cursor is on comment row")
 	assert.Equal(t, 3, ck.newLineNum, "should return correct line number")
 }
@@ -165,13 +164,13 @@ func TestYank_HandleYank_SetsStatusMessage(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = &comments.Comment{ID: "1700000000000", Text: "test comment"}
+	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000000", Text: "test comment"})
 	m.rebuildRowsCache()
 
-	// Find and position on the commented line (scroll = rowIdx - cursorOffset)
+	// Find and position on a comment row (yank only works from comment rows)
 	rows := m.getRows()
 	for i, row := range rows {
-		if row.kind == RowKindContent && row.pair.New.Num == 3 {
+		if row.kind == RowKindComment && row.commentLineNum == 3 {
 			m.w().scroll = i
 			break
 		}
@@ -306,7 +305,7 @@ func TestYank_BuildDiffSnippet_FirstLine(t *testing.T) {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey]*comments.Comment)
+	m.comments = make(map[commentKey][]*comments.Comment)
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 1}
@@ -335,7 +334,7 @@ func TestYank_BuildDiffSnippet_ContextLine(t *testing.T) {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey]*comments.Comment)
+	m.comments = make(map[commentKey][]*comments.Comment)
 	m.calculateTotalLines()
 
 	// Comment on context line 3
@@ -397,13 +396,13 @@ func TestYank_KeyPress_Integration(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.comments[key] = &comments.Comment{ID: "1700000000000", Text: "integration test comment"}
+	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000000", Text: "integration test comment"})
 	m.rebuildRowsCache()
 
-	// Position cursor on the commented line
+	// Position cursor on a comment row (yank only works from comment rows)
 	rows := m.getRows()
 	for i, row := range rows {
-		if row.kind == RowKindContent && row.pair.New.Num == 3 {
+		if row.kind == RowKindComment && row.commentLineNum == 3 {
 			m.w().scroll = i
 			break
 		}
@@ -601,7 +600,7 @@ func makeYankAllTestModel() Model {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey]*comments.Comment)
+	m.comments = make(map[commentKey][]*comments.Comment)
 	m.clipboard = &MemoryClipboard{}
 	return m
 }
@@ -623,8 +622,7 @@ func TestYankAll_SingleComment(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "only comment"}
-
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "only comment"})
 	snippet, _ := m.buildCommentsSnippet(false)
 
 	assert.Contains(t, snippet, "--- a/file1.go")
@@ -638,9 +636,8 @@ func TestYankAll_MultipleFiles_GlobalNumbering(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "first comment"}
-	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = &comments.Comment{ID: "1700000000002", Text: "second comment"}
-
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "first comment"})
+	m.appendCommentToThread(commentKey{fileIndex: 1, newLineNum: 11}, &comments.Comment{ID: "1700000000002", Text: "second comment"})
 	snippet, _ := m.buildCommentsSnippet(false)
 
 	// File 1
@@ -666,9 +663,8 @@ func TestYankAll_MergedHunks(t *testing.T) {
 
 	// Lines 3 and 4 are adjacent — with 2 context lines before each,
 	// their ranges overlap so they should merge into one hunk
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "comment on 3"}
-	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{ID: "1700000000002", Text: "comment on 4"}
-
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "comment on 3"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 4}, &comments.Comment{ID: "1700000000002", Text: "comment on 4"})
 	snippet, _ := m.buildCommentsSnippet(false)
 
 	// Should have only ONE hunk header for this file
@@ -691,9 +687,8 @@ func TestYankAll_SeparateHunks(t *testing.T) {
 	// Line 3: range [1,3], Line 6: range [4,6] — actually these are adjacent (endIdx=3, startIdx=4)
 	// so they'd merge. Let me use line 7 instead which has range [5,7]
 	// Line 3: range [1,3], Line 7: range [5,7] — startIdx(5) > endIdx(3)+1, separate
-	m.comments[commentKey{fileIndex: 0, newLineNum: 1}] = &comments.Comment{ID: "1700000000001", Text: "comment on 1"}
-	m.comments[commentKey{fileIndex: 0, newLineNum: 7}] = &comments.Comment{ID: "1700000000002", Text: "comment on 7"}
-
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 1}, &comments.Comment{ID: "1700000000001", Text: "comment on 1"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 7}, &comments.Comment{ID: "1700000000002", Text: "comment on 7"})
 	snippet, _ := m.buildCommentsSnippet(false)
 
 	// Should have TWO hunk headers for this file
@@ -706,8 +701,7 @@ func TestYankAll_MultilineComment(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "line one\nline two"}
-
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "line one\nline two"})
 	snippet, _ := m.buildCommentsSnippet(false)
 
 	assert.Contains(t, snippet, "# COMMENT_ID 1700000000001:")
@@ -720,9 +714,8 @@ func TestYankAll_StatusMessage(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "a"}
-	m.comments[commentKey{fileIndex: 1, newLineNum: 11}] = &comments.Comment{ID: "1700000000002", Text: "b"}
-
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "a"})
+	m.appendCommentToThread(commentKey{fileIndex: 1, newLineNum: 11}, &comments.Comment{ID: "1700000000002", Text: "b"})
 	newModel, _ := m.handleYankComments(false)
 	m2 := newModel.(Model)
 
@@ -734,9 +727,8 @@ func TestYankAll_SkipsEmptyComments(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "real comment"}
-	m.comments[commentKey{fileIndex: 0, newLineNum: 4}] = &comments.Comment{ID: "1700000000002", Text: ""}
-
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "real comment"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 4}, &comments.Comment{ID: "1700000000002", Text: ""})
 	snippet, count := m.buildCommentsSnippet(false)
 
 	assert.Equal(t, 1, count)
@@ -749,9 +741,8 @@ func TestYankAll_SkipsResolvedComments(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "keep this one"}
-	m.comments[commentKey{fileIndex: 0, newLineNum: 6}] = &comments.Comment{ID: "1700000000002", Text: "skip this one", Resolved: true}
-
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "keep this one"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 6}, &comments.Comment{ID: "1700000000002", Text: "skip this one", Resolved: true})
 	snippet, count := m.buildCommentsSnippet(false)
 
 	assert.Equal(t, 1, count)
@@ -765,8 +756,7 @@ func TestYankAll_AllResolved_ReturnsNil(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "done", Resolved: true}
-
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "done", Resolved: true})
 	newModel, cmd := m.handleYankComments(false)
 	m2 := newModel.(Model)
 
@@ -779,7 +769,7 @@ func TestYankUnresolved_Handler_Integration(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "test"}
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "test"})
 	m.rebuildRowsCache()
 
 	newModel, _ := m.handleYankComments(false)
@@ -793,8 +783,8 @@ func TestYankAllComments_Handler_Integration(t *testing.T) {
 	m := makeYankAllTestModel()
 	m.calculateTotalLines()
 
-	m.comments[commentKey{fileIndex: 0, newLineNum: 3}] = &comments.Comment{ID: "1700000000001", Text: "unresolved"}
-	m.comments[commentKey{fileIndex: 0, newLineNum: 6}] = &comments.Comment{ID: "1700000000002", Text: "resolved", Resolved: true}
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{ID: "1700000000001", Text: "unresolved"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 6}, &comments.Comment{ID: "1700000000002", Text: "resolved", Resolved: true})
 	m.rebuildRowsCache()
 
 	newModel, _ := m.handleYankComments(true)
