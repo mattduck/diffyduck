@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"os"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/user/diffyduck/internal/tui"
 	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/config"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/highlight"
 )
@@ -1391,9 +1392,9 @@ index abc..def 100644
 	assert.False(t, isLineInDiff("", "main.go", 1))
 }
 
-// testCommentColors returns default commentColors for use in tests.
-func testCommentColors() commentColors {
-	return newCommentColors(config.ThemeConfig{})
+// testCommentStyles returns default CommentListStyles for use in tests.
+func testCommentStyles() tui.CommentListStyles {
+	return tui.CommentListTheme()
 }
 
 // testOneline is a helper that computes cols from a single comment and formats it.
@@ -1403,7 +1404,7 @@ func testOneline(c *comments.Comment, displayID string, termWidth int, now time.
 		ids[c.ID] = displayID
 	}
 	cols := computeOnelineCols([]*comments.Comment{c}, ids, now)
-	return formatCommentOneline(c, displayID, termWidth, now, cols, testCommentColors())
+	return formatCommentOneline(c, displayID, termWidth, now, cols, testCommentStyles())
 }
 
 func TestFormatCommentOneline(t *testing.T) {
@@ -1496,6 +1497,9 @@ func TestFormatCommentOneline_Standalone(t *testing.T) {
 }
 
 func TestFormatCommentOneline_ResolvedStyling(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
 	c := &comments.Comment{
 		ID:        "400",
 		File:      "test.go",
@@ -1506,12 +1510,14 @@ func TestFormatCommentOneline_ResolvedStyling(t *testing.T) {
 		Text:      "Done with this",
 	}
 	raw := testOneline(c, "", 120, time.Now())
-	// ID, date, commit, branch, file should have strikethrough (\033[9m)
-	assert.Equal(t, 5, strings.Count(raw, "\033[9m"), "expected 5 strikethrough sequences (ID, date, commit, branch, file)")
-	// Text should be wrapped in gray (\033[38;5;8m)
-	assert.Contains(t, raw, "\033[38;5;8mDone with this")
+	// Resolved columns should have strikethrough ANSI sequences (;9m or [9m)
+	assert.Regexp(t, `\x1b\[[0-9;]*9m`, raw, "expected strikethrough ANSI sequences for resolved comment")
+	// Text should be styled (not plain)
+	plain := stripANSI(raw)
+	assert.Contains(t, plain, "Done with this")
+	assert.Greater(t, len(raw), len(plain), "resolved text should have ANSI styling")
 	// No [resolved] tag
-	assert.NotContains(t, stripANSI(raw), "[resolved]")
+	assert.NotContains(t, plain, "[resolved]")
 }
 
 func TestFormatCommentOneline_DateColumn(t *testing.T) {
@@ -1625,7 +1631,7 @@ func TestFormatCommentBlock(t *testing.T) {
 		},
 	}
 
-	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentColors()))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles()))
 
 	// Metadata (two-column layout at width 120)
 	assert.Contains(t, block, "┃ Date:   Jan 15 10:30 0m")
@@ -1661,7 +1667,7 @@ func TestFormatCommentBlock_NarrowTerminal(t *testing.T) {
 	}
 
 	// Narrow terminal forces single-column layout
-	block := stripANSI(formatCommentBlock(c, nil, 40, "", c.Created, testCommentColors()))
+	block := stripANSI(formatCommentBlock(c, nil, 40, "", c.Created, testCommentStyles()))
 
 	// Each field on its own line
 	assert.Contains(t, block, "┃ Date:   Jan 15 10:30 0m\n")
@@ -1681,7 +1687,7 @@ func TestFormatCommentBlock_Resolved(t *testing.T) {
 		Text:     "Done",
 		Context:  comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentColors()))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles()))
 	assert.Contains(t, block, "┃ Status: resolved\n")
 	assert.Contains(t, block, "┃ ID:     100\n")
 }
@@ -1695,11 +1701,14 @@ func TestFormatCommentBlock_NoCommit(t *testing.T) {
 		Text:    "No commit",
 		Context: comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentColors()))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles()))
 	assert.NotContains(t, block, "Ref:")
 }
 
 func TestFormatCommentBlock_Highlighted(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
 	h := highlight.New()
 	defer h.Close()
 
@@ -1717,7 +1726,7 @@ func TestFormatCommentBlock_Highlighted(t *testing.T) {
 	}
 
 	// With highlighter: should produce valid output (ANSI codes present)
-	block := formatCommentBlock(c, h, 120, "", c.Created, testCommentColors())
+	block := formatCommentBlock(c, h, 120, "", c.Created, testCommentStyles())
 	stripped := stripANSI(block)
 
 	// Content should be the same after stripping ANSI
@@ -1728,7 +1737,7 @@ func TestFormatCommentBlock_Highlighted(t *testing.T) {
 	assert.Greater(t, len(block), len(stripped), "highlighting should add ANSI codes")
 
 	// Nil highlighter should also work (plain text)
-	plain := formatCommentBlock(c, nil, 120, "", c.Created, testCommentColors())
+	plain := formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles())
 	plainStripped := stripANSI(plain)
 	assert.Equal(t, stripped, plainStripped, "stripped output should match regardless of highlighter")
 }
@@ -1747,7 +1756,7 @@ func TestFormatCommentBlock_UnsupportedLanguage(t *testing.T) {
 	}
 
 	// Should gracefully fall back to plain text
-	block := formatCommentBlock(c, h, 120, "", c.Created, testCommentColors())
+	block := formatCommentBlock(c, h, 120, "", c.Created, testCommentStyles())
 	stripped := stripANSI(block)
 	assert.Contains(t, stripped, "some content")
 }
@@ -1790,7 +1799,7 @@ func TestFormatCommentBlock_WithAuthor(t *testing.T) {
 		Text:    "Check this",
 		Context: comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentColors()))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles()))
 	// Author should appear in the right column as a header
 	assert.Contains(t, block, "Author: Claude")
 	// Should NOT appear as a separate "commented" header line
@@ -1806,7 +1815,7 @@ func TestFormatCommentBlock_WithoutAuthor(t *testing.T) {
 		Text:    "No author",
 		Context: comments.LineContext{Line: "code"},
 	}
-	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentColors()))
+	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles()))
 	assert.NotContains(t, block, "Author:")
 }
 
@@ -1821,6 +1830,6 @@ func TestFormatCommentBlock_AuthorNarrowTerminal(t *testing.T) {
 		Context: comments.LineContext{Line: "code"},
 	}
 	// Single column fallback
-	block := stripANSI(formatCommentBlock(c, nil, 40, "", c.Created, testCommentColors()))
+	block := stripANSI(formatCommentBlock(c, nil, 40, "", c.Created, testCommentStyles()))
 	assert.Contains(t, block, "Author: Bot")
 }

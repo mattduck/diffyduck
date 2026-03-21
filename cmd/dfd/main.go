@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime/debug"
 	"runtime/pprof"
 	"slices"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/user/diffyduck/internal/tui"
 	"github.com/user/diffyduck/pkg/branches"
@@ -1238,11 +1238,12 @@ func run() error {
 
 	// Handle comment/note command
 	if args.cmd == "comment" {
-		cc := newCommentColors(cfg.Theme)
+		tui.ApplyTheme(cfg.Theme)
+		cs := tui.CommentListTheme()
 		if args.cmdAlias == "note" {
-			return runNote(args, cc)
+			return runNote(args, cs)
 		}
-		return runComment(args, cc)
+		return runComment(args, cs)
 	}
 
 	// Handle clean command - deletes all persisted snapshot refs
@@ -1783,11 +1784,11 @@ func runConfigEdit() error {
 
 // runNote dispatches note sub-commands. Notes are standalone comments
 // (no file attachment). This is shorthand for comment commands with --kind note.
-func runNote(args parsedArgs, cc commentColors) error {
+func runNote(args parsedArgs, cs tui.CommentListStyles) error {
 	switch args.commentSub {
 	case "list":
 		args.commentKind = "note"
-		return runCommentList(args, cc)
+		return runCommentList(args, cs)
 	case "edit":
 		return runNoteEdit(args.commentID, args.commentResolved)
 	case "resolve":
@@ -1826,13 +1827,13 @@ func runNoteEdit(id string, resolved *bool) error {
 }
 
 // runComment dispatches comment sub-commands.
-func runComment(args parsedArgs, cc commentColors) error {
+func runComment(args parsedArgs, cs tui.CommentListStyles) error {
 	switch args.commentSub {
 	case "list":
 		if args.commentKind == "" {
 			args.commentKind = "comment"
 		}
-		return runCommentList(args, cc)
+		return runCommentList(args, cs)
 	case "edit":
 		return runCommentEdit(args.commentID, args.commentResolved)
 	case "resolve":
@@ -1850,7 +1851,7 @@ func runComment(args parsedArgs, cc commentColors) error {
 }
 
 // runCommentList lists comments filtered by status and limited by -n.
-func runCommentList(args parsedArgs, cc commentColors) error {
+func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 	store := comments.NewStore("")
 	all, err := store.AllComments()
 	if err != nil {
@@ -2058,10 +2059,10 @@ func runCommentList(args parsedArgs, cc commentColors) error {
 		now := time.Now()
 		cols := computeOnelineCols(all, shortIDs, now)
 		for _, c := range all {
-			fmt.Println(formatCommentOneline(c, shortIDs[c.ID], termWidth, now, cols, cc))
+			fmt.Println(formatCommentOneline(c, shortIDs[c.ID], termWidth, now, cols, cs))
 		}
 		if truncated {
-			fmt.Printf("%s%d/%d%s\n", cc.label, len(all), totalCount, cReset)
+			fmt.Printf("%s\n", cs.Label.Render(fmt.Sprintf("%d/%d", len(all), totalCount)))
 		}
 		return nil
 	}
@@ -2076,62 +2077,13 @@ func runCommentList(args parsedArgs, cc commentColors) error {
 			if i > 0 {
 				fmt.Print("\n\n")
 			}
-			fmt.Print(formatCommentBlock(c, h, termWidth, shortIDs[c.ID], time.Now(), cc))
+			fmt.Print(formatCommentBlock(c, h, termWidth, shortIDs[c.ID], time.Now(), cs))
 		}
 	}
 	if truncated && !args.commentRaw {
-		fmt.Printf("\n%s%d/%d%s\n", cc.label, len(all), totalCount, cReset)
+		fmt.Printf("\n%s\n", cs.Label.Render(fmt.Sprintf("%d/%d", len(all), totalCount)))
 	}
 	return nil
-}
-
-// ANSI style modifiers (not theme-dependent).
-const (
-	cReset  = "\033[0m"
-	cBold   = "\033[1m"
-	cDim    = "\033[2m"
-	cStrike = "\033[9m"
-)
-
-// commentColors holds resolved ANSI color codes for comment list output,
-// derived from the user's theme config (or defaults when unset).
-type commentColors struct {
-	commit  string // commit SHA — theme: CommitTree
-	label   string // labels, dim text — theme: LineNumber
-	branch  string // branch name — theme: LocalRef
-	dirPart string // directory part of path — theme: HeaderDir
-	header  string // basename, header text — theme: Header
-}
-
-// colorToANSI converts a theme color value (ANSI 256-color number like "8"
-// or hex string like "#ff5733") to an ANSI foreground escape sequence.
-func colorToANSI(s string) string {
-	if strings.HasPrefix(s, "#") && len(s) == 7 {
-		r, _ := strconv.ParseUint(s[1:3], 16, 8)
-		g, _ := strconv.ParseUint(s[3:5], 16, 8)
-		b, _ := strconv.ParseUint(s[5:7], 16, 8)
-		return fmt.Sprintf("\033[38;2;%d;%d;%dm", r, g, b)
-	}
-	return "\033[38;5;" + s + "m"
-}
-
-// newCommentColors builds commentColors from the user's theme config,
-// falling back to DefaultTheme for any unset field.
-func newCommentColors(t config.ThemeConfig) commentColors {
-	resolve := func(val, fallback string) string {
-		if val == "" {
-			val = fallback
-		}
-		return colorToANSI(val)
-	}
-	d := config.DefaultTheme
-	return commentColors{
-		commit:  resolve(t.CommitTree, d.CommitTree),
-		label:   resolve(t.LineNumber, d.LineNumber),
-		branch:  resolve(t.LocalRef, d.LocalRef),
-		dirPart: resolve(t.HeaderDir, d.HeaderDir),
-		header:  resolve(t.Header, d.Header),
-	}
 }
 
 // onelineCols holds the computed column widths for oneline output,
@@ -2172,6 +2124,7 @@ func computeOnelineCols(all []*comments.Comment, shortIDs map[string]string, now
 			if len(commitShort) > 7 {
 				commitShort = commitShort[:7]
 			}
+			commitShort = "(" + commitShort + ")"
 		}
 		if commitShort == "" {
 			commitShort = "-"
@@ -2198,8 +2151,8 @@ func computeOnelineCols(all []*comments.Comment, shortIDs map[string]string, now
 	if cols.date > 18 {
 		cols.date = 18
 	}
-	if cols.commit > 7 {
-		cols.commit = 7
+	if cols.commit > 9 {
+		cols.commit = 9
 	}
 	if cols.branch > 20 {
 		cols.branch = 20
@@ -2213,20 +2166,23 @@ func computeOnelineCols(all []*comments.Comment, shortIDs map[string]string, now
 // formatCommentOneline formats a single comment as a compact one-liner with
 // dynamically-sized columns: ID, date, commit, branch, file, title.
 // The title column fills remaining terminal width and is truncated to fit.
-func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, now time.Time, cols onelineCols, cc commentColors) string {
+func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, now time.Time, cols onelineCols, cs tui.CommentListStyles) string {
 	if displayID == "" {
 		displayID = c.ID
 	}
 
-	// Column 1: ID (strikethrough if resolved)
+	strike := func(s lipgloss.Style) lipgloss.Style { return s.Strikethrough(true) }
+
+	// Column 1: ID (bold; strikethrough if resolved)
 	idCol := displayID
 	if len(idCol) > cols.id {
 		idCol = idCol[:cols.id]
 	}
-	idStyled := fmt.Sprintf("%s%s%s%s", cc.header, cBold, idCol, cReset)
+	idStyle := cs.Header.Bold(true)
 	if c.Resolved {
-		idStyled = fmt.Sprintf("%s%s%s%s%s", cc.header, cBold, cStrike, idCol, cReset)
+		idStyle = strike(idStyle)
 	}
+	idStyled := idStyle.Render(idCol)
 
 	// Column 2: date with relative age (strikethrough if resolved)
 	dateStr := c.Created.Format("Jan 02 15:04")
@@ -2235,43 +2191,34 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 	if len(dateCol) > cols.date {
 		dateCol = dateCol[:cols.date]
 	}
-	var dateStyled string
+	dateStyle := cs.Label
 	if c.Resolved {
-		dateStyled = fmt.Sprintf("%s%s%s%s", cc.label, cStrike, dateCol, cReset)
-	} else {
-		dateStyled = fmt.Sprintf("%s%s%s", cc.label, dateCol, cReset)
+		dateStyle = strike(dateStyle)
 	}
+	dateStyled := dateStyle.Render(dateCol)
 
 	// Column 3: commit SHA (strikethrough if resolved)
-	// When no explicit ref but BranchHead is available, show it dim in parens.
+	// Falls back to BranchHead when no explicit commit ref.
 	commitShort := c.CommitSHA
 	if len(commitShort) > 7 {
 		commitShort = commitShort[:7]
 	}
-	isBranchHead := false
 	if commitShort == "" && c.BranchHead != "" {
 		commitShort = c.BranchHead
 		if len(commitShort) > 7 {
 			commitShort = commitShort[:7]
 		}
-		isBranchHead = true
+		commitShort = "(" + commitShort + ")"
 	}
 	if commitShort == "" {
 		commitShort = "-"
 	}
-	var commitStyled string
 	commitPlainWidth := len(commitShort)
-	if isBranchHead {
-		if c.Resolved {
-			commitStyled = fmt.Sprintf("%s%s%s%s%s", cDim, cc.commit, cStrike, commitShort, cReset)
-		} else {
-			commitStyled = fmt.Sprintf("%s%s%s%s", cDim, cc.commit, commitShort, cReset)
-		}
-	} else if c.Resolved {
-		commitStyled = fmt.Sprintf("%s%s%s%s", cc.commit, cStrike, commitShort, cReset)
-	} else {
-		commitStyled = fmt.Sprintf("%s%s%s", cc.commit, commitShort, cReset)
+	commitStyle := cs.Commit
+	if c.Resolved {
+		commitStyle = strike(commitStyle)
 	}
+	commitStyled := commitStyle.Render(commitShort)
 
 	// Column 4: branch (strikethrough if resolved)
 	branchPart := c.Branch
@@ -2281,25 +2228,25 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 	var branchStyled string
 	branchPlainWidth := len(branchPart)
 	if branchPart != "" {
+		branchStyle := cs.Branch
 		if c.Resolved {
-			branchStyled = fmt.Sprintf("%s%s%s%s", cc.branch, cStrike, branchPart, cReset)
-		} else {
-			branchStyled = fmt.Sprintf("%s%s%s", cc.branch, branchPart, cReset)
+			branchStyle = strike(branchStyle)
 		}
+		branchStyled = branchStyle.Render(branchPart)
 	}
 
 	// Column 5: file (optional, strikethrough if resolved)
 	var fileStyled string
 	var filePlainWidth int
 	if !c.IsStandalone() && cols.file > 0 {
-		filePart := styleCommentPath(c.File, c.Line, cc)
-		filePlainWidth = visibleWidth(filePart)
+		filePart := styleCommentPath(c.File, c.Line, cs)
+		filePlainWidth = lipgloss.Width(filePart)
 		if filePlainWidth > cols.file {
 			raw := fmt.Sprintf("%s:%d", c.File, c.Line)
 			if len(raw) > cols.file-1 {
 				raw = raw[:cols.file-2] + "…"
 			}
-			filePart = cc.dirPart + raw + cReset
+			filePart = cs.DirPart.Render(raw)
 			filePlainWidth = len(raw)
 		}
 		if c.Resolved {
@@ -2307,7 +2254,7 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 			if len(raw) > cols.file {
 				raw = raw[:cols.file-1] + "…"
 			}
-			filePart = cStrike + cc.dirPart + raw + cReset
+			filePart = strike(cs.DirPart).Render(raw)
 			filePlainWidth = len(raw)
 		}
 		fileStyled = filePart
@@ -2317,7 +2264,7 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 	authorPart := ""
 	authorWidth := 0
 	if c.Author != "" {
-		authorPart = fmt.Sprintf("%s[%s]%s ", cc.label, c.Author, cReset)
+		authorPart = cs.Label.Render(fmt.Sprintf("[%s]", c.Author)) + " "
 		authorWidth = len(c.Author) + 3 // "[author] "
 	}
 
@@ -2347,7 +2294,7 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 		}
 	}
 	if c.Resolved {
-		text = cc.label + text + cReset
+		text = cs.Label.Render(text)
 	}
 
 	// Build the line with padded columns
@@ -2381,20 +2328,17 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 	return b.String()
 }
 
-// ansiEscRe matches ANSI escape sequences.
-var ansiEscRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-
-// visibleWidth returns the visible character count of a string with ANSI codes.
-func visibleWidth(s string) int {
-	return len(ansiEscRe.ReplaceAllString(s, ""))
-}
-
 // formatCommentBlock formats a comment as a multiline block showing the full
 // serialized patch context and metadata. If h is non-nil, context lines are
 // syntax-highlighted based on the comment's file extension. When termWidth is
 // wide enough, metadata is rendered in two columns.
-func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth int, suffix string, now time.Time, cc commentColors) string {
+func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth int, suffix string, now time.Time, cs tui.CommentListStyles) string {
 	var b strings.Builder
+
+	// Helper to format "Label:   value" with styled label
+	labelVal := func(label, value string) string {
+		return cs.Label.Render(label) + value
+	}
 
 	// Header line
 	commitShort := c.CommitSHA
@@ -2406,42 +2350,42 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	dateVal := c.Created.Format("Jan 02 15:04") + " " + tui.FormatRelativeAge(now, c.Created)
 	var statusLine string
 	if c.Resolved {
-		statusLine = fmt.Sprintf("%sStatus:%s %sresolved%s", cc.label, cReset, cc.label, cReset)
+		statusLine = labelVal("Status:", " "+cs.Label.Render("resolved"))
 	} else {
-		statusLine = fmt.Sprintf("%sStatus:%s unresolved", cc.label, cReset)
+		statusLine = labelVal("Status:", " unresolved")
 	}
 	var idLine string
 	if suffix != "" && strings.HasSuffix(c.ID, suffix) {
 		prefix := c.ID[:len(c.ID)-len(suffix)]
-		idLine = fmt.Sprintf("%sID:%s     %s%s%s%s%s", cc.label, cReset, cc.label, prefix, cc.header, suffix, cReset)
+		idLine = labelVal("ID:", "     "+cs.Label.Render(prefix)+cs.Header.Render(suffix))
 	} else {
-		idLine = fmt.Sprintf("%sID:%s     %s%s%s", cc.label, cReset, cc.label, c.ID, cReset)
+		idLine = labelVal("ID:", "     "+cs.Label.Render(c.ID))
 	}
 
 	// Build right column: File (if attached), Ref
 	var fileLine string
 	if !c.IsStandalone() {
-		fileLine = fmt.Sprintf("%sFile:%s   %s", cc.label, cReset, styleCommentPath(c.File, c.Line, cc))
+		fileLine = labelVal("File:", "   "+styleCommentPath(c.File, c.Line, cs))
 	}
 	var refLine string
 	if commitShort != "" && c.Branch != "" {
-		refLine = fmt.Sprintf("%sRef:%s    %s%s%s on %s%s%s", cc.label, cReset, cc.commit, commitShort, cReset, cc.branch, c.Branch, cReset)
+		refLine = labelVal("Ref:", "    "+cs.Commit.Render(commitShort)+" on "+cs.Branch.Render(c.Branch))
 	} else if commitShort != "" {
-		refLine = fmt.Sprintf("%sRef:%s    %s%s%s", cc.label, cReset, cc.commit, commitShort, cReset)
+		refLine = labelVal("Ref:", "    "+cs.Commit.Render(commitShort))
 	} else if c.BranchHead != "" && c.Branch != "" {
 		bh := c.BranchHead
 		if len(bh) > 7 {
 			bh = bh[:7]
 		}
-		refLine = fmt.Sprintf("%sRef:%s    %s%s%s on %s%s%s", cc.label, cReset, cDim, bh, cReset, cc.branch, c.Branch, cReset)
+		refLine = labelVal("Ref:", "    "+cs.Commit.Render("("+bh+")")+" on "+cs.Branch.Render(c.Branch))
 	} else if c.BranchHead != "" {
 		bh := c.BranchHead
 		if len(bh) > 7 {
 			bh = bh[:7]
 		}
-		refLine = fmt.Sprintf("%sRef:%s    %s%s%s", cc.label, cReset, cDim, bh, cReset)
+		refLine = labelVal("Ref:", "    "+cs.Commit.Render("("+bh+")"))
 	} else if c.Branch != "" {
-		refLine = fmt.Sprintf("%sRef:%s    %s%s%s", cc.label, cReset, cc.branch, c.Branch, cReset)
+		refLine = labelVal("Ref:", "    "+cs.Branch.Render(c.Branch))
 	}
 
 	// Left column width anchored on Date line (the longest fixed-length field).
@@ -2453,7 +2397,7 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 
 	if twoCol {
 		left := []string{
-			fmt.Sprintf("%sDate:%s   %s", cc.label, cReset, dateVal),
+			labelVal("Date:", "   "+dateVal),
 			statusLine,
 			idLine,
 		}
@@ -2465,7 +2409,7 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 			right = append(right, refLine)
 		}
 		if c.Author != "" {
-			right = append(right, fmt.Sprintf("%sAuthor:%s %s%s%s", cc.label, cReset, cc.branch, c.Author, cReset))
+			right = append(right, labelVal("Author:", " "+cs.Branch.Render(c.Author)))
 		}
 		rows := max(len(left), len(right))
 		for i := range rows {
@@ -2478,7 +2422,7 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 			}
 			if r != "" {
 				// Pad left column to fixed width using visible length
-				visLen := visibleWidth(l)
+				visLen := lipgloss.Width(l)
 				pad := leftColW - visLen
 				if pad < 0 {
 					pad = 0
@@ -2490,7 +2434,7 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 		}
 	} else {
 		// Single column fallback
-		fmt.Fprintf(&b, "%sDate:%s   %s\n", cc.label, cReset, dateVal)
+		fmt.Fprintf(&b, "%s\n", labelVal("Date:", "   "+dateVal))
 		fmt.Fprintf(&b, "%s\n", statusLine)
 		fmt.Fprintf(&b, "%s\n", idLine)
 		if fileLine != "" {
@@ -2500,11 +2444,13 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 			fmt.Fprintf(&b, "%s\n", refLine)
 		}
 		if c.Author != "" {
-			fmt.Fprintf(&b, "%sAuthor:%s %s%s%s\n", cc.label, cReset, cc.branch, c.Author, cReset)
+			fmt.Fprintf(&b, "%s\n", labelVal("Author:", " "+cs.Branch.Render(c.Author)))
 		}
 	}
 
 	// Diff context (with optional syntax highlighting) — skip for standalone comments
+	targetLineStyle := cs.Header.Bold(true)
+	contextLineStyle := cs.Label.Faint(true)
 	if !c.IsStandalone() {
 		b.WriteString("\n")
 		contextLines := highlightContext(c, h)
@@ -2515,10 +2461,11 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 		gutterW := len(strconv.Itoa(lastLine))
 		for i, hl := range contextLines {
 			lineNo := startLine + i
+			lineNumStr := fmt.Sprintf("%*d", gutterW, lineNo)
 			if i == targetIdx {
-				fmt.Fprintf(&b, "%s>%s %s%*d%s %s%s\n", cc.header+cBold, cReset, cc.header+cBold, gutterW, lineNo, cReset, hl, cReset)
+				fmt.Fprintf(&b, "%s %s %s\n", targetLineStyle.Render(">"), targetLineStyle.Render(lineNumStr), hl)
 			} else {
-				fmt.Fprintf(&b, "  %s%*d%s %s%s\n", cc.label+cDim, gutterW, lineNo, cReset, hl, cReset)
+				fmt.Fprintf(&b, "  %s %s\n", contextLineStyle.Render(lineNumStr), hl)
 			}
 		}
 	}
@@ -2544,7 +2491,7 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 		}
 		for _, wl := range strings.Split(out, "\n") {
 			if c.Resolved {
-				fmt.Fprintf(&b, "%s%s%s\n", cc.label, wl, cReset)
+				fmt.Fprintf(&b, "%s\n", cs.Label.Render(wl))
 			} else {
 				fmt.Fprintf(&b, "%s\n", wl)
 			}
@@ -2552,7 +2499,7 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	}
 
 	// Add grey left margin bar to every line
-	bar := cc.label + "┃" + cReset + " "
+	bar := cs.Label.Render("┃") + " "
 	raw := b.String()
 	lines := strings.Split(strings.TrimRight(raw, "\n"), "\n")
 	var out strings.Builder
@@ -2597,16 +2544,14 @@ func resolveCommentID(store *comments.Store, suffix string) (string, error) {
 }
 
 // styleCommentPath formats a file:line with dir in dim, basename in bright white.
-func styleCommentPath(path string, line int, cc commentColors) string {
+func styleCommentPath(path string, line int, cs tui.CommentListStyles) string {
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
+	lineStr := strconv.Itoa(line)
 	if dir == "." {
-		return fmt.Sprintf("%s%s%s%s:%s%d%s", cc.header, base, cReset, cc.label, cReset, line, cReset)
+		return cs.Header.Render(base) + cs.Label.Render(":") + lineStr
 	}
-	return fmt.Sprintf("%s%s/%s%s%s%s%s:%s%d%s",
-		cc.dirPart, dir, cReset,
-		cc.header, base, cReset,
-		cc.label, cReset, line, cReset)
+	return cs.DirPart.Render(dir+"/") + cs.Header.Render(base) + cs.Label.Render(":") + lineStr
 }
 
 // highlightContext applies syntax highlighting to a comment's context lines.

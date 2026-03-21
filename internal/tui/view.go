@@ -97,6 +97,9 @@ var (
 	// Ref decoration styles (commit header)
 	localRefStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	remoteRefStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	// Comment list output styles (non-faint variants for CLI output)
+	commentLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
 // ApplyTheme updates package-level style variables based on user theme config.
@@ -121,7 +124,9 @@ func ApplyTheme(cfg config.ThemeConfig) {
 		contextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.Context))
 	}
 	if cfg.LineNumber != "" {
-		lineNumStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.LineNumber)).Faint(true)
+		c := lipgloss.Color(cfg.LineNumber)
+		lineNumStyle = lipgloss.NewStyle().Foreground(c).Faint(true)
+		commentLabelStyle = lipgloss.NewStyle().Foreground(c)
 	}
 	if cfg.Header != "" {
 		c := lipgloss.Color(cfg.Header)
@@ -198,6 +203,27 @@ func ApplyTheme(cfg config.ThemeConfig) {
 	}
 	if cfg.CommentCheckbox != "" {
 		commentCheckboxStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(cfg.CommentCheckbox))
+	}
+}
+
+// CommentListStyles holds lipgloss styles for CLI comment list output.
+type CommentListStyles struct {
+	Header  lipgloss.Style // bold header text, file basenames
+	Label   lipgloss.Style // dim labels, metadata text
+	Commit  lipgloss.Style // commit SHA
+	Branch  lipgloss.Style // branch name, author
+	DirPart lipgloss.Style // directory part of file paths
+}
+
+// CommentListTheme returns the current styles for CLI comment list rendering.
+// Call ApplyTheme first to pick up user config.
+func CommentListTheme() CommentListStyles {
+	return CommentListStyles{
+		Header:  headerStyle,
+		Label:   commentLabelStyle,
+		Commit:  commitTreeStyle,
+		Branch:  localRefStyle,
+		DirPart: headerDirStyle,
 	}
 }
 
