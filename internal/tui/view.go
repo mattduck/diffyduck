@@ -1667,12 +1667,22 @@ func (m Model) buildHunkRows(fp sidebyside.FilePair, fileIdx int, contentIsLast 
 				r.hasComment = true
 				rows[lastIdx] = r
 				if m.commentDisplayMode != CommentShowNone {
+					// Check if the entire thread is folded — if so, show nothing
+					allFolded := true
 					for _, c := range thread {
 						if m.isCommentExpanded(c.ID, c) {
-							commentRows := buildCommentRows(fileIdx, pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
-							rows = append(rows, commentRows...)
-						} else {
-							rows = append(rows, buildFoldedCommentRow(fileIdx, pair.New.Num, c, contentTreePath))
+							allFolded = false
+							break
+						}
+					}
+					if !allFolded {
+						for _, c := range thread {
+							if m.isCommentExpanded(c.ID, c) {
+								commentRows := buildCommentRows(fileIdx, pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
+								rows = append(rows, commentRows...)
+							} else {
+								rows = append(rows, buildFoldedCommentRow(fileIdx, pair.New.Num, c, contentTreePath))
+							}
 						}
 					}
 				}
@@ -1742,12 +1752,22 @@ func (m Model) buildExpandedBodyRows(fp sidebyside.FilePair, fileIdx int, conten
 				expRow.hasComment = true
 				rows = append(rows, expRow)
 				if m.commentDisplayMode != CommentShowNone {
+					// Check if the entire thread is folded — if so, show nothing
+					allFolded := true
 					for _, c := range thread {
 						if m.isCommentExpanded(c.ID, c) {
-							commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
-							rows = append(rows, commentRows...)
-						} else {
-							rows = append(rows, buildFoldedCommentRow(fileIdx, expRow.pair.New.Num, c, contentTreePath))
+							allFolded = false
+							break
+						}
+					}
+					if !allFolded {
+						for _, c := range thread {
+							if m.isCommentExpanded(c.ID, c) {
+								commentRows := buildCommentRows(fileIdx, expRow.pair.New.Num, c, m.commentContentWidth(), contentTreePath, suffixes[c.ID])
+								rows = append(rows, commentRows...)
+							} else {
+								rows = append(rows, buildFoldedCommentRow(fileIdx, expRow.pair.New.Num, c, contentTreePath))
+							}
 						}
 					}
 				}

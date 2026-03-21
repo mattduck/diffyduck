@@ -14,6 +14,14 @@ import (
 	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
+// commentBorder returns the comment border style, fainted when resolved.
+func commentBorder(resolved bool) lipgloss.Style {
+	if resolved {
+		return commentBorderStyle.Faint(true)
+	}
+	return commentBorderStyle
+}
+
 // commentMarkerIcon returns the pilcrow icon styled for resolved (dim) or unresolved (yellow).
 func commentMarkerIcon(resolved bool) string {
 	if resolved {
@@ -241,11 +249,9 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	}
 	rightContent := commentRightDimStyle.Render(strings.Repeat("░", rightContentWidth))
 
-	// Folded comment: single line with just the comment icon
+	// Folded comment: single line with just ╓ (top-left box corner)
 	if row.commentFolded {
-		marker := commentMarkerIcon(row.commentResolved)
-		// Icon + indicator space, then blank padding to fill the box width
-		leftContent := marker + strings.Repeat(" ", boxWidth-1)
+		leftContent := commentBorder(row.commentResolved).Render("╓") + strings.Repeat(" ", boxWidth-1)
 		return treeContinuation + leftGutter + leftContent + sep + rightGutter + rightContent
 	}
 
@@ -254,14 +260,13 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 	isBottomBorder := row.commentRowIndex == row.commentRowCount-1
 
 	if isTopBorder {
-		marker := commentMarkerIcon(row.commentResolved)
-		topBorder := marker + "╓" + strings.Repeat("─", boxWidth-3) + "╖"
-		return treeContinuation + leftGutter + commentBorderStyle.Render(topBorder) + sep + rightGutter + rightContent
+		topBorder := "╓" + strings.Repeat("─", boxWidth-2) + "╖"
+		return treeContinuation + leftGutter + commentBorder(row.commentResolved).Render(topBorder) + sep + rightGutter + rightContent
 	}
 
 	if isBottomBorder {
 		bottomBorder := "╙" + strings.Repeat("─", boxWidth-2) + "╜"
-		return treeContinuation + leftGutter + commentBorderStyle.Render(bottomBorder) + sep + rightGutter + rightContent
+		return treeContinuation + leftGutter + commentBorder(row.commentResolved).Render(bottomBorder) + sep + rightGutter + rightContent
 	}
 
 	// Content lines: index 0 = metadata (checkbox+date), index 1 = blank separator,
@@ -305,7 +310,8 @@ func (m Model) renderCommentRow(row displayRow, leftHalfWidth, rightHalfWidth, l
 		renderedContent = highlightedText + strings.Repeat(" ", padding)
 	}
 
-	return treeContinuation + leftGutter + commentBorderStyle.Render("║ ") + renderedContent + " " + commentBorderStyle.Render("║") + sep + rightGutter + rightContent
+	border := commentBorder(row.commentResolved)
+	return treeContinuation + leftGutter + border.Render("║ ") + renderedContent + " " + border.Render("║") + sep + rightGutter + rightContent
 }
 
 // wrapComment wraps a single line of text to fit within maxWidth using
