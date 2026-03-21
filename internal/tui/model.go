@@ -2930,12 +2930,23 @@ func (m *Model) handleHardReset() tea.Cmd {
 	// 8. Reset window state
 	for _, w := range m.windows {
 		w.narrow = NarrowScope{}
+		w.hscroll = 0
 		w.fileFoldLevels = make(map[int]sidebyside.FoldLevel)
 		w.commitFoldLevels = make(map[int]sidebyside.CommitFoldLevel)
 		w.commitInfoExpanded = make(map[int]bool)
 		w.rowsCacheValid = false
 		w.cachedRows = nil
+		w.searchMatchIdx = 0
+		w.searchMatchSide = 0
+		w.commentMode = false
+		w.commentInput = ""
+		w.commentCursor = 0
+		w.commentScroll = 0
+		w.commentKey = commentKey{}
+		w.visualSelection = VisualSelection{}
 	}
+	m.loadingMoreCommits = false
+	m.totalCommitCount = 0
 
 	// 9. Restore fold state
 	m.restoreFoldState(foldState)
