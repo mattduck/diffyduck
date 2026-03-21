@@ -101,6 +101,7 @@ func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 		return nil
 	}
 
+	gen := m.reloadGen
 	return func() tea.Msg {
 		oldPath := stripPathPrefix(fp.OldPath)
 		newPath := stripPathPrefix(fp.NewPath)
@@ -133,6 +134,7 @@ func (m Model) FetchFileContent(fileIndex int) tea.Cmd {
 			ContentTruncated: oldTruncated || newTruncated, // legacy field
 			OldTruncated:     oldTruncated,
 			NewTruncated:     newTruncated,
+			Gen:              gen,
 		}
 	}
 }
@@ -149,6 +151,7 @@ func (m Model) FetchAllFileContent() tea.Cmd {
 
 	files := m.files
 	fetcher := m.fetcher
+	gen := m.reloadGen
 
 	return func() tea.Msg {
 		var wg sync.WaitGroup
@@ -195,7 +198,7 @@ func (m Model) FetchAllFileContent() tea.Cmd {
 		}
 
 		wg.Wait()
-		return AllContentLoadedMsg{Contents: results}
+		return AllContentLoadedMsg{Contents: results, Gen: gen}
 	}
 }
 

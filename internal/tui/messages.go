@@ -27,11 +27,13 @@ type FileContentLoadedMsg struct {
 	OldTruncated     bool // true if old content was truncated
 	NewTruncated     bool // true if new content was truncated
 	Err              error
+	Gen              uint64 // reload generation; stale messages are discarded
 }
 
 // AllContentLoadedMsg is sent when content for all files has been fetched.
 type AllContentLoadedMsg struct {
 	Contents []FileContent
+	Gen      uint64 // reload generation; stale messages are discarded
 }
 
 // FileContent holds the fetched content for a single file.
@@ -52,6 +54,7 @@ type HighlightReadyMsg struct {
 	NewSpans     []HighlightSpan  // spans for new file content
 	OldStructure []StructureEntry // structure for old file content (for structural diff)
 	NewStructure []StructureEntry // structure for new file content (for breadcrumbs)
+	Gen          uint64           // reload generation; stale messages are discarded
 }
 
 // HighlightSpan represents a highlighted range with a category.

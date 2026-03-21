@@ -299,7 +299,7 @@ func TestHelp_TwoColumnLayout(t *testing.T) {
 func TestHelp_SingleColumnNarrow(t *testing.T) {
 	m := makeTestModel(30)
 	m.width = 60 // too narrow for two columns
-	m.height = 60
+	m.height = 65
 	m = sendCtrl(m, tea.KeyCtrlH)
 	require.True(t, m.helpMode)
 

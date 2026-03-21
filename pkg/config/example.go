@@ -152,6 +152,7 @@ func GenerateExample(defaultKeys KeysConfig) string {
 		writeKeys("move_detect", "toggle move detection highlighting", a.MoveDetect)
 		writeKeys("comment_toggle", "cycle comment display mode", a.CommentToggle)
 		writeKeys("branch_filter", "toggle comment branch filter", a.BranchFilter)
+		writeKeys("hard_reset", "hard reload (re-fetch diff)", a.HardReset)
 		b.WriteString("\n")
 	}
 

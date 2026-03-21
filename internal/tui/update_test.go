@@ -5671,3 +5671,782 @@ func TestGoToPrevChange_FromSecondBlock(t *testing.T) {
 	firstBlock := findContentRowIndex(rows, 0)
 	assert.Equal(t, firstBlock, m.cursorLine())
 }
+
+// --- Hard Reset (Reload) Tests ---
+
+// makeReloadTestModel creates a model with a reloadFn that returns the given commits and options.
+func makeReloadTestModel(files []sidebyside.FilePair) Model {
+	m := New(files)
+	m.width = 80
+	m.height = 40
+	m.focused = true
+	m.calculateTotalLines()
+	return m
+}
+
+func TestHardReset_ReloadsData(t *testing.T) {
+	oldFiles := []sidebyside.FilePair{
+		{OldPath: "a/old.go", NewPath: "b/old.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "old"}, New: sidebyside.Line{Num: 1, Content: "old"}}}},
+	}
+	newFiles := []sidebyside.FilePair{
+		{OldPath: "a/new.go", NewPath: "b/new.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1, Content: "new"}, New: sidebyside.Line{Num: 1, Content: "new"}}}},
+	}
+
+	m := makeReloadTestModel(oldFiles)
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: newFiles, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	require.Len(t, m.files, 1)
+	assert.Equal(t, "b/new.go", m.files[0].NewPath)
+	assert.Equal(t, "Reloaded", m.statusMessage)
+	assert.Empty(t, m.highlightSpans)
+}
+
+func TestHardReset_CursorPreservation_ExactLine(t *testing.T) {
+	pairs := make([]sidebyside.LinePair, 20)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i + 1, Content: "line"},
+			New: sidebyside.Line{Num: i + 1, Content: "line"},
+		}
+	}
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	}
+
+	m := makeReloadTestModel(files)
+	// Set to hunk-level so content rows are visible
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+	m.calculateTotalLines()
+	// Scroll to row 10
+	m.w().scroll = 10
+	m.w().rowsCacheValid = false
+
+	// Capture identity before reload
+	idBefore := m.getReloadCursorIdentity()
+	assert.Equal(t, "foo.go", idBefore.filePath)
+	assert.True(t, idBefore.identity.newNum > 0, "should have a line number")
+
+	// Reload returns same files
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	// Cursor should be in the same place
+	assert.Equal(t, 10, m.w().scroll)
+}
+
+func TestHardReset_CursorPreservation_FileHeaderFallback(t *testing.T) {
+	pairs := make([]sidebyside.LinePair, 20)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i + 1, Content: "line"},
+			New: sidebyside.Line{Num: i + 1, Content: "line"},
+		}
+	}
+
+	m := makeReloadTestModel([]sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	})
+	// Scroll to line 15 (which has newNum ~15)
+	m.w().scroll = 15
+	m.calculateTotalLines()
+
+	// Reload returns same file but with only 5 lines
+	shortPairs := make([]sidebyside.LinePair, 5)
+	for i := range shortPairs {
+		shortPairs[i] = sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i + 1, Content: "line"},
+			New: sidebyside.Line{Num: i + 1, Content: "line"},
+		}
+	}
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks, Pairs: shortPairs},
+			},
+			FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	// Cursor should land on the file header (first row for foo.go)
+	rows := m.buildRows()
+	cursorRow := m.w().scroll
+	require.True(t, cursorRow < len(rows), "cursor should be in bounds")
+	assert.Equal(t, 0, rows[cursorRow].fileIndex, "should be on file 0")
+	assert.True(t, rows[cursorRow].isHeader || rows[cursorRow].isHeaderTopBorder,
+		"should be on file header row, got kind=%d", rows[cursorRow].kind)
+}
+
+func TestHardReset_CursorPreservation_TopFallback(t *testing.T) {
+	pairs := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 1, Content: "line"}, New: sidebyside.Line{Num: 1, Content: "line"}},
+	}
+
+	m := makeReloadTestModel([]sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	})
+	m.w().scroll = 1
+	m.calculateTotalLines()
+
+	// Reload returns completely different file
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+			},
+			FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	assert.Equal(t, 0, m.w().scroll, "cursor should be at top when file not found")
+}
+
+func TestHardReset_FoldPreservation_Uniform(t *testing.T) {
+	files := []sidebyside.FilePair{
+		{OldPath: "a/a.go", NewPath: "b/a.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}}}},
+		{OldPath: "a/b.go", NewPath: "b/b.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}}}},
+	}
+
+	m := New(files)
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	// Set all commits to CommitFileHunks
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+
+	// Reload returns same files
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	// All commits should still be at CommitFileHunks
+	assert.Equal(t, sidebyside.CommitFileHunks, m.commitFoldLevel(0))
+	// Files should be at the file-level that CommitFileHunks maps to
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(0))
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(1))
+}
+
+func TestHardReset_FoldPreservation_IndividualExpansion(t *testing.T) {
+	pairs := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 1, Content: "line"}, New: sidebyside.Line{Num: 1, Content: "line"}},
+	}
+	files := []sidebyside.FilePair{
+		{OldPath: "a/a.go", NewPath: "b/a.go", FoldLevel: sidebyside.FoldHeader, Pairs: pairs},
+		{OldPath: "a/b.go", NewPath: "b/b.go", FoldLevel: sidebyside.FoldHeader, Pairs: pairs},
+		{OldPath: "a/c.go", NewPath: "b/c.go", FoldLevel: sidebyside.FoldHeader, Pairs: pairs},
+	}
+
+	m := New(files)
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	// Set default to FileHeaders, then expand file b.go to FoldHunks
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHeaders)
+	m.setFileFoldLevel(1, sidebyside.FoldHunks) // b.go expanded
+
+	// Reload returns same files
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	// b.go should still be expanded, others at header
+	assert.Equal(t, sidebyside.FoldHeader, m.fileFoldLevel(0), "a.go should be at header")
+	assert.Equal(t, sidebyside.FoldHunks, m.fileFoldLevel(1), "b.go should remain expanded")
+	assert.Equal(t, sidebyside.FoldHeader, m.fileFoldLevel(2), "c.go should be at header")
+}
+
+func TestHardReset_NoReloadFn(t *testing.T) {
+	m := makeTestModel(10)
+	m.reloadFn = nil
+
+	m.handleHardReset()
+
+	assert.Equal(t, "Reload not available", m.statusMessage)
+}
+
+func TestHardReset_ReloadError(t *testing.T) {
+	m := makeTestModel(10)
+	originalFiles := len(m.files)
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return nil, nil, fmt.Errorf("git failed")
+	}
+
+	m.handleHardReset()
+
+	assert.Contains(t, m.statusMessage, "Reload failed")
+	assert.Contains(t, m.statusMessage, "git failed")
+	assert.Equal(t, originalFiles, len(m.files), "files should be unchanged after error")
+}
+
+func TestHardReset_StaleMessages(t *testing.T) {
+	m := makeTestModel(10)
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/new.go", NewPath: "b/new.go", FoldLevel: sidebyside.FoldHunks,
+					Pairs: []sidebyside.LinePair{{Old: sidebyside.Line{Num: 1}, New: sidebyside.Line{Num: 1}}}},
+			},
+			FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	// Get the pre-reload generation
+	oldGen := m.reloadGen
+
+	m.handleHardReset()
+
+	assert.Equal(t, oldGen+1, m.reloadGen, "generation should increment")
+
+	// A stale FileContentLoadedMsg with old gen should be ignored
+	staleMsg := FileContentLoadedMsg{
+		FileIndex:  0,
+		OldContent: []string{"stale content"},
+		NewContent: []string{"stale content"},
+		Gen:        oldGen,
+	}
+
+	newM, _ := m.Update(staleMsg)
+	model := newM.(Model)
+
+	// Content should NOT have been applied (it was stale)
+	assert.Nil(t, model.files[0].OldContent, "stale content should not be applied")
+}
+
+func TestHardReset_LogMode(t *testing.T) {
+	commitSets := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{SHA: "abc123", Subject: "old commit"},
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/file.go", NewPath: "b/file.go", FoldLevel: sidebyside.FoldHeader},
+			},
+			FoldLevel: sidebyside.CommitFolded, FilesLoaded: false,
+		},
+	}
+
+	m := NewWithCommits(commitSets, WithPagination(1, 100), WithGit(&git.MockGit{}))
+	m.width = 80
+	m.height = 40
+	m.calculateTotalLines()
+
+	newCommitSets := []sidebyside.CommitSet{
+		{
+			Info: sidebyside.CommitInfo{SHA: "def456", Subject: "new commit"},
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/newfile.go", NewPath: "b/newfile.go", FoldLevel: sidebyside.FoldHeader},
+			},
+			FoldLevel: sidebyside.CommitFolded, FilesLoaded: false,
+		},
+		{
+			Info: sidebyside.CommitInfo{SHA: "ghi789", Subject: "another new commit"},
+			Files: []sidebyside.FilePair{
+				{OldPath: "a/another.go", NewPath: "b/another.go", FoldLevel: sidebyside.FoldHeader},
+			},
+			FoldLevel: sidebyside.CommitFolded, FilesLoaded: false,
+		},
+	}
+
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return newCommitSets, []Option{WithPagination(2, 100)}, nil
+	}
+
+	m.handleHardReset()
+
+	assert.Len(t, m.commits, 2)
+	assert.Equal(t, "def456", m.commits[0].Info.SHA)
+	assert.Equal(t, "ghi789", m.commits[1].Info.SHA)
+	assert.Equal(t, 2, m.loadedCommitCount)
+}
+
+func TestHardReset_KeyPress(t *testing.T) {
+	m := makeTestModel(10)
+	called := false
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		called = true
+		return []sidebyside.CommitSet{{
+			Files: m.files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
+	model := newM.(Model)
+
+	assert.True(t, called, "reloadFn should have been called")
+	assert.Equal(t, "Reloaded", model.statusMessage)
+}
+
+func TestHardReset_NarrowPreservation(t *testing.T) {
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}},
+			}},
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}},
+			}},
+	}
+	m := makeReloadTestModel(files)
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+	m.calculateTotalLines()
+
+	// Narrow to the second file
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: 1, HunkIdx: -1}
+	m.w().rowsCacheValid = false
+
+	// Reload returns same files
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	ns := m.w().narrow
+	assert.True(t, ns.Active, "narrow should be restored")
+	assert.Equal(t, 0, ns.CommitIdx)
+	assert.Equal(t, 1, ns.FileIdx, "should renarrow to bar.go (index 1)")
+}
+
+func TestHardReset_NarrowGoneFile(t *testing.T) {
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}},
+			}},
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}},
+			}},
+	}
+	m := makeReloadTestModel(files)
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+	m.calculateTotalLines()
+
+	// Narrow to bar.go
+	m.w().narrow = NarrowScope{Active: true, CommitIdx: 0, FileIdx: 1, HunkIdx: -1}
+	m.w().rowsCacheValid = false
+
+	// Reload returns only foo.go (bar.go is gone)
+	newFiles := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}},
+			}},
+	}
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: newFiles, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	assert.False(t, m.w().narrow.Active, "narrow should be deactivated when file is gone")
+}
+
+func TestHardReset_CursorPreservation_NonContentRow(t *testing.T) {
+	// Create a file with enough lines that scrolling to a separator/header row is possible
+	pairs := make([]sidebyside.LinePair, 20)
+	for i := range pairs {
+		pairs[i] = sidebyside.LinePair{
+			Old: sidebyside.Line{Num: i + 1, Content: "line"},
+			New: sidebyside.Line{Num: i + 1, Content: "line"},
+		}
+	}
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	}
+
+	m := makeReloadTestModel(files)
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+	m.calculateTotalLines()
+
+	// Find a non-content row (e.g. header or border) that has a file index
+	rows := m.buildRows()
+	headerRow := -1
+	for i, r := range rows {
+		if r.kind != RowKindContent && r.fileIndex >= 0 {
+			headerRow = i
+			break
+		}
+	}
+	require.True(t, headerRow >= 0, "should find a non-content row with a file")
+
+	m.w().scroll = headerRow
+	m.w().rowsCacheValid = false
+
+	// Capture identity — should still have line numbers from nearby content row
+	id := m.getReloadCursorIdentity()
+	assert.Equal(t, "foo.go", id.filePath)
+
+	// Reload returns same files
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	scrollBefore := m.w().scroll
+	m.handleHardReset()
+
+	// Cursor should be at or very near the same position
+	assert.InDelta(t, scrollBefore, m.w().scroll, 2, "cursor should stay near same position for non-content rows")
+}
+
+func TestHardReset_CursorPreservation_DeletedLine(t *testing.T) {
+	// Build a file with some context lines and a deleted line
+	pairs := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 1, Content: "ctx1"}, New: sidebyside.Line{Num: 1, Content: "ctx1"}},
+		{Old: sidebyside.Line{Num: 2, Content: "ctx2"}, New: sidebyside.Line{Num: 2, Content: "ctx2"}},
+		{Old: sidebyside.Line{Num: 3, Content: "deleted"}, New: sidebyside.Line{Num: 0, Content: ""}},
+		{Old: sidebyside.Line{Num: 4, Content: "ctx3"}, New: sidebyside.Line{Num: 3, Content: "ctx3"}},
+		{Old: sidebyside.Line{Num: 5, Content: "ctx4"}, New: sidebyside.Line{Num: 4, Content: "ctx4"}},
+	}
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	}
+
+	m := makeReloadTestModel(files)
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+	m.calculateTotalLines()
+
+	// Find the deleted line row (Old.Num=3, New.Num=0)
+	rows := m.buildRows()
+	deletedRow := -1
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.Old.Num == 3 && r.pair.New.Num == 0 {
+			deletedRow = i
+			break
+		}
+	}
+	require.True(t, deletedRow >= 0, "should find the deleted line row")
+
+	m.w().scroll = deletedRow
+	m.w().rowsCacheValid = false
+
+	// Verify identity captures the old-side line number
+	id := m.getReloadCursorIdentity()
+	assert.Equal(t, "foo.go", id.filePath)
+	assert.Equal(t, 3, id.identity.oldNum, "should capture old-side line number")
+	assert.Equal(t, 0, id.identity.newNum, "new-side should be 0 for deleted line")
+
+	// Reload with same data
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	assert.Equal(t, deletedRow, m.w().scroll, "cursor should stay on the deleted line")
+}
+
+func TestHardReset_CursorPreservation_AddedLine(t *testing.T) {
+	pairs := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 1, Content: "ctx1"}, New: sidebyside.Line{Num: 1, Content: "ctx1"}},
+		{Old: sidebyside.Line{Num: 0, Content: ""}, New: sidebyside.Line{Num: 2, Content: "added"}},
+		{Old: sidebyside.Line{Num: 2, Content: "ctx2"}, New: sidebyside.Line{Num: 3, Content: "ctx2"}},
+	}
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	}
+
+	m := makeReloadTestModel(files)
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+	m.calculateTotalLines()
+
+	// Find the added line row (Old.Num=0, New.Num=2)
+	rows := m.buildRows()
+	addedRow := -1
+	for i, r := range rows {
+		if r.kind == RowKindContent && r.pair.Old.Num == 0 && r.pair.New.Num == 2 {
+			addedRow = i
+			break
+		}
+	}
+	require.True(t, addedRow >= 0, "should find the added line row")
+
+	m.w().scroll = addedRow
+	m.w().rowsCacheValid = false
+
+	id := m.getReloadCursorIdentity()
+	assert.Equal(t, 0, id.identity.oldNum, "old-side should be 0 for added line")
+	assert.Equal(t, 2, id.identity.newNum, "should capture new-side line number")
+
+	m.reloadFn = func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m.handleHardReset()
+
+	assert.Equal(t, addedRow, m.w().scroll, "cursor should stay on the added line")
+}
+
+func TestHardReset_CursorPreservation_HunkSeparator(t *testing.T) {
+	// Three hunks: lines 1-3, 10-12, 20-22 (two gaps = two separator blocks)
+	// First separator (i==0 gap): Separator + SeparatorBottom (no Top)
+	// Second separator (i>0 gap): SeparatorTop + Separator + SeparatorBottom
+	pairs := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}},
+		{Old: sidebyside.Line{Num: 2, Content: "b"}, New: sidebyside.Line{Num: 2, Content: "b"}},
+		{Old: sidebyside.Line{Num: 3, Content: "c"}, New: sidebyside.Line{Num: 3, Content: "c"}},
+		// Gap → first separator (Separator + SeparatorBottom)
+		{Old: sidebyside.Line{Num: 10, Content: "d"}, New: sidebyside.Line{Num: 10, Content: "d"}},
+		{Old: sidebyside.Line{Num: 11, Content: "e"}, New: sidebyside.Line{Num: 11, Content: "e"}},
+		{Old: sidebyside.Line{Num: 12, Content: "f"}, New: sidebyside.Line{Num: 12, Content: "f"}},
+		// Gap → second separator (SeparatorTop + Separator + SeparatorBottom)
+		{Old: sidebyside.Line{Num: 20, Content: "g"}, New: sidebyside.Line{Num: 20, Content: "g"}},
+		{Old: sidebyside.Line{Num: 21, Content: "h"}, New: sidebyside.Line{Num: 21, Content: "h"}},
+		{Old: sidebyside.Line{Num: 22, Content: "i"}, New: sidebyside.Line{Num: 22, Content: "i"}},
+	}
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairs},
+	}
+
+	reloadFn := func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	// Collect all separator-block rows from the second separator (which has SeparatorTop)
+	m := makeReloadTestModel(files)
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+	m.calculateTotalLines()
+	rows := m.buildRows()
+
+	// Find all separator rows, grouped by chunkStartLine
+	type sepBlock struct {
+		top, mid, bot int // row indices (-1 if absent)
+	}
+	blocks := map[int]*sepBlock{}
+	for i, r := range rows {
+		csl := r.chunkStartLine
+		switch r.kind {
+		case RowKindSeparatorTop:
+			// SeparatorTop has no chunkStartLine; peek at next row
+			if i+1 < len(rows) && rows[i+1].kind == RowKindSeparator {
+				csl = rows[i+1].chunkStartLine
+			}
+			if blocks[csl] == nil {
+				blocks[csl] = &sepBlock{top: -1, mid: -1, bot: -1}
+			}
+			blocks[csl].top = i
+		case RowKindSeparator:
+			if blocks[csl] == nil {
+				blocks[csl] = &sepBlock{top: -1, mid: -1, bot: -1}
+			}
+			blocks[csl].mid = i
+		case RowKindSeparatorBottom:
+			if blocks[csl] == nil {
+				blocks[csl] = &sepBlock{top: -1, mid: -1, bot: -1}
+			}
+			blocks[csl].bot = i
+		}
+	}
+
+	// We need a block with all three parts (the second separator)
+	var fullBlock *sepBlock
+	for _, b := range blocks {
+		if b.top >= 0 && b.mid >= 0 && b.bot >= 0 {
+			fullBlock = b
+			break
+		}
+	}
+	require.NotNil(t, fullBlock, "should find a 3-part separator block (SeparatorTop+Separator+SeparatorBottom)")
+
+	tests := []struct {
+		name     string
+		row      int
+		wantKind RowKind
+	}{
+		{"SeparatorTop", fullBlock.top, RowKindSeparatorTop},
+		{"Separator", fullBlock.mid, RowKindSeparator},
+		{"SeparatorBottom", fullBlock.bot, RowKindSeparatorBottom},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := makeReloadTestModel(files)
+			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+			m.calculateTotalLines()
+			m.reloadFn = reloadFn
+
+			m.w().scroll = tt.row
+			m.w().rowsCacheValid = false
+
+			// Verify identity captures hunkStartLine
+			id := m.getReloadCursorIdentity()
+			assert.Equal(t, "foo.go", id.filePath)
+			assert.Equal(t, tt.wantKind, id.identity.kind, "should capture correct row kind")
+
+			m.handleHardReset()
+
+			assert.Equal(t, tt.row, m.w().scroll, "cursor should stay on same row")
+			newRows := m.buildRows()
+			require.True(t, m.w().scroll < len(newRows))
+			assert.Equal(t, tt.wantKind, newRows[m.w().scroll].kind, "should land on correct row kind")
+		})
+	}
+}
+
+func TestHighlightReady_PreservesCursorOnSemanticExpansion(t *testing.T) {
+	// File A: hunk starts at line 5, with a function scope starting at line 3.
+	// When HighlightReadyMsg arrives with structure, expandSemanticContext will
+	// insert context lines 3-4 before the hunk, changing the row layout.
+	pairsA := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 5, Content: "  x := 1"}, New: sidebyside.Line{Num: 5, Content: "  x := 2"}},
+		{Old: sidebyside.Line{Num: 6, Content: "  return x"}, New: sidebyside.Line{Num: 6, Content: "  return x"}},
+	}
+	// File B: just a simple file
+	pairsB := []sidebyside.LinePair{
+		{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}},
+	}
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairsA,
+			NewContent: []string{"package main", "", "func doStuff() {", "  x := 1", "  x := 2", "  return x", "}"},
+			OldContent: []string{"package main", "", "func doStuff() {", "  x := 1", "  x := 1", "  return x", "}"},
+		},
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldHunks, Pairs: pairsB},
+	}
+
+	m := makeReloadTestModel(files)
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+	m.calculateTotalLines()
+
+	// Find file B's header row
+	rows := m.buildRows()
+	barHeaderRow := -1
+	for i, r := range rows {
+		if r.kind == RowKindHeader && r.fileIndex == 1 {
+			barHeaderRow = i
+			break
+		}
+	}
+	require.True(t, barHeaderRow >= 0, "should find bar.go header row")
+
+	// Position cursor on file B's header
+	m.w().scroll = barHeaderRow
+	m.w().rowsCacheValid = false
+
+	pairsBefore := len(m.files[0].Pairs)
+
+	// Send HighlightReadyMsg for file A with structure that triggers semantic expansion.
+	// Function "doStuff" starts at line 3, hunk starts at line 5 → gap of 2 ≤ threshold (20).
+	msg := HighlightReadyMsg{
+		FileIndex: 0,
+		NewStructure: []StructureEntry{
+			{StartLine: 3, EndLine: 7, Name: "doStuff", Kind: "func"},
+		},
+	}
+	newM, _ := m.Update(msg)
+	model := newM.(Model)
+
+	// Verify semantic expansion actually happened
+	assert.Greater(t, len(model.files[0].Pairs), pairsBefore, "semantic context should have added pairs")
+
+	// Cursor should still be on bar.go's header
+	newRows := model.buildRows()
+	require.True(t, model.w().scroll < len(newRows), "scroll should be in bounds")
+	assert.Equal(t, RowKindHeader, newRows[model.w().scroll].kind, "should still be on a header row")
+	assert.Equal(t, 1, newRows[model.w().scroll].fileIndex, "should still be on bar.go (file index 1)")
+}
+
+func TestHardReset_CursorPreservation_FileHeader(t *testing.T) {
+	files := []sidebyside.FilePair{
+		{OldPath: "a/foo.go", NewPath: "b/foo.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "a"}, New: sidebyside.Line{Num: 1, Content: "a"}},
+			}},
+		{OldPath: "a/bar.go", NewPath: "b/bar.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "b"}, New: sidebyside.Line{Num: 1, Content: "b"}},
+			}},
+		{OldPath: "a/baz.go", NewPath: "b/baz.go", FoldLevel: sidebyside.FoldHunks,
+			Pairs: []sidebyside.LinePair{
+				{Old: sidebyside.Line{Num: 1, Content: "c"}, New: sidebyside.Line{Num: 1, Content: "c"}},
+			}},
+	}
+
+	reloadFn := func() ([]sidebyside.CommitSet, []Option, error) {
+		return []sidebyside.CommitSet{{
+			Files: files, FoldLevel: sidebyside.CommitFolded, FilesLoaded: true,
+		}}, nil, nil
+	}
+
+	m := makeReloadTestModel(files)
+	m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+	m.calculateTotalLines()
+	rows := m.buildRows()
+
+	// Test each type of file header row for the second file (not first, to avoid index-0 coincidence)
+	headerTests := []struct {
+		name string
+		kind RowKind
+	}{
+		{"HeaderTopBorder", RowKindHeaderTopBorder},
+		{"Header", RowKindHeader},
+		{"HeaderSpacer", RowKindHeaderSpacer},
+	}
+	for _, tt := range headerTests {
+		t.Run(tt.name, func(t *testing.T) {
+			wantKind := tt.kind
+			// Find the target row for the second file (bar.go)
+			targetRow := -1
+			for i, r := range rows {
+				if r.kind == wantKind && r.fileIndex == 1 {
+					targetRow = i
+					break
+				}
+			}
+			require.True(t, targetRow >= 0, "should find %s for second file", tt.name)
+
+			m := makeReloadTestModel(files)
+			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+			m.calculateTotalLines()
+			m.reloadFn = reloadFn
+
+			m.w().scroll = targetRow
+			m.w().rowsCacheValid = false
+
+			m.handleHardReset()
+
+			assert.Equal(t, targetRow, m.w().scroll, "cursor should stay on %v", wantKind)
+			newRows := m.buildRows()
+			require.True(t, m.w().scroll < len(newRows))
+			assert.Equal(t, wantKind, newRows[m.w().scroll].kind, "should land on correct row kind")
+		})
+	}
+}

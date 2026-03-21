@@ -97,6 +97,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case FileContentLoadedMsg:
+		if msg.Gen != m.reloadGen {
+			return m, nil // stale message from before reload
+		}
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
 			// Check if loading this file's content affects visible rows.
 			// In full-file view, content arrival changes the row layout directly.
@@ -132,9 +135,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case HighlightReadyMsg:
-		m.storeHighlightSpans(msg)
+		if msg.Gen != m.reloadGen {
+			return m, nil // stale message from before reload
+		}
+		// Capture cursor identity before highlight changes the row layout
+		// (expandSemanticContext adds context lines, structural diff adds rows)
+		identity := m.getCursorRowIdentity()
+
+		layoutChanged := m.storeHighlightSpans(msg)
 		// Clear loading state - file is fully loaded now
 		m.clearFileLoading(msg.FileIndex)
+
+		// Restore cursor if layout changed (storeHighlightSpans already recalculated totalLines)
+		if layoutChanged {
+			newRowIdx := m.findRowOrNearestAbove(identity)
+			m.adjustScrollToRow(newRowIdx)
+		}
 
 		// Check if there are more files to load from startup queue
 		var cmds []tea.Cmd
@@ -309,6 +325,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case AllContentLoadedMsg:
+		if msg.Gen != m.reloadGen {
+			return m, nil // stale message from before reload
+		}
 		if len(msg.Contents) > 0 {
 			// Capture cursor identity before content changes the row layout
 			identity := m.getCursorRowIdentity()
@@ -638,6 +657,10 @@ func (m Model) dispatchAction(action Action) (tea.Model, tea.Cmd) {
 		m.RefreshLayout()
 		m.statusMessage = "Refreshed"
 		m.statusMessageTime = time.Now()
+
+	case ActionHardReset:
+		cmd := m.handleHardReset()
+		return m, cmd
 
 	case ActionSnapshot:
 		if cmd := m.handleSnapshot(); cmd != nil {

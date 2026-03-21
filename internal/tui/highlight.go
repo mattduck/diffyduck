@@ -13,6 +13,7 @@ import (
 // This runs asynchronously to avoid blocking the UI.
 // Also extracts code structure for breadcrumbs.
 func (m Model) RequestHighlight(fileIndex int) tea.Cmd {
+	gen := m.reloadGen
 	return func() tea.Msg {
 		if fileIndex < 0 || fileIndex >= len(m.files) {
 			return nil
@@ -56,6 +57,7 @@ func (m Model) RequestHighlight(fileIndex int) tea.Cmd {
 			NewSpans:     convertSpans(newSpans),
 			OldStructure: convertStructure(oldStructure),
 			NewStructure: convertStructure(newStructure),
+			Gen:          gen,
 		}
 		return msg
 	}
@@ -153,8 +155,9 @@ func convertStructure(m *structure.Map) []StructureEntry {
 	return result
 }
 
-// storeHighlightSpans stores the spans and structure from a HighlightReadyMsg into the model.
-func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
+// storeHighlightSpans stores highlight spans, structural diff, and expands semantic context.
+// Returns true if the row layout changed (semantic context expansion or structural diff added rows).
+func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) bool {
 	m.highlightSpans[msg.FileIndex] = &FileHighlight{
 		OldSpans: unconvertSpans(msg.OldSpans),
 		NewSpans: unconvertSpans(msg.NewSpans),
@@ -181,8 +184,11 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 	}
 
 	// Expand context to include nearby scope boundaries (function/class starts)
+	pairsChanged := false
 	if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
+		pairsBefore := len(m.files[msg.FileIndex].Pairs)
 		expandSemanticContext(&m.files[msg.FileIndex], newStruct, SemanticContextThreshold)
+		pairsChanged = len(m.files[msg.FileIndex].Pairs) != pairsBefore
 		// Snapshot pairs after semantic expansion so fold toggle can restore them
 		m.files[msg.FileIndex].SaveOriginalPairs()
 		// Recompute move detection for this commit if active — semantic context
@@ -190,28 +196,29 @@ func (m *Model) storeHighlightSpans(msg HighlightReadyMsg) {
 		m.recomputeMoveDetectIfActive(msg.FileIndex)
 	}
 
-	// Recalculate rows if structural diff would be visible.
+	// Check if structural diff would add visible rows.
 	// Structural diff rows appear under file headers, which are only visible
-	// when the commit is not folded. Skip recalculation for folded commits
-	// to avoid unnecessary cache rebuilds in log mode.
+	// when the commit is not folded. Skip for folded commits to avoid
+	// unnecessary cache rebuilds in log mode.
+	layoutChanged := pairsChanged
 	if structDiff != nil && structDiff.HasChanges() {
-		shouldRecalculate := false
 		commitIdx := m.commitForFile(msg.FileIndex)
 		if commitIdx >= 0 && commitIdx < len(m.commits) {
 			if m.commitFoldLevel(commitIdx) != sidebyside.CommitFolded {
-				shouldRecalculate = true
+				layoutChanged = true
 			}
 		} else {
-			// No commit structure (e.g., diff mode) - always recalculate
-			shouldRecalculate = true
-		}
-		if shouldRecalculate {
-			// Recalculate totalLines so scroll limits are correct.
-			// Just invalidating rowsCacheValid is not enough because totalLines
-			// is used directly by maxScroll() without triggering a cache rebuild.
-			m.calculateTotalLines()
+			// No commit structure (e.g., diff mode) - always mark changed
+			layoutChanged = true
 		}
 	}
+	if layoutChanged {
+		// Recalculate totalLines so scroll limits are correct.
+		// Just invalidating rowsCacheValid is not enough because totalLines
+		// is used directly by maxScroll() without triggering a cache rebuild.
+		m.calculateTotalLines()
+	}
+	return layoutChanged
 }
 
 // unconvertSpans converts HighlightSpan back to highlight.Span.

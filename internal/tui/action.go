@@ -60,6 +60,7 @@ const (
 	ActionMoveDetect
 	ActionCommentToggle
 	ActionBranchFilter
+	ActionHardReset
 
 	// Window management
 	ActionWinSplitV
@@ -131,6 +132,7 @@ func (km KeyMap) actionBindings() []actionBinding {
 		{km.MoveDetect, ActionMoveDetect},
 		{km.CommentToggle, ActionCommentToggle},
 		{km.BranchFilter, ActionBranchFilter},
+		{km.HardReset, ActionHardReset},
 		{km.WinSplitV, ActionWinSplitV},
 		{km.WinSplitH, ActionWinSplitH},
 		{km.WinClose, ActionWinClose},

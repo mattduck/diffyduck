@@ -1340,125 +1340,10 @@ func run() error {
 	// conflict marker highlighting in the TUI).
 	hasConflicts := g.HasConflicts()
 
-	// Get diff from git, with optional commit metadata
-	var output string
-	var commitInfo sidebyside.CommitInfo
-
-	switch args.cmd {
-	case "diff":
-		if args.allMode {
-			output, err = getDiffAll(g, "HEAD", args.paths, args.excludes)
-			if err != nil {
-				return err
-			}
-			args.mode = content.ModeDiffRefs
-			args.ref1 = "HEAD"
-			args.ref2 = ""
-		} else if args.unstaged {
-			// During merge/rebase conflicts, bare "git diff" produces combined
-			// diff format for unmerged files which the parser can't handle.
-			// Fall back to "git diff HEAD" which gives standard unified diff.
-			if hasConflicts {
-				diffArgs := []string{"HEAD"}
-				diffArgs = append(diffArgs, pathspec...)
-				output, err = g.Diff(diffArgs...)
-				if err != nil {
-					return fmt.Errorf("git diff: %w", err)
-				}
-				args.mode = content.ModeDiffRefs
-				args.ref1 = "HEAD"
-				args.ref2 = ""
-			} else {
-				diffArgs := append([]string{}, pathspec...)
-				output, err = g.Diff(diffArgs...)
-				if err != nil {
-					return fmt.Errorf("git diff: %w", err)
-				}
-			}
-		} else {
-			if args.cached {
-				diffArgs := []string{"--cached"}
-				diffArgs = append(diffArgs, pathspec...)
-				output, err = g.Diff(diffArgs...)
-			} else if args.ref1 == "" && args.mode == content.ModeDiffUnstaged {
-				diffArgs := []string{"HEAD"}
-				diffArgs = append(diffArgs, pathspec...)
-				output, err = g.Diff(diffArgs...)
-				args.mode = content.ModeDiffRefs
-				args.ref1 = "HEAD"
-				args.ref2 = ""
-			} else {
-				diffArgs := append([]string{}, args.refs...)
-				diffArgs = append(diffArgs, pathspec...)
-				output, err = g.Diff(diffArgs...)
-			}
-			if err != nil {
-				return fmt.Errorf("git diff: %w", err)
-			}
-		}
-	case "show":
-		showArgs := []string{args.ref1}
-		showArgs = append(showArgs, pathspec...)
-		var meta *git.CommitMeta
-		meta, output, err = g.ShowWithMeta(showArgs...)
-		if err != nil {
-			return fmt.Errorf("git show: %w", err)
-		}
-		if meta != nil {
-			commitInfo = sidebyside.CommitInfo{
-				SHA:         meta.SHA,
-				Author:      meta.Author,
-				Email:       meta.Email,
-				Date:        meta.Date,
-				Subject:     meta.Subject,
-				Body:        meta.Body,
-				Refs:        sidebyside.ParseRefs(meta.Refs),
-				ParentCount: meta.ParentCount(),
-			}
-
-			// Merge commits: git show produces combined diff (diff --cc) which
-			// our parser can't handle. For 2-parent merges, get the list of
-			// conflict-resolution files and generate a standard unified diff.
-			if meta.ParentCount() == 2 {
-				conflictFiles, cfErr := g.MergeConflictFiles(meta.SHA)
-				if cfErr == nil && len(conflictFiles) > 0 {
-					parents := meta.ParentSHAs()
-					diffArgs := []string{parents[0], meta.SHA, "--"}
-					diffArgs = append(diffArgs, conflictFiles...)
-					output, err = g.Diff(diffArgs...)
-					if err != nil {
-						return fmt.Errorf("git diff (merge): %w", err)
-					}
-				} else {
-					// Clean merge or error: no conflict-resolution files
-					output = ""
-				}
-			} else if meta.ParentCount() >= 3 {
-				// Octopus merge: can't display in two-pane view
-				output = ""
-			}
-		}
-	}
-
-	// Parse the diff
-	d, err := diff.Parse(output)
+	// Get diff from git, parse, and build commits
+	commits, fetchMode, fetchRef1, fetchRef2, err := fetchDiffCommits(g, args, pathspec, hasConflicts)
 	if err != nil {
-		return fmt.Errorf("parse diff: %w", err)
-	}
-
-	// Build base→WT commit (always shown in normal view)
-	var commits []sidebyside.CommitSet
-
-	if len(d.Files) > 0 {
-		files, truncatedFileCount := sidebyside.TransformDiff(d)
-		commit := sidebyside.CommitSet{
-			Info:               commitInfo,
-			Files:              files,
-			FoldLevel:          sidebyside.CommitFolded,
-			FilesLoaded:        true,
-			TruncatedFileCount: truncatedFileCount,
-		}
-		commits = append(commits, commit)
+		return err
 	}
 
 	// Build snapshot view commits (only when showing snapshot view at startup)
@@ -1473,7 +1358,7 @@ func run() error {
 	}
 
 	// Create content fetcher for lazy file loading
-	fetcher := content.NewFetcher(g, args.mode, args.ref1, args.ref2)
+	fetcher := content.NewFetcher(g, fetchMode, fetchRef1, fetchRef2)
 	if topLevel, err := g.TopLevel(); err == nil {
 		fetcher.WorkDir = topLevel
 	}
@@ -1511,6 +1396,25 @@ func run() error {
 		opts = append(opts, tui.WithBranch(branch))
 	}
 
+	// Build reload closure for hard reset (R key)
+	reloadFn := func() ([]sidebyside.CommitSet, []tui.Option, error) {
+		reloadConflicts := g.HasConflicts()
+		newCommits, rMode, rRef1, rRef2, fetchErr := fetchDiffCommits(g, args, pathspec, reloadConflicts)
+		if fetchErr != nil {
+			return nil, nil, fetchErr
+		}
+		newFetcher := content.NewFetcher(g, rMode, rRef1, rRef2)
+		if topLevel, tlErr := g.TopLevel(); tlErr == nil {
+			newFetcher.WorkDir = topLevel
+		}
+		reloadOpts := []tui.Option{tui.WithFetcher(newFetcher)}
+		if reloadConflicts {
+			reloadOpts = append(reloadOpts, tui.WithConflicts())
+		}
+		return newCommits, reloadOpts, nil
+	}
+	opts = append(opts, tui.WithReloadFunc(reloadFn))
+
 	model := tui.NewWithCommits(commits, opts...)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
 
@@ -1519,6 +1423,131 @@ func run() error {
 		return fmt.Errorf("TUI error: %w", err)
 	}
 	return nil
+}
+
+// fetchDiffCommits runs the git diff/show command and returns parsed CommitSets.
+// Also returns the effective content mode and refs for the content fetcher, since
+// some diff paths (--all, --unstaged with conflicts, bare diff) diff against HEAD
+// but the original args.mode/ref1/ref2 from deriveMode() may say ModeDiffUnstaged.
+// This is used both for initial load and for the reload closure.
+func fetchDiffCommits(g *git.RealGit, args parsedArgs, pathspec []string, hasConflicts bool) ([]sidebyside.CommitSet, content.Mode, string, string, error) {
+	var output string
+	var commitInfo sidebyside.CommitInfo
+	var err error
+
+	// Start with the mode/refs from deriveMode(); adjust below when the actual
+	// git command differs from what deriveMode() assumed.
+	effectiveMode := args.mode
+	effectiveRef1 := args.ref1
+	effectiveRef2 := args.ref2
+
+	switch args.cmd {
+	case "diff":
+		if args.allMode {
+			output, err = getDiffAll(g, "HEAD", args.paths, args.excludes)
+			if err != nil {
+				return nil, 0, "", "", err
+			}
+			effectiveMode = content.ModeDiffRefs
+			effectiveRef1 = "HEAD"
+			effectiveRef2 = ""
+		} else if args.unstaged {
+			if hasConflicts {
+				diffArgs := []string{"HEAD"}
+				diffArgs = append(diffArgs, pathspec...)
+				output, err = g.Diff(diffArgs...)
+				if err != nil {
+					return nil, 0, "", "", fmt.Errorf("git diff: %w", err)
+				}
+				effectiveMode = content.ModeDiffRefs
+				effectiveRef1 = "HEAD"
+				effectiveRef2 = ""
+			} else {
+				diffArgs := append([]string{}, pathspec...)
+				output, err = g.Diff(diffArgs...)
+				if err != nil {
+					return nil, 0, "", "", fmt.Errorf("git diff: %w", err)
+				}
+			}
+		} else {
+			if args.cached {
+				diffArgs := []string{"--cached"}
+				diffArgs = append(diffArgs, pathspec...)
+				output, err = g.Diff(diffArgs...)
+			} else if args.ref1 == "" && args.mode == content.ModeDiffUnstaged {
+				diffArgs := []string{"HEAD"}
+				diffArgs = append(diffArgs, pathspec...)
+				output, err = g.Diff(diffArgs...)
+				effectiveMode = content.ModeDiffRefs
+				effectiveRef1 = "HEAD"
+				effectiveRef2 = ""
+			} else {
+				diffArgs := append([]string{}, args.refs...)
+				diffArgs = append(diffArgs, pathspec...)
+				output, err = g.Diff(diffArgs...)
+			}
+			if err != nil {
+				return nil, 0, "", "", fmt.Errorf("git diff: %w", err)
+			}
+		}
+	case "show":
+		showArgs := []string{args.ref1}
+		showArgs = append(showArgs, pathspec...)
+		var meta *git.CommitMeta
+		meta, output, err = g.ShowWithMeta(showArgs...)
+		if err != nil {
+			return nil, 0, "", "", fmt.Errorf("git show: %w", err)
+		}
+		if meta != nil {
+			commitInfo = sidebyside.CommitInfo{
+				SHA:         meta.SHA,
+				Author:      meta.Author,
+				Email:       meta.Email,
+				Date:        meta.Date,
+				Subject:     meta.Subject,
+				Body:        meta.Body,
+				Refs:        sidebyside.ParseRefs(meta.Refs),
+				ParentCount: meta.ParentCount(),
+			}
+
+			if meta.ParentCount() == 2 {
+				conflictFiles, cfErr := g.MergeConflictFiles(meta.SHA)
+				if cfErr == nil && len(conflictFiles) > 0 {
+					parents := meta.ParentSHAs()
+					diffArgs := []string{parents[0], meta.SHA, "--"}
+					diffArgs = append(diffArgs, conflictFiles...)
+					output, err = g.Diff(diffArgs...)
+					if err != nil {
+						return nil, 0, "", "", fmt.Errorf("git diff (merge): %w", err)
+					}
+				} else {
+					output = ""
+				}
+			} else if meta.ParentCount() >= 3 {
+				output = ""
+			}
+		}
+	}
+
+	d, err := diff.Parse(output)
+	if err != nil {
+		return nil, 0, "", "", fmt.Errorf("parse diff: %w", err)
+	}
+
+	var commits []sidebyside.CommitSet
+	if len(d.Files) > 0 {
+		files, truncatedFileCount := sidebyside.TransformDiff(d)
+		commit := sidebyside.CommitSet{
+			Info:               commitInfo,
+			Files:              files,
+			FoldLevel:          sidebyside.CommitFolded,
+			FilesLoaded:        true,
+			TruncatedFileCount: truncatedFileCount,
+		}
+		commits = append(commits, commit)
+	}
+
+	return commits, effectiveMode, effectiveRef1, effectiveRef2, nil
 }
 
 // parseSinceDuration parses a human-friendly duration string.
@@ -3077,17 +3106,72 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 		initialBatch = args.count
 	}
 
-	commits, err := g.LogPathsOnly(initialBatch, logArgs...)
+	commitSets, err := fetchLogSkeletons(g, logArgs, initialBatch)
 	if err != nil {
-		return fmt.Errorf("git log: %w", err)
+		return err
 	}
-
-	if len(commits) == 0 {
+	if len(commitSets) == 0 {
 		fmt.Println("No commits")
 		return nil
 	}
 
-	// Fetch stats for the first page of commits synchronously so they're visible immediately
+	commentStore := comments.NewStore("")
+
+	opts := []tui.Option{
+		tui.WithConfig(cfg),
+		tui.WithGit(g),
+		tui.WithPagination(len(commitSets), initialBatch),
+		tui.WithCommentStore(commentStore),
+	}
+	if args.count > 0 {
+		opts = append(opts, tui.WithCommitLimit(args.count))
+	}
+	if args.debug {
+		opts = append(opts, tui.WithDebugMode())
+	}
+	if len(logArgs) > 0 {
+		opts = append(opts, tui.WithLogArgs(logArgs))
+	}
+	if len(pathspec) > 0 {
+		opts = append(opts, tui.WithLogPathspec(pathspec))
+	}
+
+	// Build reload closure for hard reset (R key)
+	reloadFn := func() ([]sidebyside.CommitSet, []tui.Option, error) {
+		newCommitSets, fetchErr := fetchLogSkeletons(g, logArgs, initialBatch)
+		if fetchErr != nil {
+			return nil, nil, fetchErr
+		}
+		reloadOpts := []tui.Option{
+			tui.WithPagination(len(newCommitSets), initialBatch),
+		}
+		return newCommitSets, reloadOpts, nil
+	}
+	opts = append(opts, tui.WithReloadFunc(reloadFn))
+
+	model := tui.NewWithCommits(commitSets, opts...)
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
+
+	_, err = p.Run()
+	if err != nil {
+		return fmt.Errorf("TUI error: %w", err)
+	}
+
+	return nil
+}
+
+// fetchLogSkeletons fetches skeleton commits for log mode.
+// This is used both for initial load and for the reload closure.
+func fetchLogSkeletons(g *git.RealGit, logArgs []string, initialBatch int) ([]sidebyside.CommitSet, error) {
+	commits, err := g.LogPathsOnly(initialBatch, logArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("git log: %w", err)
+	}
+	if len(commits) == 0 {
+		return nil, nil
+	}
+
+	// Fetch stats for the first page
 	initialStatsCount := 30
 	if _, height, err := term.GetSize(int(os.Stdout.Fd())); err == nil && height > 0 {
 		initialStatsCount = height
@@ -3111,9 +3195,6 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 		parentCount := c.Meta.ParentCount()
 		isMerge := parentCount >= 2
 
-		// For merge commits, skip skeleton files — git log --name-only
-		// lists all files changed across any parent, but we only want
-		// conflict-resolution files (populated by loadCommitDiff).
 		if !isMerge {
 			if stats, ok := statsMap[c.Meta.SHA]; ok && i < initialLimit {
 				for _, f := range stats.Files {
@@ -3146,7 +3227,7 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 			},
 			Files:        files,
 			FoldLevel:    sidebyside.CommitFolded,
-			FilesLoaded:  isMerge && parentCount >= 3, // Octopus merges: nothing to show
+			FilesLoaded:  isMerge && parentCount >= 3,
 			StatsLoaded:  statsLoaded,
 			TotalAdded:   totalAdded,
 			TotalRemoved: totalRemoved,
@@ -3154,36 +3235,7 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 		commitSets = append(commitSets, commitSet)
 	}
 
-	commentStore := comments.NewStore("")
-
-	opts := []tui.Option{
-		tui.WithConfig(cfg),
-		tui.WithGit(g),
-		tui.WithPagination(len(commitSets), initialBatch),
-		tui.WithCommentStore(commentStore),
-	}
-	if args.count > 0 {
-		opts = append(opts, tui.WithCommitLimit(args.count))
-	}
-	if args.debug {
-		opts = append(opts, tui.WithDebugMode())
-	}
-	if len(logArgs) > 0 {
-		opts = append(opts, tui.WithLogArgs(logArgs))
-	}
-	if len(pathspec) > 0 {
-		opts = append(opts, tui.WithLogPathspec(pathspec))
-	}
-
-	model := tui.NewWithCommits(commitSets, opts...)
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithReportFocus(), tea.WithMouseCellMotion())
-
-	_, err = p.Run()
-	if err != nil {
-		return fmt.Errorf("TUI error: %w", err)
-	}
-
-	return nil
+	return commitSets, nil
 }
 
 // countFilePairStats counts added and removed lines in a file pair.

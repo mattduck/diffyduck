@@ -323,6 +323,10 @@ type Model struct {
 	logArgs            []string // extra args for git log (ref ranges, pathspecs)
 	logPathspec        []string // pathspec portion only (for filtering git show)
 
+	// Reload state
+	reloadFn  func() ([]sidebyside.CommitSet, []Option, error) // closure to re-fetch data
+	reloadGen uint64                                           // incremented on each reload, used to discard stale async messages
+
 	// Snapshot state (diff mode only)
 	autoSnapshots bool     // true when snapshot-taking is enabled
 	showSnapshots bool     // true when snapshot view is currently displayed
@@ -629,6 +633,14 @@ func WithPersistedSnapshots(snapshots []string) Option {
 	return func(m *Model) {
 		m.snapshots = snapshots
 		m.snapshotCount = len(snapshots)
+	}
+}
+
+// WithReloadFunc sets the closure used to re-fetch diff/log data for hard reset (R key).
+// The closure should re-run the same git commands and return fresh commits and options.
+func WithReloadFunc(fn func() ([]sidebyside.CommitSet, []Option, error)) Option {
+	return func(m *Model) {
+		m.reloadFn = fn
 	}
 }
 
@@ -2584,6 +2596,385 @@ func (m *Model) swapToView(commits []sidebyside.CommitSet) tea.Cmd {
 	m.startupQueue = nil
 	m.startupInFlight = 0
 	return m.queueFilesForAllCommits()
+}
+
+// reloadCursorIdentity wraps cursorRowIdentity with path/SHA keys that are stable
+// across reloads (file indices and commit indices change when files are added/removed).
+type reloadCursorIdentity struct {
+	identity  cursorRowIdentity // the full row identity from getCursorRowIdentity
+	filePath  string            // cleanFilePath(NewPath) — replaces identity.fileIndex
+	commitSHA string            // commit SHA — replaces identity.commitIndex
+}
+
+// reloadNarrowIdentity captures narrow scope using path/SHA (stable across reloads).
+type reloadNarrowIdentity struct {
+	active         bool
+	commitSHA      string
+	filePath       string
+	hunkIdx        int
+	commitInfoOnly bool
+}
+
+// getReloadCursorIdentity captures the current cursor position using the existing
+// cursorRowIdentity system, plus path/SHA keys for cross-reload stability.
+func (m *Model) getReloadCursorIdentity() reloadCursorIdentity {
+	id := reloadCursorIdentity{
+		identity: m.getCursorRowIdentity(),
+	}
+
+	fi := id.identity.fileIndex
+	ci := id.identity.commitIndex
+
+	// Translate fileIndex → filePath
+	if fi >= 0 && fi < len(m.files) {
+		id.filePath = cleanFilePath(m.files[fi].NewPath)
+	}
+
+	// Translate commitIndex → commitSHA
+	if ci >= 0 && ci < len(m.commits) {
+		id.commitSHA = m.commits[ci].Info.SHA
+	} else if fi >= 0 {
+		// For file-level rows, derive commit from file
+		derived := m.commitForFile(fi)
+		if derived >= 0 && derived < len(m.commits) {
+			id.commitSHA = m.commits[derived].Info.SHA
+		}
+	}
+
+	return id
+}
+
+// findReloadCursorRow resolves a reloadCursorIdentity back to a row index after reload.
+// It translates path/SHA back to indices, then delegates to findRowOrNearestAbove.
+func (m *Model) findReloadCursorRow(id reloadCursorIdentity) int {
+	resolved := id.identity
+
+	// Resolve commitSHA → new commitIndex
+	resolved.commitIndex = -1
+	if id.commitSHA != "" {
+		for i, c := range m.commits {
+			if c.Info.SHA == id.commitSHA {
+				resolved.commitIndex = i
+				break
+			}
+		}
+	} else if len(m.commits) == 1 {
+		// Single-commit mode (diff/show): no SHA, use index 0
+		resolved.commitIndex = 0
+	}
+
+	// Resolve filePath → new fileIndex
+	resolved.fileIndex = -1
+	if id.filePath != "" {
+		for i := range m.files {
+			if cleanFilePath(m.files[i].NewPath) != id.filePath {
+				continue
+			}
+			// In log mode, ensure the file belongs to the right commit
+			if id.commitSHA != "" {
+				ci := m.commitForFile(i)
+				if ci != resolved.commitIndex {
+					continue
+				}
+			}
+			resolved.fileIndex = i
+			break
+		}
+	}
+
+	return m.findRowOrNearestAbove(resolved)
+}
+
+// getNarrowIdentity converts the current window's index-based narrow scope to path/SHA identity.
+func (m *Model) getNarrowIdentity() reloadNarrowIdentity {
+	ns := m.w().narrow
+	if !ns.Active {
+		return reloadNarrowIdentity{}
+	}
+	id := reloadNarrowIdentity{
+		active:         true,
+		hunkIdx:        ns.HunkIdx,
+		commitInfoOnly: ns.CommitInfoOnly,
+	}
+	if ns.CommitIdx >= 0 && ns.CommitIdx < len(m.commits) {
+		id.commitSHA = m.commits[ns.CommitIdx].Info.SHA
+	}
+	if ns.FileIdx >= 0 && ns.FileIdx < len(m.files) {
+		id.filePath = cleanFilePath(m.files[ns.FileIdx].NewPath)
+	}
+	return id
+}
+
+// restoreNarrow resolves a path/SHA narrow identity back to index-based narrow scope.
+// If the file or commit no longer exists, narrow is deactivated.
+func (m *Model) restoreNarrow(id reloadNarrowIdentity) {
+	if !id.active {
+		return
+	}
+	ns := NarrowScope{
+		Active:         true,
+		CommitIdx:      -1,
+		FileIdx:        -1,
+		HunkIdx:        id.hunkIdx,
+		CommitInfoOnly: id.commitInfoOnly,
+	}
+
+	// Resolve commit SHA → index
+	if id.commitSHA != "" {
+		for i, c := range m.commits {
+			if c.Info.SHA == id.commitSHA {
+				ns.CommitIdx = i
+				break
+			}
+		}
+		if ns.CommitIdx < 0 {
+			return // commit gone, don't renarrow
+		}
+	} else if len(m.commits) == 1 {
+		// Single-commit mode (diff/show): no SHA, use index 0
+		ns.CommitIdx = 0
+	}
+
+	// Resolve file path → index
+	if id.filePath != "" {
+		for i := range m.files {
+			if cleanFilePath(m.files[i].NewPath) == id.filePath {
+				// In log mode, ensure the file belongs to the right commit
+				if id.commitSHA != "" {
+					ci := m.commitForFile(i)
+					if ci != ns.CommitIdx {
+						continue
+					}
+				}
+				ns.FileIdx = i
+				break
+			}
+		}
+		if ns.FileIdx < 0 {
+			return // file gone, don't renarrow
+		}
+	}
+
+	m.w().narrow = ns
+	m.w().rowsCacheValid = false
+}
+
+// foldSnapshot captures fold state using path/SHA keys (stable across reloads).
+type foldSnapshot struct {
+	// If all commits are at the same level, store it here.
+	uniformCommitLevel *sidebyside.CommitFoldLevel
+	// Per-file overrides keyed by clean path (only for non-default levels).
+	fileOverrides map[string]sidebyside.FoldLevel
+	// Per-commit overrides keyed by SHA.
+	commitOverrides map[string]sidebyside.CommitFoldLevel
+	// Per-commit info expansion keyed by SHA.
+	infoExpanded map[string]bool
+}
+
+// captureFoldState captures the current fold state using path/SHA keys.
+func (m *Model) captureFoldState() foldSnapshot {
+	snap := foldSnapshot{
+		fileOverrides:   make(map[string]sidebyside.FoldLevel),
+		commitOverrides: make(map[string]sidebyside.CommitFoldLevel),
+		infoExpanded:    make(map[string]bool),
+	}
+
+	// Check if all commits are at the same level
+	if len(m.commits) > 0 {
+		firstLevel := m.commitFoldLevel(0)
+		uniform := true
+		for i := 1; i < len(m.commits); i++ {
+			if m.commitFoldLevel(i) != firstLevel {
+				uniform = false
+				break
+			}
+		}
+		if uniform {
+			snap.uniformCommitLevel = &firstLevel
+		} else {
+			for i, c := range m.commits {
+				if c.Info.SHA != "" {
+					snap.commitOverrides[c.Info.SHA] = m.commitFoldLevel(i)
+				}
+			}
+		}
+	}
+
+	// Capture per-file fold levels (keyed by clean path)
+	for i := range m.files {
+		path := cleanFilePath(m.files[i].NewPath)
+		if path != "" {
+			snap.fileOverrides[path] = m.fileFoldLevel(i)
+		}
+	}
+
+	// Capture commit info expansion state
+	for i, c := range m.commits {
+		if c.Info.SHA != "" {
+			snap.infoExpanded[c.Info.SHA] = m.isCommitInfoExpanded(i)
+		}
+	}
+
+	return snap
+}
+
+// restoreFoldState restores fold state after a reload.
+// If a uniform commit level was captured, apply it to all commits.
+// Otherwise, apply default auto-fold logic and then override individually expanded files.
+func (m *Model) restoreFoldState(snap foldSnapshot) {
+	if snap.uniformCommitLevel != nil {
+		// All commits were at the same level — keep it
+		m.setCommitsToLevel(0, len(m.commits), *snap.uniformCommitLevel)
+		// Restore per-commit info expansion
+		for i, c := range m.commits {
+			if expanded, ok := snap.infoExpanded[c.Info.SHA]; ok && c.Info.SHA != "" {
+				m.setCommitInfoExpanded(i, expanded)
+			}
+		}
+		// Re-apply per-file overrides (individual expansions within uniform commit level)
+		for i := range m.files {
+			path := cleanFilePath(m.files[i].NewPath)
+			if level, ok := snap.fileOverrides[path]; ok && path != "" {
+				m.setFileFoldLevel(i, level)
+			}
+		}
+		return
+	}
+
+	// Mixed levels: apply default auto-fold logic first
+	if len(m.files) > 0 && m.width > 0 {
+		if len(m.files) == 1 || m.estimateNormalRows() <= m.autoUnfoldLimit {
+			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
+		} else if len(m.commits) > 0 && m.commits[0].Info.HasMetadata() {
+			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileStructure)
+			m.setCommitInfoExpanded(0, true)
+		} else {
+			m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHeaders)
+		}
+	}
+
+	// Re-apply per-commit overrides
+	for i, c := range m.commits {
+		if level, ok := snap.commitOverrides[c.Info.SHA]; ok && c.Info.SHA != "" {
+			m.setCommitFoldLevel(i, level)
+		}
+		if expanded, ok := snap.infoExpanded[c.Info.SHA]; ok && c.Info.SHA != "" {
+			m.setCommitInfoExpanded(i, expanded)
+		}
+	}
+
+	// Re-apply per-file overrides
+	for i := range m.files {
+		path := cleanFilePath(m.files[i].NewPath)
+		if level, ok := snap.fileOverrides[path]; ok && path != "" {
+			m.setFileFoldLevel(i, level)
+		}
+	}
+}
+
+// handleHardReset reloads the diff/log data from git using the same invocation args.
+// Preserves cursor position and fold state across the reload.
+func (m *Model) handleHardReset() tea.Cmd {
+	if m.reloadFn == nil {
+		now := time.Now()
+		m.statusMessage = "Reload not available"
+		m.statusMessageTime = now
+		return m.clearStatusAfter(now)
+	}
+
+	// 1. Capture state before reload
+	savedActiveIdx := m.activeWindowIdx
+	cursorIDs := make([]reloadCursorIdentity, len(m.windows))
+	narrowIDs := make([]reloadNarrowIdentity, len(m.windows))
+	for i := range m.windows {
+		m.activeWindowIdx = i
+		cursorIDs[i] = m.getReloadCursorIdentity()
+		narrowIDs[i] = m.getNarrowIdentity()
+	}
+	m.activeWindowIdx = savedActiveIdx
+	foldState := m.captureFoldState()
+
+	// 2. Fetch new data
+	commits, opts, err := m.reloadFn()
+	if err != nil {
+		now := time.Now()
+		m.statusMessage = fmt.Sprintf("Reload failed: %v", err)
+		m.statusMessageTime = now
+		return m.clearStatusAfter(now)
+	}
+
+	// 3. Increment generation counter (stale async messages will be discarded)
+	m.reloadGen++
+
+	// 4. If in snapshot view, switch back to normal
+	if m.showSnapshots {
+		m.showSnapshots = false
+		m.snapshotViewCommits = nil
+	}
+
+	// 5. Replace data
+	m.commits = commits
+	m.rebuildFilesFromCommits()
+
+	// 6. Clear caches
+	m.highlightSpans = make(map[int]*FileHighlight)
+	m.structureMaps = make(map[int]*FileStructure)
+	m.inlineDiffCache = make(map[inlineDiffKey]inlineDiffResult)
+	m.moveDetectResults = make(map[int]*movedetect.Result)
+
+	// 7. Apply reload options (new fetcher, pagination, etc.)
+	for _, opt := range opts {
+		opt(m)
+	}
+
+	// 8. Reset window state
+	for _, w := range m.windows {
+		w.narrow = NarrowScope{}
+		w.fileFoldLevels = make(map[int]sidebyside.FoldLevel)
+		w.commitFoldLevels = make(map[int]sidebyside.CommitFoldLevel)
+		w.commitInfoExpanded = make(map[int]bool)
+		w.rowsCacheValid = false
+		w.cachedRows = nil
+	}
+
+	// 9. Restore fold state
+	m.restoreFoldState(foldState)
+
+	// 10. Recalculate layout
+	m.calculateTotalLines()
+
+	// 11. Reload comments
+	m.reloadComments()
+	if m.commentIndex != nil {
+		m.matchCommentsForFiles(0, len(m.files))
+	}
+
+	// 12. Restore narrow scope for each window (before cursor, since narrow affects row layout)
+	for i := range m.windows {
+		m.activeWindowIdx = i
+		m.restoreNarrow(narrowIDs[i])
+	}
+
+	// 13. Restore cursor position for each window
+	for i := range m.windows {
+		m.activeWindowIdx = i
+		targetRow := m.findReloadCursorRow(cursorIDs[i])
+		m.w().scroll = targetRow
+		m.w().rowsCacheValid = false
+	}
+	m.activeWindowIdx = savedActiveIdx
+
+	// 14. Queue content loading for new data
+	m.startupQueue = nil
+	m.startupInFlight = 0
+	cmd := m.queueFilesForAllCommits()
+
+	// 15. Status message
+	now := time.Now()
+	m.statusMessage = "Reloaded"
+	m.statusMessageTime = now
+
+	return tea.Batch(cmd, m.clearStatusAfter(now))
 }
 
 // handleSnapshotToggle handles the S key to toggle between normal and snapshot view.
