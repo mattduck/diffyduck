@@ -10,8 +10,9 @@ import (
 // PythonLanguage returns the tree-sitter configuration for Python.
 func PythonLanguage() *LanguageConfig {
 	return &LanguageConfig{
-		Name:       "python",
-		Extensions: []string{".py", ".pyi"},
+		Name:         "python",
+		Extensions:   []string{".py", ".pyi"},
+		Interpreters: []string{"python", "python3", "python2"},
 		Language: func() *tree_sitter.Language {
 			return tree_sitter.NewLanguage(unsafe.Pointer(tree_sitter_python.Language()))
 		},

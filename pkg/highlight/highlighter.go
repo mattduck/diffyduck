@@ -49,7 +49,8 @@ func (h *Highlighter) Theme() Theme {
 }
 
 // SupportsFile returns true if the highlighter supports the given filename
-// (based on extension or exact filename match).
+// (based on extension, exact filename, or filename predicate match).
+// Cannot detect shebang-based languages since it has no content to inspect.
 func (h *Highlighter) SupportsFile(filename string) bool {
 	return h.registry.ForFile(filename) != nil
 }
@@ -57,7 +58,7 @@ func (h *Highlighter) SupportsFile(filename string) bool {
 // Highlight returns spans for the given source code.
 // Returns nil if the language is not supported.
 func (h *Highlighter) Highlight(filename string, content []byte) ([]Span, error) {
-	cfg := h.registry.ForFile(filename)
+	cfg := h.registry.ForFileWithContent(filename, content)
 	if cfg == nil {
 		return nil, nil // Unknown language, no highlighting
 	}
@@ -94,7 +95,7 @@ func (h *Highlighter) Highlight(filename string, content []byte) ([]Span, error)
 // Highlight and structure extraction separately.
 // Returns (nil, nil, nil) if the language is not supported.
 func (h *Highlighter) HighlightWithStructure(filename string, content []byte) ([]Span, *structure.Map, error) {
-	cfg := h.registry.ForFile(filename)
+	cfg := h.registry.ForFileWithContent(filename, content)
 	if cfg == nil {
 		return nil, nil, nil // Unknown language
 	}
@@ -132,7 +133,7 @@ func (h *Highlighter) HighlightWithStructure(filename string, content []byte) ([
 // ExtractStructure returns only the structure map for the given source code,
 // without computing highlight spans. Returns nil if the language is not supported.
 func (h *Highlighter) ExtractStructure(filename string, content []byte) *structure.Map {
-	cfg := h.registry.ForFile(filename)
+	cfg := h.registry.ForFileWithContent(filename, content)
 	if cfg == nil || h.extractor == nil {
 		return nil
 	}

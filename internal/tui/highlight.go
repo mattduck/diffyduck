@@ -26,8 +26,7 @@ func (m Model) RequestHighlight(fileIndex int) tea.Cmd {
 			filename = fp.OldPath
 		}
 
-		// Check if highlighter supports this file type
-		if m.highlighter == nil || !m.highlighter.SupportsFile(filename) {
+		if m.highlighter == nil {
 			return nil
 		}
 
@@ -86,8 +85,7 @@ func (m *Model) highlightFileSync(fileIndex int) {
 		filename = fp.OldPath
 	}
 
-	// Check if highlighter supports this file type
-	if m.highlighter == nil || !m.highlighter.SupportsFile(filename) {
+	if m.highlighter == nil {
 		return
 	}
 

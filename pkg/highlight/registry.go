@@ -1,6 +1,7 @@
 package highlight
 
 import (
+	"bytes"
 	"path/filepath"
 	"strings"
 
@@ -9,26 +10,31 @@ import (
 
 // LanguageConfig defines the tree-sitter configuration for a language.
 type LanguageConfig struct {
-	Name           string                       // Language name (e.g., "go", "python")
-	Extensions     []string                     // File extensions (e.g., ".go", ".py")
-	Filenames      []string                     // Exact filenames (e.g., "Makefile", "Dockerfile")
-	Language       func() *tree_sitter.Language // Returns the tree-sitter language
-	HighlightQuery string                       // The highlight query (.scm format)
+	Name              string                       // Language name (e.g., "go", "python")
+	Extensions        []string                     // File extensions (e.g., ".go", ".py")
+	Filenames         []string                     // Exact filenames (e.g., "Makefile", "Dockerfile")
+	FilenamePredicate func(basename string) bool   // Optional match on basename (e.g., contains "Dockerfile")
+	Interpreters      []string                     // Shebang interpreter names (e.g., "bash", "python3")
+	Language          func() *tree_sitter.Language // Returns the tree-sitter language
+	HighlightQuery    string                       // The highlight query (.scm format)
 }
 
 // Registry holds all registered language configurations.
 type Registry struct {
-	byExtension map[string]*LanguageConfig
-	byFilename  map[string]*LanguageConfig
-	byName      map[string]*LanguageConfig
+	byExtension   map[string]*LanguageConfig
+	byFilename    map[string]*LanguageConfig
+	byName        map[string]*LanguageConfig
+	byInterpreter map[string]*LanguageConfig
+	predicates    []*LanguageConfig // configs with FilenamePredicate set
 }
 
 // NewRegistry creates a new language registry with built-in languages.
 func NewRegistry() *Registry {
 	r := &Registry{
-		byExtension: make(map[string]*LanguageConfig),
-		byFilename:  make(map[string]*LanguageConfig),
-		byName:      make(map[string]*LanguageConfig),
+		byExtension:   make(map[string]*LanguageConfig),
+		byFilename:    make(map[string]*LanguageConfig),
+		byName:        make(map[string]*LanguageConfig),
+		byInterpreter: make(map[string]*LanguageConfig),
 	}
 
 	// Register built-in languages (alphabetical order)
@@ -68,6 +74,12 @@ func (r *Registry) Register(cfg *LanguageConfig) {
 	for _, name := range cfg.Filenames {
 		r.byFilename[name] = cfg
 	}
+	for _, interp := range cfg.Interpreters {
+		r.byInterpreter[interp] = cfg
+	}
+	if cfg.FilenamePredicate != nil {
+		r.predicates = append(r.predicates, cfg)
+	}
 }
 
 // ForFile returns the language configuration for a filename, or nil if unknown.
@@ -79,7 +91,66 @@ func (r *Registry) ForFile(filename string) *LanguageConfig {
 	}
 	// Fall back to extension match
 	ext := strings.ToLower(filepath.Ext(filename))
-	return r.byExtension[ext]
+	if cfg := r.byExtension[ext]; cfg != nil {
+		return cfg
+	}
+	// Fall back to predicate match (e.g., basename contains "Dockerfile")
+	for _, cfg := range r.predicates {
+		if cfg.FilenamePredicate(base) {
+			return cfg
+		}
+	}
+	return nil
+}
+
+// ForFileWithContent returns the language configuration for a filename,
+// falling back to shebang detection if the extension/filename is unknown.
+func (r *Registry) ForFileWithContent(filename string, content []byte) *LanguageConfig {
+	if cfg := r.ForFile(filename); cfg != nil {
+		return cfg
+	}
+	return r.forShebang(content)
+}
+
+// forShebang checks the first line of content for a shebang (#!) and returns
+// the matching language configuration, or nil if not found.
+func (r *Registry) forShebang(content []byte) *LanguageConfig {
+	if len(content) < 3 || content[0] != '#' || content[1] != '!' {
+		return nil
+	}
+
+	// Extract first line
+	firstLine := content
+	if i := bytes.IndexByte(content, '\n'); i >= 0 {
+		firstLine = content[:i]
+	}
+
+	// Parse interpreter from shebang:
+	//   #!/usr/bin/env python3  → "python3"
+	//   #!/bin/bash             → "bash"
+	//   #!/usr/bin/perl -w      → "perl"
+	line := strings.TrimSpace(string(firstLine[2:])) // strip "#!"
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return nil
+	}
+
+	// If invoked via "env", the interpreter is the next argument
+	// (skip env flags like -S)
+	cmd := filepath.Base(parts[0])
+	if cmd == "env" {
+		for _, arg := range parts[1:] {
+			if !strings.HasPrefix(arg, "-") {
+				cmd = filepath.Base(arg)
+				break
+			}
+		}
+		if cmd == "env" {
+			return nil // bare "env" with no interpreter
+		}
+	}
+
+	return r.byInterpreter[cmd]
 }
 
 // ForName returns the language configuration by name, or nil if unknown.

@@ -9,8 +9,9 @@ import (
 
 func JavaScriptLanguage() *LanguageConfig {
 	return &LanguageConfig{
-		Name:       "javascript",
-		Extensions: []string{".js", ".jsx", ".mjs", ".cjs"},
+		Name:         "javascript",
+		Extensions:   []string{".js", ".jsx", ".mjs", ".cjs"},
+		Interpreters: []string{"node", "nodejs", "deno", "bun"},
 		Language: func() *tree_sitter.Language {
 			return tree_sitter.NewLanguage(unsafe.Pointer(tree_sitter_javascript.Language()))
 		},

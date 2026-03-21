@@ -9,8 +9,9 @@ import (
 
 func BashLanguage() *LanguageConfig {
 	return &LanguageConfig{
-		Name:       "bash",
-		Extensions: []string{".sh", ".bash", ".zsh"},
+		Name:         "bash",
+		Extensions:   []string{".sh", ".bash", ".zsh"},
+		Interpreters: []string{"bash", "sh", "zsh", "dash", "ash"},
 		Language: func() *tree_sitter.Language {
 			return tree_sitter.NewLanguage(unsafe.Pointer(tree_sitter_bash.Language()))
 		},

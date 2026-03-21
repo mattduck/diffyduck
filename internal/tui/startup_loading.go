@@ -60,7 +60,9 @@ func (m *Model) shouldQueueFile(file sidebyside.FilePair) bool {
 		return false
 	}
 
-	// Use the filename (not full path) for extension matching
+	// Use the filename (not full path) for extension/filename matching.
+	// Note: this can't detect shebang-only files since content isn't loaded yet.
+	// Those files will still get highlighted on demand when expanded.
 	basename := filepath.Base(filename)
 	return m.highlighter != nil && m.highlighter.SupportsFile(basename)
 }

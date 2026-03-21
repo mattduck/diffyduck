@@ -378,6 +378,151 @@ func TestHighlighter_UnknownLanguage(t *testing.T) {
 	}
 }
 
+func TestHighlighter_ShebangDetection(t *testing.T) {
+	h := New()
+	defer h.Close()
+
+	tests := []struct {
+		name     string
+		content  string
+		wantLang bool // whether highlighting should produce spans
+	}{
+		{
+			name:     "bash shebang",
+			content:  "#!/bin/bash\necho \"hello\"",
+			wantLang: true,
+		},
+		{
+			name:     "env bash",
+			content:  "#!/usr/bin/env bash\necho \"hello\"",
+			wantLang: true,
+		},
+		{
+			name:     "python3 shebang",
+			content:  "#!/usr/bin/env python3\ndef foo():\n    return 42",
+			wantLang: true,
+		},
+		{
+			name:     "python shebang",
+			content:  "#!/usr/bin/python\ndef foo():\n    return 42",
+			wantLang: true,
+		},
+		{
+			name:     "node shebang",
+			content:  "#!/usr/bin/env node\nfunction foo() { return 42; }",
+			wantLang: true,
+		},
+		{
+			name:     "env with flags",
+			content:  "#!/usr/bin/env -S python3\ndef foo():\n    return 42",
+			wantLang: true,
+		},
+		{
+			name:     "sh shebang",
+			content:  "#!/bin/sh\necho hello",
+			wantLang: true,
+		},
+		{
+			name:     "no shebang",
+			content:  "just some text\nwithout a shebang",
+			wantLang: false,
+		},
+		{
+			name:     "unknown interpreter",
+			content:  "#!/usr/bin/env somethingweird\nfoo bar",
+			wantLang: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use extensionless filename to force shebang detection
+			spans, err := h.Highlight("script", []byte(tc.content))
+			if err != nil {
+				t.Fatalf("Highlight failed: %v", err)
+			}
+			if tc.wantLang && len(spans) == 0 {
+				t.Error("Expected spans from shebang detection, got none")
+			}
+			if !tc.wantLang && spans != nil {
+				t.Errorf("Expected nil spans, got %d spans", len(spans))
+			}
+		})
+	}
+}
+
+func TestRegistry_ForFileWithContent(t *testing.T) {
+	r := NewRegistry()
+
+	tests := []struct {
+		name     string
+		filename string
+		content  string
+		wantName string // expected language name, "" for nil
+	}{
+		{"extension takes priority", "test.py", "#!/bin/bash\necho hi", "python"},
+		{"shebang fallback", "myscript", "#!/bin/bash\necho hi", "bash"},
+		{"env python3", "myscript", "#!/usr/bin/env python3\nprint('hi')", "python"},
+		{"no match", "myscript", "just text", ""},
+		{"empty content", "myscript", "", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := r.ForFileWithContent(tc.filename, []byte(tc.content))
+			if tc.wantName == "" {
+				if cfg != nil {
+					t.Errorf("Expected nil, got %q", cfg.Name)
+				}
+			} else {
+				if cfg == nil {
+					t.Fatalf("Expected %q, got nil", tc.wantName)
+				}
+				if cfg.Name != tc.wantName {
+					t.Errorf("Expected %q, got %q", tc.wantName, cfg.Name)
+				}
+			}
+		})
+	}
+}
+
+func TestRegistry_DockerfilePredicate(t *testing.T) {
+	r := NewRegistry()
+
+	tests := []struct {
+		filename string
+		wantName string
+	}{
+		{"Dockerfile", "dockerfile"},
+		{"Containerfile", "dockerfile"},
+		{"Dockerfile.prod", "dockerfile"},
+		{"Dockerfile.dev", "dockerfile"},
+		{"api.Dockerfile", "dockerfile"},
+		{"my.containerfile", "dockerfile"},
+		{"dockerfile", "dockerfile"},
+		{"README.md", "markdown"},
+		{"random.txt", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.filename, func(t *testing.T) {
+			cfg := r.ForFile(tc.filename)
+			if tc.wantName == "" {
+				if cfg != nil {
+					t.Errorf("Expected nil, got %q", cfg.Name)
+				}
+			} else {
+				if cfg == nil {
+					t.Fatalf("Expected %q, got nil", tc.wantName)
+				}
+				if cfg.Name != tc.wantName {
+					t.Errorf("Expected %q, got %q", tc.wantName, cfg.Name)
+				}
+			}
+		})
+	}
+}
+
 func TestHighlighter_SupportsFile(t *testing.T) {
 	h := New()
 	defer h.Close()
