@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/user/diffyduck/internal/tui"
 	"github.com/user/diffyduck/pkg/comments"
+	"github.com/user/diffyduck/pkg/config"
 	"github.com/user/diffyduck/pkg/content"
 	"github.com/user/diffyduck/pkg/highlight"
 )
@@ -1394,6 +1395,7 @@ index abc..def 100644
 
 // testCommentStyles returns default CommentListStyles for use in tests.
 func testCommentStyles() tui.CommentListStyles {
+	tui.ApplyTheme(config.ThemeConfig{})
 	return tui.CommentListTheme()
 }
 

@@ -2151,7 +2151,7 @@ func computeOnelineCols(all []*comments.Comment, shortIDs map[string]string, now
 	if cols.date > 18 {
 		cols.date = 18
 	}
-	if cols.commit > 9 {
+	if cols.commit > 9 { // 7-char hash + 2 parens for "(abcdef0)"
 		cols.commit = 9
 	}
 	if cols.branch > 20 {
@@ -2239,16 +2239,7 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 	var fileStyled string
 	var filePlainWidth int
 	if !c.IsStandalone() && cols.file > 0 {
-		filePart := styleCommentPath(c.File, c.Line, cs)
-		filePlainWidth = lipgloss.Width(filePart)
-		if filePlainWidth > cols.file {
-			raw := fmt.Sprintf("%s:%d", c.File, c.Line)
-			if len(raw) > cols.file-1 {
-				raw = raw[:cols.file-2] + "…"
-			}
-			filePart = cs.DirPart.Render(raw)
-			filePlainWidth = len(raw)
-		}
+		var filePart string
 		if c.Resolved {
 			raw := fmt.Sprintf("%s:%d", c.File, c.Line)
 			if len(raw) > cols.file {
@@ -2256,6 +2247,17 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 			}
 			filePart = strike(cs.DirPart).Render(raw)
 			filePlainWidth = len(raw)
+		} else {
+			filePart = styleCommentPath(c.File, c.Line, cs)
+			filePlainWidth = lipgloss.Width(filePart)
+			if filePlainWidth > cols.file {
+				raw := fmt.Sprintf("%s:%d", c.File, c.Line)
+				if len(raw) > cols.file-1 {
+					raw = raw[:cols.file-2] + "…"
+				}
+				filePart = cs.DirPart.Render(raw)
+				filePlainWidth = len(raw)
+			}
 		}
 		fileStyled = filePart
 	}
@@ -2449,9 +2451,9 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	}
 
 	// Diff context (with optional syntax highlighting) — skip for standalone comments
-	targetLineStyle := cs.Header.Bold(true)
-	contextLineStyle := cs.Label.Faint(true)
 	if !c.IsStandalone() {
+		targetLineStyle := cs.Header.Bold(true)
+		contextLineStyle := cs.Label.Faint(true)
 		b.WriteString("\n")
 		contextLines := highlightContext(c, h)
 		targetIdx := len(c.Context.Above)

@@ -100,11 +100,14 @@ var (
 
 	// Comment list output styles (non-faint variants for CLI output)
 	commentLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	themeApplied bool
 )
 
 // ApplyTheme updates package-level style variables based on user theme config.
 // Must be called before the first render. Empty string values are ignored (keep defaults).
 func ApplyTheme(cfg config.ThemeConfig) {
+	themeApplied = true
 	if cfg.Added != "" {
 		c := lipgloss.Color(cfg.Added)
 		addedStyle = lipgloss.NewStyle().Foreground(c)
@@ -216,8 +219,11 @@ type CommentListStyles struct {
 }
 
 // CommentListTheme returns the current styles for CLI comment list rendering.
-// Call ApplyTheme first to pick up user config.
+// Panics if ApplyTheme has not been called.
 func CommentListTheme() CommentListStyles {
+	if !themeApplied {
+		panic("tui.CommentListTheme called before ApplyTheme")
+	}
 	return CommentListStyles{
 		Header:  headerStyle,
 		Label:   commentLabelStyle,
