@@ -192,11 +192,11 @@ func flagsForCmd(cmd string) []string {
 		return append(global,
 			"--cached", "--staged", "--unstaged",
 			"--all", "--snapshots", "--no-snapshots",
-			"--exclude")
+			"--branch", "--exclude")
 	case "show":
-		return global
+		return append(global, "--branch")
 	case "log":
-		return append(global, "--exclude", "--since")
+		return append(global, "--branch", "--exclude", "--since")
 	case "clean":
 		return global
 	case "branch":

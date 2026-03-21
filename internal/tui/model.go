@@ -705,6 +705,14 @@ func WithBranch(branch string) Option {
 	}
 }
 
+// WithCommentBranch overrides the branch used for comment filtering.
+// This is set by the -b/--branch CLI flag to view comments from another branch.
+func WithCommentBranch(branch string) Option {
+	return func(m *Model) {
+		m.currentBranch = branch
+	}
+}
+
 // WithPersistedSnapshots sets the initial snapshots loaded from persistence.
 // This is used with continue mode to resume from a previous session.
 func WithPersistedSnapshots(snapshots []string) Option {

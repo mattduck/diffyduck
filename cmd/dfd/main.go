@@ -110,6 +110,9 @@ type parsedArgs struct {
 	untrackedFiles string // --untracked-files/-u: "all" (default), "normal", "no"
 	showBranches   bool   // --branches/-b: show branch tree
 
+	// comment filter branch for TUI (diff/show/log)
+	filterBranch string // -b/--branch: override comment branch filter
+
 	// branch-specific
 	verbose bool   // -v/--verbose
 	since   string // --since duration (e.g. "30d", "2w", "3M", "all")
@@ -469,6 +472,13 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			}
 			// No arg: show all branches
 			p.commentAllBranches = true
+		} else if p.cmd == "diff" || p.cmd == "show" || p.cmd == "log" || p.cmd == "" {
+			// -b <branch> sets comment branch filter for TUI
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return 0, fmt.Errorf("-b requires a branch name")
+			}
+			p.filterBranch = args[i+1]
+			return 1, nil
 		} else {
 			p.showBranches = true
 		}
@@ -533,6 +543,13 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			return 0, fmt.Errorf("--kind must be comment, note, or all; got %q", val)
 		}
 	case arg == "--branch":
+		if p.cmd == "diff" || p.cmd == "show" || p.cmd == "log" || p.cmd == "" {
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return 0, fmt.Errorf("--branch requires a branch name")
+			}
+			p.filterBranch = args[i+1]
+			return 1, nil
+		}
 		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
 			p.commentBranch = args[i+1]
 			return 1, nil
@@ -540,9 +557,14 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		// No arg: show all branches
 		p.commentAllBranches = true
 	case strings.HasPrefix(arg, "--branch="):
-		p.commentBranch = strings.TrimPrefix(arg, "--branch=")
-		if p.commentBranch == "" {
+		val := strings.TrimPrefix(arg, "--branch=")
+		if val == "" {
 			return 0, fmt.Errorf("--branch requires a branch name")
+		}
+		if p.cmd == "diff" || p.cmd == "show" || p.cmd == "log" || p.cmd == "" {
+			p.filterBranch = val
+		} else {
+			p.commentBranch = val
 		}
 	case arg == "--status":
 		if i+1 >= len(args) {
@@ -680,7 +702,7 @@ func (p *parsedArgs) validate() error {
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
 			return fmt.Errorf("%s does not accept arguments", p.cmd)
 		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
+		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.verbose || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches || p.filterBranch != "" {
 			return fmt.Errorf("%s does not accept flags", p.cmd)
 		}
 	case "branch":
@@ -789,6 +811,12 @@ func (p *parsedArgs) validate() error {
 	if !isCommentCmd && p.commentKind != "" {
 		return fmt.Errorf("--kind is only valid for comment command")
 	}
+
+	// filterBranch is only valid for diff/show/log (TUI commands)
+	if p.filterBranch != "" && p.cmd != "diff" && p.cmd != "show" && p.cmd != "log" {
+		return fmt.Errorf("-b/--branch is only valid for diff, show, and log commands")
+	}
+
 	return nil
 }
 
@@ -1002,6 +1030,8 @@ Flags:
       --snapshots  Show snapshot history view
       --no-snapshots
                    Disable taking snapshots
+  -b, --branch <branch>
+                   Filter comments to a specific branch
   -e, --exclude <glob>
                    Exclude files matching glob (repeatable)
 
@@ -1016,9 +1046,13 @@ Examples:
 const usageShow = `dfd show - show a commit
 
 Usage:
-  dfd show [<ref>] [-- <path>...]
+  dfd show [flags] [<ref>] [-- <path>...]
 
 Displays the diff for a single commit. Defaults to HEAD.
+
+Flags:
+  -b, --branch <branch>
+                   Filter comments to a specific branch
 
 Examples:
   dfd show                   Show HEAD
@@ -1035,6 +1069,8 @@ Browse commits interactively. Supports ref ranges (e.g. main..feature).
 
 Flags:
   -n <count>       Limit number of commits
+  -b, --branch <branch>
+                   Filter comments to a specific branch
   -e, --exclude <glob>
                    Exclude files matching glob (repeatable)
       --since <duration>
@@ -1394,6 +1430,9 @@ func run() error {
 	}
 	if branch != "" {
 		opts = append(opts, tui.WithBranch(branch))
+	}
+	if args.filterBranch != "" {
+		opts = append(opts, tui.WithCommentBranch(args.filterBranch))
 	}
 
 	// Build reload closure for hard reset (R key)
