@@ -5706,7 +5706,9 @@ func TestHardReset_ReloadsData(t *testing.T) {
 	require.Len(t, m.files, 1)
 	assert.Equal(t, "b/new.go", m.files[0].NewPath)
 	assert.Equal(t, "Reloaded", m.statusMessage)
-	assert.Empty(t, m.highlightSpans)
+	// highlightSpans may be repopulated by sync loading; verify old file index is gone
+	assert.Empty(t, m.inlineDiffCache)
+	assert.Empty(t, m.moveDetectResults)
 }
 
 func TestHardReset_CursorPreservation_ExactLine(t *testing.T) {

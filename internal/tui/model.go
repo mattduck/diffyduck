@@ -2955,7 +2955,23 @@ func (m *Model) handleHardReset() tea.Cmd {
 		m.restoreNarrow(narrowIDs[i])
 	}
 
-	// 13. Restore cursor position for each window
+	// 13. Load visible files synchronously so the first render shows final state
+	// (no flash of unhighlighted text or incrementally changing line counts).
+	m.startupQueue = nil
+	m.startupInFlight = 0
+	for i := range m.files {
+		commitIdx := m.commitForFile(i)
+		if commitIdx >= 0 && m.commitFoldLevel(commitIdx) == sidebyside.CommitFolded {
+			continue
+		}
+		if m.shouldQueueFile(m.files[i]) {
+			m.loadAndHighlightFileSync(i)
+		}
+	}
+	m.calculateTotalLines()
+
+	// 14. Restore cursor position for each window (after sync loading, since
+	// expandSemanticContext in highlighting changes row layout)
 	for i := range m.windows {
 		m.activeWindowIdx = i
 		targetRow := m.findReloadCursorRow(cursorIDs[i])
@@ -2964,12 +2980,10 @@ func (m *Model) handleHardReset() tea.Cmd {
 	}
 	m.activeWindowIdx = savedActiveIdx
 
-	// 14. Queue content loading for new data
-	m.startupQueue = nil
-	m.startupInFlight = 0
+	// 15. Queue remaining files for async preloading
 	cmd := m.queueFilesForAllCommits()
 
-	// 15. Status message
+	// 16. Status message
 	now := time.Now()
 	m.statusMessage = "Reloaded"
 	m.statusMessageTime = now
