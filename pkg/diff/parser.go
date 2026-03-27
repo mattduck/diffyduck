@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 var (
@@ -294,6 +295,8 @@ func atoiOrDefault(s string, def int) int {
 }
 
 // truncateLine truncates a line if it exceeds MaxLineLength, appending the truncation suffix.
+// It truncates at a rune boundary to avoid producing invalid UTF-8, which would
+// cause panics in the TUI byte-to-column mapping code.
 func truncateLine(content string) string {
 	if len(content) <= MaxLineLength {
 		return content
@@ -302,6 +305,10 @@ func truncateLine(content string) string {
 	cutoff := MaxLineLength - len(LineTruncationText)
 	if cutoff < 0 {
 		cutoff = 0
+	}
+	// Walk back to a valid rune boundary to avoid splitting multi-byte characters
+	for cutoff > 0 && !utf8.RuneStart(content[cutoff]) {
+		cutoff--
 	}
 	return content[:cutoff] + LineTruncationText
 }

@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -467,6 +468,27 @@ func TestParse_LongLineTruncation(t *testing.T) {
 	assert.Equal(t, expectedTruncated, hunk.Lines[2].Content)
 	assert.Equal(t, Added, hunk.Lines[2].Type)
 	assert.Len(t, hunk.Lines[2].Content, MaxLineLength)
+}
+
+func TestParse_LongLineTruncation_MultiByte(t *testing.T) {
+	// Unicode box-drawing char "─" is 3 bytes in UTF-8.
+	// With 300+ such chars the byte length far exceeds MaxLineLength,
+	// and the cutoff must not split a multi-byte character.
+	longContent := strings.Repeat("─", MaxLineLength+50)
+
+	input := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1,1 +1,1 @@\n-" + longContent + "\n+" + longContent + "\n"
+	diff, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, diff.Files, 1)
+	require.Len(t, diff.Files[0].Hunks, 1)
+
+	for _, line := range diff.Files[0].Hunks[0].Lines {
+		assert.True(t, utf8.ValidString(line.Content),
+			"truncated content must be valid UTF-8")
+		assert.True(t, len(line.Content) <= MaxLineLength,
+			"truncated content must not exceed MaxLineLength bytes")
+		assert.Contains(t, line.Content, LineTruncationText)
+	}
 }
 
 func TestParse_LineExactlyAtLimit(t *testing.T) {
