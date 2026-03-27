@@ -94,7 +94,7 @@ func isFlag(w string) bool {
 // flagTakesValue returns true if the flag consumes a separate next word as its value.
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--exclude", "-e", "-n", "--since", "--status", "--kind", "-b", "--branch", "--cpuprofile", "-m", "--ref", "--author":
+	case "--exclude", "-e", "-n", "--since", "--status", "--kind", "-b", "--branch", "--cpuprofile", "-m", "--ref", "--author", "--file", "--grep":
 		return true
 	}
 	return false
@@ -204,9 +204,9 @@ func flagsForCmd(cmd string) []string {
 	case "status":
 		return append(global, "--symbols", "--untracked-files", "--branches")
 	case "comment":
-		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--kind", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author")
+		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--kind", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep")
 	case "note":
-		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author")
+		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep")
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:

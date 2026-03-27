@@ -136,6 +136,8 @@ type parsedArgs struct {
 	commentAddRef     string // --ref: commit/branch/tag to comment on
 	commentAuthor     string // --author: author identifier (add: set author, list: filter by author)
 	commentAuthorSet  bool   // true if --author was explicitly passed (bare --author on list = filter to empty author)
+	commentFile       string // --file: filter by file path (exact or prefix match)
+	commentGrep       string // --grep: filter by comment text (case-insensitive substring)
 
 	// config-specific
 	configInit  bool // --init
@@ -518,6 +520,30 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		}
 		p.commentAuthorSet = true
 
+	// comment list filter flags
+	case arg == "--file":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--file requires a file path argument")
+		}
+		p.commentFile = args[i+1]
+		return 1, nil
+	case strings.HasPrefix(arg, "--file="):
+		p.commentFile = strings.TrimPrefix(arg, "--file=")
+		if p.commentFile == "" {
+			return 0, fmt.Errorf("--file requires a file path argument")
+		}
+	case arg == "--grep":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--grep requires a search pattern")
+		}
+		p.commentGrep = args[i+1]
+		return 1, nil
+	case strings.HasPrefix(arg, "--grep="):
+		p.commentGrep = strings.TrimPrefix(arg, "--grep=")
+		if p.commentGrep == "" {
+			return 0, fmt.Errorf("--grep requires a search pattern")
+		}
+
 	// comment flags
 	case arg == "--raw":
 		p.commentRaw = true
@@ -746,6 +772,12 @@ func (p *parsedArgs) validate() error {
 		if p.commentAuthorSet && p.commentSub != "add" && p.commentSub != "list" && p.commentSub != "" {
 			return fmt.Errorf("--author is only valid for %s add and %s list", p.cmdAlias, p.cmdAlias)
 		}
+		if p.commentFile != "" && p.commentSub != "list" {
+			return fmt.Errorf("--file is only valid for %s list", p.cmdAlias)
+		}
+		if p.commentGrep != "" && p.commentSub != "list" {
+			return fmt.Errorf("--grep is only valid for %s list", p.cmdAlias)
+		}
 		if p.commentSub == "add" && p.commentAuthorSet && p.commentAuthor == "" {
 			return fmt.Errorf("--author requires an author argument for %s add", p.cmdAlias)
 		}
@@ -810,6 +842,12 @@ func (p *parsedArgs) validate() error {
 	}
 	if !isCommentCmd && p.commentKind != "" {
 		return fmt.Errorf("--kind is only valid for comment command")
+	}
+	if !isCommentCmd && p.commentFile != "" {
+		return fmt.Errorf("--file is only valid for comment command")
+	}
+	if !isCommentCmd && p.commentGrep != "" {
+		return fmt.Errorf("--grep is only valid for comment command")
 	}
 
 	// filterBranch is only valid for diff/show/log (TUI commands)
@@ -1204,6 +1242,8 @@ List flags:
       --all-branches
                    Alias for -b with no argument
       --author [s] Filter by author (case-insensitive substring), or no-author if bare
+      --file <path> Filter by file path (exact match, or prefix if path ends with /)
+      --grep <text> Filter by comment text (case-insensitive substring)
 
 Examples:
   dfd comment add main.go:42 -m "This needs error handling"
@@ -1219,6 +1259,8 @@ Examples:
   dfd comment list --status all       Include resolved
   dfd comment list --status resolved  Only resolved
   dfd comment list --since 2w         Comments from last 2 weeks
+  dfd comment list --file src/        Comments on files under src/
+  dfd comment list --grep TODO        Comments containing "TODO"
   dfd comment list -v                 Full detail output
   dfd comment list 415                Show comment(s) matching suffix (full detail)
   dfd comment edit <id>               Edit in $EDITOR
@@ -2056,6 +2098,32 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 				}
 				all = filtered
 			}
+		}
+
+		// Filter by --file (exact match, or prefix match when filter ends with /)
+		if args.commentFile != "" {
+			isPrefix := strings.HasSuffix(args.commentFile, "/")
+			var filtered []*comments.Comment
+			for _, c := range all {
+				if isPrefix && strings.HasPrefix(c.File, args.commentFile) {
+					filtered = append(filtered, c)
+				} else if !isPrefix && c.File == args.commentFile {
+					filtered = append(filtered, c)
+				}
+			}
+			all = filtered
+		}
+
+		// Filter by --grep (case-insensitive substring in comment text)
+		if args.commentGrep != "" {
+			needle := strings.ToLower(args.commentGrep)
+			var filtered []*comments.Comment
+			for _, c := range all {
+				if strings.Contains(strings.ToLower(c.Text), needle) {
+					filtered = append(filtered, c)
+				}
+			}
+			all = filtered
 		}
 	}
 
