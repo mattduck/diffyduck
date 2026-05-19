@@ -696,6 +696,35 @@ func TestYankAll_SeparateHunks(t *testing.T) {
 	assert.Equal(t, 2, hunkCount, "distant comments should get separate hunks")
 }
 
+// Test: multiple comments on the same line all appear in the snippet under one hunk
+func TestYankAll_MultipleCommentsOnSameLine(t *testing.T) {
+	m := makeYankAllTestModel()
+	m.calculateTotalLines()
+
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000001", Text: "first", Created: time.Unix(1700000000, 0)})
+	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000002", Text: "second", Created: time.Unix(1700000001, 0)})
+
+	snippet, count := m.buildCommentsSnippet(false)
+
+	assert.Equal(t, 2, count, "both comments on the same line should be counted")
+
+	hunkCount := strings.Count(snippet, "@@ -")
+	assert.Equal(t, 1, hunkCount, "comments on the same line share one hunk")
+
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000001:")
+	assert.Contains(t, snippet, "# first")
+	assert.Contains(t, snippet, "# COMMENT_ID 1700000000002:")
+	assert.Contains(t, snippet, "# second")
+
+	// Both comments should follow the same diff line (line 3), and appear in Created order.
+	diffLineIdx := strings.Index(snippet, "+new line 3")
+	idx1 := strings.Index(snippet, "# COMMENT_ID 1700000000001:")
+	idx2 := strings.Index(snippet, "# COMMENT_ID 1700000000002:")
+	require.True(t, diffLineIdx >= 0, "diff line for line 3 should be present")
+	assert.True(t, diffLineIdx < idx1 && idx1 < idx2, "both comments should follow the diff line in Created order")
+}
+
 // Test: multiline comment gets proper formatting
 func TestYankAll_MultilineComment(t *testing.T) {
 	m := makeYankAllTestModel()

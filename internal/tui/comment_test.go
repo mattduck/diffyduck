@@ -361,6 +361,34 @@ func TestComment_MultipleCommentsCorrectlyPositioned(t *testing.T) {
 	assert.Contains(t, m.comments, key5, "should have comment on line 5")
 }
 
+// Test: two comments on the same line each get their own comment box rows
+// and can be distinguished by commentID, preserving Created order.
+func TestComment_MultipleCommentsOnSameLine_RendersMultipleRows(t *testing.T) {
+	m := makeCommentableTestModel(10)
+	m.calculateTotalLines()
+
+	key := commentKey{fileIndex: 0, newLineNum: 3}
+	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000001", Text: "first", Created: time.Unix(1700000000, 0)})
+	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000002", Text: "second", Created: time.Unix(1700000001, 0)})
+	m.w().rowsCacheValid = false
+	m.rebuildRowsCache()
+
+	// Collect distinct commentIDs from comment rows attached to line 3.
+	seen := map[string]bool{}
+	var order []string
+	for _, r := range m.getRows() {
+		if r.kind == RowKindComment && r.commentLineNum == 3 && r.commentID != "" {
+			if !seen[r.commentID] {
+				seen[r.commentID] = true
+				order = append(order, r.commentID)
+			}
+		}
+	}
+
+	assert.Equal(t, []string{"1700000000001", "1700000000002"}, order,
+		"both comments should render as separate boxes, in Created order")
+}
+
 // Test: startComment from a comment row opens that comment for editing
 func TestComment_StartFromCommentRow(t *testing.T) {
 	m := makeCommentableTestModel(10)

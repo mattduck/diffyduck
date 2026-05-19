@@ -2848,39 +2848,6 @@ func isLineInDiff(diffOutput string, filePath string, lineNum int) bool {
 	return false
 }
 
-// checkExistingComment checks if a comment already exists at the given file and line.
-// Uses the comment matcher to detect relocated comments, not just stored line numbers.
-// Returns the conflicting comment ID if one exists.
-func checkExistingComment(store *comments.Store, filePath string, lineNum int, fileLines []string) (string, error) {
-	idx, err := store.ReadIndex()
-	if err != nil {
-		// No index means no comments
-		return "", nil
-	}
-	ids := idx.Get(filePath)
-	if len(ids) == 0 {
-		return "", nil
-	}
-	fetched, err := store.ReadCommentsBatch(ids)
-	if err != nil {
-		return "", fmt.Errorf("reading comments for %s: %w", filePath, err)
-	}
-	for _, c := range fetched {
-		// Check stored line number first (fast path)
-		if c.Line == lineNum && c.File == filePath {
-			return c.ID, nil
-		}
-		// Check matched/relocated position against current file content
-		if len(fileLines) > 0 {
-			result := comments.FindCommentPosition(c, fileLines)
-			if result.Found && result.Line == lineNum {
-				return c.ID, nil
-			}
-		}
-	}
-	return "", nil
-}
-
 // runCommentAdd creates a new comment on a specific file and line.
 func runCommentAdd(args parsedArgs) error {
 	if args.commentAddTarget == "" {
@@ -3017,18 +2984,8 @@ func runCommentAddFile(args parsedArgs) error {
 		return fmt.Errorf("line %d is out of range (file has %d lines)", lineNum, len(fileLines))
 	}
 
-	// Check for existing comment at this file+line
-	store := comments.NewStore("")
-	existingID, err := checkExistingComment(store, relPath, lineNum, fileLines)
-	if err != nil {
-		return fmt.Errorf("checking existing comments: %w", err)
-	}
-	if existingID != "" {
-		return fmt.Errorf("comment already exists at %s:%d (id: %s). Use 'dfd comment edit %s' to modify it",
-			relPath, lineNum, existingID, existingID)
-	}
-
 	// Build comment
+	store := comments.NewStore("")
 	ctx := comments.ExtractContextForLine(fileLines, lineNum)
 
 	// Record branch tip when not viewing a specific commit
