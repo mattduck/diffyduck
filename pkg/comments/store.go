@@ -33,11 +33,16 @@ func NewStore(dir string) *Store {
 
 // ReadIndex reads the comment index from the git ref.
 // Returns an empty index if the ref doesn't exist.
+// Returns an error if the ref exists but the index blob can't be read —
+// silently treating that as "empty" would clobber every other comment on
+// the next WriteComment.
 func (s *Store) ReadIndex() (*Index, error) {
+	if !s.Exists() {
+		return NewIndex(), nil
+	}
 	data, err := s.readBlob(RefPath + ":index")
 	if err != nil {
-		// Ref doesn't exist yet - return empty index
-		return NewIndex(), nil
+		return nil, fmt.Errorf("reading index blob: %w", err)
 	}
 	return ParseIndex(data), nil
 }
@@ -263,11 +268,15 @@ func (s *Store) writeTree(idx *Index, commentID, commentData string) error {
 		return fmt.Errorf("writing comment blob: %w", err)
 	}
 
-	// Get existing data tree entries (if ref exists)
-	existingData, err := s.listDataEntries()
-	if err != nil {
-		// Ref doesn't exist - start fresh
-		existingData = make(map[string]string)
+	// Get existing data tree entries. Only treat ENOENT as "start fresh" —
+	// any other error from ls-tree must abort, otherwise a transient git
+	// failure on a populated ref would silently drop every other comment.
+	existingData := make(map[string]string)
+	if s.Exists() {
+		existingData, err = s.listDataEntries()
+		if err != nil {
+			return fmt.Errorf("listing data entries: %w", err)
+		}
 	}
 
 	// Add/update the new comment

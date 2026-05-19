@@ -441,3 +441,185 @@ func TestStoreUpdateComment(t *testing.T) {
 		t.Errorf("expected 1 entry in index, got %d", len(idx.All()))
 	}
 }
+
+// runGitOutput runs a git command and returns trimmed stdout.
+// Fatals on failure. Like runGit but returns the output.
+func runGitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = cleanGitEnv()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// runGitInput runs a git command with stdin and returns trimmed stdout.
+func runGitInput(t *testing.T, dir, stdin string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = cleanGitEnv()
+	cmd.Stdin = strings.NewReader(stdin)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// rewriteRefWithoutIndex re-points the comments ref to a tree that contains
+// only the data subtree — no index blob. This simulates the corruption mode
+// that previously caused silent data loss: a ref whose index is unreadable
+// must NOT be treated as an empty index.
+func rewriteRefWithoutIndex(t *testing.T, dir string) {
+	t.Helper()
+
+	// Get the data subtree SHA from the current ref.
+	lsOut := runGitOutput(t, dir, "ls-tree", RefPath, "data")
+	// Format: "<mode> tree <sha>\tdata"
+	fields := strings.Fields(lsOut)
+	if len(fields) < 3 || fields[1] != "tree" {
+		t.Fatalf("unexpected ls-tree output: %q", lsOut)
+	}
+	dataSHA := fields[2]
+
+	// Build a new root tree with only the data entry.
+	mktreeInput := "040000 tree " + dataSHA + "\tdata\n"
+	newTree := runGitInput(t, dir, mktreeInput, "mktree")
+
+	// Update the ref to point to the corrupted tree.
+	cmd := exec.Command("git", "update-ref", RefPath, newTree)
+	cmd.Dir = dir
+	cmd.Env = cleanGitEnv()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("update-ref failed: %v\n%s", err, out)
+	}
+}
+
+// TestReadIndexErrorsWhenRefCorrupted verifies that ReadIndex distinguishes
+// "ref doesn't exist" (legitimate first-write) from "ref exists but the
+// index blob is unreadable" (corruption). The latter must surface as an
+// error rather than silently returning an empty index, because callers
+// would otherwise rewrite the ref with only the new comment and orphan
+// every other one.
+func TestReadIndexErrorsWhenRefCorrupted(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	now := time.Now()
+	c := &Comment{Text: "c", File: "foo.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "a"}}
+	if _, err := store.WriteComment(c); err != nil {
+		t.Fatalf("WriteComment failed: %v", err)
+	}
+
+	rewriteRefWithoutIndex(t, dir)
+
+	idx, err := store.ReadIndex()
+	if err == nil {
+		t.Fatalf("expected error reading index from corrupted ref, got idx=%v", idx.All())
+	}
+}
+
+// TestWriteCommentRefusesToClobberOnCorruptedRef verifies that writing a new
+// comment against a corrupted ref (index blob missing) fails fast instead of
+// silently rewriting the ref with an index that contains only the new
+// comment — the failure mode that caused "all comments disappear after
+// resolve". After the failed write, the existing data blobs must still be
+// reachable from the ref's data subtree.
+func TestWriteCommentRefusesToClobberOnCorruptedRef(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	now := time.Now()
+	c1 := &Comment{Text: "c1", File: "foo.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "a"}}
+	c2 := &Comment{Text: "c2", File: "foo.go", Line: 2, Created: now, Updated: now, Context: LineContext{Line: "b"}}
+	id1, _ := store.WriteComment(c1)
+	id2, _ := store.WriteComment(c2)
+
+	rewriteRefWithoutIndex(t, dir)
+
+	// Attempting to write must now fail rather than silently dropping c1+c2.
+	c3 := &Comment{Text: "c3", File: "foo.go", Line: 3, Created: now, Updated: now, Context: LineContext{Line: "c"}}
+	if _, err := store.WriteComment(c3); err == nil {
+		t.Fatal("expected WriteComment to fail on corrupted ref, got nil")
+	}
+
+	// Data blobs for the original two comments must still be reachable
+	// through the data subtree. The index is gone (that's the corruption),
+	// but ReadComment goes directly through :data/<id>.
+	for _, id := range []string{id1, id2} {
+		if _, err := store.ReadComment(id); err != nil {
+			t.Errorf("comment %s should still be readable after failed write: %v", id, err)
+		}
+	}
+}
+
+// TestResolveDoesNotClobberOtherComments is a regression test for the bug
+// where flipping Resolved on one comment via WriteComment (the path taken by
+// `dfd comment resolve <id>`) caused every other comment to vanish. It
+// exercises the happy path end-to-end: many comments exist, one is
+// "resolved" by re-writing with Resolved=true, and the rest must remain
+// readable through both ReadComment and the index.
+func TestResolveDoesNotClobberOtherComments(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	now := time.Now()
+	want := []*Comment{
+		{Text: "c1", File: "a.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "a"}},
+		{Text: "c2", File: "a.go", Line: 2, Created: now, Updated: now, Context: LineContext{Line: "b"}},
+		{Text: "c3", File: "b.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "c"}},
+		{Text: "c4", File: "", Line: 0, Created: now, Updated: now, Context: LineContext{}}, // standalone note
+	}
+	ids := make([]string, len(want))
+	for i, c := range want {
+		id, err := store.WriteComment(c)
+		if err != nil {
+			t.Fatalf("WriteComment %d failed: %v", i, err)
+		}
+		ids[i] = id
+	}
+
+	// Simulate `dfd comment resolve <id1>`: read, flip Resolved, write back.
+	target, err := store.ReadComment(ids[0])
+	if err != nil {
+		t.Fatalf("ReadComment failed: %v", err)
+	}
+	target.Resolved = true
+	target.Updated = time.Now()
+	if _, err := store.WriteComment(target); err != nil {
+		t.Fatalf("WriteComment (resolve) failed: %v", err)
+	}
+
+	// Index must still list every comment.
+	idx, err := store.ReadIndex()
+	if err != nil {
+		t.Fatalf("ReadIndex failed: %v", err)
+	}
+	got := make(map[string]bool)
+	for _, id := range idx.All() {
+		got[id] = true
+	}
+	for _, id := range ids {
+		if !got[id] {
+			t.Errorf("comment %s missing from index after resolve", id)
+		}
+	}
+
+	// Each comment blob must still be readable, and the resolved flag must
+	// have stuck only on the target.
+	for i, id := range ids {
+		c, err := store.ReadComment(id)
+		if err != nil {
+			t.Errorf("comment %s unreadable after resolve: %v", id, err)
+			continue
+		}
+		wantResolved := i == 0
+		if c.Resolved != wantResolved {
+			t.Errorf("comment %s Resolved=%v, want %v", id, c.Resolved, wantResolved)
+		}
+	}
+}
