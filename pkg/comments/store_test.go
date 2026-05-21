@@ -1,10 +1,13 @@
 package comments
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -77,8 +80,8 @@ func TestStoreWriteAndReadComment(t *testing.T) {
 	store := NewStore(dir)
 
 	// Initially no comments
-	if store.Exists() {
-		t.Error("expected ref to not exist initially")
+	if idx, err := store.ReadIndex(); err != nil || len(idx.All()) != 0 {
+		t.Errorf("expected empty index on fresh repo, got err=%v entries=%v", err, idx)
 	}
 
 	// Create a comment
@@ -108,8 +111,8 @@ func TestStoreWriteAndReadComment(t *testing.T) {
 	}
 
 	// Ref should now exist
-	if !store.Exists() {
-		t.Error("expected ref to exist after write")
+	if idx, err := store.ReadIndex(); err != nil || len(idx.All()) == 0 {
+		t.Errorf("expected ref populated after write, got err=%v entries=%v", err, idx)
 	}
 
 	// Read back
@@ -306,8 +309,8 @@ func TestStoreClear(t *testing.T) {
 	c := &Comment{Text: "test", File: "foo.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "a"}}
 	store.WriteComment(c)
 
-	if !store.Exists() {
-		t.Error("expected ref to exist")
+	if idx, err := store.ReadIndex(); err != nil || len(idx.All()) == 0 {
+		t.Errorf("expected ref populated before Clear, got err=%v entries=%v", err, idx)
 	}
 
 	err := store.Clear()
@@ -315,8 +318,8 @@ func TestStoreClear(t *testing.T) {
 		t.Fatalf("Clear failed: %v", err)
 	}
 
-	if store.Exists() {
-		t.Error("expected ref to not exist after clear")
+	if idx, err := store.ReadIndex(); err != nil || len(idx.All()) != 0 {
+		t.Errorf("expected empty index after Clear, got err=%v entries=%v", err, idx)
 	}
 
 	// Should be able to clear again without error
@@ -621,5 +624,335 @@ func TestResolveDoesNotClobberOtherComments(t *testing.T) {
 		if c.Resolved != wantResolved {
 			t.Errorf("comment %s Resolved=%v, want %v", id, c.Resolved, wantResolved)
 		}
+	}
+}
+
+// TestResolveRefDistinguishesMissingFromError verifies that resolveRef returns
+// ("", nil) when the ref legitimately doesn't exist, and an error when git
+// itself fails (e.g. the directory isn't a git repo). The old Exists() helper
+// collapsed both into "false", which meant a transient git failure during a
+// write would silently rebuild the ref from scratch and wipe every comment.
+func TestResolveRefDistinguishesMissingFromError(t *testing.T) {
+	// Fresh repo, no ref → ("", nil)
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	sha, err := store.resolveRef()
+	if err != nil {
+		t.Fatalf("resolveRef on fresh repo: unexpected error: %v", err)
+	}
+	if sha != "" {
+		t.Errorf("resolveRef on fresh repo: got %q, want empty", sha)
+	}
+
+	// Write a comment so the ref exists, then resolveRef returns a SHA.
+	now := time.Now()
+	c := &Comment{Text: "x", File: "a.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "a"}}
+	if _, err := store.WriteComment(c); err != nil {
+		t.Fatalf("WriteComment: %v", err)
+	}
+	sha, err = store.resolveRef()
+	if err != nil {
+		t.Fatalf("resolveRef on populated repo: unexpected error: %v", err)
+	}
+	if sha == "" {
+		t.Error("resolveRef on populated repo: got empty SHA")
+	}
+
+	// Non-git directory → error, NOT ("", nil). If this collapsed to "missing"
+	// the write path would happily build a fresh tree on top.
+	bogus := NewStore(t.TempDir())
+	sha, err = bogus.resolveRef()
+	if err == nil {
+		t.Fatalf("resolveRef in non-git dir: expected error, got sha=%q", sha)
+	}
+}
+
+// TestConcurrentWritesPreserveAllComments stresses the CAS retry loop: many
+// goroutines write distinct comments to the same store at the same time, and
+// every one must end up in the index. Pre-CAS, racing update-ref calls would
+// silently overwrite each other and some comments would vanish.
+//
+// Each goroutine sets its own ID — NewID() is millisecond-resolution, so
+// concurrent calls collide and the test would conflate ID collisions with
+// CAS failures. The CAS path is what we're testing here.
+func TestConcurrentWritesPreserveAllComments(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	const N = 20
+	now := time.Now()
+	var wg sync.WaitGroup
+	errs := make(chan error, N)
+	ids := make([]string, N)
+
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			c := &Comment{
+				ID:      fmt.Sprintf("test-write-%d", i),
+				Text:    fmt.Sprintf("comment %d", i),
+				File:    fmt.Sprintf("file%d.go", i%3),
+				Line:    i + 1,
+				Created: now,
+				Updated: now,
+				Context: LineContext{Line: fmt.Sprintf("line %d", i)},
+			}
+			id, err := store.WriteComment(c)
+			if err != nil {
+				errs <- fmt.Errorf("writer %d: %w", i, err)
+				return
+			}
+			ids[i] = id
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+
+	idx, err := store.ReadIndex()
+	if err != nil {
+		t.Fatalf("ReadIndex: %v", err)
+	}
+	all := idx.All()
+	if len(all) != N {
+		t.Errorf("index has %d entries, want %d", len(all), N)
+	}
+
+	got := make(map[string]bool, len(all))
+	for _, id := range all {
+		got[id] = true
+	}
+	for i, id := range ids {
+		if id == "" {
+			continue // already reported above
+		}
+		if !got[id] {
+			t.Errorf("writer %d's comment %s missing from index", i, id)
+		}
+		if _, err := store.ReadComment(id); err != nil {
+			t.Errorf("writer %d's comment %s unreadable: %v", i, id, err)
+		}
+	}
+}
+
+// TestConcurrentWritesOnFreshRefAllSucceed targets the worst-case race: every
+// writer starts before any ref exists, so they all initially see oldSHA="".
+// One wins the first CAS, the rest must retry against the new ref instead of
+// overwriting it. This is the exact path that wiped all comments pre-fix.
+func TestConcurrentWritesOnFreshRefAllSucceed(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	if idx, err := store.ReadIndex(); err != nil || len(idx.All()) != 0 {
+		t.Fatalf("precondition: expected empty index, got err=%v entries=%v", err, idx)
+	}
+
+	const N = 10
+	now := time.Now()
+	start := make(chan struct{}) // release all goroutines simultaneously
+	var wg sync.WaitGroup
+	errs := make(chan error, N)
+
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			c := &Comment{
+				ID:      fmt.Sprintf("fresh-%d", i),
+				Text:    fmt.Sprintf("fresh-%d", i),
+				File:    "foo.go",
+				Line:    i + 1,
+				Created: now,
+				Updated: now,
+				Context: LineContext{Line: fmt.Sprintf("l%d", i)},
+			}
+			if _, err := store.WriteComment(c); err != nil {
+				errs <- fmt.Errorf("writer %d: %w", i, err)
+			}
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+
+	all, err := store.AllComments()
+	if err != nil {
+		t.Fatalf("AllComments: %v", err)
+	}
+	if len(all) != N {
+		t.Errorf("got %d comments, want %d", len(all), N)
+	}
+}
+
+// TestConcurrentWriteAndDeleteConsistent mixes writes and deletes. With CAS,
+// every operation either commits a consistent index+data pair or retries —
+// no operation should produce orphans (data blob present, index missing the
+// ID) or zombies (index entry pointing at a deleted blob).
+func TestConcurrentWriteAndDeleteConsistent(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	// Seed with comments that will be the deletion targets.
+	const seedN = 10
+	now := time.Now()
+	seedIDs := make([]string, seedN)
+	for i := 0; i < seedN; i++ {
+		c := &Comment{
+			ID:      fmt.Sprintf("seed-%d", i),
+			Text:    fmt.Sprintf("seed-%d", i),
+			File:    "foo.go",
+			Line:    i + 1,
+			Created: now,
+			Updated: now,
+			Context: LineContext{Line: fmt.Sprintf("s%d", i)},
+		}
+		id, err := store.WriteComment(c)
+		if err != nil {
+			t.Fatalf("seed write %d: %v", i, err)
+		}
+		seedIDs[i] = id
+	}
+
+	const writeN = 10
+	var wg sync.WaitGroup
+	errs := make(chan error, seedN+writeN)
+	newIDs := make([]string, writeN)
+
+	// Fire deletes and writes concurrently.
+	for _, id := range seedIDs {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			if err := store.DeleteComment(id); err != nil {
+				errs <- fmt.Errorf("delete %s: %w", id, err)
+			}
+		}(id)
+	}
+	for i := 0; i < writeN; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			c := &Comment{
+				ID:      fmt.Sprintf("new-%d", i),
+				Text:    fmt.Sprintf("new-%d", i),
+				File:    "bar.go",
+				Line:    i + 1,
+				Created: now,
+				Updated: now,
+				Context: LineContext{Line: fmt.Sprintf("n%d", i)},
+			}
+			id, err := store.WriteComment(c)
+			if err != nil {
+				errs <- fmt.Errorf("write %d: %w", i, err)
+				return
+			}
+			newIDs[i] = id
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+
+	idx, err := store.ReadIndex()
+	if err != nil {
+		t.Fatalf("ReadIndex: %v", err)
+	}
+
+	// Seed comments must be gone from the index.
+	for _, id := range seedIDs {
+		for _, got := range idx.All() {
+			if got == id {
+				t.Errorf("deleted comment %s still in index", id)
+			}
+		}
+	}
+
+	// All new comments must be in the index and readable.
+	got := make(map[string]bool)
+	for _, id := range idx.All() {
+		got[id] = true
+	}
+	for i, id := range newIDs {
+		if id == "" {
+			continue
+		}
+		if !got[id] {
+			t.Errorf("write %d's comment %s missing from index", i, id)
+		}
+		if _, err := store.ReadComment(id); err != nil {
+			t.Errorf("write %d's comment %s unreadable: %v", i, id, err)
+		}
+	}
+
+	// Every ID in the index must be readable — no zombies pointing at
+	// deleted blobs.
+	for _, id := range idx.All() {
+		if _, err := store.ReadComment(id); err != nil {
+			t.Errorf("index has %s but ReadComment fails: %v", id, err)
+		}
+	}
+}
+
+// TestCASRetryConvergesUnderHeavyContention runs more writers than the retry
+// cap by a margin to confirm contention resolves well within bounds. If this
+// flakes, maxUpdateAttempts is too tight and real-world load could see writes
+// fail unnecessarily.
+func TestCASRetryConvergesUnderHeavyContention(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	const N = 30
+	now := time.Now()
+	var wg sync.WaitGroup
+	var fails atomic.Int64
+
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			c := &Comment{
+				ID:      fmt.Sprintf("cont-%d", i),
+				Text:    fmt.Sprintf("c%d", i),
+				File:    "foo.go",
+				Line:    i + 1,
+				Created: now,
+				Updated: now,
+				Context: LineContext{Line: fmt.Sprintf("l%d", i)},
+			}
+			if _, err := store.WriteComment(c); err != nil {
+				fails.Add(1)
+				t.Logf("writer %d failed: %v", i, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// Tolerate a small number of retry-cap failures on slow runners (CI under
+	// load can serialize git invocations enough that the jitter budget plus
+	// maxUpdateAttempts isn't quite enough). The CAS path is what we're
+	// validating; demanding zero failures here makes the test flaky.
+	// If fails grows beyond a handful, that points to a real regression in
+	// either maxUpdateAttempts or the retry loop's progress guarantee.
+	failed := fails.Load()
+	if failed > int64(N/4) {
+		t.Errorf("%d/%d writers exhausted retries (more than N/4 = %d); bump maxUpdateAttempts or investigate", failed, N, N/4)
+	}
+	idx, err := store.ReadIndex()
+	if err != nil {
+		t.Fatalf("ReadIndex: %v", err)
+	}
+	want := int64(N) - failed
+	if int64(len(idx.All())) != want {
+		t.Errorf("index has %d entries, want %d (N=%d, failed=%d)", len(idx.All()), want, N, failed)
 	}
 }

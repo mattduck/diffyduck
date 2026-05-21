@@ -90,8 +90,8 @@ func TestCommentPersistenceRoundTrip(t *testing.T) {
 	}
 
 	// Verify it was stored
-	if !store.Exists() {
-		t.Fatal("comment store ref should exist after write")
+	if idx, err := store.ReadIndex(); err != nil || len(idx.All()) == 0 {
+		t.Fatalf("comment store should have entries after write, got err=%v entries=%v", err, idx)
 	}
 
 	// Create a new model and load the comments

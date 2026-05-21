@@ -2,12 +2,20 @@ package comments
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// errCASConflict signals that update-ref rejected our compare-and-swap because
+// the ref's current value didn't match the oldSHA we passed. Only this error
+// triggers a retry in update(); any other error is fatal.
+var errCASConflict = errors.New("comments ref: CAS conflict")
 
 // Store handles reading and writing comments to git refs.
 //
@@ -18,6 +26,10 @@ import (
 //	                      └── data/ (subtree)
 //	                           ├── <id1> (blob: comment content)
 //	                           └── <id2> (blob: comment content)
+//
+// Writes go through a read-modify-write loop with compare-and-swap on
+// update-ref, so concurrent writers from multiple processes (e.g. a TUI
+// and a CLI `dfd comment add`) can't clobber each other.
 //
 // TODO: Future support for remote fetch/merge of the comments ref for collaboration.
 type Store struct {
@@ -31,20 +43,27 @@ func NewStore(dir string) *Store {
 	return &Store{dir: dir}
 }
 
+// maxUpdateAttempts caps how many times update() retries the read-modify-write
+// cycle when CAS fails. Each retry re-reads the ref so a stale read doesn't
+// keep failing forever. The bound prevents infinite loops on persistent
+// failures (e.g. permission denied) and is generous enough to cover realistic
+// contention from multiple writers — well above any sane multi-writer scenario.
+const maxUpdateAttempts = 32
+
 // ReadIndex reads the comment index from the git ref.
 // Returns an empty index if the ref doesn't exist.
-// Returns an error if the ref exists but the index blob can't be read —
-// silently treating that as "empty" would clobber every other comment on
-// the next WriteComment.
+// Returns an error for any other failure (corrupt ref, transient git error,
+// missing index blob) — silently treating those as "empty" would clobber every
+// other comment on the next WriteComment.
 func (s *Store) ReadIndex() (*Index, error) {
-	if !s.Exists() {
+	treeSHA, err := s.resolveRef()
+	if err != nil {
+		return nil, err
+	}
+	if treeSHA == "" {
 		return NewIndex(), nil
 	}
-	data, err := s.readBlob(RefPath + ":index")
-	if err != nil {
-		return nil, fmt.Errorf("reading index blob: %w", err)
-	}
-	return ParseIndex(data), nil
+	return s.readIndexFromTree(treeSHA)
 }
 
 // ReadComment reads a single comment by ID.
@@ -146,59 +165,60 @@ func (s *Store) ReadCommentsBatch(ids []string) ([]*Comment, error) {
 // WriteComment writes a comment to the git ref.
 // If the comment ID already exists, it is overwritten.
 // Returns the comment ID.
+//
+// Concurrent-safe: the read-modify-write happens under CAS on update-ref,
+// so racing writers retry instead of stomping each other.
 func (s *Store) WriteComment(c *Comment) (string, error) {
 	if c.ID == "" {
 		c.ID = NewID()
 	}
 
-	// Compute anchor if not set
 	if c.Anchor == "" {
 		c.Anchor = c.Context.ComputeAnchor()
 	}
 
-	// Serialize the comment
-	data := c.Serialize()
-
-	// Read current index
-	idx, err := s.ReadIndex()
+	// Write the comment blob outside the CAS loop. Blobs are content-addressed,
+	// so even if update() retries, the same blob SHA pops out — no work wasted,
+	// and the inner loop stays minimal.
+	commentSHA, err := s.writeBlob(c.Serialize())
 	if err != nil {
-		return "", fmt.Errorf("reading index: %w", err)
+		return "", fmt.Errorf("writing comment blob: %w", err)
 	}
 
-	// Add to index
-	idx.Add(c.File, c.ID)
-
-	// Write the tree
-	if err := s.writeTree(idx, c.ID, data); err != nil {
-		return "", fmt.Errorf("writing tree: %w", err)
+	err = s.update(func(idx *Index, dataEntries map[string]string) error {
+		idx.Add(c.File, c.ID)
+		dataEntries[c.ID] = commentSHA
+		return nil
+	})
+	if err != nil {
+		return "", err
 	}
-
 	return c.ID, nil
 }
 
 // DeleteComment removes a comment from the git ref.
 func (s *Store) DeleteComment(id string) error {
-	// Read current index
-	idx, err := s.ReadIndex()
-	if err != nil {
-		return fmt.Errorf("reading index: %w", err)
-	}
-
-	// Find and remove from index
-	// We need to read the comment first to get the file path
-	c, err := s.ReadComment(id)
-	if err != nil {
-		return fmt.Errorf("reading comment to delete: %w", err)
-	}
-
-	idx.Remove(c.File, id)
-
-	// Rebuild tree without this comment
-	if err := s.writeTreeWithoutComment(idx, id); err != nil {
-		return fmt.Errorf("writing tree: %w", err)
-	}
-
-	return nil
+	return s.update(func(idx *Index, dataEntries map[string]string) error {
+		sha, ok := dataEntries[id]
+		if !ok {
+			return fmt.Errorf("comment %s not found", id)
+		}
+		// Recover the comment's file path so idx.Remove knows which bucket
+		// to clear. The blob lookup is by content-addressed SHA, so it
+		// returns the same content regardless of any concurrent ref churn
+		// — no snapshot pinning involved.
+		data, err := s.readBlob(sha)
+		if err != nil {
+			return fmt.Errorf("reading comment %s: %w", id, err)
+		}
+		c, err := ParseComment(id, data)
+		if err != nil {
+			return fmt.Errorf("parsing comment %s: %w", id, err)
+		}
+		idx.Remove(c.File, id)
+		delete(dataEntries, id)
+		return nil
+	})
 }
 
 // CommentsForFile returns all comments for a given file path.
@@ -260,107 +280,56 @@ func (s *Store) readBlob(ref string) (string, error) {
 	return string(out), nil
 }
 
-// writeTree writes the index and comment data to a new tree and updates the ref.
-func (s *Store) writeTree(idx *Index, commentID, commentData string) error {
-	// First, write the comment blob
-	commentSHA, err := s.writeBlob(commentData)
+// resolveRef returns the SHA the comments ref currently points to, or ""
+// if the ref doesn't exist. Errors are returned for any other failure
+// (corrupt repo, transient git, permission). Callers MUST treat a non-nil
+// error as "I don't know the state" — never as "ref is missing" — otherwise
+// they'd build a fresh tree and clobber every existing comment.
+//
+// Implementation: `git rev-parse --verify --quiet` prints the SHA on success
+// and exits non-zero with empty stderr when the ref is missing. Any non-zero
+// exit with non-empty stderr is a real error (e.g. broken repo).
+func (s *Store) resolveRef() (string, error) {
+	cmd := s.gitCmd("rev-parse", "--verify", "--quiet", RefPath)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf("writing comment blob: %w", err)
-	}
-
-	// Get existing data tree entries. Only treat ENOENT as "start fresh" —
-	// any other error from ls-tree must abort, otherwise a transient git
-	// failure on a populated ref would silently drop every other comment.
-	existingData := make(map[string]string)
-	if s.Exists() {
-		existingData, err = s.listDataEntries()
-		if err != nil {
-			return fmt.Errorf("listing data entries: %w", err)
+		if stderr.Len() == 0 {
+			// --quiet swallows the "not a valid object" message; empty
+			// stderr means the ref simply doesn't exist.
+			return "", nil
 		}
+		return "", fmt.Errorf("resolving %s: %s: %w", RefPath, strings.TrimSpace(stderr.String()), err)
 	}
-
-	// Add/update the new comment
-	existingData[commentID] = commentSHA
-
-	// Build data tree
-	dataSHA, err := s.buildDataTree(existingData)
-	if err != nil {
-		return fmt.Errorf("building data tree: %w", err)
-	}
-
-	// Write index blob
-	indexSHA, err := s.writeBlob(idx.Serialize())
-	if err != nil {
-		return fmt.Errorf("writing index blob: %w", err)
-	}
-
-	// Build root tree
-	rootSHA, err := s.buildRootTree(indexSHA, dataSHA)
-	if err != nil {
-		return fmt.Errorf("building root tree: %w", err)
-	}
-
-	// Update ref
-	return s.updateRef(rootSHA)
+	return strings.TrimSpace(stdout.String()), nil
 }
 
-// writeTreeWithoutComment rebuilds the tree excluding a specific comment.
-func (s *Store) writeTreeWithoutComment(idx *Index, excludeID string) error {
-	// Get existing data tree entries
-	existingData, err := s.listDataEntries()
+// readIndexFromTree reads the index blob from a specific tree SHA, so the
+// caller can read index and data entries from the same point-in-time view.
+func (s *Store) readIndexFromTree(treeSHA string) (*Index, error) {
+	data, err := s.readBlob(treeSHA + ":index")
 	if err != nil {
-		return fmt.Errorf("listing data entries: %w", err)
+		return nil, fmt.Errorf("reading index from tree %s: %w", treeSHA, err)
 	}
-
-	// Remove the excluded comment
-	delete(existingData, excludeID)
-
-	// Build data tree
-	dataSHA, err := s.buildDataTree(existingData)
-	if err != nil {
-		return fmt.Errorf("building data tree: %w", err)
-	}
-
-	// Write index blob
-	indexSHA, err := s.writeBlob(idx.Serialize())
-	if err != nil {
-		return fmt.Errorf("writing index blob: %w", err)
-	}
-
-	// Build root tree
-	rootSHA, err := s.buildRootTree(indexSHA, dataSHA)
-	if err != nil {
-		return fmt.Errorf("building root tree: %w", err)
-	}
-
-	// Update ref
-	return s.updateRef(rootSHA)
+	return ParseIndex(data), nil
 }
 
-// writeBlob writes data to a blob and returns the SHA.
-func (s *Store) writeBlob(data string) (string, error) {
-	cmd := s.gitCmd("hash-object", "-w", "--stdin")
-	cmd.Stdin = strings.NewReader(data)
-
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(out)), nil
-}
-
-// listDataEntries returns a map of comment ID -> blob SHA from the current data tree.
-func (s *Store) listDataEntries() (map[string]string, error) {
-	cmd := s.gitCmd("ls-tree", RefPath+":data")
-
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, err
+// listDataEntriesFromTree returns the comment ID -> blob SHA map from a
+// specific tree SHA, paired with readIndexFromTree to give a consistent
+// snapshot independent of any concurrent ref updates.
+func (s *Store) listDataEntriesFromTree(treeSHA string) (map[string]string, error) {
+	cmd := s.gitCmd("ls-tree", treeSHA+":data")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("listing data entries from tree %s: %s: %w", treeSHA, strings.TrimSpace(stderr.String()), err)
 	}
 
 	entries := make(map[string]string)
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(stdout.String(), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -375,6 +344,89 @@ func (s *Store) listDataEntries() (map[string]string, error) {
 	}
 
 	return entries, nil
+}
+
+// update runs a read-modify-write cycle against the comments ref, retrying
+// on CAS conflict. The mutate callback receives the index and data-tree
+// entries read from the same pinned tree SHA, so the snapshot is internally
+// consistent even when other writers are racing.
+//
+// mutate MUST be idempotent: on a CAS conflict it will be invoked again
+// with a freshly-read snapshot, and any work it did against the previous
+// snapshot is discarded. Don't perform external side effects (logging
+// progress, appending to slices, incrementing counters owned by the caller,
+// I/O) inside it — restrict mutations to the supplied idx and dataEntries.
+func (s *Store) update(mutate func(*Index, map[string]string) error) error {
+	var lastErr error
+	for attempt := 0; attempt < maxUpdateAttempts; attempt++ {
+		oldSHA, err := s.resolveRef()
+		if err != nil {
+			return fmt.Errorf("resolving ref: %w", err)
+		}
+
+		var idx *Index
+		dataEntries := make(map[string]string)
+		if oldSHA != "" {
+			idx, err = s.readIndexFromTree(oldSHA)
+			if err != nil {
+				return err
+			}
+			dataEntries, err = s.listDataEntriesFromTree(oldSHA)
+			if err != nil {
+				return err
+			}
+		} else {
+			idx = NewIndex()
+		}
+
+		if err := mutate(idx, dataEntries); err != nil {
+			return err
+		}
+
+		dataTreeSHA, err := s.buildDataTree(dataEntries)
+		if err != nil {
+			return fmt.Errorf("building data tree: %w", err)
+		}
+		indexBlobSHA, err := s.writeBlob(idx.Serialize())
+		if err != nil {
+			return fmt.Errorf("writing index blob: %w", err)
+		}
+		rootTreeSHA, err := s.buildRootTree(indexBlobSHA, dataTreeSHA)
+		if err != nil {
+			return fmt.Errorf("building root tree: %w", err)
+		}
+
+		err = s.casUpdateRef(rootTreeSHA, oldSHA)
+		if err == nil {
+			return nil
+		}
+		// Only CAS conflicts justify a retry — a real failure (disk full,
+		// permission, broken repo) would otherwise burn through the entire
+		// retry budget before surfacing.
+		if !errors.Is(err, errCASConflict) {
+			return err
+		}
+		lastErr = err
+
+		// Jitter so synchronized retries don't deadlock-march in lockstep.
+		// Tiny by design — git's ref lock is held briefly and we want to
+		// converge fast under contention.
+		time.Sleep(time.Duration(rand.IntN(5)+1) * time.Millisecond)
+	}
+	return fmt.Errorf("update-ref failed after %d attempts: %w", maxUpdateAttempts, lastErr)
+}
+
+// writeBlob writes data to a blob and returns the SHA.
+func (s *Store) writeBlob(data string) (string, error) {
+	cmd := s.gitCmd("hash-object", "-w", "--stdin")
+	cmd.Stdin = strings.NewReader(data)
+
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(out)), nil
 }
 
 // buildDataTree creates a tree object from comment ID -> SHA mappings.
@@ -412,9 +464,40 @@ func (s *Store) buildRootTree(indexSHA, dataSHA string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// updateRef updates the comments ref to point to a new tree.
-func (s *Store) updateRef(treeSHA string) error {
-	return s.gitCmd("update-ref", RefPath, treeSHA).Run()
+// casUpdateRef updates the comments ref with a compare-and-swap on its
+// current value. oldSHA="" means "ref must not exist" (first-write case).
+// Returns errCASConflict if the ref doesn't currently match oldSHA (the
+// retry loop in update() catches that and re-reads); any other error is
+// a real failure (broken repo, disk full, permission denied) and must
+// not trigger a retry.
+//
+// CAS failures from update-ref are identifiable by their stderr signature:
+//   - "cannot lock ref ...: reference already exists" (oldSHA="" but ref exists)
+//   - "cannot lock ref ...: is at X but expected Y" (oldSHA mismatch)
+//
+// Anything else — non-zero exit without one of those messages — is treated
+// as a real error so callers see it immediately instead of burning through
+// the retry budget.
+func (s *Store) casUpdateRef(newSHA, oldSHA string) error {
+	cmd := s.gitCmd("update-ref", RefPath, newSHA, oldSHA)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if isCASConflict(msg) {
+			return errCASConflict
+		}
+		return fmt.Errorf("update-ref: %s: %w", msg, err)
+	}
+	return nil
+}
+
+// isCASConflict matches update-ref's stderr for the two CAS-rejection cases.
+// Conservative on purpose: any unrecognised failure is treated as a real
+// error rather than silently retried.
+func isCASConflict(stderr string) bool {
+	return strings.Contains(stderr, "reference already exists") ||
+		strings.Contains(stderr, "but expected")
 }
 
 // ReachableCommits returns the set of commit SHAs reachable from ref.
@@ -445,11 +528,6 @@ func (s *Store) CurrentBranch() (string, error) {
 		return "HEAD", nil
 	}
 	return strings.TrimSpace(string(out)), nil
-}
-
-// Exists checks if the comments ref exists.
-func (s *Store) Exists() bool {
-	return s.gitCmd("rev-parse", "--verify", RefPath).Run() == nil
 }
 
 // Clear removes all comments by deleting the ref.
