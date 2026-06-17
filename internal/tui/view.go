@@ -12,6 +12,7 @@ import (
 	"github.com/mattduck/diffyduck/pkg/movedetect"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/mattduck/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/ticketcli"
 	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
@@ -209,22 +210,18 @@ func ApplyTheme(cfg config.ThemeConfig) {
 	}
 }
 
-// CommentListStyles holds lipgloss styles for CLI comment list output.
-type CommentListStyles struct {
-	Header  lipgloss.Style // bold header text, file basenames
-	Label   lipgloss.Style // dim labels, metadata text
-	Commit  lipgloss.Style // commit SHA
-	Branch  lipgloss.Style // branch name, author
-	DirPart lipgloss.Style // directory part of file paths
-}
+// CommentListStyles is the CLI comment-list style set, owned by pkg/ticketcli.
+// Aliased here so existing TUI code keeps compiling; new code should reference
+// ticketcli.CommentListStyles directly.
+type CommentListStyles = ticketcli.CommentListStyles
 
 // CommentListTheme returns the current styles for CLI comment list rendering.
 // Panics if ApplyTheme has not been called.
-func CommentListTheme() CommentListStyles {
+func CommentListTheme() ticketcli.CommentListStyles {
 	if !themeApplied {
 		panic("tui.CommentListTheme called before ApplyTheme")
 	}
-	return CommentListStyles{
+	return ticketcli.CommentListStyles{
 		Header:  headerStyle,
 		Label:   commentLabelStyle,
 		Commit:  commitTreeStyle,
