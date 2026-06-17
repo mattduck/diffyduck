@@ -1,6 +1,26 @@
 # Plan: Split into three tools — `dfd`, `tdb`, `rpt`
 
-Status: proposed (2026-06-17)
+Status: in progress (2026-06-17)
+
+## Progress
+
+- **P0 done** — module renamed to `github.com/mattduck/diffyduck`.
+- **P1 done** — `pkg/comments`→`pkg/ticketdb`; comment/note CLI extracted to
+  `pkg/ticketcli` (styles + highlight seam decoupled); new cgo-free `cmd/tdb`;
+  dfd delegates comment/note to ticketcli. Parser covered by ticketcli tests.
+  - *Deferred (optional):* dfd still parses comment flags in `main.go` for
+    cross-command flag validation + early errors before delegating raw args to
+    ticketcli (the single execution parser). Fully removing dfd's comment
+    parser/usage/completion would change misuse error messages on other
+    commands, so it's left as a later cleanup, not a blocker.
+- **P2 done** — reviewparrot ported in: `pkg/scanner`, `pkg/rpconfig` (renamed
+  from its `config` to avoid colliding with diffyduck's `pkg/config`), `cmd/rpt`.
+  `BurntSushi/toml` now direct. Makefile builds all three binaries + `cgo-free`
+  gate wired into `check`. Three binaries (dfd/tdb/rpt) green.
+
+Remaining: **P3-P5** (new features + polish) below — not yet started.
+
+---
 
 ## Goal
 
