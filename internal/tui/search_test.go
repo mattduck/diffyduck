@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -1205,7 +1205,7 @@ func TestSearch_CommitInfoBodyBlankLinesNotSearchable(t *testing.T) {
 // =============================================================================
 
 // Helper to create a test model with comments
-func makeSearchWithCommentsTestModel(lines []string, comments map[commentKey][]*comments.Comment) Model {
+func makeSearchWithCommentsTestModel(lines []string, comments map[commentKey][]*ticketdb.Comment) Model {
 	pairs := make([]sidebyside.LinePair, len(lines))
 	for i, line := range lines {
 		pairs[i] = sidebyside.LinePair{
@@ -1230,7 +1230,7 @@ func makeSearchWithCommentsTestModel(lines []string, comments map[commentKey][]*
 
 // Test: Basic search finds text in comment content
 func TestSearch_FindsTextInComment(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 2}: {{Text: "This comment has searchterm in it"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1250,7 +1250,7 @@ func TestSearch_FindsTextInComment(t *testing.T) {
 
 // Test: Search finds text only in code when comment doesn't match
 func TestSearch_FindsTextInCodeNotComment(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "This comment has nothing special"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1269,7 +1269,7 @@ func TestSearch_FindsTextInCodeNotComment(t *testing.T) {
 
 // Test: n/N navigation visits matches in comments
 func TestSearch_NextMatch_VisitsCommentMatches(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 2}: {{Text: "Comment with foo here"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1340,7 +1340,7 @@ func TestSearch_NextMatch_VisitsCommentMatches(t *testing.T) {
 
 // Test: Cursor moves to comment row when match is in comment
 func TestSearch_Execute_MovesToCommentRow(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "uniqueword appears here"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1365,7 +1365,7 @@ func TestSearch_Execute_MovesToCommentRow(t *testing.T) {
 
 // Test: Multiple matches in same comment
 func TestSearch_MultipleMatchesInSameComment(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "foo bar foo baz foo"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1394,7 +1394,7 @@ func TestSearch_MultipleMatchesInSameComment(t *testing.T) {
 
 // Test: Match can be in both comment and code (same search term)
 func TestSearch_MatchInBothCommentAndCode(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "Comment mentions variable myVar"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1419,7 +1419,7 @@ func TestSearch_MatchInBothCommentAndCode(t *testing.T) {
 
 // Test: Case-insensitive search in comments
 func TestSearch_CaseInsensitiveInComments(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "This has UPPERCASE text"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1438,7 +1438,7 @@ func TestSearch_CaseInsensitiveInComments(t *testing.T) {
 
 // Test: Case-sensitive search in comments
 func TestSearch_CaseSensitiveInComments(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "This has MixedCase text"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1465,7 +1465,7 @@ func TestSearch_CaseSensitiveInComments(t *testing.T) {
 
 // Test: Search doesn't find in comments when file is folded
 func TestSearch_FoldedFile_NoCommentMatches(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "hidden searchterm in comment"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1484,7 +1484,7 @@ func TestSearch_FoldedFile_NoCommentMatches(t *testing.T) {
 
 // Test: searchableText returns comment text for comment rows
 func TestSearchableText_ReturnsCommentText(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "My comment text here"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1507,7 +1507,7 @@ func TestSearchableText_ReturnsCommentText(t *testing.T) {
 
 // Test: prevMatch (N) visits comment matches going backward
 func TestSearch_PrevMatch_VisitsCommentMatches(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "Comment with foo"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1546,7 +1546,7 @@ func TestSearch_PrevMatch_VisitsCommentMatches(t *testing.T) {
 // Test: Rendered comment row includes the search term
 // This test would have caught the bug where renderCommentRow didn't apply highlighting
 func TestSearch_RenderCommentRow_IncludesSearchTerm(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "Comment with searchterm here"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1582,7 +1582,7 @@ func TestSearch_RenderCommentRow_IncludesSearchTerm(t *testing.T) {
 
 // Test: View() output includes comment text when searching
 func TestSearch_ViewIncludesCommentMatch(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "uniquecommenttext"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1606,7 +1606,7 @@ func TestSearch_ViewIncludesCommentMatch(t *testing.T) {
 // Test: Search finds comment content row, not border row
 // This catches the bug where cursor jumped to comment border instead of content
 func TestSearch_FindsCommentContentRow_NotBorder(t *testing.T) {
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "findme in comment"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{
@@ -1657,7 +1657,7 @@ func TestSearchableText_CommentContentReturnsSpecificLine(t *testing.T) {
 // Test: n navigation lands on correct line within multi-line comment
 func TestSearch_NextMatch_LandsOnCorrectCommentLine(t *testing.T) {
 	// Multi-line comment where search term is on second line
-	comments := map[commentKey][]*comments.Comment{
+	comments := map[commentKey][]*ticketdb.Comment{
 		{fileIndex: 0, newLineNum: 1}: {{Text: "First line\nSecond has target\nThird line"}},
 	}
 	m := makeSearchWithCommentsTestModel([]string{

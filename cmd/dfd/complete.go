@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
 // completionContext represents the parsed state of a partial command line
@@ -312,7 +312,7 @@ func listRefs(g git.Git) []string {
 // commentIDsFromStore reads comment IDs from the git-backed store.
 // Returns nil if the store can't be read (e.g. not in a repo).
 func commentIDsFromStore() []string {
-	store := comments.NewStore("")
+	store := ticketdb.NewStore("")
 	idx, err := store.ReadIndex()
 	if err != nil {
 		return nil

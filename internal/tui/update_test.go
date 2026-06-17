@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbletea"
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/content"
 	"github.com/mattduck/diffyduck/pkg/git"
 	"github.com/mattduck/diffyduck/pkg/highlight"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/mattduck/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -3443,7 +3443,7 @@ func TestWindowCommentSync(t *testing.T) {
 	// Window 0 is active, add a comment
 	m.activeWindowIdx = 0
 	key := commentKey{fileIndex: 0, newLineNum: 5}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment from window 0"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Test comment from window 0"})
 	// Rebuild all caches (simulating what submitComment does)
 	m.rebuildAllRowCachesPreservingCursor()
 
@@ -3520,7 +3520,7 @@ func TestWindowCursorPreservedOnCommentAdd(t *testing.T) {
 
 	// Add a comment near the top (should shift rows below it)
 	key := commentKey{fileIndex: 0, newLineNum: 2}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Comment that shifts rows"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Comment that shifts rows"})
 	m.rebuildAllRowCachesPreservingCursor()
 
 	// Both windows should still be on their original logical rows (same line numbers)
@@ -4491,7 +4491,7 @@ func TestLoadCommitDiff_ShiftsHighlightMaps(t *testing.T) {
 	m.loadingFiles[1] = now
 
 	// Also store a comment for C1's file
-	m.appendCommentToThread(commentKey{fileIndex: 1, newLineNum: 1}, &comments.Comment{Text: "test comment"})
+	m.appendCommentToThread(commentKey{fileIndex: 1, newLineNum: 1}, &ticketdb.Comment{Text: "test comment"})
 	// --- Act: load C0's diff (2 files replace 1 skeleton → delta +1) ---
 	m.loadCommitDiff(0)
 

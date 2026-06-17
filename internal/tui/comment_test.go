@@ -6,8 +6,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +16,7 @@ import (
 // Comment Row Integration Tests
 // =============================================================================
 
-// makeCommentableTestModel creates a model with Added lines that can have comments.
+// makeCommentableTestModel creates a model with Added lines that can have ticketdb.
 func makeCommentableTestModel(numLines int) Model {
 	pairs := make([]sidebyside.LinePair, numLines)
 	for i := range pairs {
@@ -31,7 +31,7 @@ func makeCommentableTestModel(numLines int) Model {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey][]*comments.Comment)
+	m.comments = make(map[commentKey][]*ticketdb.Comment)
 	return m
 }
 
@@ -70,7 +70,7 @@ func makeMixedLineTypeTestModel() Model {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey][]*comments.Comment)
+	m.comments = make(map[commentKey][]*ticketdb.Comment)
 	return m
 }
 
@@ -157,7 +157,7 @@ func TestComment_AddCommentOnContextLine(t *testing.T) {
 
 	// Add a comment on context line 1 (first line in our test model)
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Comment on context line"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Comment on context line"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -236,7 +236,7 @@ func TestComment_AddingCommentIncreasesTotalLines(t *testing.T) {
 
 	// Add a comment on the first content line
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "This is a test comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "This is a test comment"})
 	// Rebuild the cache to reflect the comment
 	m.rebuildRowsCache()
 
@@ -256,7 +256,7 @@ func TestComment_BuildRowsIncludesCommentRows(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Test comment"})
 	m.w().rowsCacheValid = false
 
 	// Count rows after comment
@@ -285,7 +285,7 @@ func TestComment_CursorTracksCommentRows(t *testing.T) {
 
 	// Add a comment on line 1 (first content line)
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Comment on line 1"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Comment on line 1"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -325,7 +325,7 @@ func TestComment_MultipleCommentsCorrectlyPositioned(t *testing.T) {
 
 	// Add first comment on line 1
 	key1 := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key1, &comments.Comment{Text: "First comment"})
+	m.appendCommentToThread(key1, &ticketdb.Comment{Text: "First comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -368,8 +368,8 @@ func TestComment_MultipleCommentsOnSameLine_RendersMultipleRows(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000001", Text: "first", Created: time.Unix(1700000000, 0)})
-	m.appendCommentToThread(key, &comments.Comment{ID: "1700000000002", Text: "second", Created: time.Unix(1700000001, 0)})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "1700000000001", Text: "first", Created: time.Unix(1700000000, 0)})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "1700000000002", Text: "second", Created: time.Unix(1700000001, 0)})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -396,7 +396,7 @@ func TestComment_StartFromCommentRow(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Existing comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Existing comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -430,7 +430,7 @@ func TestComment_CursorPreservedOnCommentRowAfterSubmit(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Original"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Original"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -471,7 +471,7 @@ func TestComment_CursorFallsToContentLineOnDelete(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{ID: "c1", Text: "Will be deleted"})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "c1", Text: "Will be deleted"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -512,7 +512,7 @@ func TestComment_ResolveToggleFromContentLine(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{ID: "c1", Text: "Unresolved comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "c1", Text: "Unresolved comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -538,7 +538,7 @@ func TestComment_ResolveToggleFromCommentRow(t *testing.T) {
 
 	// Add a comment on line 5
 	key := commentKey{fileIndex: 0, newLineNum: 5}
-	m.appendCommentToThread(key, &comments.Comment{ID: "c1", Text: "Another comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "c1", Text: "Another comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -580,7 +580,7 @@ func TestComment_ResolveToggleUpdatesDisplay(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{ID: "c1", Text: "Test comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "c1", Text: "Test comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -642,7 +642,7 @@ func TestComment_DeleteInvalidatesCache(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{ID: "c1", Text: "Existing comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "c1", Text: "Existing comment"})
 	m.calculateTotalLines()
 
 	// Ensure cache is valid
@@ -670,7 +670,7 @@ func TestComment_RowKindExists(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Test comment"})
 	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
@@ -694,7 +694,7 @@ func TestComment_RowBelongsToLineAbove(t *testing.T) {
 
 	// Add a comment on line 2
 	key := commentKey{fileIndex: 0, newLineNum: 2}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Comment on line 2"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Comment on line 2"})
 	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
@@ -724,7 +724,7 @@ func TestComment_NavigationIncludesCommentRows(t *testing.T) {
 
 	// Add a multi-line comment (will take multiple rows in the box)
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Line 1\nLine 2\nLine 3"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Line 1\nLine 2\nLine 3"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -749,7 +749,7 @@ func TestComment_MaxScrollAccountsForComments(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Test comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -766,7 +766,7 @@ func TestComment_StatusInfoCorrectWithComments(t *testing.T) {
 
 	// Add comment on line 1
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "A comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "A comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -798,7 +798,7 @@ func TestComment_OnLastLine(t *testing.T) {
 
 	// Add comment on last content line (line 5)
 	key := commentKey{fileIndex: 0, newLineNum: 5}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Comment on last line"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Comment on last line"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -828,9 +828,9 @@ func TestComment_MultipleCommentsInFile(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Add comments on lines 1, 3, and 5
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 1}, &comments.Comment{Text: "Comment 1"})
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{Text: "Comment 3"})
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 5}, &comments.Comment{Text: "Comment 5"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 1}, &ticketdb.Comment{Text: "Comment 1"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &ticketdb.Comment{Text: "Comment 3"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 5}, &ticketdb.Comment{Text: "Comment 5"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -869,7 +869,7 @@ func TestComment_ScrollPastComment(t *testing.T) {
 
 	// Add comment near the top
 	key := commentKey{fileIndex: 0, newLineNum: 2}
-	m.appendCommentToThread(key, &comments.Comment{Text: "A comment near the top"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "A comment near the top"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -905,7 +905,7 @@ func TestComment_ResizePreservesCursorOnCommentRow(t *testing.T) {
 
 	// Add a comment on line 3
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Test comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -947,7 +947,7 @@ func TestComment_FoldToggle_CursorOnCommentRow(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 5}
-	m.appendCommentToThread(key, &comments.Comment{ID: "c1", Text: "Comment on line 5"})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "c1", Text: "Comment on line 5"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -983,7 +983,7 @@ func TestComment_FoldToggle_ContentLine_CollapseExpand(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 5}
-	m.appendCommentToThread(key, &comments.Comment{ID: "c1", Text: "Comment on line 5"})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "c1", Text: "Comment on line 5"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1045,7 +1045,7 @@ func TestComment_GlobalToggle_ResetsOverridesFirst(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 5}
-	m.appendCommentToThread(key, &comments.Comment{ID: "c1", Text: "Comment on line 5"})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "c1", Text: "Comment on line 5"})
 	// Manually collapse one comment via Tab override
 	m.collapsedComments["c1"] = true
 	m.w().rowsCacheValid = false
@@ -1084,7 +1084,7 @@ func TestComment_TabToggle_ShowNone_StaysHidden(t *testing.T) {
 	m.calculateTotalLines()
 
 	key := commentKey{fileIndex: 0, newLineNum: 5}
-	m.appendCommentToThread(key, &comments.Comment{ID: "c1", Text: "Comment on line 5"})
+	m.appendCommentToThread(key, &ticketdb.Comment{ID: "c1", Text: "Comment on line 5"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1141,11 +1141,11 @@ func TestComment_MultipleFiles_Navigation(t *testing.T) {
 	})
 	m.width = 80
 	m.height = 40
-	m.comments = make(map[commentKey][]*comments.Comment)
+	m.comments = make(map[commentKey][]*ticketdb.Comment)
 
 	// Add comments in both files
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &comments.Comment{Text: "Comment in first file"})
-	m.appendCommentToThread(commentKey{fileIndex: 1, newLineNum: 3}, &comments.Comment{Text: "Comment in second file"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &ticketdb.Comment{Text: "Comment in first file"})
+	m.appendCommentToThread(commentKey{fileIndex: 1, newLineNum: 3}, &ticketdb.Comment{Text: "Comment in second file"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1188,12 +1188,12 @@ func TestComment_NearHunkBoundary(t *testing.T) {
 	})
 	m.width = 80
 	m.height = 30
-	m.comments = make(map[commentKey][]*comments.Comment)
+	m.comments = make(map[commentKey][]*ticketdb.Comment)
 
 	// Add comment on last line before hunk boundary
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &comments.Comment{Text: "Comment before boundary"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &ticketdb.Comment{Text: "Comment before boundary"})
 	// Add comment on first line after hunk boundary
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 100}, &comments.Comment{Text: "Comment after boundary"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 100}, &ticketdb.Comment{Text: "Comment after boundary"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1242,7 +1242,7 @@ func TestComment_VeryLongComment(t *testing.T) {
 		"It contains multiple sentences and lots of text to test how the display handles " +
 		"comments that exceed the available width."
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: longComment})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: longComment})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1272,7 +1272,7 @@ func TestComment_UnicodeCharacters(t *testing.T) {
 	// Add a comment with various unicode characters
 	unicodeComment := "This has émojis 🎉 and special chars: ñ, ü, 中文, 日本語"
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: unicodeComment})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: unicodeComment})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1300,7 +1300,7 @@ func TestComment_BreadcrumbOnCommentRow(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 5}
-	m.appendCommentToThread(key, &comments.Comment{Text: "A comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "A comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1332,9 +1332,9 @@ func TestComment_StatusInfo_CorrectPositionWithComments(t *testing.T) {
 	totalBefore := m.w().totalLines
 
 	// Add comments on lines 1, 2, 3
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 1}, &comments.Comment{Text: "Comment 1"})
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &comments.Comment{Text: "Comment 2"})
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{Text: "Comment 3"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 1}, &ticketdb.Comment{Text: "Comment 1"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &ticketdb.Comment{Text: "Comment 2"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &ticketdb.Comment{Text: "Comment 3"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1371,7 +1371,7 @@ func TestComment_GoToTop_WithComments(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Add a comment near the top
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 1}, &comments.Comment{Text: "Comment at top"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 1}, &ticketdb.Comment{Text: "Comment at top"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1395,9 +1395,9 @@ func TestComment_GoToBottom_WithComments(t *testing.T) {
 	m.calculateTotalLines()
 
 	// Add comments throughout
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &comments.Comment{Text: "Comment 2"})
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 5}, &comments.Comment{Text: "Comment 5"})
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 10}, &comments.Comment{Text: "Comment at end"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &ticketdb.Comment{Text: "Comment 2"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 5}, &ticketdb.Comment{Text: "Comment 5"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 10}, &ticketdb.Comment{Text: "Comment at end"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1427,7 +1427,7 @@ func TestComment_PageDown_ThroughComments(t *testing.T) {
 
 	// Add comments sprinkled throughout
 	for i := 1; i <= 30; i += 5 {
-		m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: i}, &comments.Comment{Text: "Comment on line"})
+		m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: i}, &ticketdb.Comment{Text: "Comment on line"})
 	}
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
@@ -1460,7 +1460,7 @@ func TestComment_PageUp_ThroughComments(t *testing.T) {
 
 	// Add comments sprinkled throughout
 	for i := 1; i <= 30; i += 5 {
-		m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: i}, &comments.Comment{Text: "Comment on line"})
+		m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: i}, &ticketdb.Comment{Text: "Comment on line"})
 	}
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
@@ -1494,7 +1494,7 @@ func TestComment_JK_NavigationIncludesComments(t *testing.T) {
 	totalBefore := m.w().totalLines
 
 	// Add a multi-line comment
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &comments.Comment{Text: "Line 1\nLine 2\nLine 3"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &ticketdb.Comment{Text: "Line 1\nLine 2\nLine 3"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -1525,7 +1525,7 @@ func TestComment_ExpandedVsNormalView(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Test comment"})
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
@@ -2812,7 +2812,7 @@ func TestComment_BuildCommentRows_PropagatesTreePath(t *testing.T) {
 		},
 	}
 
-	rows := buildCommentRows(0, 1, &comments.Comment{Text: "hello"}, 40, tp, "")
+	rows := buildCommentRows(0, 1, &ticketdb.Comment{Text: "hello"}, 40, tp, "")
 	require.GreaterOrEqual(t, len(rows), 3, "should have top border, content, and bottom border")
 
 	for i, r := range rows {
@@ -2824,7 +2824,7 @@ func TestComment_BuildCommentRows_PropagatesTreePath(t *testing.T) {
 func TestComment_BuildCommentRows_EmptyTreePath(t *testing.T) {
 	tp := TreePath{}
 
-	rows := buildCommentRows(0, 1, &comments.Comment{Text: "hello"}, 40, tp, "")
+	rows := buildCommentRows(0, 1, &ticketdb.Comment{Text: "hello"}, 40, tp, "")
 	require.GreaterOrEqual(t, len(rows), 3)
 
 	for i, r := range rows {
@@ -2835,7 +2835,7 @@ func TestComment_BuildCommentRows_EmptyTreePath(t *testing.T) {
 // Test: Comment rows in buildRows() carry the same treePath as adjacent content rows
 func TestComment_BuildRows_CommentTreePathMatchesContent(t *testing.T) {
 	m := makeCommentableTestModel(5)
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &comments.Comment{Text: "A comment"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 2}, &ticketdb.Comment{Text: "A comment"})
 	m.w().rowsCacheValid = false
 
 	rows := m.buildRows()
@@ -2940,7 +2940,7 @@ func TestComment_LogMode_CommentRowsHaveTreePath(t *testing.T) {
 	m := NewWithCommits(commits)
 	m.width = 120
 	m.height = 40
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 1}, &comments.Comment{Text: "Log mode comment"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 1}, &ticketdb.Comment{Text: "Log mode comment"})
 	m.RefreshLayout()
 
 	rows := m.buildRows()
@@ -2977,8 +2977,8 @@ func TestGoToNextComment(t *testing.T) {
 	m := makeCommentableTestModel(10)
 
 	// Add comments on lines 3 and 7
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{Text: "Comment A"})
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 7}, &comments.Comment{Text: "Comment B"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &ticketdb.Comment{Text: "Comment A"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 7}, &ticketdb.Comment{Text: "Comment B"})
 	m.w().rowsCacheValid = false
 	m.calculateTotalLines()
 
@@ -3008,8 +3008,8 @@ func TestGoToPrevComment(t *testing.T) {
 	m := makeCommentableTestModel(10)
 
 	// Add comments on lines 3 and 7
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &comments.Comment{Text: "Comment A"})
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 7}, &comments.Comment{Text: "Comment B"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 3}, &ticketdb.Comment{Text: "Comment A"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 7}, &ticketdb.Comment{Text: "Comment B"})
 	m.w().rowsCacheValid = false
 	m.calculateTotalLines()
 
@@ -3039,7 +3039,7 @@ func TestCommentNavigation_SpaceSequence(t *testing.T) {
 	m := makeCommentableTestModel(10)
 
 	// Add a comment on line 5
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 5}, &comments.Comment{Text: "Test comment"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 5}, &ticketdb.Comment{Text: "Test comment"})
 	m.w().rowsCacheValid = false
 	m.calculateTotalLines()
 	m.w().scroll = 0
@@ -3068,7 +3068,7 @@ func TestGoToNextComment_FoldedFile(t *testing.T) {
 	m := makeCommentableTestModel(10)
 
 	// Add a comment and fold the file to header-only
-	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 5}, &comments.Comment{Text: "Hidden comment"})
+	m.appendCommentToThread(commentKey{fileIndex: 0, newLineNum: 5}, &ticketdb.Comment{Text: "Hidden comment"})
 	m.setFileFoldLevel(0, sidebyside.FoldHeader)
 	m.w().rowsCacheValid = false
 	m.calculateTotalLines()
@@ -3111,7 +3111,7 @@ func TestComment_FormatCommentMeta_WithoutAuthor(t *testing.T) {
 }
 
 func TestComment_BuildCommentRows_PropagatesAuthor(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		Text:   "hello",
 		Author: "Bot",
 	}
@@ -3124,7 +3124,7 @@ func TestComment_BuildCommentRows_PropagatesAuthor(t *testing.T) {
 }
 
 func TestComment_BuildCommentRows_EmptyAuthor(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		Text: "hello",
 	}
 	rows := buildCommentRows(0, 1, c, 40, TreePath{}, "")

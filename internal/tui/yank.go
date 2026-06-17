@@ -9,8 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
 // statusMessageMinDuration is the minimum time a status message is shown before
@@ -96,7 +96,7 @@ func (m Model) yankFilePath(fileIndex int) (tea.Model, tea.Cmd) {
 }
 
 // yankComment copies a comment as a unified diff snippet to the clipboard.
-func (m Model) yankComment(ck commentKey, c *comments.Comment) (tea.Model, tea.Cmd) {
+func (m Model) yankComment(ck commentKey, c *ticketdb.Comment) (tea.Model, tea.Cmd) {
 	snippet := m.buildDiffSnippet(ck, c)
 
 	fileName := ""
@@ -230,7 +230,7 @@ type commentWithKey struct {
 	commentID string
 }
 
-// buildCommentsSnippet generates a unified diff patch containing comments.
+// buildCommentsSnippet generates a unified diff patch containing ticketdb.
 // If includeAll is true, all comments are included; otherwise only unresolved.
 // Comments are sorted by file then line number, and nearby comments within the
 // same file are merged into single hunks.
@@ -445,7 +445,7 @@ func (m Model) findCommentForCursor() (commentKey, string, bool) {
 //	+added line
 //	# COMMENT_ID <id>:
 //	# comment text here
-func (m Model) buildDiffSnippet(ck commentKey, c *comments.Comment) string {
+func (m Model) buildDiffSnippet(ck commentKey, c *ticketdb.Comment) string {
 	comment := c.Text
 	fp := m.files[ck.fileIndex]
 

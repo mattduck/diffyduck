@@ -9,7 +9,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/config"
 	"github.com/mattduck/diffyduck/pkg/content"
 	"github.com/mattduck/diffyduck/pkg/diff"
@@ -19,6 +18,7 @@ import (
 	"github.com/mattduck/diffyduck/pkg/movedetect"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/mattduck/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
 // inlineDiffKey identifies a specific line pair for caching inline diffs.
@@ -48,7 +48,7 @@ const (
 // isCommentIncluded returns true if the comment passes the branch filter.
 // This is the hard gate: excluded comments are invisible to gutter markers,
 // navigation, and row caching — as if they don't exist.
-func (m Model) isCommentIncluded(c *comments.Comment) bool {
+func (m Model) isCommentIncluded(c *ticketdb.Comment) bool {
 	if c == nil || c.Text == "" {
 		return false
 	}
@@ -63,7 +63,7 @@ func (m Model) isCommentIncluded(c *comments.Comment) bool {
 // isCommentVisible returns true if the given comment should be displayed
 // based on the branch filter and display mode (does not check per-comment
 // collapse).
-func (m Model) isCommentVisible(c *comments.Comment) bool {
+func (m Model) isCommentVisible(c *ticketdb.Comment) bool {
 	if !m.isCommentIncluded(c) {
 		return false
 	}
@@ -80,7 +80,7 @@ func (m Model) isCommentVisible(c *comments.Comment) bool {
 // isCommentExpanded returns true if the comment box should be rendered fully.
 // Per-comment toggle (Tab) acts as an override of the global display mode:
 // if collapsedComments[id] is true, the visibility is flipped from global default.
-func (m Model) isCommentExpanded(commentID string, c *comments.Comment) bool {
+func (m Model) isCommentExpanded(commentID string, c *ticketdb.Comment) bool {
 	if c == nil || c.Text == "" {
 		return false
 	}
@@ -91,12 +91,12 @@ func (m Model) isCommentExpanded(commentID string, c *comments.Comment) bool {
 
 // threadIncludedComments returns the comments in a thread that pass the branch filter,
 // sorted by Created ascending (oldest first).
-func (m Model) threadIncludedComments(key commentKey) []*comments.Comment {
+func (m Model) threadIncludedComments(key commentKey) []*ticketdb.Comment {
 	thread := m.comments[key]
 	if len(thread) == 0 {
 		return nil
 	}
-	var included []*comments.Comment
+	var included []*ticketdb.Comment
 	for _, c := range thread {
 		if m.isCommentIncluded(c) {
 			included = append(included, c)
@@ -116,7 +116,7 @@ func (m Model) threadHasIncludedComment(key commentKey) bool {
 }
 
 // threadAggregateResolved returns true only if ALL included comments in the thread are resolved.
-// Returns false if the thread is empty or has no included comments.
+// Returns false if the thread is empty or has no included ticketdb.
 func (m Model) threadAggregateResolved(key commentKey) bool {
 	hasIncluded := false
 	for _, c := range m.comments[key] {
@@ -131,7 +131,7 @@ func (m Model) threadAggregateResolved(key commentKey) bool {
 }
 
 // findCommentInThread finds a specific comment by ID in the thread.
-func (m Model) findCommentInThread(key commentKey, id string) *comments.Comment {
+func (m Model) findCommentInThread(key commentKey, id string) *ticketdb.Comment {
 	for _, c := range m.comments[key] {
 		if c.ID == id {
 			return c
@@ -156,7 +156,7 @@ func (m *Model) removeCommentFromThread(key commentKey, id string) {
 }
 
 // appendCommentToThread appends a comment to the thread and keeps it sorted by Created ascending.
-func (m *Model) appendCommentToThread(key commentKey, c *comments.Comment) {
+func (m *Model) appendCommentToThread(key commentKey, c *ticketdb.Comment) {
 	thread := m.comments[key]
 	thread = append(thread, c)
 	// Insertion sort to maintain Created order
@@ -373,13 +373,13 @@ type Model struct {
 	// Comment data - shared across windows (the actual stored comments)
 	commentDisplayMode  CommentDisplayMode                 // which comments to display (unresolved/all/none)
 	collapsedComments   map[string]bool                    // individually collapsed comments, keyed by comment ID
-	comments            map[commentKey][]*comments.Comment // comment threads per line (sorted by Created asc)
-	commentStore        *comments.Store                    // git-backed persistent storage
-	commentIndex        *comments.Index                    // full index loaded once at startup
+	comments            map[commentKey][]*ticketdb.Comment // comment threads per line (sorted by Created asc)
+	commentStore        *ticketdb.Store                    // git-backed persistent storage
+	commentIndex        *ticketdb.Index                    // full index loaded once at startup
 	loadedCommentIDs    map[string]bool                    // tracks fetched comment IDs to avoid re-reads
 	commentBranchFilter CommentBranchFilter                // branch-based comment filter mode
 	currentBranch       string                             // current branch name for comment filtering
-	allStoreComments    []*comments.Comment                // all comments from store (loaded once at startup)
+	allStoreComments    []*ticketdb.Comment                // all comments from store (loaded once at startup)
 	cachedUnresolved    int                                // cached count of included unresolved comments
 	cachedResolved      int                                // cached count of included resolved comments
 
@@ -731,7 +731,7 @@ func WithReloadFunc(fn func() ([]sidebyside.CommitSet, []Option, error)) Option 
 }
 
 // WithCommentStore sets the git-backed comment store for persistence.
-func WithCommentStore(store *comments.Store) Option {
+func WithCommentStore(store *ticketdb.Store) Option {
 	return func(m *Model) {
 		m.commentStore = store
 	}
@@ -813,7 +813,7 @@ func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 		focused:            true,
 		focusColour:        false,
 		clipboard:          &SystemClipboard{},
-		comments:           make(map[commentKey][]*comments.Comment),
+		comments:           make(map[commentKey][]*ticketdb.Comment),
 		collapsedComments:  make(map[string]bool),
 		loadedCommentIDs:   make(map[string]bool),
 		maxNewContentWidth: 90,   // sensible default; recalculated on 'r' refresh
@@ -3395,7 +3395,7 @@ func (m *Model) shiftFileIndexMapsFrom(fromIdx, delta int) {
 
 	// Shift comments (commentKey includes fileIndex)
 	if len(m.comments) > 0 {
-		newMap := make(map[commentKey][]*comments.Comment, len(m.comments))
+		newMap := make(map[commentKey][]*ticketdb.Comment, len(m.comments))
 		for k, v := range m.comments {
 			if k.fileIndex >= fromIdx {
 				newMap[commentKey{fileIndex: k.fileIndex + delta, newLineNum: k.newLineNum}] = v
@@ -3445,7 +3445,7 @@ func (m *Model) shiftFileIndexMaps(offset int) {
 
 	// Shift comments (commentKey includes fileIndex)
 	if len(m.comments) > 0 {
-		newMap := make(map[commentKey][]*comments.Comment, len(m.comments))
+		newMap := make(map[commentKey][]*ticketdb.Comment, len(m.comments))
 		for k, v := range m.comments {
 			newMap[commentKey{fileIndex: k.fileIndex + offset, newLineNum: k.newLineNum}] = v
 		}

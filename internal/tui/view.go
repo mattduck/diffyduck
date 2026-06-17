@@ -7,12 +7,12 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/config"
 	"github.com/mattduck/diffyduck/pkg/highlight"
 	"github.com/mattduck/diffyduck/pkg/movedetect"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/mattduck/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
 var (
@@ -828,7 +828,7 @@ func (m Model) commentSuffixMap() map[string]string {
 			}
 		}
 	}
-	return comments.ShortSuffixes(ids)
+	return ticketdb.ShortSuffixes(ids)
 }
 
 // formatCommentMeta returns the metadata line for a comment row.
@@ -935,7 +935,7 @@ func formatCommentMeta(row displayRow, contentWidth int) string {
 
 // buildCommentRows creates displayRow entries for a comment box.
 // contentWidth is the text width available inside the box; lines are word-wrapped to fit.
-func buildCommentRows(fileIndex int, lineNum int, c *comments.Comment, contentWidth int, treePath TreePath, suffix string) []displayRow {
+func buildCommentRows(fileIndex int, lineNum int, c *ticketdb.Comment, contentWidth int, treePath TreePath, suffix string) []displayRow {
 	if c == nil || c.Text == "" {
 		return nil
 	}
@@ -990,7 +990,7 @@ func buildCommentRows(fileIndex int, lineNum int, c *comments.Comment, contentWi
 
 // buildFoldedCommentRow creates a single displayRow representing a collapsed comment.
 // Renders as just the comment icon character on an otherwise blank line.
-func buildFoldedCommentRow(fileIndex int, lineNum int, c *comments.Comment, treePath TreePath) displayRow {
+func buildFoldedCommentRow(fileIndex int, lineNum int, c *ticketdb.Comment, treePath TreePath) displayRow {
 	return displayRow{
 		kind:            RowKindComment,
 		fileIndex:       fileIndex,

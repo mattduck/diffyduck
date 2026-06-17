@@ -5,7 +5,7 @@
 // lookup, and each comment is stored as a blob in patch format with metadata.
 //
 // TODO: Future support for remote fetch/merge of the comments ref for collaboration.
-package comments
+package ticketdb
 
 import (
 	"crypto/sha256"

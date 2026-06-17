@@ -2258,7 +2258,7 @@ func (m *Model) tryLoadSkeletonForComment(fileIdx int, first, includeAll bool) (
 
 	// TODO: the index doesn't track resolved status, so when includeAll is
 	// false we may eagerly load a commit diff for files with only resolved
-	// comments. Consider adding resolved awareness to the index if skeleton
+	// ticketdb. Consider adding resolved awareness to the index if skeleton
 	// loading becomes noticeably slow.
 	hasComments := false
 	for _, path := range paths {

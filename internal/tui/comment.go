@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
 // handleCommentInput handles keypresses while in comment input mode.
@@ -240,7 +240,7 @@ func (m *Model) submitComment() {
 		} else {
 			// No store available — create a minimal in-memory comment
 			now := time.Now()
-			m.appendCommentToThread(key, &comments.Comment{
+			m.appendCommentToThread(key, &ticketdb.Comment{
 				Text:    text,
 				Created: now,
 				Updated: now,

@@ -9,10 +9,10 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattduck/diffyduck/internal/tui"
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/config"
 	"github.com/mattduck/diffyduck/pkg/content"
 	"github.com/mattduck/diffyduck/pkg/highlight"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1400,25 +1400,25 @@ func testCommentStyles() tui.CommentListStyles {
 }
 
 // testOneline is a helper that computes cols from a single comment and formats it.
-func testOneline(c *comments.Comment, displayID string, termWidth int, now time.Time) string {
+func testOneline(c *ticketdb.Comment, displayID string, termWidth int, now time.Time) string {
 	ids := map[string]string{}
 	if displayID != "" {
 		ids[c.ID] = displayID
 	}
-	cols := computeOnelineCols([]*comments.Comment{c}, ids, now)
+	cols := computeOnelineCols([]*ticketdb.Comment{c}, ids, now)
 	return formatCommentOneline(c, displayID, termWidth, now, cols, testCommentStyles())
 }
 
 func TestFormatCommentOneline(t *testing.T) {
 	tests := []struct {
 		name      string
-		comment   *comments.Comment
+		comment   *ticketdb.Comment
 		termWidth int
 		contains  []string
 	}{
 		{
 			name: "basic",
-			comment: &comments.Comment{
+			comment: &ticketdb.Comment{
 				ID:        "1705312200000",
 				File:      "src/foo.go",
 				Line:      42,
@@ -1430,7 +1430,7 @@ func TestFormatCommentOneline(t *testing.T) {
 		},
 		{
 			name: "resolved",
-			comment: &comments.Comment{
+			comment: &ticketdb.Comment{
 				ID:        "100",
 				File:      "test.go",
 				Line:      1,
@@ -1443,7 +1443,7 @@ func TestFormatCommentOneline(t *testing.T) {
 		},
 		{
 			name: "no commit",
-			comment: &comments.Comment{
+			comment: &ticketdb.Comment{
 				ID:   "101",
 				File: "test.go",
 				Line: 1,
@@ -1454,7 +1454,7 @@ func TestFormatCommentOneline(t *testing.T) {
 		},
 		{
 			name: "long text truncated",
-			comment: &comments.Comment{
+			comment: &ticketdb.Comment{
 				ID:        "102",
 				File:      "test.go",
 				Line:      1,
@@ -1466,7 +1466,7 @@ func TestFormatCommentOneline(t *testing.T) {
 		},
 		{
 			name: "multiline uses first line",
-			comment: &comments.Comment{
+			comment: &ticketdb.Comment{
 				ID:        "103",
 				File:      "test.go",
 				Line:      1,
@@ -1488,7 +1488,7 @@ func TestFormatCommentOneline(t *testing.T) {
 }
 
 func TestFormatCommentOneline_Standalone(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:        "200",
 		CommitSHA: "abc1234",
 		Text:      "A general note",
@@ -1502,7 +1502,7 @@ func TestFormatCommentOneline_ResolvedStyling(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.ANSI)
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:        "400",
 		File:      "test.go",
 		Line:      1,
@@ -1524,7 +1524,7 @@ func TestFormatCommentOneline_ResolvedStyling(t *testing.T) {
 
 func TestFormatCommentOneline_DateColumn(t *testing.T) {
 	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:        "300",
 		File:      "test.go",
 		Line:      1,
@@ -1538,7 +1538,7 @@ func TestFormatCommentOneline_DateColumn(t *testing.T) {
 }
 
 func TestFormatCommentOneline_MultilineExcludesSecond(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:        "103",
 		File:      "test.go",
 		Line:      1,
@@ -1604,7 +1604,7 @@ func TestShortSuffixes(t *testing.T) {
 }
 
 func TestFormatCommentOneline_ShortID(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:        "1770968997415",
 		File:      "test.go",
 		Line:      1,
@@ -1618,7 +1618,7 @@ func TestFormatCommentOneline_ShortID(t *testing.T) {
 
 func TestFormatCommentBlock(t *testing.T) {
 	created := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:        "1705312200000",
 		File:      "src/foo.go",
 		Line:      42,
@@ -1626,7 +1626,7 @@ func TestFormatCommentBlock(t *testing.T) {
 		Branch:    "main",
 		Created:   created,
 		Text:      "Fix this bug\nIt causes crashes",
-		Context: comments.LineContext{
+		Context: ticketdb.LineContext{
 			Above: []string{"func foo() {", "    x := 1"},
 			Line:  "    return x",
 			Below: []string{"}"},
@@ -1653,7 +1653,7 @@ func TestFormatCommentBlock(t *testing.T) {
 
 func TestFormatCommentBlock_NarrowTerminal(t *testing.T) {
 	created := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:        "1705312200000",
 		File:      "src/foo.go",
 		Line:      42,
@@ -1661,7 +1661,7 @@ func TestFormatCommentBlock_NarrowTerminal(t *testing.T) {
 		Branch:    "main",
 		Created:   created,
 		Text:      "Fix this bug",
-		Context: comments.LineContext{
+		Context: ticketdb.LineContext{
 			Above: []string{"func foo() {"},
 			Line:  "    return x",
 			Below: []string{"}"},
@@ -1680,14 +1680,14 @@ func TestFormatCommentBlock_NarrowTerminal(t *testing.T) {
 }
 
 func TestFormatCommentBlock_Resolved(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:       "100",
 		File:     "test.go",
 		Line:     1,
 		Created:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Resolved: true,
 		Text:     "Done",
-		Context:  comments.LineContext{Line: "code"},
+		Context:  ticketdb.LineContext{Line: "code"},
 	}
 	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles()))
 	assert.Contains(t, block, "┃ Status: resolved\n")
@@ -1695,13 +1695,13 @@ func TestFormatCommentBlock_Resolved(t *testing.T) {
 }
 
 func TestFormatCommentBlock_NoCommit(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:      "101",
 		File:    "test.go",
 		Line:    1,
 		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Text:    "No commit",
-		Context: comments.LineContext{Line: "code"},
+		Context: ticketdb.LineContext{Line: "code"},
 	}
 	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles()))
 	assert.NotContains(t, block, "Ref:")
@@ -1714,13 +1714,13 @@ func TestFormatCommentBlock_Highlighted(t *testing.T) {
 	h := highlight.New()
 	defer h.Close()
 
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:      "200",
 		File:    "test.go",
 		Line:    3,
 		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Text:    "Check this",
-		Context: comments.LineContext{
+		Context: ticketdb.LineContext{
 			Above: []string{"func foo() {", "    x := 1"},
 			Line:  "    return x",
 			Below: []string{"}"},
@@ -1748,13 +1748,13 @@ func TestFormatCommentBlock_UnsupportedLanguage(t *testing.T) {
 	h := highlight.New()
 	defer h.Close()
 
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:      "201",
 		File:    "data.xyz",
 		Line:    1,
 		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Text:    "Unknown file type",
-		Context: comments.LineContext{Line: "some content"},
+		Context: ticketdb.LineContext{Line: "some content"},
 	}
 
 	// Should gracefully fall back to plain text
@@ -1764,7 +1764,7 @@ func TestFormatCommentBlock_UnsupportedLanguage(t *testing.T) {
 }
 
 func TestFormatCommentOneline_WithAuthor(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:        "200",
 		File:      "test.go",
 		Line:      1,
@@ -1778,7 +1778,7 @@ func TestFormatCommentOneline_WithAuthor(t *testing.T) {
 }
 
 func TestFormatCommentOneline_WithoutAuthor(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:        "201",
 		File:      "test.go",
 		Line:      1,
@@ -1791,7 +1791,7 @@ func TestFormatCommentOneline_WithoutAuthor(t *testing.T) {
 }
 
 func TestFormatCommentBlock_WithAuthor(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:      "300",
 		File:    "test.go",
 		Line:    1,
@@ -1799,7 +1799,7 @@ func TestFormatCommentBlock_WithAuthor(t *testing.T) {
 		Author:  "Claude",
 		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Text:    "Check this",
-		Context: comments.LineContext{Line: "code"},
+		Context: ticketdb.LineContext{Line: "code"},
 	}
 	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles()))
 	// Author should appear in the right column as a header
@@ -1809,27 +1809,27 @@ func TestFormatCommentBlock_WithAuthor(t *testing.T) {
 }
 
 func TestFormatCommentBlock_WithoutAuthor(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:      "301",
 		File:    "test.go",
 		Line:    1,
 		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Text:    "No author",
-		Context: comments.LineContext{Line: "code"},
+		Context: ticketdb.LineContext{Line: "code"},
 	}
 	block := stripANSI(formatCommentBlock(c, nil, 120, "", c.Created, testCommentStyles()))
 	assert.NotContains(t, block, "Author:")
 }
 
 func TestFormatCommentBlock_AuthorNarrowTerminal(t *testing.T) {
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:      "302",
 		File:    "test.go",
 		Line:    1,
 		Author:  "Bot",
 		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Text:    "Note",
-		Context: comments.LineContext{Line: "code"},
+		Context: ticketdb.LineContext{Line: "code"},
 	}
 	// Single column fallback
 	block := stripANSI(formatCommentBlock(c, nil, 40, "", c.Created, testCommentStyles()))

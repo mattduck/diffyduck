@@ -19,7 +19,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattduck/diffyduck/internal/tui"
 	"github.com/mattduck/diffyduck/pkg/branches"
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/config"
 	"github.com/mattduck/diffyduck/pkg/content"
 	"github.com/mattduck/diffyduck/pkg/diff"
@@ -27,6 +26,7 @@ import (
 	"github.com/mattduck/diffyduck/pkg/highlight"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/mattduck/diffyduck/pkg/status"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 	"golang.org/x/term"
 )
 
@@ -1442,7 +1442,7 @@ func run() error {
 	}
 
 	// Create comment store for persistence
-	commentStore := comments.NewStore("")
+	commentStore := ticketdb.NewStore("")
 
 	// Create and run the TUI (WithConfig first so CLI flags in later Options win)
 	opts := []tui.Option{tui.WithConfig(cfg), tui.WithFetcher(fetcher), tui.WithGit(g), tui.WithCommentStore(commentStore)}
@@ -1917,7 +1917,7 @@ func runNote(args parsedArgs, cs tui.CommentListStyles) error {
 
 // runNoteEdit validates that the comment is standalone, then delegates to runCommentEdit.
 func runNoteEdit(id string, resolved *bool) error {
-	store := comments.NewStore("")
+	store := ticketdb.NewStore("")
 
 	fullID, err := resolveCommentID(store, id)
 	if err != nil {
@@ -1962,7 +1962,7 @@ func runComment(args parsedArgs, cs tui.CommentListStyles) error {
 
 // runCommentList lists comments filtered by status and limited by -n.
 func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
-	store := comments.NewStore("")
+	store := ticketdb.NewStore("")
 	all, err := store.AllComments()
 	if err != nil {
 		return fmt.Errorf("reading comments: %w", err)
@@ -1977,7 +1977,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 
 	// Filter by suffix if a positional arg was given
 	if args.commentID != "" {
-		var matched []*comments.Comment
+		var matched []*ticketdb.Comment
 		for _, c := range all {
 			if strings.HasSuffix(c.ID, args.commentID) {
 				matched = append(matched, c)
@@ -1994,7 +1994,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 			status = "unresolved"
 		}
 		if status != "all" {
-			var filtered []*comments.Comment
+			var filtered []*ticketdb.Comment
 			for _, c := range all {
 				if status == "resolved" && c.Resolved {
 					filtered = append(filtered, c)
@@ -2008,7 +2008,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 		// Filter by --kind
 		switch args.commentKind {
 		case "comment":
-			var filtered []*comments.Comment
+			var filtered []*ticketdb.Comment
 			for _, c := range all {
 				if !c.IsStandalone() {
 					filtered = append(filtered, c)
@@ -2016,7 +2016,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 			}
 			all = filtered
 		case "note":
-			var filtered []*comments.Comment
+			var filtered []*ticketdb.Comment
 			for _, c := range all {
 				if c.IsStandalone() {
 					filtered = append(filtered, c)
@@ -2033,7 +2033,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 			}
 			if dur > 0 {
 				cutoff := time.Now().Add(-dur)
-				var filtered []*comments.Comment
+				var filtered []*ticketdb.Comment
 				for _, c := range all {
 					if c.Created.After(cutoff) {
 						filtered = append(filtered, c)
@@ -2054,7 +2054,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 					return fmt.Errorf("could not determine current branch")
 				}
 			}
-			var filtered []*comments.Comment
+			var filtered []*ticketdb.Comment
 			for _, c := range all {
 				if c.Branch == branch {
 					filtered = append(filtered, c)
@@ -2065,7 +2065,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 			// Default: filter by current branch (matching TUI behaviour)
 			currentBranch, _ := store.CurrentBranch()
 			if currentBranch != "" {
-				var filtered []*comments.Comment
+				var filtered []*ticketdb.Comment
 				for _, c := range all {
 					if c.Branch == currentBranch {
 						filtered = append(filtered, c)
@@ -2081,7 +2081,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 		if args.commentAuthorSet {
 			if args.commentAuthor == "" {
 				// Bare --author: show only comments with no author
-				var filtered []*comments.Comment
+				var filtered []*ticketdb.Comment
 				for _, c := range all {
 					if c.Author == "" {
 						filtered = append(filtered, c)
@@ -2090,7 +2090,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 				all = filtered
 			} else {
 				needle := strings.ToLower(args.commentAuthor)
-				var filtered []*comments.Comment
+				var filtered []*ticketdb.Comment
 				for _, c := range all {
 					if strings.Contains(strings.ToLower(c.Author), needle) {
 						filtered = append(filtered, c)
@@ -2103,7 +2103,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 		// Filter by --file (exact match, or prefix match when filter ends with /)
 		if args.commentFile != "" {
 			isPrefix := strings.HasSuffix(args.commentFile, "/")
-			var filtered []*comments.Comment
+			var filtered []*ticketdb.Comment
 			for _, c := range all {
 				if isPrefix && strings.HasPrefix(c.File, args.commentFile) {
 					filtered = append(filtered, c)
@@ -2117,7 +2117,7 @@ func runCommentList(args parsedArgs, cs tui.CommentListStyles) error {
 		// Filter by --grep (case-insensitive substring in comment text)
 		if args.commentGrep != "" {
 			needle := strings.ToLower(args.commentGrep)
-			var filtered []*comments.Comment
+			var filtered []*ticketdb.Comment
 			for _, c := range all {
 				if strings.Contains(strings.ToLower(c.Text), needle) {
 					filtered = append(filtered, c)
@@ -2234,7 +2234,7 @@ type onelineCols struct {
 
 // computeOnelineCols scans all comments to determine the column widths.
 // Each column is sized to fit the widest value, capped at a maximum.
-func computeOnelineCols(all []*comments.Comment, shortIDs map[string]string, now time.Time) onelineCols {
+func computeOnelineCols(all []*ticketdb.Comment, shortIDs map[string]string, now time.Time) onelineCols {
 	var cols onelineCols
 	for _, c := range all {
 		id := shortIDs[c.ID]
@@ -2302,7 +2302,7 @@ func computeOnelineCols(all []*comments.Comment, shortIDs map[string]string, now
 // formatCommentOneline formats a single comment as a compact one-liner with
 // dynamically-sized columns: ID, date, commit, branch, file, title.
 // The title column fills remaining terminal width and is truncated to fit.
-func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, now time.Time, cols onelineCols, cs tui.CommentListStyles) string {
+func formatCommentOneline(c *ticketdb.Comment, displayID string, termWidth int, now time.Time, cols onelineCols, cs tui.CommentListStyles) string {
 	if displayID == "" {
 		displayID = c.ID
 	}
@@ -2470,7 +2470,7 @@ func formatCommentOneline(c *comments.Comment, displayID string, termWidth int, 
 // serialized patch context and metadata. If h is non-nil, context lines are
 // syntax-highlighted based on the comment's file extension. When termWidth is
 // wide enough, metadata is rendered in two columns.
-func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth int, suffix string, now time.Time, cs tui.CommentListStyles) string {
+func formatCommentBlock(c *ticketdb.Comment, h *highlight.Highlighter, termWidth int, suffix string, now time.Time, cs tui.CommentListStyles) string {
 	var b strings.Builder
 
 	// Helper to format "Label:   value" with styled label
@@ -2649,14 +2649,14 @@ func formatCommentBlock(c *comments.Comment, h *highlight.Highlighter, termWidth
 	return out.String()
 }
 
-// shortSuffixes forwards to comments.ShortSuffixes.
+// shortSuffixes forwards to ticketdb.ShortSuffixes.
 func shortSuffixes(ids []string) map[string]string {
-	return comments.ShortSuffixes(ids)
+	return ticketdb.ShortSuffixes(ids)
 }
 
 // resolveCommentID resolves a (possibly short) suffix to a full comment ID.
 // Returns an error if the suffix matches zero or multiple IDs.
-func resolveCommentID(store *comments.Store, suffix string) (string, error) {
+func resolveCommentID(store *ticketdb.Store, suffix string) (string, error) {
 	idx, err := store.ReadIndex()
 	if err != nil {
 		return "", fmt.Errorf("reading index: %w", err)
@@ -2695,7 +2695,7 @@ func styleCommentPath(path string, line int, cs tui.CommentListStyles) string {
 // highlightContext applies syntax highlighting to a comment's context lines.
 // Returns the context lines (above + target + below) as styled strings.
 // Falls back to plain text if the language isn't supported or h is nil.
-func highlightContext(c *comments.Comment, h *highlight.Highlighter) []string {
+func highlightContext(c *ticketdb.Comment, h *highlight.Highlighter) []string {
 	// Collect all lines
 	allLines := make([]string, 0, len(c.Context.Above)+1+len(c.Context.Below))
 	allLines = append(allLines, c.Context.Above...)
@@ -2896,7 +2896,7 @@ func runCommentAddStandalone(args parsedArgs) error {
 	}
 
 	now := time.Now()
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		Text:       text,
 		Created:    now,
 		Updated:    now,
@@ -2906,7 +2906,7 @@ func runCommentAddStandalone(args parsedArgs) error {
 		Author:     args.commentAuthor,
 	}
 
-	store := comments.NewStore("")
+	store := ticketdb.NewStore("")
 	id, err := store.WriteComment(c)
 	if err != nil {
 		return fmt.Errorf("saving comment: %w", err)
@@ -2985,8 +2985,8 @@ func runCommentAddFile(args parsedArgs) error {
 	}
 
 	// Build comment
-	store := comments.NewStore("")
-	ctx := comments.ExtractContextForLine(fileLines, lineNum)
+	store := ticketdb.NewStore("")
+	ctx := ticketdb.ExtractContextForLine(fileLines, lineNum)
 
 	// Record branch tip when not viewing a specific commit
 	var branchHead string
@@ -2997,7 +2997,7 @@ func runCommentAddFile(args parsedArgs) error {
 	}
 
 	now := time.Now()
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		Text:       text,
 		File:       relPath,
 		Line:       lineNum,
@@ -3047,7 +3047,7 @@ func readCommentText(message string) (string, error) {
 // runCommentEdit opens a comment in $EDITOR for editing, or toggles
 // the resolved state when --resolved is provided.
 func runCommentEdit(id string, resolved *bool) error {
-	store := comments.NewStore("")
+	store := ticketdb.NewStore("")
 
 	// Resolve suffix to full ID
 	fullID, err := resolveCommentID(store, id)
@@ -3112,7 +3112,7 @@ func runCommentEdit(id string, resolved *bool) error {
 	}
 
 	// Parse and validate
-	parsed, err := comments.ParseComment(fullID, string(edited))
+	parsed, err := ticketdb.ParseComment(fullID, string(edited))
 	if err != nil {
 		return fmt.Errorf("invalid comment format: %w", err)
 	}
@@ -3179,7 +3179,7 @@ func runLogMode(cfg config.Config, args parsedArgs) error {
 		return nil
 	}
 
-	commentStore := comments.NewStore("")
+	commentStore := ticketdb.NewStore("")
 
 	opts := []tui.Option{
 		tui.WithConfig(cfg),

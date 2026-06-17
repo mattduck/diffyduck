@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
 // cleanFilePath strips the a/ or b/ prefix from diff file paths.
@@ -35,13 +35,13 @@ func (m *Model) loadAllStoreComments() {
 	}
 	ids := m.commentIndex.All()
 	if len(ids) == 0 {
-		m.allStoreComments = []*comments.Comment{}
+		m.allStoreComments = []*ticketdb.Comment{}
 		m.recomputeCommentCounts()
 		return
 	}
 	all, err := m.commentStore.ReadCommentsBatch(ids)
 	if err != nil {
-		m.allStoreComments = []*comments.Comment{} // don't retry on error
+		m.allStoreComments = []*ticketdb.Comment{} // don't retry on error
 		return
 	}
 	m.allStoreComments = all
@@ -70,7 +70,7 @@ func (m *Model) recomputeCommentCounts() {
 }
 
 // upsertStoreComment updates or appends a comment in allStoreComments.
-func (m *Model) upsertStoreComment(c *comments.Comment) {
+func (m *Model) upsertStoreComment(c *ticketdb.Comment) {
 	for i, sc := range m.allStoreComments {
 		if sc.ID == c.ID {
 			m.allStoreComments[i] = c
@@ -127,7 +127,7 @@ func (m *Model) loadCommentIndex() {
 // given file range. Files with no Pairs (skeletons) are silently skipped.
 // Uses the cached index to determine which comments are relevant, and
 // loadedCommentIDs to avoid re-fetching on fold/unfold cycles.
-// Returns the number of newly matched comments.
+// Returns the number of newly matched ticketdb.
 func (m *Model) matchCommentsForFiles(startIdx, endIdx int) int {
 	if m.commentStore == nil || m.commentIndex == nil {
 		return 0
@@ -181,7 +181,7 @@ func (m *Model) matchCommentsForFiles(startIdx, endIdx int) int {
 	}
 
 	// Build lookup by ID and mark all as loaded
-	commentByID := make(map[string]*comments.Comment, len(fetched))
+	commentByID := make(map[string]*ticketdb.Comment, len(fetched))
 	for _, c := range fetched {
 		commentByID[c.ID] = c
 	}
@@ -204,7 +204,7 @@ func (m *Model) matchCommentsForFiles(startIdx, endIdx int) int {
 				continue
 			}
 
-			result := comments.FindCommentPosition(c, fileLines)
+			result := ticketdb.FindCommentPosition(c, fileLines)
 			if !result.Found {
 				continue
 			}
@@ -221,7 +221,7 @@ func (m *Model) matchCommentsForFiles(startIdx, endIdx int) int {
 	return loaded
 }
 
-// loadPersistedComments loads the index and matches all comments.
+// loadPersistedComments loads the index and matches all ticketdb.
 // This is the all-at-once path used in tests and single-commit mode.
 func (m *Model) loadPersistedComments() int {
 	m.loadCommentIndex()
@@ -235,7 +235,7 @@ func (m *Model) reloadComments() int {
 		return 0
 	}
 	m.commentIndex = nil
-	m.comments = make(map[commentKey][]*comments.Comment)
+	m.comments = make(map[commentKey][]*ticketdb.Comment)
 	m.loadedCommentIDs = make(map[string]bool)
 	m.allStoreComments = nil // force re-fetch from store
 	m.loadCommentIndex()
@@ -277,7 +277,7 @@ func getFileLinesForMatching(file sidebyside.FilePair) []string {
 
 // persistComment saves a comment to the git store.
 // Returns the full comment object on success, or nil on error.
-func (m *Model) persistComment(key commentKey, text string) *comments.Comment {
+func (m *Model) persistComment(key commentKey, text string) *ticketdb.Comment {
 	if m.commentStore == nil {
 		return nil
 	}
@@ -294,13 +294,13 @@ func (m *Model) persistComment(key commentKey, text string) *comments.Comment {
 		return nil
 	}
 
-	ctx := comments.ExtractContextForLine(fileLines, key.newLineNum)
+	ctx := ticketdb.ExtractContextForLine(fileLines, key.newLineNum)
 	now := time.Now()
 
 	// Check if we're updating an existing persisted comment
 	existingID := m.w().commentEditID
 
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		ID:      existingID, // Empty for new, existing ID for update
 		Text:    text,
 		File:    cleanFilePath(file.NewPath),

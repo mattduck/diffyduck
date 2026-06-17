@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mattduck/diffyduck/pkg/comments"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
 // cleanGitEnv returns os.Environ() with git-specific variables removed,
@@ -48,7 +48,7 @@ func setupTestRepo(t *testing.T) string {
 func TestCommentPersistenceRoundTrip(t *testing.T) {
 	dir := setupTestRepo(t)
 
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	// Create a model with some file content
 	pairs := []sidebyside.LinePair{
@@ -82,7 +82,7 @@ func TestCommentPersistenceRoundTrip(t *testing.T) {
 
 	// Add a comment via the persistence layer
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment on added line"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Test comment on added line"})
 
 	c := m.persistComment(key, "Test comment on added line")
 	if c == nil {
@@ -119,7 +119,7 @@ func TestCommentPersistenceRoundTrip(t *testing.T) {
 func TestCommentPersistenceWithLineMoved(t *testing.T) {
 	dir := setupTestRepo(t)
 
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	// Original file content
 	originalPairs := []sidebyside.LinePair{
@@ -153,7 +153,7 @@ func TestCommentPersistenceWithLineMoved(t *testing.T) {
 
 	// Add comment on line 3 ("target line")
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Comment on target"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Comment on target"})
 	_ = m.persistComment(key, "Comment on target")
 
 	// New file content - line moved down by 2 (new lines inserted at top)
@@ -219,7 +219,7 @@ func TestCommentPersistenceWithLineMoved(t *testing.T) {
 func TestCommentPersistenceDelete(t *testing.T) {
 	dir := setupTestRepo(t)
 
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	pairs := []sidebyside.LinePair{
 		{
@@ -268,7 +268,7 @@ func TestCommentPersistenceDelete(t *testing.T) {
 func TestCommentPersistenceOrphaned(t *testing.T) {
 	dir := setupTestRepo(t)
 
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	// Original file content
 	originalPairs := []sidebyside.LinePair{
@@ -286,7 +286,7 @@ func TestCommentPersistenceOrphaned(t *testing.T) {
 
 	// Add comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Orphaned comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Orphaned comment"})
 	_ = m.persistComment(key, "Orphaned comment")
 
 	// New file with completely different content
@@ -343,7 +343,7 @@ func TestCleanFilePath(t *testing.T) {
 func TestCommentPersistenceWithPrefixedPaths(t *testing.T) {
 	dir := setupTestRepo(t)
 
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	// Create model with b/ prefixed paths (as they come from diff output)
 	pairs := []sidebyside.LinePair{
@@ -361,7 +361,7 @@ func TestCommentPersistenceWithPrefixedPaths(t *testing.T) {
 
 	// Add a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Test comment"})
 	_ = m.persistComment(key, "Test comment")
 
 	// Verify the stored path is clean (no b/ prefix)
@@ -389,14 +389,14 @@ func TestCommentPersistenceWithPrefixedPaths(t *testing.T) {
 
 func TestMatchCommentsSkipsSkeletonFiles(t *testing.T) {
 	dir := setupTestRepo(t)
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	// Write a comment to the store for a file
-	c := &comments.Comment{
+	c := &ticketdb.Comment{
 		Text:    "should not match",
 		File:    "test.go",
 		Line:    1,
-		Context: comments.LineContext{Line: "line 1"},
+		Context: ticketdb.LineContext{Line: "line 1"},
 	}
 	c.Anchor = c.Context.ComputeAnchor()
 	store.WriteComment(c)
@@ -417,7 +417,7 @@ func TestMatchCommentsSkipsSkeletonFiles(t *testing.T) {
 
 func TestMatchCommentsDeduplicatesIDs(t *testing.T) {
 	dir := setupTestRepo(t)
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	pairs := []sidebyside.LinePair{
 		{
@@ -434,12 +434,12 @@ func TestMatchCommentsDeduplicatesIDs(t *testing.T) {
 
 	// Add and persist a comment
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "Test comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "Test comment"})
 	_ = m.persistComment(key, "Test comment")
 
 	// Clear in-memory state and force-reload index (it was loaded empty at construction
 	// time before the comment was persisted)
-	m.comments = make(map[commentKey][]*comments.Comment)
+	m.comments = make(map[commentKey][]*ticketdb.Comment)
 	m.commentIndex = nil
 	m.loadCommentIndex()
 
@@ -450,7 +450,7 @@ func TestMatchCommentsDeduplicatesIDs(t *testing.T) {
 	}
 
 	// Clear in-memory again but keep loadedCommentIDs
-	m.comments = make(map[commentKey][]*comments.Comment)
+	m.comments = make(map[commentKey][]*ticketdb.Comment)
 
 	// Second match should not re-fetch (ID already in loadedCommentIDs)
 	loaded = m.matchCommentsForFiles(0, len(m.files))
@@ -461,7 +461,7 @@ func TestMatchCommentsDeduplicatesIDs(t *testing.T) {
 
 func TestPersistCommentUpdatesIndex(t *testing.T) {
 	dir := setupTestRepo(t)
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	pairs := []sidebyside.LinePair{
 		{
@@ -484,7 +484,7 @@ func TestPersistCommentUpdatesIndex(t *testing.T) {
 
 	// Persist a comment on file 0 (commit A's copy)
 	key := commentKey{fileIndex: 0, newLineNum: 1}
-	m.appendCommentToThread(key, &comments.Comment{Text: "cross-commit comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "cross-commit comment"})
 	_ = m.persistComment(key, "cross-commit comment")
 
 	// matchCommentsForFiles on file 1 (commit B's copy) should find it
@@ -502,7 +502,7 @@ func TestPersistCommentUpdatesIndex(t *testing.T) {
 
 func TestDeleteCommentUpdatesIndex(t *testing.T) {
 	dir := setupTestRepo(t)
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	pairs := []sidebyside.LinePair{
 		{
@@ -543,7 +543,7 @@ func TestDeleteCommentUpdatesIndex(t *testing.T) {
 func TestReloadCommentsPicksUpExternalChanges(t *testing.T) {
 	dir := setupTestRepo(t)
 
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	pairs := []sidebyside.LinePair{
 		{
@@ -568,7 +568,7 @@ func TestReloadCommentsPicksUpExternalChanges(t *testing.T) {
 
 	// Persist a comment
 	key := commentKey{fileIndex: 0, newLineNum: 3}
-	m.appendCommentToThread(key, &comments.Comment{Text: "original"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "original"})
 	c := m.persistComment(key, "original")
 	if c == nil {
 		t.Fatal("persistComment returned nil")
@@ -629,7 +629,7 @@ func TestReloadCommentsNoStore(t *testing.T) {
 func TestReloadCommentsPreservesCollapsedState(t *testing.T) {
 	dir := setupTestRepo(t)
 
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	pairs := []sidebyside.LinePair{
 		{
@@ -650,7 +650,7 @@ func TestReloadCommentsPreservesCollapsedState(t *testing.T) {
 
 	// Persist a comment and collapse it
 	key := commentKey{fileIndex: 0, newLineNum: 2}
-	m.appendCommentToThread(key, &comments.Comment{Text: "collapsed comment"})
+	m.appendCommentToThread(key, &ticketdb.Comment{Text: "collapsed comment"})
 	c := m.persistComment(key, "collapsed comment")
 	if c == nil {
 		t.Fatal("persistComment returned nil")
@@ -668,7 +668,7 @@ func TestReloadCommentsPreservesCollapsedState(t *testing.T) {
 
 func TestBranchFilterCurrentBranch(t *testing.T) {
 	dir := setupTestRepo(t)
-	store := comments.NewStore(dir)
+	store := ticketdb.NewStore(dir)
 
 	pairs := []sidebyside.LinePair{
 		{
@@ -686,8 +686,8 @@ func TestBranchFilterCurrentBranch(t *testing.T) {
 	}
 
 	writeComment := func(line int, branch string) {
-		ctx := comments.LineContext{Line: "line " + fmt.Sprintf("%d", line)}
-		c := &comments.Comment{
+		ctx := ticketdb.LineContext{Line: "line " + fmt.Sprintf("%d", line)}
+		c := &ticketdb.Comment{
 			Text:    "comment on line " + fmt.Sprintf("%d", line),
 			File:    "test.go",
 			Line:    line,
