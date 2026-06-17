@@ -3,7 +3,7 @@ package branches
 import (
 	"time"
 
-	"github.com/user/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/git"
 )
 
 // FilterBranches removes branches whose latest commit is older than since,

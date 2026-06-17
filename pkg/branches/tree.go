@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/user/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/git"
 )
 
 // GitQuerier provides the git operations needed for branch tree building.

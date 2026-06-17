@@ -3,9 +3,9 @@ package tui
 import (
 	"testing"
 
+	"github.com/mattduck/diffyduck/pkg/content"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
-	"github.com/user/diffyduck/pkg/content"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func TestInitStartupQueue_ShowModePreloadsFoldedCommit(t *testing.T) {

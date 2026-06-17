@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // SearchBaseStyler styles non-matched text segments during search highlighting.

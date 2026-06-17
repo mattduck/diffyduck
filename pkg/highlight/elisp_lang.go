@@ -1,8 +1,8 @@
 package highlight
 
 import (
+	"github.com/mattduck/diffyduck/pkg/highlight/grammars/elisp"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/user/diffyduck/pkg/highlight/grammars/elisp"
 )
 
 func ElispLanguage() *LanguageConfig {

@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/structure"
 	"github.com/mattn/go-runewidth"
-	"github.com/user/diffyduck/pkg/sidebyside"
-	"github.com/user/diffyduck/pkg/structure"
 )
 
 // visibleLineRanges finds the contiguous new-side line ranges of the hunks

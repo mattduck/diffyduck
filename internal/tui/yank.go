@@ -9,8 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // statusMessageMinDuration is the minimum time a status message is shown before

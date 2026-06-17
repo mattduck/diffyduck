@@ -9,7 +9,7 @@ import (
 	"hash/fnv"
 	"strings"
 
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // Key identifies one side of a specific line pair in the diff.

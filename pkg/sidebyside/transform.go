@@ -1,6 +1,6 @@
 package sidebyside
 
-import "github.com/user/diffyduck/pkg/diff"
+import "github.com/mattduck/diffyduck/pkg/diff"
 
 // TransformHunk converts a diff hunk into side-by-side line pairs.
 // It aligns removed and added lines when they appear consecutively (modifications).

@@ -8,9 +8,9 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/user/diffyduck/pkg/diff"
-	"github.com/user/diffyduck/pkg/movedetect"
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/diff"
+	"github.com/mattduck/diffyduck/pkg/movedetect"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // Update implements tea.Model.

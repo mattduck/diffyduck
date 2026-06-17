@@ -6,7 +6,7 @@ import (
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
-	"github.com/user/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/structure"
 )
 
 // Highlighter provides syntax highlighting for source code.

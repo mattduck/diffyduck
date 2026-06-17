@@ -3,9 +3,9 @@ package sidebyside
 import (
 	"testing"
 
+	"github.com/mattduck/diffyduck/pkg/diff"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/diff"
 )
 
 func TestTransformHunk_ContextOnly(t *testing.T) {

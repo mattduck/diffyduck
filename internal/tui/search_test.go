@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
-	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // Test smart-case matching logic

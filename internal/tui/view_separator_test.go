@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/structure"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/sidebyside"
-	"github.com/user/diffyduck/pkg/structure"
 )
 
 func TestView_HunkSeparator(t *testing.T) {

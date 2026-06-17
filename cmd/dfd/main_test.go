@@ -8,14 +8,14 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattduck/diffyduck/internal/tui"
+	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/config"
+	"github.com/mattduck/diffyduck/pkg/content"
+	"github.com/mattduck/diffyduck/pkg/highlight"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/internal/tui"
-	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/config"
-	"github.com/user/diffyduck/pkg/content"
-	"github.com/user/diffyduck/pkg/highlight"
 )
 
 // stripANSI removes ANSI escape codes for test assertions.

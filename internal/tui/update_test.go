@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbletea"
+	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/content"
+	"github.com/mattduck/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/highlight"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/structure"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/content"
-	"github.com/user/diffyduck/pkg/git"
-	"github.com/user/diffyduck/pkg/highlight"
-	"github.com/user/diffyduck/pkg/sidebyside"
-	"github.com/user/diffyduck/pkg/structure"
 )
 
 func makeTestModel(numLines int) Model {

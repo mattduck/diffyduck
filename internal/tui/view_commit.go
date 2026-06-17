@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/structure"
 	"github.com/mattn/go-runewidth"
-	"github.com/user/diffyduck/pkg/sidebyside"
-	"github.com/user/diffyduck/pkg/structure"
 )
 
 const maxStructuralDiffItems = 10

@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // Test the fix for: "scroll position can't go below a few lines"

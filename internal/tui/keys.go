@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/user/diffyduck/pkg/config"
+	"github.com/mattduck/diffyduck/pkg/config"
 )
 
 // KeyMap defines the key bindings for the application.

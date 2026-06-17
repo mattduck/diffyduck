@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // isSmartCaseSensitive returns true if the query should be matched case-sensitively.

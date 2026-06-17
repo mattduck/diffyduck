@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func TestVisualMode_EnterWithV(t *testing.T) {

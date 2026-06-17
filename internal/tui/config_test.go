@@ -3,9 +3,9 @@ package tui
 import (
 	"testing"
 
+	"github.com/mattduck/diffyduck/pkg/config"
+	"github.com/mattduck/diffyduck/pkg/highlight"
 	"github.com/stretchr/testify/assert"
-	"github.com/user/diffyduck/pkg/config"
-	"github.com/user/diffyduck/pkg/highlight"
 )
 
 func TestApplyKeysConfig_EmptyConfig(t *testing.T) {

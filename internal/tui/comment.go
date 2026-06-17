@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/user/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/comments"
 )
 
 // handleCommentInput handles keypresses while in comment input mode.

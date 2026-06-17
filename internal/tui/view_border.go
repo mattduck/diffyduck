@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // renderNodeBorder renders a top or bottom border for a tree node (file header, commit-info, etc).

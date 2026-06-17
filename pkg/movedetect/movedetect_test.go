@@ -3,9 +3,9 @@ package movedetect
 import (
 	"testing"
 
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func line(num int, content string, typ sidebyside.LineType) sidebyside.Line {

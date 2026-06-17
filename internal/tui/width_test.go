@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func TestTruncateOrPad_ASCII(t *testing.T) {

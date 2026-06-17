@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/user/diffyduck/pkg/diff"
-	"github.com/user/diffyduck/pkg/highlight"
-	"github.com/user/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/diff"
+	"github.com/mattduck/diffyduck/pkg/highlight"
+	"github.com/mattduck/diffyduck/pkg/structure"
 )
 
 // ANSI color codes matching the TUI's lipgloss theme.

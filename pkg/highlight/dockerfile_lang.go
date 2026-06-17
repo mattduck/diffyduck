@@ -3,8 +3,8 @@ package highlight
 import (
 	"strings"
 
+	"github.com/mattduck/diffyduck/pkg/highlight/grammars/dockerfile"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/user/diffyduck/pkg/highlight/grammars/dockerfile"
 )
 
 func DockerfileLanguage() *LanguageConfig {

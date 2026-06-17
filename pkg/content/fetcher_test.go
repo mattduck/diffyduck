@@ -6,9 +6,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/mattduck/diffyduck/pkg/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/git"
 )
 
 func TestFetcher_ShowMode(t *testing.T) {

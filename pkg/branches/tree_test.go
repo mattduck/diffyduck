@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattduck/diffyduck/pkg/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/git"
 )
 
 type mockQuerier struct {

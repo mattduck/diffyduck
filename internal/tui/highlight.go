@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/user/diffyduck/pkg/highlight"
-	"github.com/user/diffyduck/pkg/sidebyside"
-	"github.com/user/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/highlight"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/structure"
 )
 
 // RequestHighlight returns a command that parses syntax highlighting for a file.

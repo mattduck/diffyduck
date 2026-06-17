@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattduck/diffyduck/pkg/diff"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/diff"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // stripANSI removes ANSI escape codes from a string for position-based testing
@@ -53,7 +53,7 @@ index abc123..def456 100644
 
      "github.com/charmbracelet/lipgloss"
 +    "github.com/mattn/go-runewidth"
-     "github.com/user/diffyduck/pkg/sidebyside"
+     "github.com/mattduck/diffyduck/pkg/sidebyside"
  )
 `
 	// Parse

@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"io"
 
-	"github.com/user/diffyduck/pkg/diff"
+	"github.com/mattduck/diffyduck/pkg/diff"
 )
 
 // ReadLimitedLines reads lines from a reader with limits applied.

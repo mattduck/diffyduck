@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/user/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/git"
 )
 
 func TestParseCompletionContext(t *testing.T) {

@@ -7,12 +7,12 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/config"
-	"github.com/user/diffyduck/pkg/highlight"
-	"github.com/user/diffyduck/pkg/movedetect"
-	"github.com/user/diffyduck/pkg/sidebyside"
-	"github.com/user/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/config"
+	"github.com/mattduck/diffyduck/pkg/highlight"
+	"github.com/mattduck/diffyduck/pkg/movedetect"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/structure"
 )
 
 var (

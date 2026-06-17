@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // cleanFilePath strips the a/ or b/ prefix from diff file paths.

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/git"
 )
 
 // completionContext represents the parsed state of a partial command line

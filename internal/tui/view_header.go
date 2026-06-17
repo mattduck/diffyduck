@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/user/diffyduck/pkg/highlight"
-	"github.com/user/diffyduck/pkg/sidebyside"
-	"github.com/user/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/highlight"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/structure"
 )
 
 func formatFileHeader(fp sidebyside.FilePair) string {

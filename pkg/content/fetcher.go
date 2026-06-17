@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/user/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/git"
 )
 
 // Mode represents the diff mode which determines how to fetch file content.

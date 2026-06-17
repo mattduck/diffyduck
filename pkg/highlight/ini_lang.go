@@ -1,8 +1,8 @@
 package highlight
 
 import (
+	"github.com/mattduck/diffyduck/pkg/highlight/grammars/ini"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/user/diffyduck/pkg/highlight/grammars/ini"
 )
 
 func INILanguage() *LanguageConfig {

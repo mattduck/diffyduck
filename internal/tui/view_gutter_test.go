@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func TestView_GutterIndicators(t *testing.T) {

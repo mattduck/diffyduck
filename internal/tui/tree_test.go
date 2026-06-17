@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func TestRenderTreeContinuation(t *testing.T) {

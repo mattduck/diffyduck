@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/user/diffyduck/pkg/content"
+	"github.com/mattduck/diffyduck/pkg/content"
 )
 
 // fetcherForFile returns a fetcher suitable for the given file index.

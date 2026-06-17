@@ -9,16 +9,16 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/config"
-	"github.com/user/diffyduck/pkg/content"
-	"github.com/user/diffyduck/pkg/diff"
-	"github.com/user/diffyduck/pkg/git"
-	"github.com/user/diffyduck/pkg/highlight"
-	"github.com/user/diffyduck/pkg/inlinediff"
-	"github.com/user/diffyduck/pkg/movedetect"
-	"github.com/user/diffyduck/pkg/sidebyside"
-	"github.com/user/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/config"
+	"github.com/mattduck/diffyduck/pkg/content"
+	"github.com/mattduck/diffyduck/pkg/diff"
+	"github.com/mattduck/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/highlight"
+	"github.com/mattduck/diffyduck/pkg/inlinediff"
+	"github.com/mattduck/diffyduck/pkg/movedetect"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/structure"
 )
 
 // inlineDiffKey identifies a specific line pair for caching inline diffs.

@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // makeMultiFileModel creates a Model with the specified number of files,

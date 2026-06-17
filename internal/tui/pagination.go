@@ -2,8 +2,8 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/user/diffyduck/pkg/git"
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // shouldLoadMoreCommits returns true if we should fetch more commits.

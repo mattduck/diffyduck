@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // ClearStatusMsg is sent to clear the status message after a delay.

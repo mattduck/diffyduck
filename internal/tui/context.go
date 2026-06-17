@@ -1,8 +1,8 @@
 package tui
 
 import (
-	"github.com/user/diffyduck/pkg/sidebyside"
-	"github.com/user/diffyduck/pkg/structure"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/structure"
 )
 
 // SemanticContextThreshold is the maximum distance (in lines) from a hunk boundary

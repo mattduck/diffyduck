@@ -7,11 +7,11 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/mattduck/diffyduck/pkg/diff"
+	"github.com/mattduck/diffyduck/pkg/highlight"
+	"github.com/mattduck/diffyduck/pkg/inlinediff"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/mattn/go-runewidth"
-	"github.com/user/diffyduck/pkg/diff"
-	"github.com/user/diffyduck/pkg/highlight"
-	"github.com/user/diffyduck/pkg/inlinediff"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 // commentBorder returns the comment border style, fainted when resolved.

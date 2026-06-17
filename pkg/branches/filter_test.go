@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattduck/diffyduck/pkg/git"
 	"github.com/stretchr/testify/assert"
-	"github.com/user/diffyduck/pkg/git"
 )
 
 func TestFilterBranches(t *testing.T) {

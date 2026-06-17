@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/user/diffyduck/pkg/comments"
-	"github.com/user/diffyduck/pkg/sidebyside"
+	"github.com/mattduck/diffyduck/pkg/comments"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 )
 
 // cleanGitEnv returns os.Environ() with git-specific variables removed,

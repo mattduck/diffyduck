@@ -3,8 +3,8 @@ package tui
 import (
 	"testing"
 
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func TestUpdateMaxNewContentWidth_Basic(t *testing.T) {

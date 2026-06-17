@@ -3,9 +3,9 @@ package tui
 import (
 	"testing"
 
+	"github.com/mattduck/diffyduck/pkg/git"
+	"github.com/mattduck/diffyduck/pkg/sidebyside"
 	"github.com/stretchr/testify/assert"
-	"github.com/user/diffyduck/pkg/git"
-	"github.com/user/diffyduck/pkg/sidebyside"
 )
 
 func makeCommitSet(sha, subject string) sidebyside.CommitSet {
