@@ -22,6 +22,7 @@ Commands:
   check       Scan for REVP violations in code and git-state tickets
   rules       List rules defined in config
   diff        Show rules and their in-scope files touched by a diff
+  show        Show rules and their in-scope files changed in a commit
   completion  Print shell completion script
 
 Run 'rpt <command> -h' for command-specific help.
@@ -40,6 +41,8 @@ func main() {
 		os.Exit(cmdRules(os.Args[2:]))
 	case "diff":
 		os.Exit(cmdDiff(os.Args[2:]))
+	case "show":
+		os.Exit(cmdShow(os.Args[2:]))
 	case "version", "--version", "-v":
 		fmt.Println("reviewparrot", version)
 	case "completion":
@@ -339,7 +342,6 @@ func cmdDiff(args []string) int {
 	flagAll := fs.Bool("a", false, "include untracked files (working-tree mode only)")
 	flagCached := fs.Bool("cached", false, "show staged changes only (alias: --staged)")
 	fs.Bool("staged", false, "alias for --cached") // handled below via Lookup
-	flagShow := fs.Bool("show", false, "show files changed in a single commit (default: HEAD)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt diff [flags] [ref...]
 
@@ -355,13 +357,10 @@ Diff sources (pick one):
   rpt diff --cached         staged changes only
   rpt diff <ref>            working tree vs ref  (git diff <ref>)
   rpt diff <ref1> <ref2>    between two refs     (git diff <ref1> <ref2>)
-  rpt diff --show           files changed in HEAD (git show)
-  rpt diff --show <ref>     files changed in commit <ref>
 
 Flags:
   -a               include untracked files (working-tree mode only)
   --cached         staged changes only
-  --show           single-commit mode (git show)
   -rule <code>     filter to a specific rule code
   -config <path>   explicit config file path
 
@@ -382,10 +381,6 @@ Exit codes:
 	refs := fs.Args()
 
 	// Validate flag/ref combinations.
-	if *flagShow && *flagCached {
-		fmt.Fprintln(os.Stderr, "error: --show and --cached cannot be used together")
-		return 2
-	}
 	if *flagAll && *flagCached {
 		fmt.Fprintln(os.Stderr, "error: -a and --cached cannot be used together")
 		return 2
@@ -394,20 +389,12 @@ Exit codes:
 		fmt.Fprintln(os.Stderr, "error: -a is only valid for working-tree mode (no refs)")
 		return 2
 	}
-	if *flagAll && *flagShow {
-		fmt.Fprintln(os.Stderr, "error: -a is only valid for working-tree mode (not --show)")
-		return 2
-	}
 	if *flagCached && len(refs) > 0 {
 		fmt.Fprintln(os.Stderr, "error: --cached cannot be used with ref arguments")
 		return 2
 	}
-	if !*flagShow && len(refs) > 2 {
+	if len(refs) > 2 {
 		fmt.Fprintf(os.Stderr, "error: diff accepts at most 2 refs, got %d\n", len(refs))
-		return 2
-	}
-	if *flagShow && len(refs) > 1 {
-		fmt.Fprintf(os.Stderr, "error: --show accepts at most 1 ref, got %d\n", len(refs))
 		return 2
 	}
 
@@ -457,7 +444,7 @@ Exit codes:
 		return 2
 	}
 
-	diffFiles, err := diffedFiles(gitRoot, refs, *flagShow, *flagCached, *flagAll)
+	diffFiles, err := diffedFiles(gitRoot, refs, false, *flagCached, *flagAll)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error getting diff files:", err)
 		return 2
@@ -510,6 +497,138 @@ Exit codes:
 
 	if printed == 0 {
 		fmt.Println("No rules have files in scope for the current diff.")
+	}
+	return 0
+}
+
+// cmdShow lists rules and their in-scope files changed in a single commit.
+// Exit code: 0 = ok, 2 = error.
+func cmdShow(args []string) int {
+	fs := flag.NewFlagSet("show", flag.ContinueOnError)
+	flagRule := fs.String("rule", "", "filter to a specific rule code")
+	flagConfig := fs.String("config", "", "explicit config file path")
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Usage: rpt show [flags] [ref]
+
+Show rules and their in-scope files changed in a single commit.
+
+Defaults to HEAD. Pass a ref to inspect a specific commit.
+
+Flags:
+  -rule <code>     filter to a specific rule code
+  -config <path>   explicit config file path
+
+Exit codes:
+  0  ok
+  2  error
+`)
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 1 {
+		fmt.Fprintf(os.Stderr, "error: show accepts at most 1 ref, got %d\n", fs.NArg())
+		return 2
+	}
+
+	var cfg *rpconfig.Config
+	var cfgRoot string
+	{
+		var err error
+		var cfgPath string
+		if *flagConfig != "" {
+			cfg, err = rpconfig.LoadFromPath(*flagConfig)
+			cfgPath = *flagConfig
+		} else {
+			cwd, werr := os.Getwd()
+			if werr != nil {
+				fmt.Fprintln(os.Stderr, "error:", werr)
+				return 2
+			}
+			cfg, cfgPath, err = rpconfig.Load(cwd)
+		}
+		if err != nil {
+			if errors.Is(err, rpconfig.ErrNotFound) {
+				fmt.Fprintln(os.Stderr, "no revparrot.toml found")
+				return 2
+			}
+			fmt.Fprintln(os.Stderr, "error loading config:", err)
+			return 2
+		}
+		cfgRoot = filepath.Dir(cfgPath)
+	}
+
+	if *flagRule != "" {
+		if _, ok := cfg.RuleByCode(*flagRule); !ok {
+			fmt.Fprintf(os.Stderr, "unknown rule code: %q\n", *flagRule)
+			return 2
+		}
+	}
+
+	matcher, err := cfg.NewMatcher()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+
+	gitRoot, err := gitTopLevel()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+
+	diffFiles, err := diffedFiles(gitRoot, fs.Args(), true, false, false)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error getting diff files:", err)
+		return 2
+	}
+
+	printed := 0
+	for _, r := range cfg.Rules {
+		if !r.IsEnabled() {
+			continue
+		}
+		if *flagRule != "" && r.Code != *flagRule {
+			continue
+		}
+
+		var matching []string
+		for _, f := range diffFiles {
+			rel := relTo(cfgRoot, f)
+			if matcher.InScope(rel) && matcher.RuleApplies(r.Code, rel) && !matcher.Ignored(r.Code, rel) {
+				matching = append(matching, rel)
+			}
+		}
+		if len(matching) == 0 {
+			continue
+		}
+
+		if printed > 0 {
+			fmt.Println()
+		}
+		fmt.Printf("Rule: %s\n", r.Code)
+		fmt.Println("Files:")
+		for _, f := range matching {
+			fmt.Printf("  %s\n", f)
+		}
+		desc := strings.TrimSpace(r.Description)
+		if desc == "" {
+			desc = "(no description)"
+		}
+		lines := strings.Split(desc, "\n")
+		if len(lines) == 1 {
+			fmt.Printf("Check: %s\n", lines[0])
+		} else {
+			fmt.Println("Check:")
+			for _, l := range lines {
+				fmt.Printf("  %s\n", l)
+			}
+		}
+		printed++
+	}
+
+	if printed == 0 {
+		fmt.Println("No rules have files in scope for the current commit.")
 	}
 	return 0
 }

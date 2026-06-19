@@ -18,7 +18,7 @@ type completionContext struct {
 	expectFlagValue string   // if last committed word was a flag that takes a value
 }
 
-var rptSubcommands = []string{"check", "rules", "diff", "version", "help", "completion"}
+var rptSubcommands = []string{"check", "rules", "diff", "show", "version", "help", "completion"}
 
 type ruleCodesFunc func() []string
 
@@ -60,7 +60,7 @@ func parseCompletionContext(words []string) completionContext {
 
 func isSubcommand(w string) bool {
 	switch w {
-	case "check", "rules", "diff", "version", "help", "completion":
+	case "check", "rules", "diff", "show", "version", "help", "completion":
 		return true
 	}
 	return false
@@ -98,17 +98,14 @@ func generateCompletions(ctx completionContext, ruleCodes ruleCodesFunc) []strin
 		return filterPrefix(rptSubcommands, ctx.current)
 	case "diff":
 		// Up to 2 refs; offer refs + flags.
-		hasShow := false
-		for _, f := range ctx.flags {
-			if f == "--show" || f == "-show" {
-				hasShow = true
-			}
+		if len(ctx.refs) >= 2 {
+			return completeFlags(ctx)
 		}
-		maxRefs := 2
-		if hasShow {
-			maxRefs = 1
-		}
-		if len(ctx.refs) >= maxRefs {
+		refs := listRefs()
+		return append(filterPrefix(refs, ctx.current), completeFlags(ctx)...)
+	case "show":
+		// Up to 1 ref; offer refs + flags.
+		if len(ctx.refs) >= 1 {
 			return completeFlags(ctx)
 		}
 		refs := listRefs()
@@ -137,7 +134,9 @@ func flagsForCmd(cmd string) []string {
 	case "rules":
 		return []string{"-config"}
 	case "diff":
-		return []string{"-rule", "-config", "-a", "--cached", "--staged", "--show"}
+		return []string{"-rule", "-config", "-a", "--cached", "--staged"}
+	case "show":
+		return []string{"-rule", "-config"}
 	}
 	return nil
 }
