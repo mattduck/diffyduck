@@ -699,13 +699,13 @@ func TestParseOldFormatNonCreatedFieldEndsComment(t *testing.T) {
 	assert.Equal(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), c.Created)
 }
 
-func TestCommentStatusTitleTagsRoundTrip(t *testing.T) {
+func TestCommentStatusTitleRuleRoundTrip(t *testing.T) {
 	c := &Comment{
 		ID:      "800",
 		Text:    "needs work",
 		Status:  StatusInProgress,
 		Title:   "Refactor the parser",
-		Tags:    []string{"refactor", "parser"},
+		Rule:    "no-bare-dict",
 		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Updated: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
@@ -713,7 +713,7 @@ func TestCommentStatusTitleTagsRoundTrip(t *testing.T) {
 	serialized := c.Serialize()
 	assert.Contains(t, serialized, "# STATUS: in-progress")
 	assert.Contains(t, serialized, "# TITLE: Refactor the parser")
-	assert.Contains(t, serialized, "# TAGS: refactor, parser")
+	assert.Contains(t, serialized, "# RULE: no-bare-dict")
 
 	parsed, err := ParseComment("800", serialized)
 	if err != nil {
@@ -721,7 +721,7 @@ func TestCommentStatusTitleTagsRoundTrip(t *testing.T) {
 	}
 	assert.Equal(t, StatusInProgress, parsed.Status)
 	assert.Equal(t, "Refactor the parser", parsed.Title)
-	assert.Equal(t, []string{"refactor", "parser"}, parsed.Tags)
+	assert.Equal(t, "no-bare-dict", parsed.Rule)
 	assert.Equal(t, "needs work", parsed.Text)
 }
 
@@ -734,8 +734,8 @@ func TestCommentEffectiveStatus(t *testing.T) {
 }
 
 func TestParseCommentNewFieldsBackwardCompat(t *testing.T) {
-	// An old blob without STATUS/TITLE/TAGS still parses cleanly: no status,
-	// title, or tags, and EffectiveStatus falls back to Resolved.
+	// An old blob without STATUS/TITLE/RULE still parses cleanly: no status,
+	// title, or rule, and EffectiveStatus falls back to Resolved.
 	data := `--- a/test.go
 +++ b/test.go
 @@ -1,1 +1,1 @@
@@ -755,12 +755,6 @@ func TestParseCommentNewFieldsBackwardCompat(t *testing.T) {
 	}
 	assert.Empty(t, c.Status)
 	assert.Empty(t, c.Title)
-	assert.Empty(t, c.Tags)
+	assert.Empty(t, c.Rule)
 	assert.Equal(t, StatusOpen, c.EffectiveStatus())
-}
-
-func TestParseTags(t *testing.T) {
-	assert.Equal(t, []string{"a", "b", "c"}, parseTags("a, b,c"))
-	assert.Equal(t, []string{"a"}, parseTags(" a , , "))
-	assert.Nil(t, parseTags("  "))
 }

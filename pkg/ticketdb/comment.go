@@ -68,8 +68,9 @@ type Comment struct {
 	// Title is an optional short title/summary for a ticket.
 	Title string
 
-	// Tags is an optional set of free-form labels.
-	Tags []string
+	// Rule is an optional rule code that flags this ticket as a rule violation,
+	// surfaced by rpt alongside in-code REVP annotations.
+	Rule string
 }
 
 // Lifecycle status values for a ticket. These extend the binary Resolved flag;
@@ -114,18 +115,6 @@ func (lc LineContext) ComputeAnchor() string {
 	content := strings.Join(parts, "\n")
 	hash := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(hash[:16]) // Use first 16 bytes (32 hex chars)
-}
-
-// parseTags splits a serialized "TAGS:" value (comma-separated) into a slice,
-// trimming whitespace and dropping empty entries. Returns nil when no tags.
-func parseTags(s string) []string {
-	var tags []string
-	for _, part := range strings.Split(s, ",") {
-		if t := strings.TrimSpace(part); t != "" {
-			tags = append(tags, t)
-		}
-	}
-	return tags
 }
 
 // NewID generates a new comment ID based on the current time.
@@ -191,7 +180,7 @@ func isKnownMetadataField(s string) bool {
 		strings.HasPrefix(s, "AUTHOR:") ||
 		strings.HasPrefix(s, "STATUS:") ||
 		strings.HasPrefix(s, "TITLE:") ||
-		strings.HasPrefix(s, "TAGS:") ||
+		strings.HasPrefix(s, "RULE:") ||
 		strings.HasPrefix(s, "RESOLVED:")
 }
 
@@ -282,9 +271,10 @@ func (c *Comment) Serialize() string {
 	if c.Title != "" {
 		b.WriteString(fmt.Sprintf("# TITLE: %s\n", c.Title))
 	}
-	if len(c.Tags) > 0 {
-		b.WriteString(fmt.Sprintf("# TAGS: %s\n", strings.Join(c.Tags, ", ")))
-	}
+	// RULE is always written (even when empty) so it is discoverable and
+	// editable via `tdb comment edit`: a user fills it in to flag the ticket as
+	// an rpt rule violation. An empty value parses back to no rule.
+	b.WriteString(fmt.Sprintf("# RULE: %s\n", c.Rule))
 	b.WriteString(fmt.Sprintf("# RESOLVED: %t\n", c.Resolved))
 	b.WriteString(fmt.Sprintf("# FILE: %s\n", c.File))
 	b.WriteString(fmt.Sprintf("# LINE: %d\n", c.Line))
@@ -410,8 +400,8 @@ func ParseComment(id string, data string) (*Comment, error) {
 			c.Title = strings.TrimPrefix(line, "# TITLE: ")
 			continue
 		}
-		if strings.HasPrefix(line, "# TAGS: ") {
-			c.Tags = parseTags(strings.TrimPrefix(line, "# TAGS: "))
+		if strings.HasPrefix(line, "# RULE: ") {
+			c.Rule = strings.TrimPrefix(line, "# RULE: ")
 			continue
 		}
 		if strings.HasPrefix(line, "# RESOLVED: ") {

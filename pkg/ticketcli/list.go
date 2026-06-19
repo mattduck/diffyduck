@@ -31,7 +31,7 @@ type ListOptions struct {
 	File    string   // --file filter (trailing / = prefix match)
 	Grep    string   // --grep filter (case-insensitive)
 	Status  string   // ticket filter: unresolved (default), resolved, all
-	Tags    []string // --tag filter (tickets having any of these tags)
+	Rule    string   // --rule filter (tickets carrying this rule code)
 	N       int      // -n cap on combined rows (0 = uncapped)
 	NSet    bool
 
@@ -116,14 +116,14 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 				return o, err
 			}
 
-		case arg == "--tag":
+		case arg == "--rule":
 			v, ok := next()
 			if !ok {
-				return o, fmt.Errorf("--tag requires a value")
+				return o, fmt.Errorf("--rule requires a value")
 			}
-			o.Tags = append(o.Tags, splitList(v)...)
-		case strings.HasPrefix(arg, "--tag="):
-			o.Tags = append(o.Tags, splitList(strings.TrimPrefix(arg, "--tag="))...)
+			o.Rule = v
+		case strings.HasPrefix(arg, "--rule="):
+			o.Rule = strings.TrimPrefix(arg, "--rule=")
 
 		case arg == "-n":
 			if i+1 < len(rest) {
@@ -167,8 +167,8 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 	if len(o.Markers) > 0 && o.Source == SourceState {
 		return o, fmt.Errorf("--marker is only valid when listing code markers")
 	}
-	if len(o.Tags) > 0 && o.Source == SourceCode {
-		return o, fmt.Errorf("--tag is only valid when listing tickets")
+	if o.Rule != "" && o.Source == SourceCode {
+		return o, fmt.Errorf("--rule is only valid when listing tickets")
 	}
 	return o, nil
 }
@@ -337,7 +337,7 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 		if !grepMatches(o.Grep, c.Text, c.Title) {
 			continue
 		}
-		if !tagMatches(o.Tags, c.Tags) {
+		if o.Rule != "" && !strings.EqualFold(o.Rule, c.Rule) {
 			continue
 		}
 
@@ -469,22 +469,6 @@ func grepMatches(needle string, fields ...string) bool {
 	for _, f := range fields {
 		if strings.Contains(strings.ToLower(f), n) {
 			return true
-		}
-	}
-	return false
-}
-
-// tagMatches reports whether the ticket's tags include any of the wanted tags
-// (case-insensitive). Empty want matches.
-func tagMatches(want, have []string) bool {
-	if len(want) == 0 {
-		return true
-	}
-	for _, w := range want {
-		for _, h := range have {
-			if strings.EqualFold(w, h) {
-				return true
-			}
 		}
 	}
 	return false

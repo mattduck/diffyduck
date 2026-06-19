@@ -10,6 +10,7 @@ import (
 
 	"github.com/mattduck/diffyduck/pkg/rpconfig"
 	"github.com/mattduck/diffyduck/pkg/scanner"
+	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
 var version = "dev"
@@ -17,7 +18,7 @@ var version = "dev"
 const usageGeneral = `Usage: rpt <command> [flags]
 
 Commands:
-  check    Scan for REVP violations in source files
+  check    Scan for REVP violations in code and git-state tickets
   rules    List rules defined in config
 
 Run 'rpt <command> -h' for command-specific help.
@@ -55,6 +56,10 @@ func cmdCheck(args []string) int {
 
 Scan for REVP violation annotations in source files.
 Reports violations not suppressed by NOREVP.
+
+Also reports rule-tagged tickets from the git-state store (tdb): an
+unresolved ticket with a rule code is a violation; a resolved one is
+suppressed.
 
 Flags:
   -rule <code>     filter output to a specific rule code
@@ -168,17 +173,89 @@ Exit codes:
 		violations = filtered
 	}
 
+	// Merge rule-tagged tickets from the git-state store. Resolved tickets are
+	// treated as suppressed. State sourcing is best-effort: outside a git repo
+	// (or on any store error) we warn and continue with code violations only.
+	stateViols, serr := gatherStateViolations(*flagRule)
+	if serr != nil {
+		fmt.Fprintln(os.Stderr, "warning: skipping git-state tickets:", serr)
+	}
+
 	for _, v := range violations {
 		fmt.Println(v)
 	}
+	for _, v := range stateViols {
+		fmt.Println(formatViolation(v))
+	}
 
-	n := len(violations)
+	n := len(violations) + len(stateViols)
 	if n == 0 {
 		fmt.Println("No violations found.")
 		return 0
 	}
 	fmt.Printf("\nFound %d violation%s.\n", n, pluralS(n))
 	return 1
+}
+
+// gatherStateViolations reads rule-tagged tickets from the git-state store and
+// maps them to scanner.Violation. Resolved tickets are excluded (resolved is the
+// state-side suppression). File-attached tickets carry their file:line;
+// standalone tickets use a "(ticket <id>)" placeholder location. ruleFilter, when
+// non-empty, restricts output to that rule code.
+func gatherStateViolations(ruleFilter string) ([]scanner.Violation, error) {
+	store := ticketdb.NewStore("")
+	all, err := store.AllComments()
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, len(all))
+	for i, c := range all {
+		ids[i] = c.ID
+	}
+	short := ticketdb.ShortSuffixes(ids)
+
+	var out []scanner.Violation
+	for _, c := range all {
+		if c.Rule == "" || c.Resolved {
+			continue
+		}
+		if ruleFilter != "" && c.Rule != ruleFilter {
+			continue
+		}
+		v := scanner.Violation{Code: c.Rule, Message: stateMessage(c)}
+		if c.IsStandalone() {
+			v.File = "(ticket " + short[c.ID] + ")"
+		} else {
+			v.File = c.File
+			v.Line = c.Line
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// stateMessage returns the violation message for a ticket: its title if set,
+// else the first line of its body.
+func stateMessage(c *ticketdb.Comment) string {
+	if c.Title != "" {
+		return c.Title
+	}
+	t := c.Text
+	if i := strings.IndexByte(t, '\n'); i >= 0 {
+		t = t[:i]
+	}
+	return t
+}
+
+// formatViolation renders a violation. Code-sourced and file-attached state
+// violations have a positive line and use the standard file:line form; standalone
+// state violations (line 0) omit the line number.
+func formatViolation(v scanner.Violation) string {
+	if v.Line > 0 {
+		return v.String()
+	}
+	return fmt.Sprintf("%s: REVP(%s) %s", v.File, v.Code, v.Message)
 }
 
 // cmdRules lists rules from rpconfig.

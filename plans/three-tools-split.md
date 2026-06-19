@@ -24,15 +24,31 @@ Status: in progress (2026-06-19)
   `tdb list` (decided: `--source=all|state|code`, not a separate `todo`/`scan`
   subcommand) merges git-state tickets and in-code markers (TODO/FIXME/HACK/
   XXX/NOTE) into one KIND/LOCATION/TEXT view, with `--marker/--file/--grep/
-  --status/--tag/-n/-b` filters. Code markers render uppercase so they stay
+  --status/--rule/-n/-b` filters. Code markers render uppercase so they stay
   distinct from lowercase ticket kinds even without color. `Comment` gained
-  additive `Status`/`Title`/`Tags` fields (backward-compatible serialize/parse +
+  additive `Status`/`Title`/`Rule` fields (backward-compatible serialize/parse +
   `EffectiveStatus`; round-trip tested against old blobs).
   - *Deferred to later:* full status-transition CLI (setting in-progress, etc.)
     — P3 adds the schema + filters/display, not a new edit workflow. `--marker`
     keyword input is matched case-insensitively against the scanner families.
+  - *Note:* the P3 `Tags` field was dropped in P4 in favour of a single `Rule`
+    code (per decision below); `tdb list --tag` became `--rule`.
 
-Remaining: **P4-P5** (rpt state-sourced violations + polish) below — not yet started.
+- **P4 items 1-2 done** — `rpt check` now merges in-code REVP annotations with
+  rule-tagged tickets from the git-state store. `Comment.Rule` carries an
+  optional rule code (always serialized so it's editable via `tdb comment
+  edit`); `rpt check` reports each unresolved rule-tagged ticket as a
+  `scanner.Violation` (file-attached → `file:line`, standalone → `(ticket <id>)`
+  placeholder), resolved tickets suppressed. State sourcing is best-effort
+  (warns and continues outside a git repo). `rpt` stays `CGO_ENABLED=0`.
+  - *Decisions:* include standalone rule-tagged tickets (placeholder location);
+    resolved = state-side suppression (the item-3 default, adopted early).
+  - *Deferred:* P4 item 3 (fuller suppression reconciliation), item 4 (honor
+    `revparrot.toml` path scope for state violations — today only the `-rule`
+    CLI filter applies to state), item 5 (situation-specific reviews).
+
+Remaining: **P4 items 3-5** (suppression/scope reconciliation, situation-specific
+reviews) and **P5** (polish) below.
 
 ---
 

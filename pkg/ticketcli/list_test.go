@@ -61,7 +61,7 @@ func TestParseListArgs_Errors(t *testing.T) {
 		{"list", "--bogus"},
 		{"list", "--all-branches", "--branch", "main"},
 		{"list", "--source", "state", "--marker", "TODO"},
-		{"list", "--source", "code", "--tag", "x"},
+		{"list", "--source", "code", "--rule", "x"},
 		{"list", "-nfoo"},
 	}
 	for _, c := range cases {
@@ -102,10 +102,14 @@ func TestGrepMatches(t *testing.T) {
 	assert.False(t, grepMatches("zzz", "nope", "also nope"))
 }
 
-func TestTagMatches(t *testing.T) {
-	assert.True(t, tagMatches(nil, []string{"a"}))
-	assert.True(t, tagMatches([]string{"Refactor"}, []string{"refactor", "x"}))
-	assert.False(t, tagMatches([]string{"perf"}, []string{"refactor"}))
+func TestParseListArgs_Rule(t *testing.T) {
+	o, err := ParseListArgs([]string{"list", "--rule", "no-bare-dict"})
+	require.NoError(t, err)
+	assert.Equal(t, "no-bare-dict", o.Rule)
+
+	o, err = ParseListArgs([]string{"list", "--rule=other"})
+	require.NoError(t, err)
+	assert.Equal(t, "other", o.Rule)
 }
 
 func TestMarkerForKeyword(t *testing.T) {
