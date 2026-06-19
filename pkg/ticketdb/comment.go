@@ -59,6 +59,38 @@ type Comment struct {
 
 	// Author is an optional identifier for who created the comment (e.g. agent name).
 	Author string
+
+	// Status is an optional richer lifecycle state (open, in-progress, closed).
+	// When empty the effective status is derived from Resolved — see
+	// EffectiveStatus. Stored additively so older readers ignore it.
+	Status string
+
+	// Title is an optional short title/summary for a ticket.
+	Title string
+
+	// Tags is an optional set of free-form labels.
+	Tags []string
+}
+
+// Lifecycle status values for a ticket. These extend the binary Resolved flag;
+// a closed status implies resolved.
+const (
+	StatusOpen       = "open"
+	StatusInProgress = "in-progress"
+	StatusClosed     = "closed"
+)
+
+// EffectiveStatus returns the comment's lifecycle status. An explicit Status
+// wins; otherwise it is derived from Resolved so legacy comments (written before
+// the field existed) still report a sensible status.
+func (c *Comment) EffectiveStatus() string {
+	if c.Status != "" {
+		return c.Status
+	}
+	if c.Resolved {
+		return StatusClosed
+	}
+	return StatusOpen
 }
 
 // LineContext stores the original line and its surrounding context for matching.
@@ -82,6 +114,18 @@ func (lc LineContext) ComputeAnchor() string {
 	content := strings.Join(parts, "\n")
 	hash := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(hash[:16]) // Use first 16 bytes (32 hex chars)
+}
+
+// parseTags splits a serialized "TAGS:" value (comma-separated) into a slice,
+// trimming whitespace and dropping empty entries. Returns nil when no tags.
+func parseTags(s string) []string {
+	var tags []string
+	for _, part := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(part); t != "" {
+			tags = append(tags, t)
+		}
+	}
+	return tags
 }
 
 // NewID generates a new comment ID based on the current time.
@@ -145,6 +189,9 @@ func isKnownMetadataField(s string) bool {
 		strings.HasPrefix(s, "LINE:") ||
 		strings.HasPrefix(s, "ANCHOR:") ||
 		strings.HasPrefix(s, "AUTHOR:") ||
+		strings.HasPrefix(s, "STATUS:") ||
+		strings.HasPrefix(s, "TITLE:") ||
+		strings.HasPrefix(s, "TAGS:") ||
 		strings.HasPrefix(s, "RESOLVED:")
 }
 
@@ -228,6 +275,15 @@ func (c *Comment) Serialize() string {
 	}
 	if c.Author != "" {
 		b.WriteString(fmt.Sprintf("# AUTHOR: %s\n", c.Author))
+	}
+	if c.Status != "" {
+		b.WriteString(fmt.Sprintf("# STATUS: %s\n", c.Status))
+	}
+	if c.Title != "" {
+		b.WriteString(fmt.Sprintf("# TITLE: %s\n", c.Title))
+	}
+	if len(c.Tags) > 0 {
+		b.WriteString(fmt.Sprintf("# TAGS: %s\n", strings.Join(c.Tags, ", ")))
 	}
 	b.WriteString(fmt.Sprintf("# RESOLVED: %t\n", c.Resolved))
 	b.WriteString(fmt.Sprintf("# FILE: %s\n", c.File))
@@ -344,6 +400,18 @@ func ParseComment(id string, data string) (*Comment, error) {
 		}
 		if strings.HasPrefix(line, "# AUTHOR: ") {
 			c.Author = strings.TrimPrefix(line, "# AUTHOR: ")
+			continue
+		}
+		if strings.HasPrefix(line, "# STATUS: ") {
+			c.Status = strings.TrimPrefix(line, "# STATUS: ")
+			continue
+		}
+		if strings.HasPrefix(line, "# TITLE: ") {
+			c.Title = strings.TrimPrefix(line, "# TITLE: ")
+			continue
+		}
+		if strings.HasPrefix(line, "# TAGS: ") {
+			c.Tags = parseTags(strings.TrimPrefix(line, "# TAGS: "))
 			continue
 		}
 		if strings.HasPrefix(line, "# RESOLVED: ") {

@@ -16,6 +16,17 @@ var errHelp = errors.New("help requested")
 // token) and dispatches it. Styles and Highlighter from cfg are merged into the
 // parsed options. A nil Highlighter yields plain (cgo-free) context rendering.
 func Run(argv []string, cfg Options) error {
+	// The unified `list` command merges tickets and code markers; it has its own
+	// parser and is not a comment/note sub-invocation.
+	if len(argv) > 0 && argv[0] == "list" {
+		err := RunList(argv, cfg)
+		if errors.Is(err, errHelp) {
+			usage()
+			return nil
+		}
+		return err
+	}
+
 	opts, err := ParseArgs(argv)
 	if errors.Is(err, errHelp) {
 		usage()
@@ -366,10 +377,22 @@ func usage() {
 
 // PrintUsage writes comment/note usage text to w.
 func PrintUsage(w io.Writer) {
-	fmt.Fprint(w, `Usage: tdb comment <subcommand> [options]
+	fmt.Fprint(w, `Usage: tdb list [options]
+       tdb comment <subcommand> [options]
        tdb note <subcommand> [options]
 
-Subcommands:
+list merges git-state tickets and in-code markers (TODO/FIXME/…) into one view:
+  --source VALUE         all (default), state (tickets), code (markers)
+  --marker LIST          restrict code markers (e.g. TODO,FIXME); code only
+  --status VALUE         unresolved (default), resolved, all; tickets only
+  --tag LIST             filter tickets by tag; tickets only
+  --file PATH            filter by file (trailing / = prefix match)
+  --grep TEXT            filter by text (case-insensitive)
+  -n[N]                  limit combined rows (bare = all)
+  -b, --branch [NAME]    scope tickets to a branch (no value = all branches)
+  --all-branches         tickets from all branches
+
+comment / note subcommands:
   list [ID]              List comments (or show one by ID suffix)
   add [file:line]        Add a comment (file:line) or standalone note
   edit <ID>              Edit a comment in $EDITOR

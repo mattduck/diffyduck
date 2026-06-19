@@ -1,4 +1,7 @@
-// Package scanner finds REVP annotations and NOREVP suppressions in source files.
+// Package scanner finds marker annotations (TODO, FIXME, REVP, …) in source
+// files. Markers are configurable: each binary registers the keyword families it
+// cares about. rpt scans for REVP (with NOREVP suppression); tdb scans for the
+// conventional code-comment markers (TODO/FIXME/HACK/XXX/NOTE).
 package scanner
 
 import (
@@ -9,14 +12,57 @@ import (
 	"strings"
 )
 
-const (
-	revpPrefix  = "REVP("
-	norevpBare  = "NOREVP"
-	norevpOpen  = "NOREVP("
-	norevpClose = ")"
-)
+// Marker defines a keyword family to scan for in source comments.
+type Marker struct {
+	// Keyword is the leading token of the annotation, e.g. "TODO" or "REVP".
+	Keyword string
+	// RequireCode requires a mandatory "(code):" form before the message, as in
+	// REVP(rule): message. When false the marker matches loosely: an optional
+	// "(code)" and an optional ":" may precede the message.
+	RequireCode bool
+	// Suppress is the keyword that suppresses this marker (e.g. "NOREVP"). An
+	// empty value disables suppression for the family.
+	Suppress string
+}
 
-// Violation is a REVP annotation found in a source file.
+// REVPMarker returns the marker spec for rpt's REVP/NOREVP annotations.
+func REVPMarker() Marker {
+	return Marker{Keyword: "REVP", RequireCode: true, Suppress: "NOREVP"}
+}
+
+// DefaultMarkers returns the conventional code-comment markers tdb scans for.
+func DefaultMarkers() []Marker {
+	return []Marker{
+		{Keyword: "TODO"},
+		{Keyword: "FIXME"},
+		{Keyword: "HACK"},
+		{Keyword: "XXX"},
+		{Keyword: "NOTE"},
+	}
+}
+
+// Match is a marker occurrence found in a source file.
+type Match struct {
+	File    string
+	Line    int    // 1-based
+	Keyword string // the marker keyword, e.g. "TODO" or "REVP"
+	Code    string // optional "(code)" capture ("" when absent)
+	Message string
+}
+
+func (m Match) String() string {
+	kw := m.Keyword
+	if m.Code != "" {
+		kw = fmt.Sprintf("%s(%s)", m.Keyword, m.Code)
+	}
+	if m.Message == "" {
+		return fmt.Sprintf("%s:%d: %s", m.File, m.Line, kw)
+	}
+	return fmt.Sprintf("%s:%d: %s %s", m.File, m.Line, kw, m.Message)
+}
+
+// Violation is a REVP annotation found in a source file. It is the REVP-specific
+// view of a Match, preserving rpt's exact output format.
 type Violation struct {
 	File    string
 	Line    int // 1-based
@@ -28,98 +74,144 @@ func (v Violation) String() string {
 	return fmt.Sprintf("%s:%d: REVP(%s) %s", v.File, v.Line, v.Code, v.Message)
 }
 
-// ScanFile scans a single file for REVP annotations, applying NOREVP suppressions.
-// Returns violations that are not suppressed.
-// Files with unknown extensions are skipped (returns nil, nil).
+// ScanFile scans a single file for REVP annotations, applying NOREVP
+// suppressions. Returns violations that are not suppressed. Files with unknown
+// extensions are skipped (returns nil, nil).
 func ScanFile(path string) ([]Violation, error) {
+	ms, err := ScanFileMarkers(path, []Marker{REVPMarker()})
+	if err != nil {
+		return nil, err
+	}
+	return toViolations(ms), nil
+}
+
+// ScanDir recursively scans files under dir for REVP violations.
+func ScanDir(dir string, opts WalkOptions) ([]Violation, error) {
+	ms, err := ScanDirMarkers(dir, []Marker{REVPMarker()}, opts)
+	if err != nil {
+		return nil, err
+	}
+	return toViolations(ms), nil
+}
+
+func toViolations(ms []Match) []Violation {
+	if len(ms) == 0 {
+		return nil
+	}
+	out := make([]Violation, len(ms))
+	for i, m := range ms {
+		out[i] = Violation{File: m.File, Line: m.Line, Code: m.Code, Message: m.Message}
+	}
+	return out
+}
+
+// ScanFileMarkers scans a single file for the given markers, applying each
+// marker's suppression keyword. Files with unknown extensions are skipped
+// (returns nil, nil).
+func ScanFileMarkers(path string, markers []Marker) ([]Match, error) {
 	lang, ok := langForFile(filepath.Base(path))
 	if !ok {
 		return nil, nil
 	}
-	return scanFile(path, lang)
+	return scanFileMarkers(path, lang, markers)
 }
 
-func scanFile(path string, lang language) ([]Violation, error) {
+func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	type rawViolation struct {
-		line int
-		code string
-		msg  string
+	type rawMatch struct {
+		line    int
+		keyword string
+		code    string
+		msg     string
 	}
-
 	type suppress struct {
-		line int    // line number the suppression targets
-		code string // empty = all rules
+		line    int    // line number the suppression targets
+		keyword string // marker keyword this suppression applies to
+		code    string // empty = all codes
 	}
 
-	var violations []rawViolation
+	var matches []rawMatch
 	var suppressions []suppress
+	var pending []suppress // whole-line suppressions awaiting the next code line
 
-	scanner := bufio.NewScanner(f)
+	sc := bufio.NewScanner(f)
 	lineNum := 0
-	var prevLineNorevp *suppress // NOREVP on preceding line targeting next code line
+	prefix := lang.linePrefix
 
-	for scanner.Scan() {
+	for sc.Scan() {
 		lineNum++
-		text := scanner.Text()
+		text := sc.Text()
 		trimmed := strings.TrimSpace(text)
-		prefix := lang.linePrefix
 
 		segments := commentSegments(text, prefix)
 		if len(segments) == 0 {
-			// No comment on this line. If we had a preceding-line NOREVP pending,
-			// apply it to this line (the first non-blank, non-comment line).
-			if prevLineNorevp != nil && trimmed != "" {
-				prevLineNorevp.line = lineNum
-				suppressions = append(suppressions, *prevLineNorevp)
-				prevLineNorevp = nil
+			// No comment on this line. Flush any pending preceding-line
+			// suppressions onto the first non-blank, non-comment line.
+			if len(pending) > 0 && trimmed != "" {
+				for _, p := range pending {
+					p.line = lineNum
+					suppressions = append(suppressions, p)
+				}
+				pending = nil
 			}
 			continue
 		}
 
 		for _, seg := range segments {
-			// Parse REVP annotation from each comment segment.
-			if v, ok := parseREVP(path, lineNum, seg.body); ok {
-				violations = append(violations, rawViolation{lineNum, v.Code, v.Message})
+			// A segment matches at most one marker keyword (the families share no
+			// common prefix), so stop at the first hit.
+			for _, m := range markers {
+				if code, msg, ok := parseMarker(m, seg.body); ok {
+					matches = append(matches, rawMatch{lineNum, m.Keyword, code, msg})
+					break
+				}
 			}
-
-			// Parse NOREVP suppression from each comment segment.
-			if sup, ok := parseNOREVP(seg.body); ok {
-				if seg.isWholeLine {
-					// Comment occupies the whole line (possibly with leading whitespace):
-					// preceding-line suppression — apply to next non-blank, non-comment line.
-					prevLineNorevp = &suppress{code: sup}
-				} else {
-					// Inline suppression — applies to this line.
-					suppressions = append(suppressions, suppress{line: lineNum, code: sup})
+			// A suppression can co-occur with a match on the same line (e.g.
+			// "REVP(x): msg // NOREVP(x)"), so scan suppressions independently.
+			for _, m := range markers {
+				if m.Suppress == "" {
+					continue
+				}
+				if code, ok := parseSuppress(m.Suppress, seg.body); ok {
+					if seg.isWholeLine {
+						pending = append(pending, suppress{keyword: m.Keyword, code: code})
+					} else {
+						suppressions = append(suppressions, suppress{line: lineNum, keyword: m.Keyword, code: code})
+					}
 				}
 			}
 		}
 	}
-	if err := scanner.Err(); err != nil {
+	if err := sc.Err(); err != nil {
 		return nil, err
 	}
 
-	// Build suppression lookup: line -> set of suppressed codes ("" = all).
-	suppressed := make(map[int]map[string]bool)
+	// Build suppression lookup: (line, keyword) -> set of suppressed codes
+	// ("" = all).
+	type supKey struct {
+		line    int
+		keyword string
+	}
+	suppressed := make(map[supKey]map[string]bool)
 	for _, s := range suppressions {
-		if suppressed[s.line] == nil {
-			suppressed[s.line] = make(map[string]bool)
+		k := supKey{s.line, s.keyword}
+		if suppressed[k] == nil {
+			suppressed[k] = make(map[string]bool)
 		}
-		suppressed[s.line][s.code] = true
+		suppressed[k][s.code] = true
 	}
 
-	var out []Violation
-	for _, v := range violations {
-		if isSuppressed(suppressed[v.line], v.code) {
+	var out []Match
+	for _, m := range matches {
+		if isSuppressed(suppressed[supKey{m.line, m.keyword}], m.code) {
 			continue
 		}
-		out = append(out, Violation{File: path, Line: v.line, Code: v.code, Message: v.msg})
+		out = append(out, Match{File: path, Line: m.line, Keyword: m.keyword, Code: m.code, Message: m.msg})
 	}
 	return out, nil
 }
@@ -171,48 +263,75 @@ func commentSegments(line, prefix string) []commentSegment {
 	return segs
 }
 
-// parseREVP attempts to parse a REVP annotation from a comment body.
-// comment is the text after the line-comment prefix, trimmed.
-// Example input: "REVP(bare-dict): avoid using bare dict here"
-func parseREVP(file string, line int, comment string) (Violation, bool) {
-	if !strings.HasPrefix(comment, revpPrefix) {
-		return Violation{}, false
+// parseMarker attempts to parse a marker occurrence from a comment body.
+// body is the text after the line-comment prefix, trimmed. Returns the optional
+// code capture, the message, and whether the body matched the marker.
+func parseMarker(m Marker, body string) (code, msg string, ok bool) {
+	if !strings.HasPrefix(body, m.Keyword) {
+		return "", "", false
 	}
-	rest := comment[len(revpPrefix):]
-	closeIdx := strings.Index(rest, "):")
-	if closeIdx < 0 {
-		return Violation{}, false
+	rest := body[len(m.Keyword):]
+
+	if m.RequireCode {
+		// Strict form: "(code): message" (REVP semantics).
+		if !strings.HasPrefix(rest, "(") {
+			return "", "", false
+		}
+		closeIdx := strings.Index(rest, "):")
+		if closeIdx < 0 {
+			return "", "", false
+		}
+		code = strings.TrimSpace(rest[1:closeIdx])
+		msg = strings.TrimSpace(rest[closeIdx+2:])
+		if code == "" {
+			return "", "", false
+		}
+		return code, msg, true
 	}
-	code := strings.TrimSpace(rest[:closeIdx])
-	msg := strings.TrimSpace(rest[closeIdx+2:])
-	if code == "" {
-		return Violation{}, false
+
+	// Loose form. The keyword must be a standalone word: the next character may
+	// not be alphanumeric (so "TODO" matches but "TODOLIST" does not).
+	if rest != "" && isWordChar(rest[0]) {
+		return "", "", false
 	}
-	return Violation{File: file, Line: line, Code: code, Message: msg}, true
+	// Optional "(code)".
+	if strings.HasPrefix(rest, "(") {
+		if closeIdx := strings.Index(rest, ")"); closeIdx >= 0 {
+			code = strings.TrimSpace(rest[1:closeIdx])
+			rest = rest[closeIdx+1:]
+		}
+	}
+	// Optional ":" separator.
+	rest = strings.TrimPrefix(rest, ":")
+	msg = strings.TrimSpace(rest)
+	return code, msg, true
 }
 
-// parseNOREVP attempts to parse a NOREVP suppression from a comment body.
-// Returns the rule code (empty string = suppress all) and true on success.
-// Examples: "NOREVP" -> ("", true), "NOREVP(bare-dict)" -> ("bare-dict", true)
-func parseNOREVP(comment string) (string, bool) {
-	if !strings.HasPrefix(comment, norevpBare) {
+// parseSuppress attempts to parse a suppression from a comment body for the
+// given suppression keyword. Returns the rule code (empty = suppress all) and
+// true on success. Examples (keyword "NOREVP"):
+// "NOREVP" -> ("", true), "NOREVP(bare-dict)" -> ("bare-dict", true).
+func parseSuppress(keyword, body string) (code string, ok bool) {
+	if !strings.HasPrefix(body, keyword) {
 		return "", false
 	}
-	rest := comment[len(norevpBare):]
-	// Bare NOREVP (possibly followed by whitespace or end of string).
+	rest := body[len(keyword):]
 	if rest == "" || strings.TrimSpace(rest) == "" {
 		return "", true
 	}
-	// NOREVP(code)
 	if strings.HasPrefix(rest, "(") {
 		closeIdx := strings.Index(rest, ")")
 		if closeIdx < 0 {
 			return "", false
 		}
-		code := strings.TrimSpace(rest[1:closeIdx])
-		return code, true
+		return strings.TrimSpace(rest[1:closeIdx]), true
 	}
 	return "", false
+}
+
+// isWordChar reports whether c is an ASCII letter or digit.
+func isWordChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // WalkOptions controls which paths ScanDir visits. Either predicate may be nil,
@@ -226,11 +345,12 @@ type WalkOptions struct {
 	KeepDir func(path string) bool
 }
 
-// ScanDir recursively scans files under dir, returning all unsuppressed
-// violations. Files with unknown extensions are skipped. The opts predicates
-// further restrict which files are scanned and which directories are walked.
-func ScanDir(dir string, opts WalkOptions) ([]Violation, error) {
-	var out []Violation
+// ScanDirMarkers recursively scans files under dir for the given markers,
+// returning all unsuppressed matches. Files with unknown extensions are skipped.
+// The opts predicates further restrict which files are scanned and which
+// directories are walked.
+func ScanDirMarkers(dir string, markers []Marker, opts WalkOptions) ([]Match, error) {
+	var out []Match
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -244,11 +364,11 @@ func ScanDir(dir string, opts WalkOptions) ([]Violation, error) {
 		if opts.KeepFile != nil && !opts.KeepFile(path) {
 			return nil
 		}
-		vs, err := ScanFile(path)
+		ms, err := ScanFileMarkers(path, markers)
 		if err != nil {
 			return fmt.Errorf("scanning %s: %w", path, err)
 		}
-		out = append(out, vs...)
+		out = append(out, ms...)
 		return nil
 	})
 	return out, err

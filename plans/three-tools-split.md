@@ -1,6 +1,6 @@
 # Plan: Split into three tools — `dfd`, `tdb`, `rpt`
 
-Status: in progress (2026-06-17)
+Status: in progress (2026-06-19)
 
 ## Progress
 
@@ -18,7 +18,21 @@ Status: in progress (2026-06-17)
   `BurntSushi/toml` now direct. Makefile builds all three binaries + `cgo-free`
   gate wired into `check`. Three binaries (dfd/tdb/rpt) green.
 
-Remaining: **P3-P5** (new features + polish) below — not yet started.
+- **P3 done** — `pkg/scanner` generalized to configurable `Marker`/`Match`
+  families (`ScanFileMarkers`/`ScanDirMarkers`); REVP kept intact as a wrapper
+  (`Violation`/`ScanFile`/`ScanDir`) so `rpt` is unchanged. New unified
+  `tdb list` (decided: `--source=all|state|code`, not a separate `todo`/`scan`
+  subcommand) merges git-state tickets and in-code markers (TODO/FIXME/HACK/
+  XXX/NOTE) into one KIND/LOCATION/TEXT view, with `--marker/--file/--grep/
+  --status/--tag/-n/-b` filters. Code markers render uppercase so they stay
+  distinct from lowercase ticket kinds even without color. `Comment` gained
+  additive `Status`/`Title`/`Tags` fields (backward-compatible serialize/parse +
+  `EffectiveStatus`; round-trip tested against old blobs).
+  - *Deferred to later:* full status-transition CLI (setting in-progress, etc.)
+    — P3 adds the schema + filters/display, not a new edit workflow. `--marker`
+    keyword input is matched case-insensitively against the scanner families.
+
+Remaining: **P4-P5** (rpt state-sourced violations + polish) below — not yet started.
 
 ---
 
@@ -278,7 +292,10 @@ comments flagged as rule violations.
    format; write a round-trip test against an old-format blob.
 5. **Skills overlap (P5)**: `review`/`review-fix` vs `parrot-review`/`parrot-fix` —
    needs an explicit canonical decision.
-6. **Naming of `tdb` scan subcommand**: `tdb todo` vs `tdb scan` vs `tdb list --source=code`.
+6. ~~**Naming of `tdb` scan subcommand**: `tdb todo` vs `tdb scan` vs `tdb list --source=code`.~~
+   **Decided (P3):** unified `tdb list --source=all|state|code` — no separate
+   `todo`/`scan` subcommand. Risks #3 (REVP semantics) and #4 (additive schema +
+   old-blob round-trip) addressed in P3.
 
 ## Suggested commit sequence
 
