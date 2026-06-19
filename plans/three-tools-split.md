@@ -43,12 +43,21 @@ Status: in progress (2026-06-19)
   (warns and continues outside a git repo). `rpt` stays `CGO_ENABLED=0`.
   - *Decisions:* include standalone rule-tagged tickets (placeholder location);
     resolved = state-side suppression (the item-3 default, adopted early).
-  - *Deferred:* P4 item 3 (fuller suppression reconciliation), item 4 (honor
-    `revparrot.toml` path scope for state violations — today only the `-rule`
-    CLI filter applies to state), item 5 (situation-specific reviews).
+  - **P4 item 3 done (nothing further):** resolved is the complete state-side
+    suppression. There is no `NOREVP`-equivalent for tickets and we don't want
+    one — a rule-tagged ticket is a violation until it's resolved.
+  - *Deferred:* item 5 (situation-specific reviews).
 
-Remaining: **P4 items 3-5** (suppression/scope reconciliation, situation-specific
-reviews) and **P5** (polish) below.
+- **P4 item 4 done** — state violations now honor `revparrot.toml` scope. Code and
+  state violations are merged into one slice before the matcher + `-rule` filter
+  run, so per-rule include/exclude and `[ignore]` apply uniformly. The global
+  `[revparrot]` include/exclude (enforced for code by pruning the walk) is applied
+  to state violations explicitly via `Matcher.InScope`, since they bypass the
+  walk. **Standalone tickets are now excluded from `rpt check` entirely** (a rule
+  violation is inherently code-located, and path scope can't apply to a ticket
+  with no path) — this drops the `(ticket <id>)` placeholder from P4.1-2.
+
+Remaining: **P4 item 5** (situation-specific reviews) and **P5** (polish) below.
 
 ---
 
@@ -250,9 +259,12 @@ comments flagged as rule violations.
 2. `rpt check` merges: REVP markers from `pkg/scanner` **+** rule-tagged tickets from
    `pkg/ticketdb` (`Store.AllComments` filtered by tag), unified into the existing
    `scanner.Violation` output shape.
-3. Reconcile suppression semantics (`NOREVP` is code-side; decide the state-side
-   equivalent — likely "resolved" suppresses).
-4. Honor `revparrot.toml` rule scope/ignore for state-sourced violations too.
+3. ~~Reconcile suppression semantics (`NOREVP` is code-side; decide the
+   state-side equivalent — likely "resolved" suppresses).~~ **Done:** resolved
+   suppresses, and that's the whole story — no `NOREVP`-equivalent for tickets.
+4. ~~Honor `revparrot.toml` rule scope/ignore for state-sourced violations too.~~
+   **Done:** code + state merged before matcher/`-rule`; global include/exclude
+   applied to state via `InScope`. Standalone tickets excluded from `rpt check`.
 5. **Situation-specific reviews** (the broader-than-lint goal): generalize the review
    skill beyond the fixed rule catalogue so a review can be scoped/parameterized at
    invocation — a diff/PR, a subsystem path, or an ad-hoc prompt — and still emit REVP
