@@ -46,7 +46,8 @@ Status: in progress (2026-06-19)
   - **P4 item 3 done (nothing further):** resolved is the complete state-side
     suppression. There is no `NOREVP`-equivalent for tickets and we don't want
     one — a rule-tagged ticket is a violation until it's resolved.
-  - *Deferred:* item 5 (situation-specific reviews).
+  - *Deferred:* item 5 (situation-specific reviews) — **design now locked, see
+    "P4 item 5 — design (decided)" below; implementation pending.**
 
 - **P4 item 4 done** — state violations now honor `revparrot.toml` scope. Code and
   state violations are merged into one slice before the matcher + `-rule` filter
@@ -268,9 +269,50 @@ comments flagged as rule violations.
 5. **Situation-specific reviews** (the broader-than-lint goal): generalize the review
    skill beyond the fixed rule catalogue so a review can be scoped/parameterized at
    invocation — a diff/PR, a subsystem path, or an ad-hoc prompt — and still emit REVP
-   markers + state tickets through the same `check` pipeline. Keep generic `[[rules]]`
-   as one mode; add an ad-hoc/scoped review mode alongside it. (Design item, not a
-   blocker for P2–P4 which stay rule-based.)
+   markers + state tickets through the same `check` pipeline. **Design locked below.**
+
+### P4 item 5 — design (decided)
+
+**Core stance: the agent writes, `rpt` reports.** `rpt` stays deterministic and
+CGO-free; no LLM in any binary. A skill/prompt is the entry point. The agent reads a
+rule, reviews the target, and *writes* findings; `rpt check` keeps collecting them as
+before.
+
+1. **A "rule" is one concept — there is no separate "review" type.** A rule is a
+   `code` + a prompt; the existing `Rule.Description` *is* that prompt. A narrow lint
+   rule has a short description; a wide preset review (e.g. "security, focused on
+   auth/session", "accessibility, focused on forms") is just a rule with a long
+   description. No new field and no second `[[reviews]]` table. (Possible later
+   cleanup: rename `description` → `prompt`/`guidance`.) Wide reviews need **no extra
+   feature support** at this stage.
+
+2. **Two output modes, written differently by the agent:**
+   - *git-state* → agent calls the CLI: `tdb comment add <file>:<line> --rule <code>`
+     (and standalone tickets likewise). The CLI is the single writer of state.
+   - *code-comment* → agent **hand-edits the source file** to insert a
+     `REVP(<code>)`-format comment in the file's native comment syntax. Decided
+     against a `rpt mark` insert command for now — not worth maintaining reliable
+     per-language insertion when the agent can do it. (Revisit if hand-editing proves
+     error-prone; the scanner already knows the grammars.)
+   - **Mode selection:** config carries a default; the invocation can override; the
+     user can just tell the agent which to use and it picks the right tool. (Default
+     field is additive to `Rule`; can land when first needed.)
+
+3. **New CLI: "what does the current diff touch, per rule."** One call returns, for
+   the working-tree diff (**including newly-added/untracked files**), each rule and the
+   in-scope files it impacts — so an agent can cheaply decide what to check without
+   re-deriving scope. Built from existing primitives: list diff files → for each rule
+   filter by `Matcher.InScope` + `RuleApplies` + `!Ignored` (`pkg/rpconfig/match.go`).
+   - *File-type matching is already supported* via globs (`**/*.go` etc. through
+     `globToRegexp`); a rule scoped to a language is just `include = ["**/*.go"]`. No
+     new matching feature required.
+   - *Scope composition:* the diff narrows; config globs still constrain (intersect).
+   - *Home/shape (open):* likely `rpt` (it owns rules + matcher), e.g.
+     `rpt impact [--diff]` or `rpt rules --diff`; exact name/flags TBD at impl.
+
+4. **Skills:** the existing `skills/review` stays **as-is**; no new skills now. Skills
+   are general capability docs that teach the agent how to drive these CLIs; we add one
+   only when the workflow has stabilized.
 
 **Exit:** `rpt check` surfaces violations from code and state; exit codes unchanged
 (0 clean / 1 violations / 2 error). `make check` green.
@@ -318,8 +360,10 @@ comments flagged as rule violations.
    semantics — pin with the ported revparrot tests before refactoring.
 4. **Ticket schema growth (P3/P4)**: additive-only to the `refs/dfd/comments` serialized
    format; write a round-trip test against an old-format blob.
-5. **Skills overlap (P5)**: `review`/`review-fix` vs `parrot-review`/`parrot-fix` —
-   needs an explicit canonical decision.
+5. **Skills overlap (P5)**: `review`/`review-fix` vs `parrot-review`/`parrot-fix`.
+   *Decided (P4.5):* keep `skills/review` as-is and add **no** new skills for now;
+   skills are general capability docs added only once a workflow stabilizes. The
+   `parrot-*` skills are not being ported. Revisit in P5 only if a gap appears.
 6. ~~**Naming of `tdb` scan subcommand**: `tdb todo` vs `tdb scan` vs `tdb list --source=code`.~~
    **Decided (P3):** unified `tdb list --source=all|state|code` — no separate
    `todo`/`scan` subcommand. Risks #3 (REVP semantics) and #4 (additive schema +
