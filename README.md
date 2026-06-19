@@ -1,78 +1,81 @@
 # diffyduck
 
-git side-by-side terminal diff + log + review tool.
+Three terminal tools for reading, reviewing, and annotating code changes.
 
-![demo](./demo.gif)
+## Tools
 
-## Purpose and features
+| Binary | Name         | Role |
+|--------|--------------|------|
+| `dfd`  | diffyduck    | Side-by-side diff/log TUI with syntax highlighting and Vim-style navigation |
+| `tdb`  | ticketdb     | CLI over the git-backed comment/note store: list, add, edit, resolve |
+| `rpt`  | reviewparrot | Rule-based code review linter: scans for `REVP` annotations and rule-tagged tickets |
 
-Diffyduck provides a git terminal diff/log view and some other miscellaneous
-tools, with the goal of making it easier for me to read and review code
-changes. I'm aiming for something faster to use than Github's PR interface, but
-more advanced than a basic git pager like [delta](https://github.com/dandavison/delta) (I want it to feel like a pager,
-but it's a TUI that triggers its own git commands).
-
-Beyond a usual diff view, features include:
-
-- Comments on diffs or commits, export comments. Comments stored in git state similar to git-notes
-- Stats on changed classes/functions/symbols, parsed via tree-sitter
-- Fold/expand inspired by org-mode
-- Split windows to look at two different locations at once
+All three share a common git-state store (`refs/dfd/comments`) for inline comments,
+standalone notes, and rule-tagged review tickets.
 
 ## Install
 
-No binaries yet. It's Go but we use tree-sitter, so you'll need both Go and a C compiler.
+`dfd` requires Go and a C compiler (tree-sitter). `tdb` and `rpt` are pure Go
+(`CGO_ENABLED=0`).
 
 ```sh
-make bootstrap  # Pull some required tree-sitter code
-make install  # Compile and install
+make bootstrap  # Pull tree-sitter grammar files (required for dfd)
+make install    # Compile and install all three binaries to $GOPATH/bin
 ```
 
-## Usage
+## dfd
 
-For the most part I'm trying to stick to git-replacement commands like `dfd
-status`, `dfd diff`, `dfd log`, etc.
+Side-by-side git diff and log viewer.
 
-Run `dfd --help` to see usage and help output, which once looked like this:
-
-```
-$ dfd --help
-dfd - terminal side-by-side diff viewer
-
-Usage:
-  dfd [flags] [refs] [-- paths]
-  dfd <command> [flags] [args]
-
-Commands:
-  diff, d    Compare changes
-  show       Show a commit
-  log, l     Browse commit history
-  clean      Delete persisted snapshots
-  branch, b  Show branch dependency tree
-  status, s  Show rich working tree status (default)
-  comment, c List and edit comments
-  config     Manage configuration
-  completion Print shell completion script
-
-Global flags:
-  -h, --help       Show help
-      --version    Show version
-
-Use "dfd help <command>" for more about a command.
-Press C-h inside dfd for keybinding help.
+```sh
+dfd               # Working-tree status (default)
+dfd diff          # Staged + unstaged changes
+dfd diff main     # Diff vs a branch
+dfd show abc123   # Show a commit
+dfd log           # Browse commit history
+dfd --help        # Full usage
 ```
 
-If you're in an interactive command, use `ctrl+h` to show the help view and see
-keybindings.
+Press `C-h` inside dfd to see keybindings. Use `dfd config --init` to generate a
+config file with theme and keybinding customisation.
+
+## tdb
+
+CLI over the git-backed ticket store. Tickets are stored in `refs/dfd/comments`
+and shared with dfd's in-TUI comment view.
+
+```sh
+tdb list                          # List all tickets and in-code markers
+tdb list --source state           # Git-state tickets only
+tdb list --source code            # In-code markers (TODO/FIXME/HACK/…) only
+tdb list --rule SEC-AUTH          # Filter by rule code
+tdb comment add src/foo.go:42     # Add a comment at a file:line
+tdb comment list                  # List comments
+tdb comment resolve <id>          # Resolve a comment
+tdb note add -m "remember this"   # Add a standalone note
+tdb completion bash               # Shell completion script
+```
+
+## rpt
+
+Rule-based reviewer. Rules are defined in `revparrot.toml`; the agent (Claude)
+scans code and places `REVP(code)` annotations or rule-tagged tickets; `rpt check`
+collects them and exits non-zero if violations exist.
+
+```sh
+rpt rules                         # List defined rules
+rpt diff                          # Show rules × files touched by working-tree diff
+rpt diff main..HEAD               # Same, scoped to a ref range
+rpt diff --show abc123            # Same, scoped to a single commit
+rpt check                         # Scan for violations (exit 1 = violations found)
+rpt check -rule SEC-AUTH          # Filter to one rule
+rpt completion bash               # Shell completion script
+```
 
 ## Status
 
-Liable to change based on whatever I find useful, and has only been tested on my
-own machine and preferred tools.
-
-It does include a config feature where you can customise settings, theme and
-keybindings.
+Personal tooling — tested on my own machine and workflow. Subject to change.
 
 ## Code
 
-99.9% generated, which was the only reason I could get time to do it.
+99.9% generated.

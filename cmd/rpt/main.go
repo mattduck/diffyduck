@@ -19,9 +19,10 @@ var version = "dev"
 const usageGeneral = `Usage: rpt <command> [flags]
 
 Commands:
-  check    Scan for REVP violations in code and git-state tickets
-  rules    List rules defined in config
-  diff     Show rules and their in-scope files touched by the current diff
+  check       Scan for REVP violations in code and git-state tickets
+  rules       List rules defined in config
+  diff        Show rules and their in-scope files touched by a diff
+  completion  Print shell completion script
 
 Run 'rpt <command> -h' for command-specific help.
 `
@@ -41,6 +42,13 @@ func main() {
 		os.Exit(cmdDiff(os.Args[2:]))
 	case "version", "--version", "-v":
 		fmt.Println("reviewparrot", version)
+	case "completion":
+		if err := runCompletion(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(2)
+		}
+	case "__complete":
+		runComplete(os.Args[2:])
 	case "help", "-h", "--help":
 		fmt.Fprint(os.Stderr, usageGeneral)
 	default:

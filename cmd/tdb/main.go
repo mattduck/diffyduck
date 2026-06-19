@@ -21,6 +21,18 @@ func main() {
 		return
 	}
 
+	switch args[0] {
+	case "__complete":
+		runComplete(args[1:])
+		return
+	case "completion":
+		if err := runCompletion(args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(2)
+		}
+		return
+	}
+
 	// Missing config is fine — StylesFromConfig handles the zero value.
 	cfg, err := config.Load()
 	if err != nil {

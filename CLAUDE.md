@@ -4,16 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DiffyDuck is a terminal-based side-by-side diff viewer written in Go, using Bubble Tea for the TUI. It displays Git diffs with syntax highlighting (via tree-sitter), three-level file folding, and Vim-style navigation.
+This repo hosts three terminal tools built on a shared Go module (`github.com/mattduck/diffyduck`):
+
+| Binary | Name         | Role |
+|--------|--------------|------|
+| `dfd`  | diffyduck    | Side-by-side diff/log TUI (Bubble Tea, tree-sitter syntax highlighting, Vim-style navigation) |
+| `tdb`  | ticketdb     | CLI over the git-backed comment/note/ticket store |
+| `rpt`  | reviewparrot | Rule-based code review linter (`REVP` annotations + rule-tagged tickets) |
+
+`tdb` and `rpt` are CGO-free (`CGO_ENABLED=0`). tree-sitter (cgo) is a `dfd`-only dependency. A `cgo-free` gate in `make check` enforces this.
 
 ## Build & Development Commands
 
 ```bash
-make build           # Build to ./dfd
-make install         # Install to $GOPATH/bin
+make build           # Build dfd, tdb, rpt to ./dfd ./tdb ./rpt
+make install         # Install all three to $GOPATH/bin
 make test            # Run all tests
 make test-v          # Verbose test output
-make check           # fmt-check + vet + lint + test (full CI check)
+make check           # fmt-check + vet + lint + cgo-free + test (full CI check)
 make update-golden   # Update golden file snapshots after intentional view changes
 make cover           # Generate coverage report
 make fetch-queries   # Download tree-sitter query files from upstream
@@ -29,19 +37,34 @@ go test -v ./pkg/diff -run TestParser
 
 ### Data Flow
 ```
-Git Command → Parse unified diff → Transform to LinePairs → TUI Model → Render
+Git Command → Parse unified diff → Transform to LinePairs → TUI Model → Render   (dfd)
+                                                                                  (tdb)
+User → tdb CLI → pkg/ticketcli → pkg/ticketdb (git-state store)
+                                                                                  (rpt)
+User → rpt CLI → pkg/rpconfig (rules) + pkg/scanner (REVP markers) → violations
 ```
 
 ### Package Structure
 
-- **`cmd/dfd/`** - Entry point, CLI parsing, command orchestration
-- **`internal/tui/`** - Bubble Tea TUI (model, update, view, search, keys)
-- **`pkg/diff/`** - Unified diff parsing (`Diff` → `File` → `Hunk` → `Line`)
-- **`pkg/sidebyside/`** - Transform diffs to side-by-side pairs (`FilePair`, `LinePair`)
-- **`pkg/content/`** - Lazy content fetching with caching
-- **`pkg/highlight/`** - Tree-sitter syntax highlighting engine
-- **`pkg/inlinediff/`** - Word-level diff highlighting within lines
-- **`pkg/pager/`** - Stdin reading and ANSI stripping
+**Binaries:**
+- **`cmd/dfd/`** — TUI entry point, CLI parsing, command orchestration
+- **`cmd/tdb/`** — ticketdb CLI entry point; delegates to `pkg/ticketcli`
+- **`cmd/rpt/`** — reviewparrot CLI entry point; `check`, `rules`, `diff` subcommands
+
+**Shared packages:**
+- **`pkg/ticketdb/`** — git-backed comment/note/ticket store (`Store`, `Comment`, `Index`, `Matcher`)
+- **`pkg/ticketcli/`** — comment/note CLI logic and formatting (cgo-free; used by both `dfd` and `tdb`)
+- **`pkg/scanner/`** — configurable code-comment marker parser (`REVP`/`NOREVP` + `TODO`/`FIXME`/…)
+- **`pkg/rpconfig/`** — `revparrot.toml` rules/globs loader and `Matcher`
+
+**dfd-specific packages:**
+- **`internal/tui/`** — Bubble Tea TUI (model, update, view, search, keys)
+- **`pkg/diff/`** — Unified diff parsing (`Diff` → `File` → `Hunk` → `Line`)
+- **`pkg/sidebyside/`** — Transform diffs to side-by-side pairs (`FilePair`, `LinePair`)
+- **`pkg/content/`** — Lazy content fetching with caching
+- **`pkg/highlight/`** — Tree-sitter syntax highlighting engine
+- **`pkg/inlinediff/`** — Word-level diff highlighting within lines
+- **`pkg/pager/`** — Stdin reading and ANSI stripping
 
 ### Key Patterns
 
@@ -61,7 +84,7 @@ Tests are layered:
 3. Golden file snapshots (view rendering in view_test.go)
 4. Integration tests (full pipeline)
 
-Test state transitions, not rendered output - assert `model.scroll == 5`, not parsed screen content.
+Test state transitions, not rendered output — assert `model.scroll == 5`, not parsed screen content.
 
 ### Git Isolation in Tests
 
@@ -73,9 +96,13 @@ Test state transitions, not rendered output - assert `model.scroll == 5`, not pa
 
 **For TUI tests:** Use `MockGit` — no real git operations needed.
 
+**`cmd/rpt` exception:** `rpt`'s `diffedFiles()` and completion code use `exec.Command("git", ...)` directly (not via `pkg/git`). This is intentional — `rpt` does not inherit `GIT_DIR` during normal CLI use, and always passes `-C <gitRoot>` to pin the repo. Do not add `pkg/git` as a dependency of `rpt`.
+
 ## Keeping Help & Config in Sync
 
-When adding or changing features, update all related surfaces. Use these checklists:
+When adding or changing features, update all related surfaces.
+
+### dfd
 
 **New keybinding:**
 1. `KeyMap` struct + `defaultKeyMap` in `internal/tui/keys.go`
@@ -90,7 +117,7 @@ When adding or changing features, update all related surfaces. Use these checkli
 3. `ApplyTheme()` in `internal/tui/view.go`
 4. `GenerateExample()` in `pkg/config/example.go`
 
-**New CLI subcommand:**
+**New dfd CLI subcommand:**
 1. `usageXxx` const in `cmd/dfd/main.go`
 2. `printUsage()` switch case in `cmd/dfd/main.go`
 3. Entry in `usageGeneral` Commands section
@@ -98,11 +125,27 @@ When adding or changing features, update all related surfaces. Use these checkli
 5. `flagsForCmd()` in `cmd/dfd/complete.go`
 6. Positional completion handling in `generateCompletions()` if needed
 
-**New CLI flag:**
+**New dfd CLI flag:**
 1. Relevant `usageXxx` const for the subcommand
 2. `usageGeneral` if it's a global or cross-command flag
 3. `flagsForCmd()` in `cmd/dfd/complete.go`
 4. `completeFlagValue()` in `cmd/dfd/complete.go` if the flag takes enumerated values
+
+### tdb
+
+**New tdb subcommand or flag:**
+1. Dispatch in `pkg/ticketcli/parse.go` (or `list.go` for list-related)
+2. Usage string in `pkg/ticketcli/parse.go`
+3. `subcommands` / `flagsForCmd()` in `cmd/tdb/complete.go`
+4. `completeFlagValue()` in `cmd/tdb/complete.go` if the flag takes enumerated values
+
+### rpt
+
+**New rpt subcommand or flag:**
+1. `usageGeneral` const in `cmd/rpt/main.go`
+2. Switch case in `main()` in `cmd/rpt/main.go`
+3. `rptSubcommands` / `flagsForCmd()` in `cmd/rpt/complete.go`
+4. `completeFlagValue()` in `cmd/rpt/complete.go` if the flag takes enumerated values
 
 ## Commit Conventions
 
