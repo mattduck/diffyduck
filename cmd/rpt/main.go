@@ -319,27 +319,41 @@ Flags:
 	return 0
 }
 
-// cmdDiff shows, for each enabled rule, which files touched by the current
-// working-tree diff (staged + unstaged changes + untracked files) fall within
-// that rule's scope. Rules with no matching files are omitted. Designed as a
-// scoping tool for an LLM agent: the agent reads the output to learn exactly
-// which files it needs to review for each rule and what to look for.
+// cmdDiff shows, for each enabled rule, which files touched by the specified
+// diff fall within that rule's scope, together with the rule description.
+// Rules with no matching files are omitted. Designed as a scoping tool for an
+// LLM agent: the agent reads the output to learn what to check and where.
 // Exit code: 0 = ok, 2 = error.
 func cmdDiff(args []string) int {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
 	flagConfig := fs.String("config", "", "explicit config file path")
+	flagAll := fs.Bool("a", false, "include untracked files (working-tree mode only)")
+	flagCached := fs.Bool("cached", false, "show staged changes only (alias: --staged)")
+	fs.Bool("staged", false, "alias for --cached") // handled below via Lookup
+	flagShow := fs.Bool("show", false, "show files changed in a single commit (default: HEAD)")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `Usage: rpt diff [flags]
+		fmt.Fprint(os.Stderr, `Usage: rpt diff [flags] [ref...]
 
-Show rules and their in-scope files touched by the current diff.
+Show rules and their in-scope files touched by the given diff.
 
-For each enabled rule, lists the files from the working-tree diff
-(staged + unstaged + untracked) that fall within that rule's scope,
-together with the rule's description so an agent knows what to check.
-Rules with no matching files are omitted.
+For each enabled rule, lists the matching files together with the rule
+description so an agent knows what to check. Rules with no matching
+files are omitted.
+
+Diff sources (pick one):
+  rpt diff                  working-tree changes vs HEAD (staged + unstaged)
+  rpt diff -a               same, plus untracked files
+  rpt diff --cached         staged changes only
+  rpt diff <ref>            working tree vs ref  (git diff <ref>)
+  rpt diff <ref1> <ref2>    between two refs     (git diff <ref1> <ref2>)
+  rpt diff --show           files changed in HEAD (git show)
+  rpt diff --show <ref>     files changed in commit <ref>
 
 Flags:
+  -a               include untracked files (working-tree mode only)
+  --cached         staged changes only
+  --show           single-commit mode (git show)
   -rule <code>     filter to a specific rule code
   -config <path>   explicit config file path
 
@@ -349,6 +363,43 @@ Exit codes:
 `)
 	}
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	// --staged is an alias for --cached.
+	if f := fs.Lookup("staged"); f != nil && f.Value.String() == "true" {
+		*flagCached = true
+	}
+
+	refs := fs.Args()
+
+	// Validate flag/ref combinations.
+	if *flagShow && *flagCached {
+		fmt.Fprintln(os.Stderr, "error: --show and --cached cannot be used together")
+		return 2
+	}
+	if *flagAll && *flagCached {
+		fmt.Fprintln(os.Stderr, "error: -a and --cached cannot be used together")
+		return 2
+	}
+	if *flagAll && len(refs) > 0 {
+		fmt.Fprintln(os.Stderr, "error: -a is only valid for working-tree mode (no refs)")
+		return 2
+	}
+	if *flagAll && *flagShow {
+		fmt.Fprintln(os.Stderr, "error: -a is only valid for working-tree mode (not --show)")
+		return 2
+	}
+	if *flagCached && len(refs) > 0 {
+		fmt.Fprintln(os.Stderr, "error: --cached cannot be used with ref arguments")
+		return 2
+	}
+	if !*flagShow && len(refs) > 2 {
+		fmt.Fprintf(os.Stderr, "error: diff accepts at most 2 refs, got %d\n", len(refs))
+		return 2
+	}
+	if *flagShow && len(refs) > 1 {
+		fmt.Fprintf(os.Stderr, "error: --show accepts at most 1 ref, got %d\n", len(refs))
 		return 2
 	}
 
@@ -392,10 +443,13 @@ Exit codes:
 		return 2
 	}
 
-	// Collect files touched by the current diff: tracked changes (staged +
-	// unstaged vs HEAD) plus untracked files. Paths are returned as absolute so
-	// they can be made relative to cfgRoot by relTo below.
-	diffFiles, err := diffedFiles()
+	gitRoot, err := gitTopLevel()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+
+	diffFiles, err := diffedFiles(gitRoot, refs, *flagShow, *flagCached, *flagAll)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error getting diff files:", err)
 		return 2
@@ -452,21 +506,30 @@ Exit codes:
 	return 0
 }
 
-// diffedFiles returns the set of files touched by the current working-tree
-// diff relative to HEAD (staged + unstaged tracked changes) plus untracked
-// files. Paths are absolute. Finds the git root from cwd, independent of
-// where revparrot.toml lives.
-func diffedFiles() ([]string, error) {
-	// Find git root from cwd.
+// gitTopLevel returns the absolute path of the git repository root, found from
+// the current working directory.
+func gitTopLevel() (string, error) {
 	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("git rev-parse: %s", strings.TrimSpace(string(exitErr.Stderr)))
+			return "", fmt.Errorf("git rev-parse: %s", strings.TrimSpace(string(exitErr.Stderr)))
 		}
-		return nil, fmt.Errorf("git rev-parse: %w", err)
+		return "", fmt.Errorf("git rev-parse: %w", err)
 	}
-	gitRoot := strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), nil
+}
 
+// diffedFiles returns the absolute paths of files touched by the requested
+// diff. The source is determined by the combination of flags and refs:
+//
+//   - showMode=true: files changed in the given commit (git diff-tree); refs[0]
+//     is the commit (default HEAD).
+//   - cached=true: staged changes only (git diff --cached).
+//   - len(refs)>0: diff between working tree and ref, or between two refs
+//     (git diff refs...).
+//   - default (no refs, not cached, not show): staged+unstaged vs HEAD
+//     (git diff HEAD); includeUntracked appends ls-files --others output.
+func diffedFiles(gitRoot string, refs []string, showMode, cached, includeUntracked bool) ([]string, error) {
 	var files []string
 	seen := make(map[string]bool)
 
@@ -482,28 +545,68 @@ func diffedFiles() ([]string, error) {
 		}
 	}
 
-	// Tracked changes: staged + unstaged vs HEAD.
-	out, err = exec.Command("git", "-C", gitRoot, "diff", "--name-only", "HEAD").Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
-			return nil, fmt.Errorf("git diff: %s", strings.TrimSpace(string(exitErr.Stderr)))
-		}
-		// No HEAD yet (empty repo) — not fatal, fall through.
-	} else {
+	addOutput := func(out []byte) {
 		for _, line := range strings.Split(string(out), "\n") {
 			add(line)
 		}
 	}
 
-	// Untracked files (new files not yet staged).
-	out, err = exec.Command("git", "-C", gitRoot, "ls-files", "--others", "--exclude-standard").Output()
-	if err != nil {
+	gitErr := func(cmd string, err error) error {
 		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
-			return nil, fmt.Errorf("git ls-files: %s", strings.TrimSpace(string(exitErr.Stderr)))
+			return fmt.Errorf("%s: %s", cmd, strings.TrimSpace(string(exitErr.Stderr)))
 		}
-	} else {
-		for _, line := range strings.Split(string(out), "\n") {
-			add(line)
+		return fmt.Errorf("%s: %w", cmd, err)
+	}
+
+	switch {
+	case showMode:
+		// Single-commit mode: list files changed in the commit.
+		// git diff-tree is more reliable than git show --name-only since it
+		// never outputs the commit message.
+		ref := "HEAD"
+		if len(refs) == 1 {
+			ref = refs[0]
+		}
+		out, err := exec.Command("git", "-C", gitRoot, "diff-tree", "--no-commit-id", "-r", "--name-only", ref).Output()
+		if err != nil {
+			return nil, gitErr("git diff-tree", err)
+		}
+		addOutput(out)
+
+	case cached:
+		out, err := exec.Command("git", "-C", gitRoot, "diff", "--name-only", "--cached").Output()
+		if err != nil {
+			return nil, gitErr("git diff --cached", err)
+		}
+		addOutput(out)
+
+	case len(refs) > 0:
+		// Explicit ref(s): pass through to git diff.
+		gitArgs := append([]string{"-C", gitRoot, "diff", "--name-only"}, refs...)
+		out, err := exec.Command("git", gitArgs...).Output()
+		if err != nil {
+			return nil, gitErr("git diff", err)
+		}
+		addOutput(out)
+
+	default:
+		// Working-tree mode: staged + unstaged vs HEAD.
+		out, err := exec.Command("git", "-C", gitRoot, "diff", "--name-only", "HEAD").Output()
+		if err != nil {
+			// No HEAD yet (empty repo) — not fatal.
+			if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+				return nil, gitErr("git diff", err)
+			}
+		} else {
+			addOutput(out)
+		}
+
+		if includeUntracked {
+			out, err = exec.Command("git", "-C", gitRoot, "ls-files", "--others", "--exclude-standard").Output()
+			if err != nil {
+				return nil, gitErr("git ls-files", err)
+			}
+			addOutput(out)
 		}
 	}
 
