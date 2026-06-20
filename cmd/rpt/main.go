@@ -281,6 +281,7 @@ func cmdCheck(args []string) int {
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
 	flagStats := fs.Bool("statistics", false, "show per-rule violation counts instead of individual violations")
+	flagUnknown := fs.Bool("unknown", false, "include violations with codes not defined in the config")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt check [flags] [path...]
 
@@ -292,9 +293,14 @@ store (tdb): an unresolved ticket with a rule code is a violation
 (resolved suppresses), subject to the same revparrot.toml scope as
 code annotations.
 
+When a revparrot.toml is found, only violations whose code matches a
+defined rule are reported. Use --unknown to include annotations with
+codes not defined in the config.
+
 Flags:
   --oneline        compact one-line output (default is verbose blocks)
   --statistics     show per-rule counts instead of individual violations
+  --unknown        include violations with codes not defined in the config
   -rule <code>     filter output to a specific rule code
   -config <path>   explicit config file path
 
@@ -416,6 +422,21 @@ Exit codes:
 		violations = kept
 	}
 
+	// When a config is present, drop violations with codes not defined in any
+	// rule unless --unknown is set. Track the skipped count for the summary.
+	var skippedUnknown int
+	if cfg != nil && !*flagUnknown {
+		var kept []scanner.Violation
+		for _, v := range violations {
+			if _, ok := cfg.RuleByCode(v.Code); ok {
+				kept = append(kept, v)
+			} else {
+				skippedUnknown++
+			}
+		}
+		violations = kept
+	}
+
 	// Apply -rule filter.
 	if *flagRule != "" {
 		var filtered []scanner.Violation
@@ -430,6 +451,10 @@ Exit codes:
 	n := len(violations)
 	if n == 0 {
 		fmt.Println("No violations found.")
+		if skippedUnknown > 0 {
+			fmt.Printf("(%d annotation%s with unknown rule code%s skipped — use --unknown to include)\n",
+				skippedUnknown, pluralS(skippedUnknown), pluralS(skippedUnknown))
+		}
 		return 0
 	}
 
@@ -443,6 +468,10 @@ Exit codes:
 	vs := defaultViolationStyles()
 	if *flagStats {
 		printViolationStats(violations, cfg, vs)
+		if skippedUnknown > 0 {
+			fmt.Printf("(%d annotation%s with unknown rule code%s skipped — use --unknown to include)\n",
+				skippedUnknown, pluralS(skippedUnknown), pluralS(skippedUnknown))
+		}
 		return 1
 	}
 	if *flagOneline {
@@ -459,6 +488,10 @@ Exit codes:
 	}
 
 	fmt.Printf("\nFound %d violation%s.\n", n, pluralS(n))
+	if skippedUnknown > 0 {
+		fmt.Printf("(%d annotation%s with unknown rule code%s skipped — use --unknown to include)\n",
+			skippedUnknown, pluralS(skippedUnknown), pluralS(skippedUnknown))
+	}
 	return 1
 }
 
