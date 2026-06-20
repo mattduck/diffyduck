@@ -63,12 +63,13 @@ func main() {
 	}
 }
 
-// violationStyles holds lipgloss styles for verbose violation block output.
+// violationStyles holds lipgloss styles for violation output (compact and verbose).
 type violationStyles struct {
-	header  lipgloss.Style
-	label   lipgloss.Style
-	dirPart lipgloss.Style
-	target  lipgloss.Style
+	header  lipgloss.Style // bold white — file basename
+	label   lipgloss.Style // dim — metadata labels, line numbers, separators
+	dirPart lipgloss.Style // dim gray — directory part of file paths
+	rule    lipgloss.Style // cyan — rule code
+	target  lipgloss.Style // bold — verbose block > marker and target line number
 }
 
 func defaultViolationStyles() violationStyles {
@@ -76,6 +77,7 @@ func defaultViolationStyles() violationStyles {
 		header:  lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
 		label:   lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
 		dirPart: lipgloss.NewStyle().Foreground(lipgloss.Color("7")),
+		rule:    lipgloss.NewStyle().Foreground(lipgloss.Color("9")),
 		target:  lipgloss.NewStyle().Bold(true),
 	}
 }
@@ -85,7 +87,7 @@ func defaultViolationStyles() violationStyles {
 func styleViolationPath(path string, line int, vs violationStyles) string {
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
-	lineStr := strconv.Itoa(line)
+	lineStr := vs.label.Render(strconv.Itoa(line))
 	if dir == "." {
 		return vs.header.Render(base) + vs.label.Render(":") + lineStr
 	}
@@ -137,9 +139,18 @@ func readViolationContext(file, cfgRoot string, targetLine int) (above []string,
 	return above, line, below
 }
 
+// formatViolationOneline renders a violation as a single coloured line:
+// [dim dir/][bold file][dim :linenum][dim :] [dim REVP(][cyan code][dim )] message
+func formatViolationOneline(v scanner.Violation, displayRoot string, vs violationStyles) string {
+	displayPath := relTo(displayRoot, v.File)
+	path := styleViolationPath(displayPath, v.Line, vs)
+	keyword := vs.label.Render("REVP(") + vs.rule.Render(v.Code) + vs.label.Render(")")
+	return path + vs.label.Render(":") + " " + keyword + " " + v.Message
+}
+
 // formatViolationBlock renders a single violation as a ┃-bordered block showing
 // the rule, file location, surrounding code context, and message.
-func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, cfgRoot string, vs violationStyles) string {
+func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, displayRoot string, vs violationStyles) string {
 	var b strings.Builder
 
 	labelVal := func(label, value string) string {
@@ -147,7 +158,7 @@ func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, cfgRoot str
 	}
 
 	// Rule line: code + first line of description when available.
-	ruleVal := vs.header.Render(v.Code)
+	ruleVal := vs.rule.Render(v.Code)
 	if cfg != nil {
 		if r, ok := cfg.RuleByCode(v.Code); ok {
 			desc := strings.TrimSpace(r.Description)
@@ -162,11 +173,11 @@ func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, cfgRoot str
 	fmt.Fprintf(&b, "%s\n", labelVal("Rule:", "   ")+ruleVal)
 
 	// File line.
-	displayPath := relTo(cfgRoot, v.File)
+	displayPath := relTo(displayRoot, v.File)
 	fmt.Fprintf(&b, "%s\n", labelVal("File:", "   ")+styleViolationPath(displayPath, v.Line, vs))
 
 	// Code context.
-	above, line, below := readViolationContext(v.File, cfgRoot, v.Line)
+	above, line, below := readViolationContext(v.File, displayRoot, v.Line)
 	if line != "" {
 		b.WriteString("\n")
 		all := make([]string, 0, len(above)+1+len(below))
@@ -211,7 +222,7 @@ func cmdCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
 	flagConfig := fs.String("config", "", "explicit config file path")
-	flagVerbose := fs.Bool("v", false, "show full block per violation")
+	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt check [flags] [path...]
 
@@ -224,7 +235,7 @@ store (tdb): an unresolved ticket with a rule code is a violation
 code annotations.
 
 Flags:
-  -v               verbose: show rule description, code context, and message
+  --oneline        compact one-line output (default is verbose blocks)
   -rule <code>     filter output to a specific rule code
   -config <path>   explicit config file path
 
@@ -363,17 +374,24 @@ Exit codes:
 		return 0
 	}
 
-	if *flagVerbose {
-		vs := defaultViolationStyles()
+	// Prefer cfgRoot for relative paths; fall back to cwd so absolute paths
+	// are never shown when a reasonable anchor is available.
+	displayRoot := cfgRoot
+	if displayRoot == "" {
+		displayRoot, _ = os.Getwd()
+	}
+
+	vs := defaultViolationStyles()
+	if *flagOneline {
+		for _, v := range violations {
+			fmt.Println(formatViolationOneline(v, displayRoot, vs))
+		}
+	} else {
 		for i, v := range violations {
 			if i > 0 {
 				fmt.Println()
 			}
-			fmt.Print(formatViolationBlock(v, cfg, cfgRoot, vs))
-		}
-	} else {
-		for _, v := range violations {
-			fmt.Println(v)
+			fmt.Print(formatViolationBlock(v, cfg, displayRoot, vs))
 		}
 	}
 

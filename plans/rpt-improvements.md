@@ -37,25 +37,38 @@ Open questions:
 - How do violations surface — as `rpt check` output, or a separate `tdb lint` command?
 - Reference: "disco" project for prior art on the structure-enforcement pattern.
 
-## rpt: verbose mode for `rpt check`
+## rpt: verbose mode for `rpt check` ✓ done
 
-Add a `-v` flag to `rpt check` that displays each violation in a rich block format,
-similar to `dfd comment list -v`. The block would show:
-- File + line (with surrounding context lines?)
-- Rule code and full rule description
-- The annotation message
-
-Compact (default) output stays as-is (one line per violation).
-See `tdb comment list -v` for the block style to mirror.
+Default output is verbose blocks (rule + description, styled file path, code context,
+message). Use `--oneline` for compact single-line output.
 
 ## rpt: output improvements for `rpt check` / `rpt diff`
 
 Several output quality improvements to address:
-- File paths should be relative (to cwd or config root), not absolute
+- ✓ File paths are relative (to cwd or config root)
+- ✓ Colour output: rule codes in bright red, file paths and line numbers styled;
+  lipgloss respects NO_COLOR env and non-TTY automatically
 - Remove redundant file path repetition when multiple violations are in one file
   (group by file, print path once as a header)
 - Keyword in output (e.g. `REVP(use-pathlib)`) is redundant if rpt only scans one keyword;
   consider suppressing it — unless rules gain per-rule associated keywords (see keyword rename note),
   in which case showing the keyword becomes meaningful again
-- Add colour output: rule codes, file paths, and line numbers in distinct colours;
-  provide `--no-colour` / `NO_COLOR` env var to disable (follow NO_COLOR spec)
+- Add `--no-colour` / `--no-color` explicit flag (in addition to NO_COLOR env)
+
+## rpt: `-n` flag for `rpt check`
+
+Like `dfd` `-n`: show the total violation count but only render up to N blocks/lines.
+Useful when there are many violations and you want to see a sample without overwhelming output.
+Summary line should still show the full count, e.g. `Showing 5 of 23 violations.`
+
+## rpt: `--statistics` flag for `rpt check`
+
+Show a summary table of violations grouped by rule code, with counts.
+Optionally include the rule description/title.
+Example output:
+  use-pathlib    9   Use pathlib for all path operations
+  no-bare-exec   4   Avoid bare exec() calls
+  total         13
+
+Could be combined with other flags (e.g. `--statistics --rule use-pathlib` for a
+per-file breakdown under that rule).
