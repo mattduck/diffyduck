@@ -55,6 +55,26 @@ Several output quality improvements to address:
   in which case showing the keyword becomes meaningful again
 - Add `--no-colour` / `--no-color` explicit flag (in addition to NO_COLOR env)
 
+## rpt: restrict check to config-defined rules by default
+
+Currently `rpt check` reports any `REVP(code)` annotation found in source files,
+regardless of whether `code` matches a rule in `revparrot.toml`. This means:
+- Violations appear with no title/description when the config isn't found or doesn't define the rule
+- Running from a parent directory (above the codebase) surfaces violations the tool has no context for
+
+Default behaviour should be: when a config is present, only report violations whose
+code matches a defined (and enabled) rule. Annotations with unknown codes are silently
+skipped, matching the principle that the config declares what the tool cares about.
+
+Controls to relax this:
+- `--all-codes` flag (or similar): report all REVP annotations regardless of config
+- Config option `[revparrot] all_codes = true`: opt the whole project into the
+  permissive mode
+- When no config is found at all, current behaviour (report everything) can stay
+  as a reasonable fallback for ad-hoc use
+
+Open question: should unknown codes produce a warning rather than be silently skipped?
+
 ## rpt: `-n` flag for `rpt check`
 
 Like `dfd` `-n`: show the total violation count but only render up to N blocks/lines.

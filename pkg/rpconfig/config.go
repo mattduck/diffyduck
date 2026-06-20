@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -27,6 +28,7 @@ type GlobalConfig struct {
 // Rule defines a single review rule.
 type Rule struct {
 	Code        string   `toml:"code"`
+	Title       string   `toml:"title"`
 	Description string   `toml:"description"`
 	Include     []string `toml:"include"`
 	Exclude     []string `toml:"exclude"`
@@ -36,6 +38,23 @@ type Rule struct {
 // IsEnabled returns true if the rule is enabled (default true).
 func (r Rule) IsEnabled() bool {
 	return r.Enabled == nil || *r.Enabled
+}
+
+// ShortTitle returns the rule's title for compact display. It prefers the
+// explicit title field; if absent it falls back to the first line of
+// description; if that is also empty it returns an empty string.
+func (r Rule) ShortTitle() string {
+	if r.Title != "" {
+		return r.Title
+	}
+	d := strings.TrimSpace(r.Description)
+	if d == "" {
+		return ""
+	}
+	if i := strings.IndexByte(d, '\n'); i >= 0 {
+		return d[:i]
+	}
+	return d
 }
 
 // Load finds and parses the nearest revparrot.toml, walking up from dir.

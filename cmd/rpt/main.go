@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -157,16 +158,12 @@ func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, displayRoot
 		return vs.label.Render(label) + value
 	}
 
-	// Rule line: code + first line of description when available.
+	// Rule line: code + short title when available.
 	ruleVal := vs.rule.Render(v.Code)
 	if cfg != nil {
 		if r, ok := cfg.RuleByCode(v.Code); ok {
-			desc := strings.TrimSpace(r.Description)
-			if desc != "" {
-				if i := strings.IndexByte(desc, '\n'); i >= 0 {
-					desc = desc[:i]
-				}
-				ruleVal += "  " + desc
+			if t := r.ShortTitle(); t != "" {
+				ruleVal += "  " + t
 			}
 		}
 	}
@@ -216,6 +213,66 @@ func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, displayRoot
 	return out.String()
 }
 
+// printViolationStats prints a per-rule count table followed by a total row.
+// Rules are listed in config order; codes absent from config are appended
+// alphabetically. Each row shows the rule code, count, and (when available)
+// the first line of the rule description.
+func printViolationStats(violations []scanner.Violation, cfg *rpconfig.Config, vs violationStyles) {
+	counts := make(map[string]int)
+	for _, v := range violations {
+		counts[v.Code]++
+	}
+
+	// Ordered codes: config order first, then extras alphabetically.
+	var codes []string
+	seen := make(map[string]bool)
+	if cfg != nil {
+		for _, r := range cfg.Rules {
+			if counts[r.Code] > 0 {
+				codes = append(codes, r.Code)
+				seen[r.Code] = true
+			}
+		}
+	}
+	var extras []string
+	for code := range counts {
+		if !seen[code] {
+			extras = append(extras, code)
+		}
+	}
+	sort.Strings(extras)
+	codes = append(codes, extras...)
+
+	// Column widths from plain (unstyled) content.
+	codeW := len("total")
+	for _, code := range codes {
+		if len(code) > codeW {
+			codeW = len(code)
+		}
+	}
+	countW := len(strconv.Itoa(len(violations)))
+
+	for _, code := range codes {
+		count := counts[code]
+		title := ""
+		if cfg != nil {
+			if r, ok := cfg.RuleByCode(code); ok {
+				title = r.ShortTitle()
+			}
+		}
+		countStr := fmt.Sprintf("%*d", countW, count)
+		codePad := strings.Repeat(" ", codeW-len(code))
+		if title != "" {
+			fmt.Printf("%s  %s%s  %s\n", vs.label.Render(countStr), vs.rule.Render(code), codePad, title)
+		} else {
+			fmt.Printf("%s  %s\n", vs.label.Render(countStr), vs.rule.Render(code))
+		}
+	}
+
+	n := len(violations)
+	fmt.Printf("\nFound %d violation%s.\n", n, pluralS(n))
+}
+
 // cmdCheck scans paths for REVP violations and prints them.
 // Exit code: 0 = clean, 1 = violations found, 2 = error.
 func cmdCheck(args []string) int {
@@ -223,6 +280,7 @@ func cmdCheck(args []string) int {
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
+	flagStats := fs.Bool("statistics", false, "show per-rule violation counts instead of individual violations")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt check [flags] [path...]
 
@@ -236,6 +294,7 @@ code annotations.
 
 Flags:
   --oneline        compact one-line output (default is verbose blocks)
+  --statistics     show per-rule counts instead of individual violations
   -rule <code>     filter output to a specific rule code
   -config <path>   explicit config file path
 
@@ -382,6 +441,10 @@ Exit codes:
 	}
 
 	vs := defaultViolationStyles()
+	if *flagStats {
+		printViolationStats(violations, cfg, vs)
+		return 1
+	}
 	if *flagOneline {
 		for _, v := range violations {
 			fmt.Println(formatViolationOneline(v, displayRoot, vs))
