@@ -16,6 +16,7 @@ import (
 	"github.com/mattduck/diffyduck/pkg/rpconfig"
 	"github.com/mattduck/diffyduck/pkg/scanner"
 	"github.com/mattduck/diffyduck/pkg/ticketdb"
+	"github.com/muesli/termenv"
 )
 
 var version = "dev"
@@ -73,13 +74,65 @@ type violationStyles struct {
 	target  lipgloss.Style // bold — verbose block > marker and target line number
 }
 
-func defaultViolationStyles() violationStyles {
+type colorMode int
+
+const (
+	colorAuto colorMode = iota
+	colorAlways
+	colorNever
+)
+
+// colorFlag lets positive and negative spelling aliases update one shared
+// mode. If conflicting flags are supplied, the last one wins.
+type colorFlag struct {
+	mode  *colorMode
+	value colorMode
+}
+
+func (f colorFlag) String() string {
+	return strconv.FormatBool(*f.mode == f.value)
+}
+
+func (f colorFlag) IsBoolFlag() bool {
+	return true
+}
+
+func (f colorFlag) Set(value string) error {
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return err
+	}
+	if enabled {
+		*f.mode = f.value
+	} else if f.value == colorAlways {
+		*f.mode = colorNever
+	} else {
+		*f.mode = colorAlways
+	}
+	return nil
+}
+
+func registerColorFlags(fs *flag.FlagSet, mode *colorMode) {
+	fs.Var(colorFlag{mode: mode, value: colorAlways}, "color", "force color output")
+	fs.Var(colorFlag{mode: mode, value: colorAlways}, "colour", "force colour output")
+	fs.Var(colorFlag{mode: mode, value: colorNever}, "no-color", "disable color output")
+	fs.Var(colorFlag{mode: mode, value: colorNever}, "no-colour", "disable colour output")
+}
+
+func defaultViolationStyles(mode colorMode) violationStyles {
+	renderer := lipgloss.NewRenderer(os.Stdout)
+	switch mode {
+	case colorAlways:
+		renderer.SetColorProfile(termenv.ANSI)
+	case colorNever:
+		renderer.SetColorProfile(termenv.Ascii)
+	}
 	return violationStyles{
-		header:  lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
-		label:   lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
-		dirPart: lipgloss.NewStyle().Foreground(lipgloss.Color("7")),
-		rule:    lipgloss.NewStyle().Foreground(lipgloss.Color("9")),
-		target:  lipgloss.NewStyle().Bold(true),
+		header:  renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
+		label:   renderer.NewStyle().Foreground(lipgloss.Color("8")),
+		dirPart: renderer.NewStyle().Foreground(lipgloss.Color("7")),
+		rule:    renderer.NewStyle().Foreground(lipgloss.Color("9")),
+		target:  renderer.NewStyle().Bold(true),
 	}
 }
 
@@ -282,6 +335,8 @@ func cmdCheck(args []string) int {
 	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
 	flagStats := fs.Bool("statistics", false, "show per-rule violation counts instead of individual violations")
 	flagUnknown := fs.Bool("unknown", false, "include violations with codes not defined in the config")
+	color := colorAuto
+	registerColorFlags(fs, &color)
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt check [flags] [path...]
 
@@ -301,6 +356,8 @@ Flags:
   --oneline        compact one-line output (default is verbose blocks)
   --statistics     show per-rule counts instead of individual violations
   --unknown        include violations with codes not defined in the config
+  --color          force color output (alias: --colour)
+  --no-color       disable color output (alias: --no-colour)
   -rule <code>     filter output to a specific rule code
   -config <path>   explicit config file path
 
@@ -465,7 +522,7 @@ Exit codes:
 		displayRoot, _ = os.Getwd()
 	}
 
-	vs := defaultViolationStyles()
+	vs := defaultViolationStyles(color)
 	if *flagStats {
 		printViolationStats(violations, cfg, vs)
 		if skippedUnknown > 0 {

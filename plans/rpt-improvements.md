@@ -53,7 +53,8 @@ Several output quality improvements to address:
 - Keyword in output (e.g. `REVP(use-pathlib)`) is redundant if rpt only scans one keyword;
   consider suppressing it — unless rules gain per-rule associated keywords (see keyword rename note),
   in which case showing the keyword becomes meaningful again
-- Add `--no-colour` / `--no-color` explicit flag (in addition to NO_COLOR env)
+- ✓ Add explicit `--color` / `--colour` and `--no-color` / `--no-colour`
+  flags (in addition to automatic TTY detection and the NO_COLOR env)
 
 ## rpt: restrict check to config-defined rules by default
 

@@ -130,7 +130,11 @@ func completeFlagValue(flag, prefix string, ruleCodes ruleCodesFunc) []string {
 func flagsForCmd(cmd string) []string {
 	switch cmd {
 	case "check":
-		return []string{"--oneline", "--statistics", "--unknown", "-rule", "-config"}
+		return []string{
+			"--oneline", "--statistics", "--unknown",
+			"--color", "--colour", "--no-color", "--no-colour",
+			"-rule", "-config",
+		}
 	case "rules":
 		return []string{"-config"}
 	case "diff":
