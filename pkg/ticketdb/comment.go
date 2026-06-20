@@ -69,7 +69,7 @@ type Comment struct {
 	Title string
 
 	// Rule is an optional rule code that flags this ticket as a rule violation,
-	// surfaced by rpt alongside in-code REVP annotations.
+	// surfaced by rpt alongside in-code RPT annotations.
 	Rule string
 }
 

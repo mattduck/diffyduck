@@ -8,7 +8,7 @@ Three terminal tools for reading, reviewing, and annotating code changes.
 |--------|--------------|------|
 | `dfd`  | diffyduck    | Side-by-side diff/log TUI with syntax highlighting and Vim-style navigation |
 | `tdb`  | ticketdb     | CLI over the git-backed comment/note store: list, add, edit, resolve |
-| `rpt`  | reviewparrot | Rule-based code review linter: scans for `REVP` annotations and rule-tagged tickets |
+| `rpt`  | reviewparrot | Rule-based code review linter: scans for `RPT` annotations and rule-tagged tickets |
 
 All three share a common git-state store (`refs/dfd/comments`) for inline comments,
 standalone notes, and rule-tagged review tickets.
@@ -59,7 +59,7 @@ tdb completion bash               # Shell completion script
 ## rpt
 
 Rule-based reviewer. Rules are defined in `revparrot.toml`; the agent (Claude)
-scans code and places `REVP(code)` annotations or rule-tagged tickets; `rpt check`
+scans code and places `RPT(code)` annotations or rule-tagged tickets; `rpt check`
 collects them and exits non-zero if violations exist.
 
 ```sh

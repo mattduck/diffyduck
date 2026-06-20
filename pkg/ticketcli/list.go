@@ -405,12 +405,12 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 	return rows, nil
 }
 
-// markerForKeyword builds a scanner.Marker for a user-supplied keyword. REVP
+// markerForKeyword builds a scanner.Marker for a user-supplied keyword. RPT
 // keeps its strict (code): grammar; all others use the loose form.
 func markerForKeyword(kw string) scanner.Marker {
 	kw = strings.ToUpper(kw)
-	if kw == "REVP" {
-		return scanner.REVPMarker()
+	if kw == "RPT" {
+		return scanner.RPTMarker()
 	}
 	return scanner.Marker{Keyword: kw}
 }

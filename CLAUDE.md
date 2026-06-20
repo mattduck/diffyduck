@@ -10,7 +10,7 @@ This repo hosts three terminal tools built on a shared Go module (`github.com/ma
 |--------|--------------|------|
 | `dfd`  | diffyduck    | Side-by-side diff/log TUI (Bubble Tea, tree-sitter syntax highlighting, Vim-style navigation) |
 | `tdb`  | ticketdb     | CLI over the git-backed comment/note/ticket store |
-| `rpt`  | reviewparrot | Rule-based code review linter (`REVP` annotations + rule-tagged tickets) |
+| `rpt`  | reviewparrot | Rule-based code review linter (`RPT` annotations + rule-tagged tickets) |
 
 `tdb` and `rpt` are CGO-free (`CGO_ENABLED=0`). tree-sitter (cgo) is a `dfd`-only dependency. A `cgo-free` gate in `make check` enforces this.
 
@@ -41,7 +41,7 @@ Git Command → Parse unified diff → Transform to LinePairs → TUI Model → 
                                                                                   (tdb)
 User → tdb CLI → pkg/ticketcli → pkg/ticketdb (git-state store)
                                                                                   (rpt)
-User → rpt CLI → pkg/rpconfig (rules) + pkg/scanner (REVP markers) → violations
+User → rpt CLI → pkg/rpconfig (rules) + pkg/scanner (RPT markers) → violations
 ```
 
 ### Package Structure
@@ -54,7 +54,7 @@ User → rpt CLI → pkg/rpconfig (rules) + pkg/scanner (REVP markers) → viola
 **Shared packages:**
 - **`pkg/ticketdb/`** — git-backed comment/note/ticket store (`Store`, `Comment`, `Index`, `Matcher`)
 - **`pkg/ticketcli/`** — comment/note CLI logic and formatting (cgo-free; used by both `dfd` and `tdb`)
-- **`pkg/scanner/`** — configurable code-comment marker parser (`REVP`/`NOREVP` + `TODO`/`FIXME`/…)
+- **`pkg/scanner/`** — configurable code-comment marker parser (`RPT`/`NORPT` + `TODO`/`FIXME`/…)
 - **`pkg/rpconfig/`** — `revparrot.toml` rules/globs loader and `Matcher`
 
 **dfd-specific packages:**

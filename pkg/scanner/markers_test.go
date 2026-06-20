@@ -82,43 +82,43 @@ func TestScanFileMarkers_FilterByKeyword(t *testing.T) {
 	}
 }
 
-func TestScanFileMarkers_REVPViaMarker(t *testing.T) {
+func TestScanFileMarkers_RPTViaMarker(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.go", `package foo
-// REVP(rule-a): fix this
-// REVP malformed without parens
+// RPT(rule-a): fix this
+// RPT malformed without parens
 `)
-	ms, err := scanner.ScanFileMarkers(path, []scanner.Marker{scanner.REVPMarker()})
+	ms, err := scanner.ScanFileMarkers(path, []scanner.Marker{scanner.RPTMarker()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Only the well-formed REVP(code): annotation matches.
+	// Only the well-formed RPT(code): annotation matches.
 	if len(ms) != 1 || ms[0].Code != "rule-a" || ms[0].Message != "fix this" {
-		t.Fatalf("expected 1 REVP match, got %v", ms)
+		t.Fatalf("expected 1 RPT match, got %v", ms)
 	}
 }
 
 func TestScanFileMarkers_CombinedFamiliesSuppression(t *testing.T) {
 	dir := t.TempDir()
-	// REVP keeps its NOREVP suppression even when scanned alongside TODO; TODO
+	// RPT keeps its NORPT suppression even when scanned alongside TODO; TODO
 	// has no suppression keyword so it is always reported.
-	path := writeFile(t, dir, "foo.py", `# NOREVP(rule-a)
-# REVP(rule-a): suppressed on the following line
+	path := writeFile(t, dir, "foo.py", `# NORPT(rule-a)
+# RPT(rule-a): suppressed on the following line
 y = {"a": 1}  # TODO: but this TODO stays
 `)
-	markers := append(scanner.DefaultMarkers(), scanner.REVPMarker())
+	markers := append(scanner.DefaultMarkers(), scanner.RPTMarker())
 	ms, err := scanner.ScanFileMarkers(path, markers)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The REVP on line 2 is not suppressed (NOREVP targets line 3, the code
-	// line), so we expect both the REVP and the TODO.
+	// The RPT on line 2 is not suppressed (NORPT targets line 3, the code
+	// line), so we expect both the RPT and the TODO.
 	var kinds []string
 	for _, m := range ms {
 		kinds = append(kinds, m.Keyword)
 	}
 	if len(ms) != 2 {
-		t.Fatalf("expected 2 markers (REVP + TODO), got %d: %v", len(ms), ms)
+		t.Fatalf("expected 2 markers (RPT + TODO), got %d: %v", len(ms), ms)
 	}
 }
 

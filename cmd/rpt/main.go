@@ -23,7 +23,7 @@ var version = "dev"
 const usageGeneral = `Usage: rpt <command> [flags]
 
 Commands:
-  check       Scan for REVP violations in code and git-state tickets
+  check       Scan for RPT violations in code and git-state tickets
   rules       List rules defined in config
   diff        Show rules and their in-scope files touched by a diff
   show        Show rules and their in-scope files changed in a commit
@@ -141,11 +141,11 @@ func readViolationContext(file, cfgRoot string, targetLine int) (above []string,
 }
 
 // formatViolationOneline renders a violation as a single coloured line:
-// [dim dir/][bold file][dim :linenum][dim :] [dim REVP(][cyan code][dim )] message
+// [dim dir/][bold file][dim :linenum][dim :] [dim RPT(][cyan code][dim )] message
 func formatViolationOneline(v scanner.Violation, displayRoot string, vs violationStyles) string {
 	displayPath := relTo(displayRoot, v.File)
 	path := styleViolationPath(displayPath, v.Line, vs)
-	keyword := vs.label.Render("REVP(") + vs.rule.Render(v.Code) + vs.label.Render(")")
+	keyword := vs.label.Render("RPT(") + vs.rule.Render(v.Code) + vs.label.Render(")")
 	return path + vs.label.Render(":") + " " + keyword + " " + v.Message
 }
 
@@ -273,7 +273,7 @@ func printViolationStats(violations []scanner.Violation, cfg *rpconfig.Config, v
 	fmt.Printf("\nFound %d violation%s.\n", n, pluralS(n))
 }
 
-// cmdCheck scans paths for REVP violations and prints them.
+// cmdCheck scans paths for RPT violations and prints them.
 // Exit code: 0 = clean, 1 = violations found, 2 = error.
 func cmdCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
@@ -285,8 +285,8 @@ func cmdCheck(args []string) int {
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt check [flags] [path...]
 
-Scan for REVP violation annotations in source files.
-Reports violations not suppressed by NOREVP.
+Scan for RPT violation annotations in source files.
+Reports violations not suppressed by NORPT.
 
 Also reports file-attached rule-tagged tickets from the git-state
 store (tdb): an unresolved ticket with a rule code is a violation

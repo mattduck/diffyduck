@@ -1,6 +1,6 @@
-// Package scanner finds marker annotations (TODO, FIXME, REVP, …) in source
+// Package scanner finds marker annotations (TODO, FIXME, RPT, …) in source
 // files. Markers are configurable: each binary registers the keyword families it
-// cares about. rpt scans for REVP (with NOREVP suppression); tdb scans for the
+// cares about. rpt scans for RPT (with NORPT suppression); tdb scans for the
 // conventional code-comment markers (TODO/FIXME/HACK/XXX/NOTE).
 package scanner
 
@@ -14,20 +14,20 @@ import (
 
 // Marker defines a keyword family to scan for in source comments.
 type Marker struct {
-	// Keyword is the leading token of the annotation, e.g. "TODO" or "REVP".
+	// Keyword is the leading token of the annotation, e.g. "TODO" or "RPT".
 	Keyword string
 	// RequireCode requires a mandatory "(code):" form before the message, as in
-	// REVP(rule): message. When false the marker matches loosely: an optional
+	// RPT(rule): message. When false the marker matches loosely: an optional
 	// "(code)" and an optional ":" may precede the message.
 	RequireCode bool
-	// Suppress is the keyword that suppresses this marker (e.g. "NOREVP"). An
+	// Suppress is the keyword that suppresses this marker (e.g. "NORPT"). An
 	// empty value disables suppression for the family.
 	Suppress string
 }
 
-// REVPMarker returns the marker spec for rpt's REVP/NOREVP annotations.
-func REVPMarker() Marker {
-	return Marker{Keyword: "REVP", RequireCode: true, Suppress: "NOREVP"}
+// RPTMarker returns the marker spec for rpt's RPT/NORPT annotations.
+func RPTMarker() Marker {
+	return Marker{Keyword: "RPT", RequireCode: true, Suppress: "NORPT"}
 }
 
 // DefaultMarkers returns the conventional code-comment markers tdb scans for.
@@ -45,7 +45,7 @@ func DefaultMarkers() []Marker {
 type Match struct {
 	File    string
 	Line    int    // 1-based
-	Keyword string // the marker keyword, e.g. "TODO" or "REVP"
+	Keyword string // the marker keyword, e.g. "TODO" or "RPT"
 	Code    string // optional "(code)" capture ("" when absent)
 	Message string
 }
@@ -61,7 +61,7 @@ func (m Match) String() string {
 	return fmt.Sprintf("%s:%d: %s %s", m.File, m.Line, kw, m.Message)
 }
 
-// Violation is a REVP annotation found in a source file. It is the REVP-specific
+// Violation is an RPT annotation found in a source file. It is the RPT-specific
 // view of a Match, preserving rpt's exact output format.
 type Violation struct {
 	File    string
@@ -71,23 +71,23 @@ type Violation struct {
 }
 
 func (v Violation) String() string {
-	return fmt.Sprintf("%s:%d: REVP(%s) %s", v.File, v.Line, v.Code, v.Message)
+	return fmt.Sprintf("%s:%d: RPT(%s) %s", v.File, v.Line, v.Code, v.Message)
 }
 
-// ScanFile scans a single file for REVP annotations, applying NOREVP
+// ScanFile scans a single file for RPT annotations, applying NORPT
 // suppressions. Returns violations that are not suppressed. Files with unknown
 // extensions are skipped (returns nil, nil).
 func ScanFile(path string) ([]Violation, error) {
-	ms, err := ScanFileMarkers(path, []Marker{REVPMarker()})
+	ms, err := ScanFileMarkers(path, []Marker{RPTMarker()})
 	if err != nil {
 		return nil, err
 	}
 	return toViolations(ms), nil
 }
 
-// ScanDir recursively scans files under dir for REVP violations.
+// ScanDir recursively scans files under dir for RPT violations.
 func ScanDir(dir string, opts WalkOptions) ([]Violation, error) {
-	ms, err := ScanDirMarkers(dir, []Marker{REVPMarker()}, opts)
+	ms, err := ScanDirMarkers(dir, []Marker{RPTMarker()}, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 				}
 			}
 			// A suppression can co-occur with a match on the same line (e.g.
-			// "REVP(x): msg // NOREVP(x)"), so scan suppressions independently.
+			// "RPT(x): msg // NORPT(x)"), so scan suppressions independently.
 			for _, m := range markers {
 				if m.Suppress == "" {
 					continue
@@ -273,7 +273,7 @@ func parseMarker(m Marker, body string) (code, msg string, ok bool) {
 	rest := body[len(m.Keyword):]
 
 	if m.RequireCode {
-		// Strict form: "(code): message" (REVP semantics).
+		// Strict form: "(code): message" (RPT semantics).
 		if !strings.HasPrefix(rest, "(") {
 			return "", "", false
 		}
@@ -309,8 +309,8 @@ func parseMarker(m Marker, body string) (code, msg string, ok bool) {
 
 // parseSuppress attempts to parse a suppression from a comment body for the
 // given suppression keyword. Returns the rule code (empty = suppress all) and
-// true on success. Examples (keyword "NOREVP"):
-// "NOREVP" -> ("", true), "NOREVP(bare-dict)" -> ("bare-dict", true).
+// true on success. Examples (keyword "NORPT"):
+// "NORPT" -> ("", true), "NORPT(bare-dict)" -> ("bare-dict", true).
 func parseSuppress(keyword, body string) (code string, ok bool) {
 	if !strings.HasPrefix(body, keyword) {
 		return "", false
