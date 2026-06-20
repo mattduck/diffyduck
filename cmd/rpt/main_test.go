@@ -77,3 +77,43 @@ func TestCheckCompletionsIncludeColorAliases(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckCompletionsIncludeN(t *testing.T) {
+	flags := flagsForCmd("check")
+	if !slices.Contains(flags, "-n") {
+		t.Error("check completions missing -n")
+	}
+}
+
+func TestViolationSummary(t *testing.T) {
+	tests := []struct {
+		rendered int
+		total    int
+		want     string
+	}{
+		{rendered: 5, total: 5, want: "Found 5 violations."},
+		{rendered: 1, total: 1, want: "Found 1 violation."},
+		{rendered: 0, total: 0, want: "Found 0 violations."},
+		{rendered: 5, total: 23, want: "Showing 5 of 23 violations."},
+		{rendered: 1, total: 10, want: "Showing 1 of 10 violations."},
+		{rendered: 0, total: 5, want: "Showing 0 of 5 violations."},
+	}
+	for _, tt := range tests {
+		got := violationSummary(tt.rendered, tt.total)
+		if got != tt.want {
+			t.Errorf("violationSummary(%d, %d) = %q, want %q", tt.rendered, tt.total, got, tt.want)
+		}
+	}
+}
+
+func TestNFlagTakesValue(t *testing.T) {
+	if !flagTakesValue("-n") {
+		t.Error("-n should be recognised as a value-taking flag for completion purposes")
+	}
+}
+
+func TestCheckRejectsNegativeN(t *testing.T) {
+	if got := cmdCheck([]string{"-n", "-1"}); got != 2 {
+		t.Errorf("cmdCheck(-n -1) = %d, want 2", got)
+	}
+}

@@ -72,7 +72,7 @@ func isFlag(w string) bool {
 
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "-rule", "-config":
+	case "-rule", "-config", "-n":
 		return true
 	}
 	return false
@@ -133,7 +133,7 @@ func flagsForCmd(cmd string) []string {
 		return []string{
 			"--oneline", "--statistics", "--unknown",
 			"--color", "--colour", "--no-color", "--no-colour",
-			"-rule", "-config",
+			"-n", "-rule", "-config",
 		}
 	case "rules":
 		return []string{"-config"}

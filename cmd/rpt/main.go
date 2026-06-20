@@ -335,6 +335,7 @@ func cmdCheck(args []string) int {
 	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
 	flagStats := fs.Bool("statistics", false, "show per-rule violation counts instead of individual violations")
 	flagUnknown := fs.Bool("unknown", false, "include violations with codes not defined in the config")
+	flagN := fs.Int("n", 0, "show at most N violations (0 = no limit)")
 	color := colorAuto
 	registerColorFlags(fs, &color)
 	fs.Usage = func() {
@@ -358,6 +359,7 @@ Flags:
   --unknown        include violations with codes not defined in the config
   --color          force color output (alias: --colour)
   --no-color       disable color output (alias: --no-colour)
+  -n <count>       show at most N violations (total count still reported)
   -rule <code>     filter output to a specific rule code
   -config <path>   explicit config file path
 
@@ -368,6 +370,11 @@ Exit codes:
 `)
 	}
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	if *flagN < 0 {
+		fmt.Fprintf(os.Stderr, "error: -n must not be negative\n")
 		return 2
 	}
 
@@ -531,12 +538,18 @@ Exit codes:
 		}
 		return 1
 	}
+
+	renderN := n
+	if *flagN > 0 && *flagN < n {
+		renderN = *flagN
+	}
+
 	if *flagOneline {
-		for _, v := range violations {
+		for _, v := range violations[:renderN] {
 			fmt.Println(formatViolationOneline(v, displayRoot, vs))
 		}
 	} else {
-		for i, v := range violations {
+		for i, v := range violations[:renderN] {
 			if i > 0 {
 				fmt.Println()
 			}
@@ -544,12 +557,22 @@ Exit codes:
 		}
 	}
 
-	fmt.Printf("\nFound %d violation%s.\n", n, pluralS(n))
+	fmt.Printf("\n%s\n", violationSummary(renderN, n))
 	if skippedUnknown > 0 {
 		fmt.Printf("(%d annotation%s with unknown rule code%s skipped — use --unknown to include)\n",
 			skippedUnknown, pluralS(skippedUnknown), pluralS(skippedUnknown))
 	}
 	return 1
+}
+
+// violationSummary returns the summary line for violation output. When fewer
+// violations are rendered than total (due to -n), it says "Showing R of N"
+// instead of "Found N".
+func violationSummary(rendered, total int) string {
+	if rendered < total {
+		return fmt.Sprintf("Showing %d of %d violation%s.", rendered, total, pluralS(total))
+	}
+	return fmt.Sprintf("Found %d violation%s.", total, pluralS(total))
 }
 
 // gatherStateViolations reads rule-tagged tickets from the git-state store and
