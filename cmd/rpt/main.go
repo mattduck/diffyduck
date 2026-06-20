@@ -1,14 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mattduck/diffyduck/pkg/rpconfig"
 	"github.com/mattduck/diffyduck/pkg/scanner"
 	"github.com/mattduck/diffyduck/pkg/ticketdb"
@@ -60,12 +63,155 @@ func main() {
 	}
 }
 
+// violationStyles holds lipgloss styles for verbose violation block output.
+type violationStyles struct {
+	header  lipgloss.Style
+	label   lipgloss.Style
+	dirPart lipgloss.Style
+	target  lipgloss.Style
+}
+
+func defaultViolationStyles() violationStyles {
+	return violationStyles{
+		header:  lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
+		label:   lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
+		dirPart: lipgloss.NewStyle().Foreground(lipgloss.Color("7")),
+		target:  lipgloss.NewStyle().Bold(true),
+	}
+}
+
+// styleViolationPath renders a file:line with the directory part dimmed and the
+// basename bold, matching the ticketcli comment-list path style.
+func styleViolationPath(path string, line int, vs violationStyles) string {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	lineStr := strconv.Itoa(line)
+	if dir == "." {
+		return vs.header.Render(base) + vs.label.Render(":") + lineStr
+	}
+	return vs.dirPart.Render(dir+"/") + vs.header.Render(base) + vs.label.Render(":") + lineStr
+}
+
+// readViolationContext reads 2 lines of context above and below targetLine from
+// file. It tries file as an absolute path first, then as relative to cfgRoot.
+// Returns empty slices and an empty string when the file cannot be read.
+func readViolationContext(file, cfgRoot string, targetLine int) (above []string, line string, below []string) {
+	candidates := []string{file}
+	if cfgRoot != "" && !filepath.IsAbs(file) {
+		candidates = append(candidates, filepath.Join(cfgRoot, file))
+	}
+
+	var fileLines []string
+	for _, p := range candidates {
+		f, err := os.Open(p)
+		if err != nil {
+			continue
+		}
+		sc := bufio.NewScanner(f)
+		for sc.Scan() {
+			fileLines = append(fileLines, sc.Text())
+		}
+		f.Close()
+		break
+	}
+
+	const ctx = 2
+	if len(fileLines) == 0 || targetLine < 1 || targetLine > len(fileLines) {
+		return nil, "", nil
+	}
+	line = fileLines[targetLine-1]
+	start := targetLine - ctx
+	if start < 1 {
+		start = 1
+	}
+	for i := start; i < targetLine; i++ {
+		above = append(above, fileLines[i-1])
+	}
+	end := targetLine + ctx
+	if end > len(fileLines) {
+		end = len(fileLines)
+	}
+	for i := targetLine + 1; i <= end; i++ {
+		below = append(below, fileLines[i-1])
+	}
+	return above, line, below
+}
+
+// formatViolationBlock renders a single violation as a ┃-bordered block showing
+// the rule, file location, surrounding code context, and message.
+func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, cfgRoot string, vs violationStyles) string {
+	var b strings.Builder
+
+	labelVal := func(label, value string) string {
+		return vs.label.Render(label) + value
+	}
+
+	// Rule line: code + first line of description when available.
+	ruleVal := vs.header.Render(v.Code)
+	if cfg != nil {
+		if r, ok := cfg.RuleByCode(v.Code); ok {
+			desc := strings.TrimSpace(r.Description)
+			if desc != "" {
+				if i := strings.IndexByte(desc, '\n'); i >= 0 {
+					desc = desc[:i]
+				}
+				ruleVal += "  " + desc
+			}
+		}
+	}
+	fmt.Fprintf(&b, "%s\n", labelVal("Rule:", "   ")+ruleVal)
+
+	// File line.
+	displayPath := relTo(cfgRoot, v.File)
+	fmt.Fprintf(&b, "%s\n", labelVal("File:", "   ")+styleViolationPath(displayPath, v.Line, vs))
+
+	// Code context.
+	above, line, below := readViolationContext(v.File, cfgRoot, v.Line)
+	if line != "" {
+		b.WriteString("\n")
+		all := make([]string, 0, len(above)+1+len(below))
+		all = append(all, above...)
+		all = append(all, line)
+		all = append(all, below...)
+		targetIdx := len(above)
+		startNo := v.Line - len(above)
+		gutterW := len(strconv.Itoa(startNo + len(all) - 1))
+		for i, l := range all {
+			lineNo := startNo + i
+			numStr := fmt.Sprintf("%*d", gutterW, lineNo)
+			if i == targetIdx {
+				fmt.Fprintf(&b, "%s %s  %s\n", vs.target.Render(">"), vs.target.Render(numStr), l)
+			} else {
+				fmt.Fprintf(&b, "  %s  %s\n", vs.label.Render(numStr), l)
+			}
+		}
+	}
+
+	// Message.
+	if v.Message != "" {
+		b.WriteString("\n")
+		fmt.Fprintf(&b, "%s\n", v.Message)
+	}
+
+	// Prefix every line with ┃.
+	bar := vs.label.Render("┃") + " "
+	raw := strings.TrimRight(b.String(), "\n")
+	var out strings.Builder
+	for _, l := range strings.Split(raw, "\n") {
+		out.WriteString(bar)
+		out.WriteString(l)
+		out.WriteByte('\n')
+	}
+	return out.String()
+}
+
 // cmdCheck scans paths for REVP violations and prints them.
 // Exit code: 0 = clean, 1 = violations found, 2 = error.
 func cmdCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
 	flagConfig := fs.String("config", "", "explicit config file path")
+	flagVerbose := fs.Bool("v", false, "show full block per violation")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt check [flags] [path...]
 
@@ -78,6 +224,7 @@ store (tdb): an unresolved ticket with a rule code is a violation
 code annotations.
 
 Flags:
+  -v               verbose: show rule description, code context, and message
   -rule <code>     filter output to a specific rule code
   -config <path>   explicit config file path
 
@@ -210,15 +357,26 @@ Exit codes:
 		violations = filtered
 	}
 
-	for _, v := range violations {
-		fmt.Println(v)
-	}
-
 	n := len(violations)
 	if n == 0 {
 		fmt.Println("No violations found.")
 		return 0
 	}
+
+	if *flagVerbose {
+		vs := defaultViolationStyles()
+		for i, v := range violations {
+			if i > 0 {
+				fmt.Println()
+			}
+			fmt.Print(formatViolationBlock(v, cfg, cfgRoot, vs))
+		}
+	} else {
+		for _, v := range violations {
+			fmt.Println(v)
+		}
+	}
+
 	fmt.Printf("\nFound %d violation%s.\n", n, pluralS(n))
 	return 1
 }
