@@ -89,36 +89,34 @@ func runComment(opts Options) error {
 }
 
 // runCommentList lists comments filtered by status and limited by -n.
-func runCommentList(opts Options) error {
-	cs := opts.Styles
+// runStateList renders git-state tickets using ListOptions. It is the shared
+// implementation for `tdb list --source state` and `tdb comment list`.
+func runStateList(o ListOptions) error {
+	cs := o.Styles
 	store := ticketdb.NewStore("")
 	all, err := store.AllComments()
 	if err != nil {
 		return fmt.Errorf("reading comments: %w", err)
 	}
 
-	// Compute short suffix IDs across all store comments for stable uniqueness
 	allIDs := make([]string, len(all))
 	for i, c := range all {
 		allIDs[i] = c.ID
 	}
 	shortIDs := shortSuffixes(allIDs)
 
-	// Filter by suffix if a positional arg was given
-	if opts.ID != "" {
+	if o.ID != "" {
 		var matched []*ticketdb.Comment
 		for _, c := range all {
-			if strings.HasSuffix(c.ID, opts.ID) {
+			if strings.HasSuffix(c.ID, o.ID) {
 				matched = append(matched, c)
 			}
 		}
 		all = matched
 	}
 
-	// Apply remaining filters only when not looking up by ID
-	if opts.ID == "" {
-		// Filter by --status (default: unresolved)
-		status := opts.Status
+	if o.ID == "" {
+		status := o.Status
 		if status == "" {
 			status = "unresolved"
 		}
@@ -134,8 +132,7 @@ func runCommentList(opts Options) error {
 			all = filtered
 		}
 
-		// Filter by --kind
-		switch opts.Kind {
+		switch o.Kind {
 		case "comment":
 			var filtered []*ticketdb.Comment
 			for _, c := range all {
@@ -154,9 +151,8 @@ func runCommentList(opts Options) error {
 			all = filtered
 		}
 
-		// Filter by --since
-		if opts.Since != "" {
-			dur, err := parseSinceDuration(opts.Since)
+		if o.Since != "" {
+			dur, err := parseSinceDuration(o.Since)
 			if err != nil {
 				return fmt.Errorf("invalid --since value: %w", err)
 			}
@@ -172,10 +168,8 @@ func runCommentList(opts Options) error {
 			}
 		}
 
-		// Filter by branch
-		if opts.Branch != "" {
-			// Resolve "." sentinel to current branch
-			branch := opts.Branch
+		if o.Branch != "" {
+			branch := o.Branch
 			if branch == "." {
 				if cb, err := store.CurrentBranch(); err == nil && cb != "" {
 					branch = cb
@@ -190,8 +184,7 @@ func runCommentList(opts Options) error {
 				}
 			}
 			all = filtered
-		} else if !opts.AllBranches {
-			// Default: filter by current branch (matching TUI behaviour)
+		} else if !o.AllBranches {
 			currentBranch, _ := store.CurrentBranch()
 			if currentBranch != "" {
 				var filtered []*ticketdb.Comment
@@ -206,10 +199,8 @@ func runCommentList(opts Options) error {
 			}
 		}
 
-		// Filter by --author
-		if opts.AuthorSet {
-			if opts.Author == "" {
-				// Bare --author: show only comments with no author
+		if o.AuthorSet {
+			if o.Author == "" {
 				var filtered []*ticketdb.Comment
 				for _, c := range all {
 					if c.Author == "" {
@@ -218,7 +209,7 @@ func runCommentList(opts Options) error {
 				}
 				all = filtered
 			} else {
-				needle := strings.ToLower(opts.Author)
+				needle := strings.ToLower(o.Author)
 				var filtered []*ticketdb.Comment
 				for _, c := range all {
 					if strings.Contains(strings.ToLower(c.Author), needle) {
@@ -229,23 +220,21 @@ func runCommentList(opts Options) error {
 			}
 		}
 
-		// Filter by --file (exact match, or prefix match when filter ends with /)
-		if opts.File != "" {
-			isPrefix := strings.HasSuffix(opts.File, "/")
+		if o.File != "" {
+			isPrefix := strings.HasSuffix(o.File, "/")
 			var filtered []*ticketdb.Comment
 			for _, c := range all {
-				if isPrefix && strings.HasPrefix(c.File, opts.File) {
+				if isPrefix && strings.HasPrefix(c.File, o.File) {
 					filtered = append(filtered, c)
-				} else if !isPrefix && c.File == opts.File {
+				} else if !isPrefix && c.File == o.File {
 					filtered = append(filtered, c)
 				}
 			}
 			all = filtered
 		}
 
-		// Filter by --grep (case-insensitive substring in comment text)
-		if opts.Grep != "" {
-			needle := strings.ToLower(opts.Grep)
+		if o.Grep != "" {
+			needle := strings.ToLower(o.Grep)
 			var filtered []*ticketdb.Comment
 			for _, c := range all {
 				if strings.Contains(strings.ToLower(c.Text), needle) {
@@ -254,31 +243,37 @@ func runCommentList(opts Options) error {
 			}
 			all = filtered
 		}
+
+		if o.Rule != "" {
+			var filtered []*ticketdb.Comment
+			for _, c := range all {
+				if strings.EqualFold(o.Rule, c.Rule) {
+					filtered = append(filtered, c)
+				}
+			}
+			all = filtered
+		}
 	}
 
 	if len(all) == 0 {
-		if opts.ID != "" {
-			fmt.Printf("No comment matching suffix %q\n", opts.ID)
+		if o.ID != "" {
+			fmt.Printf("No comment matching suffix %q\n", o.ID)
 		} else {
 			fmt.Println("No comments")
 		}
 		return nil
 	}
 
-	// Sort by Created descending (newest first) for limiting
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].Created.After(all[j].Created)
 	})
 
-	// Show block (verbose) output when -v is passed or when looking up by ID.
-	showBlock := opts.Verbose || opts.ID != ""
+	showBlock := o.Verbose || o.ID != ""
 
-	// Apply -n limiting (skip when looking up by ID)
 	totalCount := len(all)
 	truncated := false
-	if opts.ID == "" {
-		if !opts.NSet {
-			// Default: 20 for oneline, 5 for verbose/block
+	if o.ID == "" {
+		if !o.NSet {
 			defaultN := 20
 			if showBlock {
 				defaultN = 5
@@ -287,16 +282,15 @@ func runCommentList(opts Options) error {
 				all = all[:defaultN]
 				truncated = true
 			}
-		} else if opts.N == 0 {
-			// Uncapped: show all
-		} else if opts.N > 0 {
-			if opts.N < len(all) {
-				all = all[:opts.N]
+		} else if o.N == 0 {
+			// uncapped
+		} else if o.N > 0 {
+			if o.N < len(all) {
+				all = all[:o.N]
 				truncated = true
 			}
 		} else {
-			// Negative: oldest |N|
-			count := -opts.N
+			count := -o.N
 			if count < len(all) {
 				all = all[len(all)-count:]
 				truncated = true
@@ -304,16 +298,14 @@ func runCommentList(opts Options) error {
 		}
 	}
 
-	// Reverse to chronological order (oldest first, newest at bottom near prompt)
 	slices.Reverse(all)
 
-	// Get terminal width for two-column layout
 	termWidth := 80
 	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
 		termWidth = w
 	}
 
-	if !opts.Raw && !showBlock {
+	if !o.Raw && !showBlock {
 		now := time.Now()
 		cols := computeOnelineCols(all, shortIDs, now)
 		for _, c := range all {
@@ -326,7 +318,7 @@ func runCommentList(opts Options) error {
 	}
 
 	for i, c := range all {
-		if opts.Raw {
+		if o.Raw {
 			if i > 0 {
 				fmt.Print("\n")
 			}
@@ -335,13 +327,36 @@ func runCommentList(opts Options) error {
 			if i > 0 {
 				fmt.Print("\n\n")
 			}
-			fmt.Print(formatCommentBlock(c, opts.Highlighter, termWidth, shortIDs[c.ID], time.Now(), cs))
+			fmt.Print(formatCommentBlock(c, o.Highlighter, termWidth, shortIDs[c.ID], time.Now(), cs))
 		}
 	}
-	if truncated && !opts.Raw {
+	if truncated && !o.Raw {
 		fmt.Printf("\n%s\n", cs.Label.Render(fmt.Sprintf("%d/%d", len(all), totalCount)))
 	}
 	return nil
+}
+
+func runCommentList(opts Options) error {
+	return runStateList(ListOptions{
+		Source:      SourceState,
+		Kind:        opts.Kind,
+		Status:      opts.Status,
+		Since:       opts.Since,
+		Author:      opts.Author,
+		AuthorSet:   opts.AuthorSet,
+		File:        opts.File,
+		Grep:        opts.Grep,
+		Rule:        opts.Rule,
+		N:           opts.N,
+		NSet:        opts.NSet,
+		AllBranches: opts.AllBranches,
+		Branch:      opts.Branch,
+		Verbose:     opts.Verbose,
+		Raw:         opts.Raw,
+		ID:          opts.ID,
+		Styles:      opts.Styles,
+		Highlighter: opts.Highlighter,
+	})
 }
 
 // onelineCols holds the computed column widths for oneline output,

@@ -237,6 +237,18 @@ func (o *Options) parseFlag(arg string, args []string, i int) (int, error) {
 			return 0, fmt.Errorf("--grep requires a search pattern")
 		}
 
+	case arg == "--rule":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--rule requires a value")
+		}
+		o.Rule = args[i+1]
+		return 1, nil
+	case strings.HasPrefix(arg, "--rule="):
+		o.Rule = strings.TrimPrefix(arg, "--rule=")
+		if o.Rule == "" {
+			return 0, fmt.Errorf("--rule requires a value")
+		}
+
 	case arg == "--raw":
 		o.Raw = true
 	case arg == "--all-branches":
@@ -358,6 +370,9 @@ func (o *Options) validate() error {
 	if o.Grep != "" && o.Sub != "list" {
 		return fmt.Errorf("--grep is only valid for %s list", name)
 	}
+	if o.Rule != "" && o.Sub != "list" {
+		return fmt.Errorf("--rule is only valid for %s list", name)
+	}
 	if o.Sub == "add" && o.AuthorSet && o.Author == "" {
 		return fmt.Errorf("--author requires an author argument for %s add", name)
 	}
@@ -411,6 +426,7 @@ List options:
   --author [NAME]        Filter by author (bare = no author)
   --file PATH            Filter by file (trailing / = prefix match)
   --grep TEXT            Filter by comment text (case-insensitive)
+  --rule CODE            Filter by rule code
 
 Add options:
   -m MESSAGE             Comment text (else read from stdin)

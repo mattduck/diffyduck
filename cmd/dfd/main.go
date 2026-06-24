@@ -113,28 +113,6 @@ type parsedArgs struct {
 	verbose bool   // -v/--verbose
 	since   string // --since duration (e.g. "30d", "2w", "3M", "all")
 
-	// comment-specific
-	commentSub         string // "list", "edit", or "add"
-	commentID          string // comment ID/suffix for edit or list lookup
-	commentN           int    // -n count: positive=newest, negative=oldest, 0=uncapped
-	commentNSet        bool   // true if -n was explicitly passed
-	commentStatus      string // --status: "unresolved" (default), "resolved", "all"
-	commentVerbose     bool   // -v/--verbose: show full block output (default is oneline)
-	commentRaw         bool   // --raw: show raw git blob serialization
-	commentAllBranches bool   // --all-branches: show comments from all branches
-	commentBranch      string // --branch: filter to specific branch
-	commentKind        string // --kind: "comment", "note", or "all"
-	commentResolved    *bool  // --resolved=true/false: set resolved state (edit only)
-
-	// comment add-specific
-	commentAddTarget  string // file:line positional arg
-	commentAddMessage string // -m message
-	commentAddRef     string // --ref: commit/branch/tag to comment on
-	commentAuthor     string // --author: author identifier (add: set author, list: filter by author)
-	commentAuthorSet  bool   // true if --author was explicitly passed (bare --author on list = filter to empty author)
-	commentFile       string // --file: filter by file path (exact or prefix match)
-	commentGrep       string // --grep: filter by comment text (case-insensitive substring)
-
 	// config-specific
 	configInit  bool // --init
 	configForce bool // --force
@@ -157,20 +135,6 @@ type parsedArgs struct {
 	ref2 string
 }
 
-// commentSubTakesID reports whether the comment subcommand accepts a comment ID argument.
-// When require is true, only subcommands that require an ID are matched (excludes "list"
-// which accepts an optional ID).
-func commentSubTakesID(sub string, require bool) bool {
-	switch sub {
-	case "edit", "resolve", "unresolve":
-		return true
-	case "list":
-		return !require
-	default:
-		return false
-	}
-}
-
 // expandAlias maps single-letter subcommand aliases to their canonical names.
 func expandAlias(s string) string {
 	switch s {
@@ -182,10 +146,6 @@ func expandAlias(s string) string {
 		return "branch"
 	case "s":
 		return "status"
-	case "c":
-		return "comment"
-	case "n":
-		return "note"
 	default:
 		return s
 	}
@@ -200,42 +160,11 @@ func parseArgs(args []string) (parsedArgs, error) {
 	remaining := args
 	if len(remaining) > 0 {
 		switch remaining[0] {
-		case "diff", "d", "show", "log", "l", "clean", "branch", "b", "config", "status", "s", "comment", "c", "note", "n":
+		case "diff", "d", "show", "log", "l", "clean", "branch", "b", "config", "status", "s":
 			result.cmd = expandAlias(remaining[0])
 			result.cmdAlias = result.cmd
-			// Normalize "note" to "comment" so all flag parsing and
-			// validation works identically; cmdAlias preserves the
-			// original for dispatch and error messages.
-			if result.cmd == "note" {
-				result.cmd = "comment"
-			}
 			result.helpCmd = result.cmdAlias // target for --help flag
 			remaining = remaining[1:]
-
-			// Consume comment sub-subcommand and ID/target
-			if result.cmd == "comment" {
-				if len(remaining) > 0 {
-					switch remaining[0] {
-					case "list", "edit", "add", "resolve", "unresolve":
-						result.commentSub = remaining[0]
-						remaining = remaining[1:]
-					}
-				}
-				if result.commentSub == "" {
-					result.commentSub = "list"
-				}
-				if result.commentSub == "add" {
-					// Consume file:line positional arg
-					if len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
-						result.commentAddTarget = remaining[0]
-						remaining = remaining[1:]
-					}
-				} else if commentSubTakesID(result.commentSub, false) &&
-					len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
-					result.commentID = remaining[0]
-					remaining = remaining[1:]
-				}
-			}
 		case "help":
 			result.showHelp = true
 			remaining = remaining[1:]
@@ -360,24 +289,6 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 
 	// Count: -n <count>, -n<count>
 	case arg == "-n":
-		if p.cmd == "comment" {
-			// Bare -n (no following integer) is treated as -n0.
-			if i+1 >= len(args) {
-				p.commentN = 0
-				p.commentNSet = true
-				return 0, nil
-			}
-			n, err := strconv.Atoi(args[i+1])
-			if err != nil {
-				// Next arg isn't a number; treat as bare -n.
-				p.commentN = 0
-				p.commentNSet = true
-				return 0, nil
-			}
-			p.commentN = n
-			p.commentNSet = true
-			return 1, nil
-		}
 		if i+1 >= len(args) {
 			return 0, fmt.Errorf("-n requires a count argument")
 		}
@@ -389,15 +300,6 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		return 1, nil
 	case strings.HasPrefix(arg, "-n"):
 		nStr := strings.TrimPrefix(arg, "-n")
-		if p.cmd == "comment" {
-			n, err := strconv.Atoi(nStr)
-			if err != nil {
-				return 0, fmt.Errorf("-n requires an integer, got %q", nStr)
-			}
-			p.commentN = n
-			p.commentNSet = true
-			break
-		}
 		n, err := strconv.Atoi(nStr)
 		if err != nil || n <= 0 {
 			return 0, fmt.Errorf("-n requires a positive integer, got %q", nStr)
@@ -458,20 +360,12 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			return 0, fmt.Errorf("-u mode must be no, normal, or all; got %q", mode)
 		}
 
-	// status: show branches / comment: filter branch
+	// status: show branches / diff/show/log: filter TUI comment branch
 	case arg == "--branches":
 		p.showBranches = true
 	case arg == "-b":
-		if p.cmd == "comment" {
-			// -b is shorthand for --branch in comment context
-			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				p.commentBranch = args[i+1]
-				return 1, nil
-			}
-			// No arg: show all branches
-			p.commentAllBranches = true
-		} else if p.cmd == "diff" || p.cmd == "show" || p.cmd == "log" || p.cmd == "" {
-			// -b <branch> sets comment branch filter for TUI
+		if p.cmd == "diff" || p.cmd == "show" || p.cmd == "log" || p.cmd == "" {
+			// -b <branch> sets comment branch filter for the TUI
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return 0, fmt.Errorf("-b requires a branch name")
 			}
@@ -481,160 +375,18 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 			p.showBranches = true
 		}
 
-	// comment add flags
-	case arg == "-m":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("-m requires a message argument")
-		}
-		p.commentAddMessage = args[i+1]
-		return 1, nil
-	case strings.HasPrefix(arg, "-m"):
-		p.commentAddMessage = strings.TrimPrefix(arg, "-m")
-	case arg == "--ref":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--ref requires a ref argument (branch, tag, or commit)")
-		}
-		p.commentAddRef = args[i+1]
-		return 1, nil
-	case strings.HasPrefix(arg, "--ref="):
-		p.commentAddRef = strings.TrimPrefix(arg, "--ref=")
-		if p.commentAddRef == "" {
-			return 0, fmt.Errorf("--ref requires a ref argument")
-		}
-	case arg == "--author":
-		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-			p.commentAuthor = args[i+1]
-			p.commentAuthorSet = true
-			return 1, nil
-		}
-		// Bare --author with no arg: filter to comments with no author
-		p.commentAuthorSet = true
-	case strings.HasPrefix(arg, "--author="):
-		p.commentAuthor = strings.TrimPrefix(arg, "--author=")
-		if p.commentAuthor == "" {
-			return 0, fmt.Errorf("--author requires a value when using = syntax")
-		}
-		p.commentAuthorSet = true
-
-	// comment list filter flags
-	case arg == "--file":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--file requires a file path argument")
-		}
-		p.commentFile = args[i+1]
-		return 1, nil
-	case strings.HasPrefix(arg, "--file="):
-		p.commentFile = strings.TrimPrefix(arg, "--file=")
-		if p.commentFile == "" {
-			return 0, fmt.Errorf("--file requires a file path argument")
-		}
-	case arg == "--grep":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--grep requires a search pattern")
-		}
-		p.commentGrep = args[i+1]
-		return 1, nil
-	case strings.HasPrefix(arg, "--grep="):
-		p.commentGrep = strings.TrimPrefix(arg, "--grep=")
-		if p.commentGrep == "" {
-			return 0, fmt.Errorf("--grep requires a search pattern")
-		}
-
-	// comment flags
-	case arg == "--raw":
-		p.commentRaw = true
-	case arg == "--all-branches":
-		p.commentAllBranches = true
-	case arg == "--kind":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--kind requires a value (comment, note, all)")
-		}
-		switch args[i+1] {
-		case "comment", "note", "all":
-			p.commentKind = args[i+1]
-		default:
-			return 0, fmt.Errorf("--kind must be comment, note, or all; got %q", args[i+1])
-		}
-		return 1, nil
-	case strings.HasPrefix(arg, "--kind="):
-		val := strings.TrimPrefix(arg, "--kind=")
-		switch val {
-		case "comment", "note", "all":
-			p.commentKind = val
-		default:
-			return 0, fmt.Errorf("--kind must be comment, note, or all; got %q", val)
-		}
 	case arg == "--branch":
-		if p.cmd == "diff" || p.cmd == "show" || p.cmd == "log" || p.cmd == "" {
-			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
-				return 0, fmt.Errorf("--branch requires a branch name")
-			}
-			p.filterBranch = args[i+1]
-			return 1, nil
+		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+			return 0, fmt.Errorf("--branch requires a branch name")
 		}
-		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-			p.commentBranch = args[i+1]
-			return 1, nil
-		}
-		// No arg: show all branches
-		p.commentAllBranches = true
+		p.filterBranch = args[i+1]
+		return 1, nil
 	case strings.HasPrefix(arg, "--branch="):
 		val := strings.TrimPrefix(arg, "--branch=")
 		if val == "" {
 			return 0, fmt.Errorf("--branch requires a branch name")
 		}
-		if p.cmd == "diff" || p.cmd == "show" || p.cmd == "log" || p.cmd == "" {
-			p.filterBranch = val
-		} else {
-			p.commentBranch = val
-		}
-	case arg == "--status":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--status requires a value (unresolved, resolved, all)")
-		}
-		switch args[i+1] {
-		case "unresolved", "resolved", "all":
-			p.commentStatus = args[i+1]
-		default:
-			return 0, fmt.Errorf("--status must be unresolved, resolved, or all; got %q", args[i+1])
-		}
-		return 1, nil
-	case strings.HasPrefix(arg, "--status="):
-		val := strings.TrimPrefix(arg, "--status=")
-		switch val {
-		case "unresolved", "resolved", "all":
-			p.commentStatus = val
-		default:
-			return 0, fmt.Errorf("--status must be unresolved, resolved, or all; got %q", val)
-		}
-
-	case arg == "--resolved":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--resolved requires a value (true or false)")
-		}
-		switch args[i+1] {
-		case "true":
-			v := true
-			p.commentResolved = &v
-		case "false":
-			v := false
-			p.commentResolved = &v
-		default:
-			return 0, fmt.Errorf("--resolved must be true or false; got %q", args[i+1])
-		}
-		return 1, nil
-	case strings.HasPrefix(arg, "--resolved="):
-		val := strings.TrimPrefix(arg, "--resolved=")
-		switch val {
-		case "true":
-			v := true
-			p.commentResolved = &v
-		case "false":
-			v := false
-			p.commentResolved = &v
-		default:
-			return 0, fmt.Errorf("--resolved must be true or false; got %q", val)
-		}
+		p.filterBranch = val
 
 	// config flags
 	case arg == "--init":
@@ -671,7 +423,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("-n is only valid for log command")
 		}
 		if p.verbose {
-			return fmt.Errorf("-v is only valid for branch and comment commands")
+			return fmt.Errorf("-v is only valid for branch command")
 		}
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
@@ -693,7 +445,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("-n is only valid for log command")
 		}
 		if p.verbose {
-			return fmt.Errorf("-v is only valid for branch and comment commands")
+			return fmt.Errorf("-v is only valid for branch command")
 		}
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
@@ -712,7 +464,7 @@ func (p *parsedArgs) validate() error {
 			return fmt.Errorf("--snapshots/--no-snapshots are only valid for diff command")
 		}
 		if p.verbose {
-			return fmt.Errorf("-v is only valid for branch and comment commands")
+			return fmt.Errorf("-v is only valid for branch command")
 		}
 		if p.symbols >= 0 || p.untrackedFiles != "all" {
 			return fmt.Errorf("-S/--symbols and -u/--untracked-files are only valid for status command")
@@ -733,52 +485,6 @@ func (p *parsedArgs) validate() error {
 		}
 		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
 			return fmt.Errorf("branch only accepts -v/--verbose and --since")
-		}
-	case "comment":
-		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
-			return fmt.Errorf("%s does not accept ref or path arguments", p.cmdAlias)
-		}
-		if p.cached || p.unstaged || p.allMode || p.count > 0 || p.symbols >= 0 || p.untrackedFiles != "all" || p.showBranches {
-			return fmt.Errorf("%s does not accept diff/log/status flags", p.cmdAlias)
-		}
-		if p.verbose {
-			p.commentVerbose = true
-		}
-		if commentSubTakesID(p.commentSub, true) && p.commentID == "" {
-			return fmt.Errorf("%s %s requires a comment ID", p.cmdAlias, p.commentSub)
-		}
-		if p.commentResolved != nil && p.commentSub != "edit" {
-			if p.commentSub == "resolve" || p.commentSub == "unresolve" {
-				return fmt.Errorf("--resolved cannot be combined with %s %s (it already sets resolved state)", p.cmdAlias, p.commentSub)
-			}
-			return fmt.Errorf("--resolved is only valid for %s edit", p.cmdAlias)
-		}
-		if p.commentKind != "" && p.commentSub != "list" {
-			return fmt.Errorf("--kind is only valid for %s list", p.cmdAlias)
-		}
-		if p.commentKind != "" && p.cmdAlias == "note" {
-			return fmt.Errorf("--kind cannot be used with note (use comment list --kind instead)")
-		}
-		if p.commentAddMessage != "" && p.commentSub != "add" {
-			return fmt.Errorf("-m is only valid for %s add", p.cmdAlias)
-		}
-		if p.commentAddRef != "" && p.commentSub != "add" {
-			return fmt.Errorf("--ref is only valid for %s add", p.cmdAlias)
-		}
-		if p.commentAuthorSet && p.commentSub != "add" && p.commentSub != "list" && p.commentSub != "" {
-			return fmt.Errorf("--author is only valid for %s add and %s list", p.cmdAlias, p.cmdAlias)
-		}
-		if p.commentFile != "" && p.commentSub != "list" {
-			return fmt.Errorf("--file is only valid for %s list", p.cmdAlias)
-		}
-		if p.commentGrep != "" && p.commentSub != "list" {
-			return fmt.Errorf("--grep is only valid for %s list", p.cmdAlias)
-		}
-		if p.commentSub == "add" && p.commentAuthorSet && p.commentAuthor == "" {
-			return fmt.Errorf("--author requires an author argument for %s add", p.cmdAlias)
-		}
-		if p.cmdAlias == "note" && p.commentSub == "add" && p.commentAddTarget != "" {
-			return fmt.Errorf("note add does not accept a file:line argument (use comment add instead)")
 		}
 	case "status":
 		if len(p.refs) > 0 || len(p.paths) > 0 || len(p.excludes) > 0 {
@@ -813,37 +519,9 @@ func (p *parsedArgs) validate() error {
 		return fmt.Errorf("--init, --force, --print, --path, --edit are only valid for config command")
 	}
 
-	isCommentCmd := p.cmd == "comment"
-
-	// --since is only valid for branch, log, and comment/note list
-	if p.cmd != "branch" && p.cmd != "log" && !isCommentCmd && p.since != "" {
-		return fmt.Errorf("--since is only valid for branch, log, and comment commands")
-	}
-
-	// --status, --raw, etc. are only valid for comment/note
-	if !isCommentCmd && p.commentStatus != "" {
-		return fmt.Errorf("--status is only valid for comment command")
-	}
-	if !isCommentCmd && p.commentRaw {
-		return fmt.Errorf("--raw is only valid for comment command")
-	}
-	if !isCommentCmd && p.commentAllBranches {
-		return fmt.Errorf("--all-branches is only valid for comment command")
-	}
-	if !isCommentCmd && p.commentBranch != "" {
-		return fmt.Errorf("--branch is only valid for comment command")
-	}
-	if p.commentAllBranches && p.commentBranch != "" {
-		return fmt.Errorf("--all-branches and --branch cannot be used together")
-	}
-	if !isCommentCmd && p.commentKind != "" {
-		return fmt.Errorf("--kind is only valid for comment command")
-	}
-	if !isCommentCmd && p.commentFile != "" {
-		return fmt.Errorf("--file is only valid for comment command")
-	}
-	if !isCommentCmd && p.commentGrep != "" {
-		return fmt.Errorf("--grep is only valid for comment command")
+	// --since is only valid for branch and log
+	if p.cmd != "branch" && p.cmd != "log" && p.since != "" {
+		return fmt.Errorf("--since is only valid for branch and log commands")
 	}
 
 	// filterBranch is only valid for diff/show/log (TUI commands)
@@ -995,12 +673,8 @@ func printUsage(cmd string) {
 		fmt.Print(usageStatus)
 	case "config":
 		fmt.Print(usageConfig)
-	case "comment":
-		fmt.Print(usageComment)
-	case "note":
-		fmt.Println("dfd note is shorthand for dfd comment --kind note")
-		fmt.Println()
-		fmt.Print(usageComment)
+	case "comment", "note":
+		ticketcli.PrintUsage(os.Stdout)
 	case "completion":
 		fmt.Print(usageCompletion)
 	default:
@@ -1202,69 +876,6 @@ Examples:
   dfd config --edit            Edit config in your editor
 `
 
-const usageComment = `dfd comment - manage comments
-
-Usage:
-  dfd comment list [flags] [<id>]
-  dfd comment edit <id> [--resolved=true|false]
-  dfd comment resolve <id>
-  dfd comment unresolve <id>
-  dfd comment add [<file>:<line>] -m <message> [--ref <ref>]
-
-Sub-commands:
-  list       List comments (default: 5 newest unresolved)
-  edit       Open a comment in $EDITOR (or set resolved state with --resolved)
-  resolve    Mark a comment as resolved (shorthand for edit --resolved=true)
-  unresolve  Mark a comment as unresolved (shorthand for edit --resolved=false)
-  add        Add a new comment (standalone if no file:line given)
-
-Add flags:
-  -m <message>        Comment text (required unless reading from stdin)
-      --ref <ref>     Comment on file as it appears at ref (branch, tag, or commit)
-                      Without --ref, comments on the working tree version
-      --author <name> Author identifier (shown in list and TUI display)
-
-Edit flags:
-      --resolved <b>  Set resolved state: true or false (skips $EDITOR)
-
-List flags:
-  -n <count>       Positive: newest N, negative: oldest |N|, 0: uncapped (default: 5)
-  -v, --verbose    Show full detail (default when looking up by ID)
-      --status <s> Filter: unresolved (default), resolved, all
-      --since <d>  Only show comments created within duration (e.g. 30m, 6h, 7d, 2w, 3M, 1y, all)
-      --raw        Show raw git blob format for each comment
-      --kind <k>   Filter by kind: comment, note, all (default: comment)
-  -b, --branch [b] Filter to a specific branch, or all branches if no arg given
-      --all-branches
-                   Alias for -b with no argument
-      --author [s] Filter by author (case-insensitive substring), or no-author if bare
-      --file <path> Filter by file path (exact match, or prefix if path ends with /)
-      --grep <text> Filter by comment text (case-insensitive substring)
-
-Examples:
-  dfd comment add main.go:42 -m "This needs error handling"
-  dfd comment add src/app.go:10 -m "Refactor this" --ref main
-  dfd comment add -m "TODO: investigate flaky tests"
-  echo "Review this" | dfd comment add lib.go:5
-  dfd comment list                    Show 5 newest unresolved
-  dfd comment list --kind all        Show comments and notes
-  dfd comment list --kind note       Show only standalone notes
-  dfd comment list -n 10              Show 10 newest unresolved
-  dfd comment list -n -3              Show 3 oldest unresolved
-  dfd comment list -n 0               Show all unresolved
-  dfd comment list --status all       Include resolved
-  dfd comment list --status resolved  Only resolved
-  dfd comment list --since 2w         Comments from last 2 weeks
-  dfd comment list --file src/        Comments on files under src/
-  dfd comment list --grep TODO        Comments containing "TODO"
-  dfd comment list -v                 Full detail output
-  dfd comment list 415                Show comment(s) matching suffix (full detail)
-  dfd comment edit <id>               Edit in $EDITOR
-  dfd comment resolve <id>            Mark as resolved
-  dfd comment unresolve <id>          Mark as unresolved
-  dfd c list                          Short alias
-`
-
 func run() error {
 	// Intercept completion subcommands before normal parsing.
 	// __complete receives partial/invalid input that would fail parseArgs.
@@ -1274,6 +885,16 @@ func run() error {
 			return runCompletion(os.Args[2:])
 		case "__complete":
 			return runComplete(os.Args[2:])
+		case "comment", "c", "note", "n":
+			// Delegate comment/note to ticketcli before dfd argument parsing.
+			// dfd supplies a tree-sitter highlighter for code context; tdb passes nil.
+			cfg, _ := config.Load()
+			ad := newContextHighlighter()
+			defer ad.Close()
+			return ticketcli.Run(os.Args[1:], ticketcli.Options{
+				Styles:      ticketcli.StylesFromConfig(cfg.Theme),
+				Highlighter: ad,
+			})
 		}
 	}
 
@@ -1308,18 +929,6 @@ func run() error {
 			return fmt.Errorf("start cpu profile: %w", err)
 		}
 		defer pprof.StopCPUProfile()
-	}
-
-	// Handle comment/note command — delegated to the shared ticketcli package.
-	// dfd supplies a tree-sitter-backed highlighter for colored code context;
-	// the cgo-free tdb binary passes nil instead.
-	if args.cmd == "comment" {
-		ad := newContextHighlighter()
-		defer ad.Close()
-		return ticketcli.Run(os.Args[1:], ticketcli.Options{
-			Styles:      ticketcli.StylesFromConfig(cfg.Theme),
-			Highlighter: ad,
-		})
 	}
 
 	// Handle clean command - deletes all persisted snapshot refs

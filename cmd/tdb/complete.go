@@ -182,7 +182,7 @@ func flagsForCmd(cmd, sub string) []string {
 		case "resolve", "unresolve":
 			return []string{"--help"}
 		default: // list or no sub
-			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--kind", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--help"}
+			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--kind", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--rule", "--help"}
 		}
 	case "note", "n":
 		switch sub {
@@ -191,7 +191,7 @@ func flagsForCmd(cmd, sub string) []string {
 		case "edit":
 			return []string{"-m", "--help"}
 		default:
-			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--help"}
+			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--rule", "--help"}
 		}
 	}
 	return []string{"--help"}

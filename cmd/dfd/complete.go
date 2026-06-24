@@ -94,7 +94,7 @@ func isFlag(w string) bool {
 // flagTakesValue returns true if the flag consumes a separate next word as its value.
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--exclude", "-e", "-n", "--since", "--status", "--kind", "-b", "--branch", "--cpuprofile", "-m", "--ref", "--author", "--file", "--grep":
+	case "--exclude", "-e", "-n", "--since", "--status", "--kind", "-b", "--branch", "--cpuprofile", "-m", "--ref", "--author", "--file", "--grep", "--rule":
 		return true
 	}
 	return false
@@ -164,6 +164,19 @@ func generateCompletions(ctx completionContext, g git.Git, commentIDs commentIDs
 	}
 }
 
+// commentSubTakesID reports whether a comment/note sub-subcommand accepts a positional ID.
+// When require is true, only subcommands that require an ID match (excludes "list").
+func commentSubTakesID(sub string, require bool) bool {
+	switch sub {
+	case "edit", "resolve", "unresolve":
+		return true
+	case "list":
+		return !require
+	default:
+		return false
+	}
+}
+
 func completeFlagValue(flag, prefix string) []string {
 	var values []string
 	switch flag {
@@ -204,9 +217,9 @@ func flagsForCmd(cmd string) []string {
 	case "status":
 		return append(global, "--symbols", "--untracked-files", "--branches")
 	case "comment":
-		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--kind", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep")
+		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--kind", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--rule")
 	case "note":
-		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep")
+		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--rule")
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:

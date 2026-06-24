@@ -36,6 +36,7 @@ type Options struct {
 	AuthorSet bool   // true if --author was explicitly passed
 	File      string // --file filter (list only)
 	Grep      string // --grep filter (list only)
+	Rule      string // --rule filter (list only)
 
 	AddTarget  string // file:line positional arg (add)
 	AddMessage string // -m message (add)

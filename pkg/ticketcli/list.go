@@ -26,19 +26,27 @@ const (
 // ListOptions holds the parsed inputs for the unified `tdb list` command, which
 // merges git-state tickets and in-code markers into one view.
 type ListOptions struct {
-	Source  string   // all (default), state, code
-	Markers []string // restrict code markers to these keywords (empty = defaults)
-	File    string   // --file filter (trailing / = prefix match)
-	Grep    string   // --grep filter (case-insensitive)
-	Status  string   // ticket filter: unresolved (default), resolved, all
-	Rule    string   // --rule filter (tickets carrying this rule code)
-	N       int      // -n cap on combined rows (0 = uncapped)
-	NSet    bool
+	Source    string   // all (default), state, code
+	Markers   []string // restrict code markers to these keywords (empty = defaults)
+	File      string   // --file filter (trailing / = prefix match)
+	Grep      string   // --grep filter (case-insensitive)
+	Status    string   // ticket filter: unresolved (default), resolved, all
+	Rule      string   // --rule filter (tickets carrying this rule code)
+	Kind      string   // ticket subtype filter: comment, note, all (state/all source only)
+	Since     string   // --since duration filter (state/all source only)
+	Author    string   // --author value (state/all source only)
+	AuthorSet bool     // true if --author was explicitly passed
+	Verbose   bool     // -v: block output (state source only)
+	Raw       bool     // --raw: serialized blob output (state source only)
+	ID        string   // positional ID lookup (state source only)
+	N         int      // -n cap on combined rows (0 = uncapped)
+	NSet      bool
 
 	AllBranches bool   // --all-branches
 	Branch      string // --branch / -b ("." = current branch)
 
-	Styles CommentListStyles
+	Styles      CommentListStyles
+	Highlighter ContextHighlighter // syntax highlighter injected by host binary (nil = plain)
 }
 
 // ParseListArgs parses `list` command-line arguments. argv[0] must be "list".
@@ -156,8 +164,57 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 		case strings.HasPrefix(arg, "--branch="):
 			o.Branch = strings.TrimPrefix(arg, "--branch=")
 
+		case arg == "--kind":
+			v, ok := next()
+			if !ok {
+				return o, fmt.Errorf("--kind requires a value (comment, note, all)")
+			}
+			if err := setListKind(&o, v); err != nil {
+				return o, err
+			}
+		case strings.HasPrefix(arg, "--kind="):
+			if err := setListKind(&o, strings.TrimPrefix(arg, "--kind=")); err != nil {
+				return o, err
+			}
+
+		case arg == "--since":
+			v, ok := next()
+			if !ok {
+				return o, fmt.Errorf("--since requires a duration (e.g. 30m, 6h, 30d, 2w, 3M, 1y, all)")
+			}
+			o.Since = v
+		case strings.HasPrefix(arg, "--since="):
+			o.Since = strings.TrimPrefix(arg, "--since=")
+
+		case arg == "--author":
+			if i+1 < len(rest) && !strings.HasPrefix(rest[i+1], "-") {
+				o.Author = rest[i+1]
+				o.AuthorSet = true
+				i++
+			} else {
+				o.AuthorSet = true
+			}
+		case strings.HasPrefix(arg, "--author="):
+			o.Author = strings.TrimPrefix(arg, "--author=")
+			if o.Author == "" {
+				return o, fmt.Errorf("--author requires a value when using = syntax")
+			}
+			o.AuthorSet = true
+
+		case arg == "-v" || arg == "--verbose":
+			o.Verbose = true
+
+		case arg == "--raw":
+			o.Raw = true
+
 		default:
-			return o, fmt.Errorf("unknown flag: %s", arg)
+			if strings.HasPrefix(arg, "-") {
+				return o, fmt.Errorf("unknown flag: %s", arg)
+			}
+			if o.ID != "" {
+				return o, fmt.Errorf("unexpected argument: %s", arg)
+			}
+			o.ID = arg
 		}
 	}
 
@@ -170,7 +227,45 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 	if o.Rule != "" && o.Source == SourceCode {
 		return o, fmt.Errorf("--rule is only valid when listing tickets")
 	}
+	if o.Source == SourceCode {
+		if o.Kind != "" {
+			return o, fmt.Errorf("--kind is only valid when listing tickets")
+		}
+		if o.Since != "" {
+			return o, fmt.Errorf("--since is only valid when listing tickets")
+		}
+		if o.AuthorSet {
+			return o, fmt.Errorf("--author is only valid when listing tickets")
+		}
+		if o.Verbose {
+			return o, fmt.Errorf("-v/--verbose is only valid when listing tickets")
+		}
+		if o.Raw {
+			return o, fmt.Errorf("--raw is only valid when listing tickets")
+		}
+		if o.ID != "" {
+			return o, fmt.Errorf("ID lookup is only valid when listing tickets")
+		}
+	}
+	if o.Source == SourceAll {
+		if o.ID != "" {
+			return o, fmt.Errorf("ID lookup requires --source state")
+		}
+		if o.Verbose || o.Raw {
+			return o, fmt.Errorf("-v/--raw require --source state")
+		}
+	}
 	return o, nil
+}
+
+func setListKind(o *ListOptions, v string) error {
+	switch v {
+	case "comment", "note", "all":
+		o.Kind = v
+		return nil
+	default:
+		return fmt.Errorf("--kind must be comment, note, or all; got %q", v)
+	}
 }
 
 func setSource(o *ListOptions, v string) error {
@@ -220,6 +315,11 @@ func RunList(argv []string, cfg Options) error {
 }
 
 func runList(o ListOptions) error {
+	// State-only mode: use the richer ticket renderer.
+	if o.Source == SourceState {
+		return runStateList(o)
+	}
+
 	var rows []listRow
 
 	if o.Source != SourceCode {
@@ -320,6 +420,14 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 		status = "unresolved"
 	}
 
+	now := time.Now()
+	var sinceFilter time.Duration
+	if o.Since != "" {
+		if d, err := parseSinceDuration(o.Since); err == nil {
+			sinceFilter = d
+		}
+	}
+
 	var rows []listRow
 	for _, c := range all {
 		if branch != "" && c.Branch != branch {
@@ -330,6 +438,30 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 		}
 		if status == "unresolved" && c.Resolved {
 			continue
+		}
+		switch o.Kind {
+		case "comment":
+			if c.IsStandalone() {
+				continue
+			}
+		case "note":
+			if !c.IsStandalone() {
+				continue
+			}
+		}
+		if sinceFilter > 0 && !c.Created.After(now.Add(-sinceFilter)) {
+			continue
+		}
+		if o.AuthorSet {
+			if o.Author == "" {
+				if c.Author != "" {
+					continue
+				}
+			} else {
+				if !strings.Contains(strings.ToLower(c.Author), strings.ToLower(o.Author)) {
+					continue
+				}
+			}
 		}
 		if !fileMatches(o.File, c.File) {
 			continue
