@@ -368,6 +368,7 @@ func printViolationStats(violations []scanner.Violation, cfg *rpconfig.Config, v
 func cmdCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
+	flagCategory := fs.String("category", "", "filter to a specific category")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
 	flagStats := fs.Bool("statistics", false, "show per-rule violation counts instead of individual violations")
@@ -391,14 +392,15 @@ defined rule are reported. Use --unknown to include annotations with
 codes not defined in the config.
 
 Flags:
-  --oneline        compact one-line output (default is verbose blocks)
-  --statistics     show per-rule counts instead of individual violations
-  --unknown        include violations with codes not defined in the config
-  --color          force color output (alias: --colour)
-  --no-color       disable color output (alias: --no-colour)
-  -n <count>       show at most N violations (total count still reported)
-  -rule <code>     filter output to a specific rule code
-  -config <path>   explicit config file path
+  --oneline           compact one-line output (default is verbose blocks)
+  --statistics        show per-rule counts instead of individual violations
+  --unknown           include violations with codes not defined in the config
+  --color             force color output (alias: --colour)
+  --no-color          disable color output (alias: --no-colour)
+  -n <count>          show at most N violations (total count still reported)
+  -rule <code>        filter output to a specific rule code
+  -category <name>    filter output to a specific category
+  -config <path>      explicit config file path
 
 Exit codes:
   0  no violations found
@@ -549,6 +551,24 @@ Exit codes:
 		violations = filtered
 	}
 
+	// Apply -category filter. Resolves effective category from the annotation
+	// first, falling back to the rule config when the annotation has none.
+	if *flagCategory != "" {
+		var filtered []scanner.Violation
+		for _, v := range violations {
+			cat := v.Category
+			if cat == "" && cfg != nil {
+				if r, ok := cfg.RuleByCode(v.Code); ok {
+					cat = r.Category
+				}
+			}
+			if strings.EqualFold(cat, *flagCategory) {
+				filtered = append(filtered, v)
+			}
+		}
+		violations = filtered
+	}
+
 	n := len(violations)
 	if n == 0 {
 		fmt.Println("No violations found.")
@@ -658,13 +678,15 @@ func stateMessage(c *ticketdb.Comment) string {
 func cmdRules(args []string) int {
 	fs := flag.NewFlagSet("rules", flag.ContinueOnError)
 	flagConfig := fs.String("config", "", "explicit config file path")
+	flagCategory := fs.String("category", "", "filter to a specific category")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt rules [flags]
 
 List rules defined in revparrot.toml.
 
 Flags:
-  -config <path>   explicit config file path
+  -category <name>   filter to a specific category
+  -config <path>     explicit config file path
 `)
 	}
 	if err := fs.Parse(args); err != nil {
@@ -708,6 +730,9 @@ Flags:
 	}
 
 	for _, r := range cfg.Rules {
+		if *flagCategory != "" && !strings.EqualFold(r.Category, *flagCategory) {
+			continue
+		}
 		status := "enabled"
 		if !r.IsEnabled() {
 			status = "disabled"
@@ -731,6 +756,7 @@ Flags:
 func cmdDiff(args []string) int {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
+	flagCategory := fs.String("category", "", "filter to a specific category")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagAll := fs.Bool("a", false, "include untracked files (working-tree mode only)")
 	flagCached := fs.Bool("cached", false, "show staged changes only (alias: --staged)")
@@ -752,10 +778,11 @@ Diff sources (pick one):
   rpt diff <ref1> <ref2>    between two refs     (git diff <ref1> <ref2>)
 
 Flags:
-  -a               include untracked files (working-tree mode only)
-  --cached         staged changes only
-  -rule <code>     filter to a specific rule code
-  -config <path>   explicit config file path
+  -a                 include untracked files (working-tree mode only)
+  --cached           staged changes only
+  -rule <code>       filter to a specific rule code
+  -category <name>   filter to a specific category
+  -config <path>     explicit config file path
 
 Exit codes:
   0  ok
@@ -852,6 +879,9 @@ Exit codes:
 		if *flagRule != "" && r.Code != *flagRule {
 			continue
 		}
+		if *flagCategory != "" && !strings.EqualFold(r.Category, *flagCategory) {
+			continue
+		}
 
 		var matching []string
 		for _, f := range diffFiles {
@@ -900,6 +930,7 @@ Exit codes:
 func cmdShow(args []string) int {
 	fs := flag.NewFlagSet("show", flag.ContinueOnError)
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
+	flagCategory := fs.String("category", "", "filter to a specific category")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt show [flags] [ref]
@@ -909,8 +940,9 @@ Show rules and their in-scope files changed in a single commit.
 Defaults to HEAD. Pass a ref to inspect a specific commit.
 
 Flags:
-  -rule <code>     filter to a specific rule code
-  -config <path>   explicit config file path
+  -rule <code>       filter to a specific rule code
+  -category <name>   filter to a specific category
+  -config <path>     explicit config file path
 
 Exit codes:
   0  ok
@@ -984,6 +1016,9 @@ Exit codes:
 			continue
 		}
 		if *flagRule != "" && r.Code != *flagRule {
+			continue
+		}
+		if *flagCategory != "" && !strings.EqualFold(r.Category, *flagCategory) {
 			continue
 		}
 

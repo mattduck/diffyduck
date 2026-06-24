@@ -28,6 +28,7 @@ const (
 type ListOptions struct {
 	Source    string   // all (default), state, code
 	Markers   []string // restrict code markers to these keywords (empty = defaults)
+	Category  string   // --category filter (code markers only)
 	File      string   // --file filter (trailing / = prefix match)
 	Grep      string   // --grep filter (case-insensitive)
 	Status    string   // ticket filter: unresolved (default), resolved, all
@@ -92,6 +93,15 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 			o.Markers = append(o.Markers, splitList(v)...)
 		case strings.HasPrefix(arg, "--marker="):
 			o.Markers = append(o.Markers, splitList(strings.TrimPrefix(arg, "--marker="))...)
+
+		case arg == "--category":
+			v, ok := next()
+			if !ok {
+				return o, fmt.Errorf("--category requires a value")
+			}
+			o.Category = v
+		case strings.HasPrefix(arg, "--category="):
+			o.Category = strings.TrimPrefix(arg, "--category=")
 
 		case arg == "--file":
 			v, ok := next()
@@ -223,6 +233,9 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 	}
 	if len(o.Markers) > 0 && o.Source == SourceState {
 		return o, fmt.Errorf("--marker is only valid when listing code markers")
+	}
+	if o.Category != "" && o.Source == SourceState {
+		return o, fmt.Errorf("--category is only valid when listing code markers")
 	}
 	if o.Rule != "" && o.Source == SourceCode {
 		return o, fmt.Errorf("--rule is only valid when listing tickets")
@@ -521,6 +534,9 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 			continue
 		}
 		if !grepMatches(o.Grep, m.Message, "") {
+			continue
+		}
+		if o.Category != "" && !strings.EqualFold(m.Category, o.Category) {
 			continue
 		}
 		kind := m.Keyword

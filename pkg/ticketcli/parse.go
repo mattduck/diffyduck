@@ -399,6 +399,7 @@ func PrintUsage(w io.Writer) {
 list merges git-state tickets and in-code markers (TODO/FIXME/…) into one view:
   --source VALUE         all (default), state (tickets), code (markers)
   --marker LIST          restrict code markers (e.g. TODO,FIXME); code only
+  --category VALUE       filter code markers by category; code only
   --status VALUE         unresolved (default), resolved, all; tickets only
   --rule CODE            filter tickets by rule code; tickets only
   --file PATH            filter by file (trailing / = prefix match)
