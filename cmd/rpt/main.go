@@ -67,11 +67,12 @@ func main() {
 
 // violationStyles holds lipgloss styles for violation output (compact and verbose).
 type violationStyles struct {
-	header  lipgloss.Style // bold white — file basename
-	label   lipgloss.Style // dim — metadata labels, line numbers, separators
-	dirPart lipgloss.Style // dim gray — directory part of file paths
-	rule    lipgloss.Style // cyan — rule code
-	target  lipgloss.Style // bold — verbose block > marker and target line number
+	header   lipgloss.Style // bold white — file basename
+	label    lipgloss.Style // dim — metadata labels, line numbers, separators
+	dirPart  lipgloss.Style // dim gray — directory part of file paths
+	rule     lipgloss.Style // red — rule code
+	category lipgloss.Style // blue — annotation category
+	target   lipgloss.Style // bold — verbose block > marker and target line number
 }
 
 type colorMode int
@@ -128,12 +129,31 @@ func defaultViolationStyles(mode colorMode) violationStyles {
 		renderer.SetColorProfile(termenv.Ascii)
 	}
 	return violationStyles{
-		header:  renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
-		label:   renderer.NewStyle().Foreground(lipgloss.Color("8")),
-		dirPart: renderer.NewStyle().Foreground(lipgloss.Color("7")),
-		rule:    renderer.NewStyle().Foreground(lipgloss.Color("9")),
-		target:  renderer.NewStyle().Bold(true),
+		header:   renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
+		label:    renderer.NewStyle().Foreground(lipgloss.Color("8")),
+		dirPart:  renderer.NewStyle().Foreground(lipgloss.Color("7")),
+		rule:     renderer.NewStyle().Foreground(lipgloss.Color("9")),
+		category: renderer.NewStyle().Foreground(lipgloss.Color("12")),
+		target:   renderer.NewStyle().Bold(true),
 	}
+}
+
+// ruleIDPlain returns the plain-text rule identifier: "category:code" when the
+// rule has a category, otherwise just "code". Use this for column-width math.
+func ruleIDPlain(r rpconfig.Rule) string {
+	if r.Category != "" {
+		return r.Category + ":" + r.Code
+	}
+	return r.Code
+}
+
+// ruleIDStyled returns the styled rule identifier with the category part in blue
+// and the code part in the rule color.
+func ruleIDStyled(r rpconfig.Rule, vs violationStyles) string {
+	if r.Category != "" {
+		return vs.category.Render(r.Category+":") + vs.rule.Render(r.Code)
+	}
+	return vs.rule.Render(r.Code)
 }
 
 // styleViolationPath renders a file:line with the directory part dimmed and the
@@ -198,7 +218,11 @@ func readViolationContext(file, cfgRoot string, targetLine int) (above []string,
 func formatViolationOneline(v scanner.Violation, displayRoot string, vs violationStyles) string {
 	displayPath := relTo(displayRoot, v.File)
 	path := styleViolationPath(displayPath, v.Line, vs)
-	keyword := vs.label.Render("RPT(") + vs.rule.Render(v.Code) + vs.label.Render(")")
+	inner := vs.rule.Render(v.Code)
+	if v.Category != "" {
+		inner = vs.category.Render(v.Category+":") + vs.rule.Render(v.Code)
+	}
+	keyword := vs.label.Render("RPT(") + inner + vs.label.Render(")")
 	return path + vs.label.Render(":") + " " + keyword + " " + v.Message
 }
 
@@ -211,8 +235,21 @@ func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, displayRoot
 		return vs.label.Render(label) + value
 	}
 
-	// Rule line: code + short title when available.
-	ruleVal := vs.rule.Render(v.Code)
+	// Rule line: optional-category:code + short title when available.
+	category := v.Category
+	if cfg != nil {
+		if r, ok := cfg.RuleByCode(v.Code); ok {
+			if category == "" {
+				category = r.Category
+			}
+		}
+	}
+	var ruleVal string
+	if category != "" {
+		ruleVal = vs.category.Render(category+":") + vs.rule.Render(v.Code)
+	} else {
+		ruleVal = vs.rule.Render(v.Code)
+	}
 	if cfg != nil {
 		if r, ok := cfg.RuleByCode(v.Code); ok {
 			if t := r.ShortTitle(); t != "" {
@@ -660,11 +697,13 @@ Flags:
 		return 0
 	}
 
-	// Find column width for code.
-	maxCode := 0
+	vs := defaultViolationStyles(colorAuto)
+
+	// Find column width for the displayed rule id (category:code or code).
+	maxID := 0
 	for _, r := range cfg.Rules {
-		if len(r.Code) > maxCode {
-			maxCode = len(r.Code)
+		if w := len(ruleIDPlain(r)); w > maxID {
+			maxID = w
 		}
 	}
 
@@ -677,7 +716,9 @@ Flags:
 		if includes == "" {
 			includes = "(all files)"
 		}
-		fmt.Printf("%-*s  %-8s  %s\n", maxCode, r.Code, status, filepath.ToSlash(includes))
+		id := ruleIDPlain(r)
+		pad := strings.Repeat(" ", maxID-len(id))
+		fmt.Printf("%s%s  %-8s  %s\n", ruleIDStyled(r, vs), pad, status, filepath.ToSlash(includes))
 	}
 	return 0
 }
@@ -802,6 +843,7 @@ Exit codes:
 		return 2
 	}
 
+	vs := defaultViolationStyles(colorAuto)
 	printed := 0
 	for _, r := range cfg.Rules {
 		if !r.IsEnabled() {
@@ -825,7 +867,7 @@ Exit codes:
 		if printed > 0 {
 			fmt.Println()
 		}
-		fmt.Printf("Rule: %s\n", r.Code)
+		fmt.Printf("Rule: %s\n", ruleIDStyled(r, vs))
 		fmt.Println("Files:")
 		for _, f := range matching {
 			fmt.Printf("  %s\n", f)
@@ -935,6 +977,7 @@ Exit codes:
 		return 2
 	}
 
+	vs := defaultViolationStyles(colorAuto)
 	printed := 0
 	for _, r := range cfg.Rules {
 		if !r.IsEnabled() {
@@ -958,7 +1001,7 @@ Exit codes:
 		if printed > 0 {
 			fmt.Println()
 		}
-		fmt.Printf("Rule: %s\n", r.Code)
+		fmt.Printf("Rule: %s\n", ruleIDStyled(r, vs))
 		fmt.Println("Files:")
 		for _, f := range matching {
 			fmt.Printf("  %s\n", f)

@@ -43,17 +43,22 @@ func DefaultMarkers() []Marker {
 
 // Match is a marker occurrence found in a source file.
 type Match struct {
-	File    string
-	Line    int    // 1-based
-	Keyword string // the marker keyword, e.g. "TODO" or "RPT"
-	Code    string // optional "(code)" capture ("" when absent)
-	Message string
+	File     string
+	Line     int    // 1-based
+	Keyword  string // the marker keyword, e.g. "TODO" or "RPT"
+	Category string // optional category from "(category:code)" form ("" when absent)
+	Code     string // optional "(code)" capture ("" when absent)
+	Message  string
 }
 
 func (m Match) String() string {
 	kw := m.Keyword
-	if m.Code != "" {
-		kw = fmt.Sprintf("%s(%s)", m.Keyword, m.Code)
+	inner := m.Code
+	if m.Category != "" {
+		inner = m.Category + ":" + m.Code
+	}
+	if inner != "" {
+		kw = fmt.Sprintf("%s(%s)", m.Keyword, inner)
 	}
 	if m.Message == "" {
 		return fmt.Sprintf("%s:%d: %s", m.File, m.Line, kw)
@@ -64,14 +69,19 @@ func (m Match) String() string {
 // Violation is an RPT annotation found in a source file. It is the RPT-specific
 // view of a Match, preserving rpt's exact output format.
 type Violation struct {
-	File    string
-	Line    int // 1-based
-	Code    string
-	Message string
+	File     string
+	Line     int // 1-based
+	Category string
+	Code     string
+	Message  string
 }
 
 func (v Violation) String() string {
-	return fmt.Sprintf("%s:%d: RPT(%s) %s", v.File, v.Line, v.Code, v.Message)
+	code := v.Code
+	if v.Category != "" {
+		code = v.Category + ":" + v.Code
+	}
+	return fmt.Sprintf("%s:%d: RPT(%s) %s", v.File, v.Line, code, v.Message)
 }
 
 // ScanFile scans a single file for RPT annotations, applying NORPT
@@ -100,7 +110,7 @@ func toViolations(ms []Match) []Violation {
 	}
 	out := make([]Violation, len(ms))
 	for i, m := range ms {
-		out[i] = Violation{File: m.File, Line: m.Line, Code: m.Code, Message: m.Message}
+		out[i] = Violation{File: m.File, Line: m.Line, Category: m.Category, Code: m.Code, Message: m.Message}
 	}
 	return out
 }
@@ -124,10 +134,11 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 	defer f.Close()
 
 	type rawMatch struct {
-		line    int
-		keyword string
-		code    string
-		msg     string
+		line     int
+		keyword  string
+		category string
+		code     string
+		msg      string
 	}
 	type suppress struct {
 		line    int    // line number the suppression targets
@@ -166,8 +177,8 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 			// A segment matches at most one marker keyword (the families share no
 			// common prefix), so stop at the first hit.
 			for _, m := range markers {
-				if code, msg, ok := parseMarker(m, seg.body); ok {
-					matches = append(matches, rawMatch{lineNum, m.Keyword, code, msg})
+				if category, code, msg, ok := parseMarker(m, seg.body); ok {
+					matches = append(matches, rawMatch{lineNum, m.Keyword, category, code, msg})
 					break
 				}
 			}
@@ -211,7 +222,7 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 		if isSuppressed(suppressed[supKey{m.line, m.keyword}], m.code) {
 			continue
 		}
-		out = append(out, Match{File: path, Line: m.line, Keyword: m.keyword, Code: m.code, Message: m.msg})
+		out = append(out, Match{File: path, Line: m.line, Keyword: m.keyword, Category: m.category, Code: m.code, Message: m.msg})
 	}
 	return out, nil
 }
@@ -265,34 +276,44 @@ func commentSegments(line, prefix string) []commentSegment {
 
 // parseMarker attempts to parse a marker occurrence from a comment body.
 // body is the text after the line-comment prefix, trimmed. Returns the optional
-// code capture, the message, and whether the body matched the marker.
-func parseMarker(m Marker, body string) (code, msg string, ok bool) {
+// category and code captures, the message, and whether the body matched.
+//
+// For strict markers (RequireCode=true), the parens content may be either
+// "code" or "category:code" — e.g. RPT(use-pathlib) or RPT(refactor:use-pathlib).
+func parseMarker(m Marker, body string) (category, code, msg string, ok bool) {
 	if !strings.HasPrefix(body, m.Keyword) {
-		return "", "", false
+		return "", "", "", false
 	}
 	rest := body[len(m.Keyword):]
 
 	if m.RequireCode {
-		// Strict form: "(code): message" (RPT semantics).
+		// Strict form: "(code): message" or "(category:code): message".
 		if !strings.HasPrefix(rest, "(") {
-			return "", "", false
+			return "", "", "", false
 		}
 		closeIdx := strings.Index(rest, "):")
 		if closeIdx < 0 {
-			return "", "", false
+			return "", "", "", false
 		}
-		code = strings.TrimSpace(rest[1:closeIdx])
+		inner := strings.TrimSpace(rest[1:closeIdx])
+		if inner == "" {
+			return "", "", "", false
+		}
+		if i := strings.IndexByte(inner, ':'); i >= 0 {
+			category = strings.TrimSpace(inner[:i])
+			inner = strings.TrimSpace(inner[i+1:])
+			if inner == "" {
+				return "", "", "", false
+			}
+		}
 		msg = strings.TrimSpace(rest[closeIdx+2:])
-		if code == "" {
-			return "", "", false
-		}
-		return code, msg, true
+		return category, inner, msg, true
 	}
 
 	// Loose form. The keyword must be a standalone word: the next character may
 	// not be alphanumeric (so "TODO" matches but "TODOLIST" does not).
 	if rest != "" && isWordChar(rest[0]) {
-		return "", "", false
+		return "", "", "", false
 	}
 	// Optional "(code)".
 	if strings.HasPrefix(rest, "(") {
@@ -304,7 +325,7 @@ func parseMarker(m Marker, body string) (code, msg string, ok bool) {
 	// Optional ":" separator.
 	rest = strings.TrimPrefix(rest, ":")
 	msg = strings.TrimSpace(rest)
-	return code, msg, true
+	return "", code, msg, true
 }
 
 // parseSuppress attempts to parse a suppression from a comment body for the

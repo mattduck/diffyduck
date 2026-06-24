@@ -523,11 +523,15 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 		if !grepMatches(o.Grep, m.Message, "") {
 			continue
 		}
+		kind := m.Keyword
+		if m.Category != "" {
+			kind = m.Keyword + ":" + m.Category
+		}
 		rows = append(rows, listRow{
 			// Code markers keep their uppercase keyword (TODO, NOTE, …) so they
 			// stay visually distinct from lowercase ticket kinds (comment, note)
 			// even in uncolored output.
-			kind: m.Keyword,
+			kind: kind,
 			file: rel,
 			line: m.Line,
 			text: m.Message,

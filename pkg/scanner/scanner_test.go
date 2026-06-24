@@ -121,6 +121,29 @@ func TestScanFile_UnknownExtSkipped(t *testing.T) {
 	}
 }
 
+func TestScanFile_Category(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "foo.py", `
+# RPT(refactor:use-pathlib): switch to pathlib
+x = 1
+# RPT(use-bare-dict): no category
+y = {"a": 1}
+`)
+	vs, err := scanner.ScanFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vs) != 2 {
+		t.Fatalf("expected 2 violations, got %d: %v", len(vs), vs)
+	}
+	if vs[0].Category != "refactor" || vs[0].Code != "use-pathlib" {
+		t.Errorf("expected category=refactor code=use-pathlib, got category=%q code=%q", vs[0].Category, vs[0].Code)
+	}
+	if vs[1].Category != "" || vs[1].Code != "use-bare-dict" {
+		t.Errorf("expected no category code=use-bare-dict, got category=%q code=%q", vs[1].Category, vs[1].Code)
+	}
+}
+
 func TestScanFile_GoSlashSlash(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.go", `package foo

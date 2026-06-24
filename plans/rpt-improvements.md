@@ -1,20 +1,54 @@
 # Plan
 
-## rpt: rename REVP/NOREVP keywords to align with the binary name
+## rpt: rename REVP/NOREVP keywords to align with the binary name ✓ done
 
-Currently the annotation keyword REVP has no obvious connection to the `rpt` binary.
-Consider renaming to RPT/NORPT (or similar). Decision points:
-- Should the keyword match the binary exactly (rpt → RPT/NORPT)?
-- Should rules be able to declare a custom associated keyword (e.g. rule `use-pathlib` → PATHLIB/NOPATHLIB)?
-  If so, RPT/NORPT becomes the generic fallback and `rpt diff` output should show which keyword to use.
-- Backward compat: if we rename, old REVP annotations in codebases become invisible — need a migration path or dual-scan period.
+Renamed to RPT/NORPT.
 
-## rpt: promote `show` to a top-level subcommand
+## rpt: promote `show` to a top-level subcommand ✓ done
 
-Currently `rpt diff --show [ref]` is a flag on the diff subcommand.
-Should become `rpt show [ref]` for consistency with `dfd show`.
-The diff subcommand then covers only multi-ref / working-tree diffs.
-Update completions, usage strings, and help text accordingly.
+`rpt show [ref]` is now a top-level subcommand.
+
+## rpt/tdb: annotation categories ✓ done
+
+**Decision:** category is carried in the annotation using a `category:code` form inside the
+parens: `RPT(refactor:use-pathlib): message`. Category is optional; `RPT(code): message`
+is still valid and backward-compatible. The `:` separator was chosen over other delimiters
+because it's already the RPT convention (the `):` closes the parens form).
+
+**Config:** `Rule` gains an optional `category` field in `revparrot.toml`:
+```toml
+[[rules]]
+code = "use-pathlib"
+category = "refactor"
+```
+The config category is a fallback: if an annotation supplies its own category, that wins;
+if not, the rule's config category is used in display output.
+
+**tdb:** `tdb list --marker RPT` shows the category in the `kind` column as `RPT:category`
+when present. RPT is not in the default markers; this is a point to revisit later (see
+"tdb: RPT in default markers" below).
+
+**rpt check:** verbose block output renders `blue(category:)red(code)` on the Rule line,
+followed by the short title. Oneline output renders `RPT(blue(category:)red(code))` matching
+the annotation syntax. Category is resolved from the violation annotation first, falling back
+to the rule config, so state violations (which have no annotation syntax) also get category
+info from config. `rpt rules`, `rpt diff`, and `rpt show` use the same `category:code`
+convention via shared `ruleIDPlain`/`ruleIDStyled` helpers.
+
+## rpt/tdb: filtering by category — next up
+
+Add `--category <name>` filter to `rpt check`, `rpt rules`, `rpt diff`, `rpt show`, and
+`tdb list --marker RPT`. For `rpt check` this narrows violations to those whose category
+(annotation or config fallback) matches. For `rpt diff`/`rpt show` this scopes the rule
+listing. For `tdb list` it filters marker rows. Design: case-insensitive match; multiple
+values could be comma-separated or via repeated flags (decide at impl time).
+
+## tdb: RPT in default markers — future decision point
+
+Currently `RPT` is not in `scanner.DefaultMarkers()`, so `tdb list` does not show RPT
+annotations unless you pass `--marker RPT` explicitly. Whether to include RPT in the
+defaults (and how to handle the `RequireCode`/suppress semantics in the unified list view)
+is an open question. Leave for later once category usage settles.
 
 ## tdb: richer filtering for todo/comment list
 
