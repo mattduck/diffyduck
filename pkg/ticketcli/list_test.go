@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattduck/diffyduck/pkg/scanner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -113,10 +112,14 @@ func TestParseListArgs_Rule(t *testing.T) {
 }
 
 func TestMarkerForKeyword(t *testing.T) {
-	assert.Equal(t, scanner.RPTMarker(), markerForKeyword("rpt"))
-	m := markerForKeyword("todo")
-	assert.Equal(t, "TODO", m.Keyword)
-	assert.False(t, m.Strict)
+	// All user-supplied keywords use the loose form in tdb list so malformed
+	// annotations remain visible.
+	for _, kw := range []string{"rpt", "todo", "FIXME", "RPT"} {
+		m := markerForKeyword(kw)
+		assert.Equal(t, strings.ToUpper(kw), m.Keyword)
+		assert.False(t, m.Strict)
+		assert.Empty(t, m.Suppress)
+	}
 }
 
 func TestSplitList(t *testing.T) {

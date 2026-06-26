@@ -396,9 +396,10 @@ func PrintUsage(w io.Writer) {
        tdb comment <subcommand> [options]
        tdb note <subcommand> [options]
 
-list merges git-state tickets and in-code markers (TODO/FIXME/…) into one view:
+list merges git-state tickets and in-code markers (TODO/FIXME/RPT/…) into one view:
   --source VALUE         all (default), state (tickets), code (markers)
-  --marker LIST          restrict code markers (e.g. TODO,FIXME); code only
+  --marker LIST          restrict code markers to these keywords; code only
+  --exclude-marker LIST  exclude these marker keywords; code only
   --type VALUE           filter code markers by type (feat, fix, …); code only
   --status VALUE         unresolved (default), resolved, all; tickets only
   --rule CODE            filter tickets by rule code; tickets only

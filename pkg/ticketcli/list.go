@@ -26,22 +26,23 @@ const (
 // ListOptions holds the parsed inputs for the unified `tdb list` command, which
 // merges git-state tickets and in-code markers into one view.
 type ListOptions struct {
-	Source    string   // all (default), state, code
-	Markers   []string // restrict code markers to these keywords (empty = defaults)
-	Type      string   // --type filter (code markers only)
-	File      string   // --file filter (trailing / = prefix match)
-	Grep      string   // --grep filter (case-insensitive)
-	Status    string   // ticket filter: unresolved (default), resolved, all
-	Rule      string   // --rule filter (tickets carrying this rule code)
-	Kind      string   // ticket subtype filter: comment, note, all (state/all source only)
-	Since     string   // --since duration filter (state/all source only)
-	Author    string   // --author value (state/all source only)
-	AuthorSet bool     // true if --author was explicitly passed
-	Verbose   bool     // -v: block output (state source only)
-	Raw       bool     // --raw: serialized blob output (state source only)
-	ID        string   // positional ID lookup (state source only)
-	N         int      // -n cap on combined rows (0 = uncapped)
-	NSet      bool
+	Source         string   // all (default), state, code
+	Markers        []string // restrict code markers to these keywords (empty = defaults)
+	ExcludeMarkers []string // exclude these marker keywords from results
+	Type           string   // --type filter (code markers only)
+	File           string   // --file filter (trailing / = prefix match)
+	Grep           string   // --grep filter (case-insensitive)
+	Status         string   // ticket filter: unresolved (default), resolved, all
+	Rule           string   // --rule filter (tickets carrying this rule code)
+	Kind           string   // ticket subtype filter: comment, note, all (state/all source only)
+	Since          string   // --since duration filter (state/all source only)
+	Author         string   // --author value (state/all source only)
+	AuthorSet      bool     // true if --author was explicitly passed
+	Verbose        bool     // -v: block output (state source only)
+	Raw            bool     // --raw: serialized blob output (state source only)
+	ID             string   // positional ID lookup (state source only)
+	N              int      // -n cap on combined rows (0 = uncapped)
+	NSet           bool
 
 	AllBranches bool   // --all-branches
 	Branch      string // --branch / -b ("." = current branch)
@@ -93,6 +94,15 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 			o.Markers = append(o.Markers, splitList(v)...)
 		case strings.HasPrefix(arg, "--marker="):
 			o.Markers = append(o.Markers, splitList(strings.TrimPrefix(arg, "--marker="))...)
+
+		case arg == "--exclude-marker":
+			v, ok := next()
+			if !ok {
+				return o, fmt.Errorf("--exclude-marker requires a keyword (e.g. RPT)")
+			}
+			o.ExcludeMarkers = append(o.ExcludeMarkers, splitList(v)...)
+		case strings.HasPrefix(arg, "--exclude-marker="):
+			o.ExcludeMarkers = append(o.ExcludeMarkers, splitList(strings.TrimPrefix(arg, "--exclude-marker="))...)
 
 		case arg == "--type":
 			v, ok := next()
@@ -233,6 +243,9 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 	}
 	if len(o.Markers) > 0 && o.Source == SourceState {
 		return o, fmt.Errorf("--marker is only valid when listing code markers")
+	}
+	if len(o.ExcludeMarkers) > 0 && o.Source == SourceState {
+		return o, fmt.Errorf("--exclude-marker is only valid when listing code markers")
 	}
 	if o.Type != "" && o.Source == SourceState {
 		return o, fmt.Errorf("--type is only valid when listing code markers")
@@ -521,6 +534,19 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 			markers = append(markers, markerForKeyword(kw))
 		}
 	}
+	if len(o.ExcludeMarkers) > 0 {
+		exclude := make(map[string]bool, len(o.ExcludeMarkers))
+		for _, kw := range o.ExcludeMarkers {
+			exclude[strings.ToUpper(kw)] = true
+		}
+		filtered := markers[:0]
+		for _, m := range markers {
+			if !exclude[m.Keyword] {
+				filtered = append(filtered, m)
+			}
+		}
+		markers = filtered
+	}
 
 	ms, err := scanner.ScanDirMarkers(root, markers, scanner.WalkOptions{KeepDir: keepCodeDir})
 	if err != nil {
@@ -561,14 +587,10 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 	return rows, nil
 }
 
-// markerForKeyword builds a scanner.Marker for a user-supplied keyword. RPT
-// keeps its strict (code): grammar; all others use the loose form.
+// markerForKeyword builds a scanner.Marker for a user-supplied keyword using
+// the loose (non-strict) form so all occurrences are visible in the list.
 func markerForKeyword(kw string) scanner.Marker {
-	kw = strings.ToUpper(kw)
-	if kw == "RPT" {
-		return scanner.RPTMarker()
-	}
-	return scanner.Marker{Keyword: kw}
+	return scanner.Marker{Keyword: strings.ToUpper(kw)}
 }
 
 // keepCodeDir prunes version-control directories during code-marker scans.

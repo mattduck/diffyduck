@@ -1,7 +1,7 @@
 // Package scanner finds marker annotations (TODO, FIXME, RPT, …) in source
 // files. Markers are configurable: each binary registers the keyword families it
 // cares about. rpt scans for RPT (with NORPT suppression); tdb scans for the
-// conventional code-comment markers (TODO/FIXME).
+// conventional code-comment markers (TODO/FIXME/RPT).
 package scanner
 
 import (
@@ -31,10 +31,13 @@ func RPTMarker() Marker {
 }
 
 // DefaultMarkers returns the conventional code-comment markers tdb scans for.
+// RPT is included in loose (non-strict) mode so malformed annotations are
+// visible; rpt uses RPTMarker() directly for its strict enforcement.
 func DefaultMarkers() []Marker {
 	return []Marker{
 		{Keyword: "TODO"},
 		{Keyword: "FIXME"},
+		{Keyword: "RPT"},
 	}
 }
 

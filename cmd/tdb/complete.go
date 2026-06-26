@@ -96,7 +96,7 @@ func isFlag(w string) bool {
 
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--since", "--status", "--kind", "-n", "-b", "--branch", "-m", "--ref", "--author", "--file", "--grep", "--source", "--marker", "--rule":
+	case "--since", "--status", "--kind", "-n", "-b", "--branch", "-m", "--ref", "--author", "--file", "--grep", "--source", "--marker", "--exclude-marker", "--rule":
 		return true
 	}
 	return false
@@ -172,7 +172,7 @@ func completeFlagValue(flag, prefix string) []string {
 func flagsForCmd(cmd, sub string) []string {
 	switch cmd {
 	case "list":
-		return []string{"--source", "--marker", "--rule", "--file", "--grep", "--status", "-n", "-b", "--branch", "--all-branches", "--help"}
+		return []string{"--source", "--marker", "--exclude-marker", "--rule", "--file", "--grep", "--status", "-n", "-b", "--branch", "--all-branches", "--help"}
 	case "comment", "c":
 		switch sub {
 		case "add":

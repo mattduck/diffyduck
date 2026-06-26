@@ -1,6 +1,6 @@
 # Plan: Split into three tools — `dfd`, `tdb`, `rpt`
 
-Status: in progress (2026-06-19)
+Status: complete (2026-06-26)
 
 ## Progress
 
@@ -58,7 +58,7 @@ Status: in progress (2026-06-19)
   violation is inherently code-located, and path scope can't apply to a ticket
   with no path) — this drops the `(ticket <id>)` placeholder from P4.1-2.
 
-Remaining: **P4 item 5** (situation-specific reviews) and **P5** (polish) below.
+Remaining: nothing — all phases complete. Skills reconciliation was explicitly deferred in P5 (see note there).
 
 ---
 
@@ -270,8 +270,10 @@ comments flagged as rule violations.
    skill beyond the fixed rule catalogue so a review can be scoped/parameterized at
    invocation — a diff/PR, a subsystem path, or an ad-hoc prompt — and still emit REVP
    markers + state tickets through the same `check` pipeline. **Design locked below.**
+   **Done:** `rpt diff` implemented (cc052c6 initial, 68d2478 ref ranges/--show/-a/--cached,
+   ddd4a61 --show promoted to top-level `rpt show`).
 
-### P4 item 5 — design (decided)
+### P4 item 5 — done
 
 **Core stance: the agent writes, `rpt` reports.** `rpt` stays deterministic and
 CGO-free; no LLM in any binary. A skill/prompt is the entry point. The agent reads a
@@ -321,19 +323,15 @@ before.
 
 ## Phase 5 — Polish: build, skills, docs, completion
 
-1. **Makefile** → multi-binary: `build` loops `dfd tdb rpt` (`go build -o <bin> ./cmd/<bin>/`);
-   same for `install`; keep `check`/`fmt`/`vet`/`lint`/`cover`/`update-golden`/`fetch-queries`.
-   Add a `cgo-free` target wired into `check`:
-   `CGO_ENABLED=0 go build ./cmd/tdb/ ./cmd/rpt/` — a regression gate so neither tool
-   ever silently re-acquires a tree-sitter dependency.
-2. **Skills reconciliation** — current `skills/`: `note`, `review`, `review-fix`,
-   `sweep`, `feedback`; revparrot's: `parrot-review`, `parrot-fix`. Decide the canonical
-   set (likely: keep `note` pointed at `tdb`; fold `review`/`review-fix` ↔ `parrot-*`).
-3. **Docs**: update root `README.md` for three tools; per-tool usage. Add a
-   `revparrot.toml` reference. Refresh `CLAUDE.md` (architecture section, the
-   "Keeping Help & Config in Sync" checklists now span three binaries).
-4. **Completions**: extend `cmd/dfd/complete.go` patterns to `tdb`/`rpt` (or per-binary
-   completion files).
+1. **Makefile** ✓ — multi-binary build/install/check/cgo-free gate done in P2.
+2. **Skills reconciliation** — deferred. Decided in P4.5: keep `skills/review` as-is;
+   `parrot-*` skills not ported. Revisit only if a gap appears.
+3. **Docs** ✓ — `README.md` rewritten for three tools; `CLAUDE.md` updated with
+   architecture, per-binary sync checklists, rpt exec.Command note (0a6b1ba).
+4. **Completions** ✓ — `cmd/tdb/complete.go` and `cmd/rpt/complete.go` added with
+   subcommand/flag/value/ref/rule-code completion (0a6b1ba). Known gaps: no ref
+   completion for `tdb --ref`; no file-path completion for `rpt check` args; no
+   `--category`/`--type` completion (4dfd4d5 MISSING note).
 
 **Exit:** `make check` green; all three tools documented, completable, installable.
 
