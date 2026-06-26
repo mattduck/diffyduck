@@ -215,11 +215,14 @@ func readViolationContext(file, cfgRoot string, targetLine int) (above []string,
 
 // formatViolationOneline renders a violation as a single coloured line:
 // [dim dir/][bold file][dim :linenum][dim :] [dim RPT ][cyan type][dim (][red code][dim )] message
+// For built-in rule codes the RPT prefix is omitted and just the code is shown.
 func formatViolationOneline(v scanner.Violation, displayRoot string, vs violationStyles) string {
 	displayPath := relTo(displayRoot, v.File)
 	path := styleViolationPath(displayPath, v.Line, vs)
 	var keyword string
-	if v.Type != "" {
+	if rpconfig.IsBuiltinCode(v.Code) {
+		keyword = vs.rule.Render(v.Code)
+	} else if v.Type != "" {
 		inner := vs.typeStyle.Render(v.Type) + vs.label.Render("(") + vs.rule.Render(v.Code) + vs.label.Render(")")
 		keyword = vs.label.Render("RPT ") + inner
 	} else {
@@ -239,11 +242,9 @@ func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, displayRoot
 
 	// Rule line: optional type(code) + short title when available.
 	typeName := v.Type
-	if cfg != nil {
-		if r, ok := cfg.RuleByCode(v.Code); ok {
-			if typeName == "" {
-				typeName = r.Type
-			}
+	if r, ok := rpconfig.AllRuleByCode(cfg, v.Code); ok {
+		if typeName == "" {
+			typeName = r.Type
 		}
 	}
 	var ruleVal string
@@ -252,11 +253,9 @@ func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, displayRoot
 	} else {
 		ruleVal = vs.rule.Render(v.Code)
 	}
-	if cfg != nil {
-		if r, ok := cfg.RuleByCode(v.Code); ok {
-			if t := r.ShortTitle(); t != "" {
-				ruleVal += "  " + t
-			}
+	if r, ok := rpconfig.AllRuleByCode(cfg, v.Code); ok {
+		if t := r.ShortTitle(); t != "" {
+			ruleVal += "  " + t
 		}
 	}
 	fmt.Fprintf(&b, "%s\n", labelVal("Rule:", "   ")+ruleVal)
@@ -347,10 +346,8 @@ func printViolationStats(violations []scanner.Violation, cfg *rpconfig.Config, v
 	for _, code := range codes {
 		count := counts[code]
 		title := ""
-		if cfg != nil {
-			if r, ok := cfg.RuleByCode(code); ok {
-				title = r.ShortTitle()
-			}
+		if r, ok := rpconfig.AllRuleByCode(cfg, code); ok {
+			title = r.ShortTitle()
 		}
 		countStr := fmt.Sprintf("%*d", countW, count)
 		codePad := strings.Repeat(" ", codeW-len(code))
@@ -369,12 +366,12 @@ func printViolationStats(violations []scanner.Violation, cfg *rpconfig.Config, v
 // Exit code: 0 = clean, 1 = violations found, 2 = error.
 func cmdCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
-	flagRule := fs.String("rule", "", "filter to a specific rule code")
+	flagSelect := fs.String("select", "", "run only these rule codes (comma-separated; replaces config rules)")
+	flagExtendSelect := fs.String("extend-select", "", "add rule codes to the active set (comma-separated)")
 	flagType := fs.String("type", "", "filter to a specific type")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
 	flagStats := fs.Bool("statistics", false, "show per-rule violation counts instead of individual violations")
-	flagUnknown := fs.Bool("unknown", false, "include violations with codes not defined in the config")
 	flagN := fs.Int("n", 0, "show at most N violations (0 = no limit)")
 	color := colorAuto
 	registerColorFlags(fs, &color)
@@ -389,20 +386,23 @@ store (tdb): an unresolved ticket with a rule code is a violation
 (resolved suppresses), subject to the same revparrot.toml scope as
 code annotations.
 
-When a revparrot.toml is found, only violations whose code matches a
-defined rule are reported. Use --unknown to include annotations with
-codes not defined in the config.
+When a revparrot.toml is found, only violations whose code matches an
+active rule are reported. Use -select or -extend-select to override or
+extend the active rule set.
+
+Built-in annotation-quality rules (rpt-syntax, rpt-unknown-scope,
+rpt-type-mismatch) are disabled by default; enable with -extend-select.
 
 Flags:
-  --oneline           compact one-line output (default is verbose blocks)
-  --statistics        show per-rule counts instead of individual violations
-  --unknown           include violations with codes not defined in the config
-  --color             force color output (alias: --colour)
-  --no-color          disable color output (alias: --no-colour)
-  -n <count>          show at most N violations (total count still reported)
-  -rule <code>        filter output to a specific rule code
-  -type <name>        filter output to a specific type
-  -config <path>      explicit config file path
+  --oneline               compact one-line output (default is verbose blocks)
+  --statistics            show per-rule counts instead of individual violations
+  --color                 force color output (alias: --colour)
+  --no-color              disable color output (alias: --no-colour)
+  -n <count>              show at most N violations (total count still reported)
+  -select <codes>         run only these rule codes (replaces config rules)
+  -extend-select <codes>  add rule codes to the active set
+  -type <name>            filter output to a specific type
+  -config <path>          explicit config file path
 
 Exit codes:
   0  no violations found
@@ -418,6 +418,9 @@ Exit codes:
 		fmt.Fprintf(os.Stderr, "error: -n must not be negative\n")
 		return 2
 	}
+
+	selectList := splitComma(*flagSelect)
+	extendList := splitComma(*flagExtendSelect)
 
 	paths := fs.Args()
 	if len(paths) == 0 {
@@ -453,17 +456,17 @@ Exit codes:
 		}
 	}
 
-	if cfg != nil && *flagRule != "" {
-		if _, ok := cfg.RuleByCode(*flagRule); !ok {
-			fmt.Fprintf(os.Stderr, "unknown rule code: %q\n", *flagRule)
-			return 2
-		}
+	// Resolve active rule set from config + selection flags.
+	activeRules, err := rpconfig.ResolveRuleset(cfg, selectList, extendList)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
 	}
+	activeBuiltins := builtinActiveSet(activeRules)
 
 	// Build the path matcher from config, if any.
 	var matcher *rpconfig.Matcher
 	if cfg != nil {
-		var err error
 		matcher, err = cfg.NewMatcher()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error in config patterns:", err)
@@ -473,31 +476,77 @@ Exit codes:
 
 	opts := walkOptions(matcher, cfgRoot)
 
-	var violations []scanner.Violation
+	// Strict scan — collect raw code violations before any filtering so that
+	// the full set is available for built-in rule generation and syntax checking.
+	var rawCodeViolations []scanner.Violation
 	for _, path := range paths {
-		info, err := os.Stat(path)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			fmt.Fprintln(os.Stderr, "error:", statErr)
 			return 2
 		}
 		var vs []scanner.Violation
 		if info.IsDir() {
-			vs, err = scanner.ScanDir(path, opts)
+			vs, statErr = scanner.ScanDir(path, opts)
 		} else {
 			// Explicitly named files are always scanned; per-rule scope and
 			// [ignore] still apply to their violations below.
-			vs, err = scanner.ScanFile(path)
+			vs, statErr = scanner.ScanFile(path)
 		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error scanning:", err)
+		if statErr != nil {
+			fmt.Fprintln(os.Stderr, "error scanning:", statErr)
 			return 2
 		}
-		violations = append(violations, vs...)
+		rawCodeViolations = append(rawCodeViolations, vs...)
 	}
 
-	// Merge rule-tagged tickets from the git-state store. They go through the same
-	// per-rule scope and -rule filtering as code violations below. State sourcing
-	// is best-effort: outside a git repo (or on any store error) we warn and
+	// Apply rule-level include/exclude and [ignore] suppression to code violations.
+	codeViolations := rawCodeViolations
+	if matcher != nil {
+		var kept []scanner.Violation
+		for _, v := range rawCodeViolations {
+			if matcher.Keep(v.Code, relTo(cfgRoot, v.File)) {
+				kept = append(kept, v)
+			}
+		}
+		codeViolations = kept
+	}
+
+	// Generate built-in violations from the filtered code violations.
+	// rpt-unknown-scope: well-formed annotations whose scope isn't in config.
+	var builtinViolations []scanner.Violation
+	if activeBuiltins[rpconfig.CodeRPTUnknownScope] && cfg != nil {
+		for _, v := range codeViolations {
+			if !rpconfig.IsBuiltinCode(v.Code) {
+				if _, ok := cfg.RuleByCode(v.Code); !ok {
+					builtinViolations = append(builtinViolations, scanner.Violation{
+						File:    v.File,
+						Line:    v.Line,
+						Code:    rpconfig.CodeRPTUnknownScope,
+						Message: fmt.Sprintf("unknown scope %q", v.Code),
+					})
+				}
+			}
+		}
+	}
+	// rpt-type-mismatch: annotations whose type doesn't match the config rule type.
+	if activeBuiltins[rpconfig.CodeRPTTypeMismatch] && cfg != nil {
+		for _, v := range codeViolations {
+			if !rpconfig.IsBuiltinCode(v.Code) && v.Type != "" {
+				if r, ok := cfg.RuleByCode(v.Code); ok && r.Type != "" && !strings.EqualFold(v.Type, r.Type) {
+					builtinViolations = append(builtinViolations, scanner.Violation{
+						File:    v.File,
+						Line:    v.Line,
+						Code:    rpconfig.CodeRPTTypeMismatch,
+						Message: fmt.Sprintf("type %q does not match rule type %q", v.Type, r.Type),
+					})
+				}
+			}
+		}
+	}
+
+	// Merge rule-tagged tickets from the git-state store. State sourcing is
+	// best-effort: outside a git repo (or on any store error) we warn and
 	// continue with code violations only.
 	stateViols, serr := gatherStateViolations()
 	if serr != nil {
@@ -507,50 +556,48 @@ Exit codes:
 	// excluded files; state violations bypass the walk, so apply it here.
 	if matcher != nil {
 		var inScope []scanner.Violation
-		for _, v := range stateViols {
-			if matcher.InScope(relTo(cfgRoot, v.File)) {
-				inScope = append(inScope, v)
+		for _, sv := range stateViols {
+			if matcher.InScope(relTo(cfgRoot, sv.File)) {
+				inScope = append(inScope, sv)
 			}
 		}
 		stateViols = inScope
 	}
+
+	// Combine: filtered code + state + built-in violations.
+	violations := make([]scanner.Violation, 0, len(codeViolations)+len(stateViols)+len(builtinViolations))
+	violations = append(violations, codeViolations...)
 	violations = append(violations, stateViols...)
+	violations = append(violations, builtinViolations...)
 
-	// Apply rule-level include/exclude and [ignore] suppression.
-	if matcher != nil {
+	// Apply active-rules filter: when a ruleset is active, keep only those codes.
+	if activeRules != nil {
+		activeSet := make(map[string]bool, len(activeRules))
+		for _, r := range activeRules {
+			activeSet[r.Code] = true
+		}
 		var kept []scanner.Violation
 		for _, v := range violations {
-			if matcher.Keep(v.Code, relTo(cfgRoot, v.File)) {
+			if activeSet[v.Code] {
 				kept = append(kept, v)
 			}
 		}
 		violations = kept
 	}
 
-	// When a config is present, drop violations with codes not defined in any
-	// rule unless --unknown is set. Track the skipped count for the summary.
-	var skippedUnknown int
-	if cfg != nil && !*flagUnknown {
-		var kept []scanner.Violation
-		for _, v := range violations {
-			if _, ok := cfg.RuleByCode(v.Code); ok {
-				kept = append(kept, v)
-			} else {
-				skippedUnknown++
-			}
+	// rpt-syntax: loose scan to find malformed RPT annotations not caught by the
+	// strict scanner. Subtract the strict-scan locations to avoid double-reporting.
+	if activeBuiltins[rpconfig.CodeRPTSyntax] {
+		strictSet := make(map[fileLineKey]bool, len(rawCodeViolations))
+		for _, v := range rawCodeViolations {
+			strictSet[fileLineKey{v.File, v.Line}] = true
 		}
-		violations = kept
-	}
-
-	// Apply -rule filter.
-	if *flagRule != "" {
-		var filtered []scanner.Violation
-		for _, v := range violations {
-			if v.Code == *flagRule {
-				filtered = append(filtered, v)
-			}
+		syntaxViols, syntaxErr := gatherSyntaxViolations(paths, opts, strictSet, matcher, cfgRoot)
+		if syntaxErr != nil {
+			fmt.Fprintln(os.Stderr, "error scanning for syntax violations:", syntaxErr)
+			return 2
 		}
-		violations = filtered
+		violations = append(violations, syntaxViols...)
 	}
 
 	// Apply -type filter. Resolves effective type from the annotation first,
@@ -574,10 +621,6 @@ Exit codes:
 	n := len(violations)
 	if n == 0 {
 		fmt.Println("No violations found.")
-		if skippedUnknown > 0 {
-			fmt.Printf("(%d annotation%s with unknown rule code%s skipped — use --unknown to include)\n",
-				skippedUnknown, pluralS(skippedUnknown), pluralS(skippedUnknown))
-		}
 		return 0
 	}
 
@@ -591,10 +634,6 @@ Exit codes:
 	vs := defaultViolationStyles(color)
 	if *flagStats {
 		printViolationStats(violations, cfg, vs)
-		if skippedUnknown > 0 {
-			fmt.Printf("(%d annotation%s with unknown rule code%s skipped — use --unknown to include)\n",
-				skippedUnknown, pluralS(skippedUnknown), pluralS(skippedUnknown))
-		}
 		return 1
 	}
 
@@ -617,10 +656,6 @@ Exit codes:
 	}
 
 	fmt.Printf("\n%s\n", violationSummary(renderN, n))
-	if skippedUnknown > 0 {
-		fmt.Printf("(%d annotation%s with unknown rule code%s skipped — use --unknown to include)\n",
-			skippedUnknown, pluralS(skippedUnknown), pluralS(skippedUnknown))
-	}
 	return 1
 }
 
@@ -675,68 +710,119 @@ func stateMessage(c *ticketdb.Comment) string {
 	return t
 }
 
-// cmdRules lists rules from rpconfig.
+// cmdRules lists rules from rpconfig, including any selected built-in rules.
 // Exit code: 0 = ok, 2 = error.
 func cmdRules(args []string) int {
 	fs := flag.NewFlagSet("rules", flag.ContinueOnError)
+	flagSelect := fs.String("select", "", "show only these rule codes (comma-separated)")
+	flagExtendSelect := fs.String("extend-select", "", "show these codes in addition to config rules (comma-separated)")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagType := fs.String("type", "", "filter to a specific type")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt rules [flags]
 
-List rules defined in revparrot.toml.
+List rules defined in revparrot.toml plus any selected built-in rules.
 
 Flags:
-  -type <name>       filter to a specific type
-  -config <path>     explicit config file path
+  -select <codes>         show only these rule codes (comma-separated)
+  -extend-select <codes>  show built-in rules in addition to config rules
+  -type <name>            filter to a specific type
+  -config <path>          explicit config file path
 `)
 	}
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
+	selectList := splitComma(*flagSelect)
+	extendList := splitComma(*flagExtendSelect)
+
+	// Load config. Without any selection flags, a missing config is an error.
 	var cfg *rpconfig.Config
-	var err error
-	if *flagConfig != "" {
-		cfg, err = rpconfig.LoadFromPath(*flagConfig)
-	} else {
-		cwd, werr := os.Getwd()
-		if werr != nil {
-			fmt.Fprintln(os.Stderr, "error:", werr)
-			return 2
+	{
+		var err error
+		if *flagConfig != "" {
+			cfg, err = rpconfig.LoadFromPath(*flagConfig)
+		} else {
+			cwd, werr := os.Getwd()
+			if werr != nil {
+				fmt.Fprintln(os.Stderr, "error:", werr)
+				return 2
+			}
+			cfg, _, err = rpconfig.Load(cwd)
 		}
-		cfg, _, err = rpconfig.Load(cwd)
-	}
-	if err != nil {
-		if errors.Is(err, rpconfig.ErrNotFound) {
-			fmt.Fprintln(os.Stderr, "no revparrot.toml found")
-			return 2
+		if err != nil {
+			if errors.Is(err, rpconfig.ErrNotFound) {
+				if len(selectList) == 0 && len(extendList) == 0 {
+					fmt.Fprintln(os.Stderr, "no revparrot.toml found")
+					return 2
+				}
+				cfg = nil // no config but selection specified: only built-in rules
+			} else {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return 2
+			}
 		}
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return 2
 	}
 
-	if len(cfg.Rules) == 0 {
+	// Build the list of rules to display.
+	// With -select: show only those rules.
+	// Without -select: show all config rules (enabled + disabled) plus -extend-select additions.
+	var displayRules []rpconfig.Rule
+	if len(selectList) > 0 {
+		for _, code := range selectList {
+			r, ok := rpconfig.AllRuleByCode(cfg, code)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "error: unknown rule code: %q\n", code)
+				return 2
+			}
+			displayRules = append(displayRules, r)
+		}
+	} else if cfg != nil {
+		displayRules = append(displayRules, cfg.Rules...)
+	}
+	for _, code := range extendList {
+		r, ok := rpconfig.AllRuleByCode(cfg, code)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "error: unknown rule code: %q\n", code)
+			return 2
+		}
+		dup := false
+		for _, x := range displayRules {
+			if x.Code == code {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			displayRules = append(displayRules, r)
+		}
+	}
+
+	if len(displayRules) == 0 {
 		fmt.Println("No rules defined.")
 		return 0
 	}
 
 	vs := defaultViolationStyles(colorAuto)
 
-	// Find column width for the displayed rule id (category:code or code).
 	maxID := 0
-	for _, r := range cfg.Rules {
+	for _, r := range displayRules {
 		if w := len(ruleIDPlain(r)); w > maxID {
 			maxID = w
 		}
 	}
 
-	for _, r := range cfg.Rules {
+	for _, r := range displayRules {
 		if *flagType != "" && !strings.EqualFold(r.Type, *flagType) {
 			continue
 		}
-		status := "enabled"
-		if !r.IsEnabled() {
+		var status string
+		if rpconfig.IsBuiltinCode(r.Code) {
+			status = "builtin"
+		} else if r.IsEnabled() {
+			status = "enabled"
+		} else {
 			status = "disabled"
 		}
 		includes := strings.Join(r.Include, ", ")
@@ -750,14 +836,15 @@ Flags:
 	return 0
 }
 
-// cmdDiff shows, for each enabled rule, which files touched by the specified
+// cmdDiff shows, for each active rule, which files touched by the specified
 // diff fall within that rule's scope, together with the rule description.
 // Rules with no matching files are omitted. Designed as a scoping tool for an
 // LLM agent: the agent reads the output to learn what to check and where.
 // Exit code: 0 = ok, 2 = error.
 func cmdDiff(args []string) int {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
-	flagRule := fs.String("rule", "", "filter to a specific rule code")
+	flagSelect := fs.String("select", "", "show only these rule codes (comma-separated; replaces config rules)")
+	flagExtendSelect := fs.String("extend-select", "", "add rule codes to the active set (comma-separated)")
 	flagType := fs.String("type", "", "filter to a specific type")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagAll := fs.Bool("a", false, "include untracked files (working-tree mode only)")
@@ -768,7 +855,7 @@ func cmdDiff(args []string) int {
 
 Show rules and their in-scope files touched by the given diff.
 
-For each enabled rule, lists the matching files together with the rule
+For each active rule, lists the matching files together with the rule
 description so an agent knows what to check. Rules with no matching
 files are omitted.
 
@@ -780,11 +867,12 @@ Diff sources (pick one):
   rpt diff <ref1> <ref2>    between two refs     (git diff <ref1> <ref2>)
 
 Flags:
-  -a                 include untracked files (working-tree mode only)
-  --cached           staged changes only
-  -rule <code>       filter to a specific rule code
-  -type <name>       filter to a specific type
-  -config <path>     explicit config file path
+  -a                      include untracked files (working-tree mode only)
+  --cached                staged changes only
+  -select <codes>         show only these rule codes (replaces config rules)
+  -extend-select <codes>  add rule codes to the active set
+  -type <name>            filter to a specific type
+  -config <path>          explicit config file path
 
 Exit codes:
   0  ok
@@ -820,6 +908,10 @@ Exit codes:
 		return 2
 	}
 
+	selectList := splitComma(*flagSelect)
+	extendList := splitComma(*flagExtendSelect)
+
+	// Load config. Without selection flags, a missing config is an error.
 	var cfg *rpconfig.Config
 	var cfgRoot string
 	{
@@ -838,26 +930,39 @@ Exit codes:
 		}
 		if err != nil {
 			if errors.Is(err, rpconfig.ErrNotFound) {
-				fmt.Fprintln(os.Stderr, "no revparrot.toml found")
+				if len(selectList) == 0 && len(extendList) == 0 {
+					fmt.Fprintln(os.Stderr, "no revparrot.toml found")
+					return 2
+				}
+				cfg = nil
+			} else {
+				fmt.Fprintln(os.Stderr, "error loading config:", err)
 				return 2
 			}
-			fmt.Fprintln(os.Stderr, "error loading config:", err)
-			return 2
-		}
-		cfgRoot = filepath.Dir(cfgPath)
-	}
-
-	if *flagRule != "" {
-		if _, ok := cfg.RuleByCode(*flagRule); !ok {
-			fmt.Fprintf(os.Stderr, "unknown rule code: %q\n", *flagRule)
-			return 2
+		} else {
+			cfgRoot = filepath.Dir(cfgPath)
 		}
 	}
 
-	matcher, err := cfg.NewMatcher()
+	activeRules, err := rpconfig.ResolveRuleset(cfg, selectList, extendList)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 2
+	}
+	// When no selection is given and cfg is nil we error above; when cfg is
+	// non-nil with no selection, activeRules = cfg.ActiveRules() (may be empty).
+	if len(activeRules) == 0 {
+		fmt.Println("No active rules.")
+		return 0
+	}
+
+	var matcher *rpconfig.Matcher
+	if cfg != nil {
+		matcher, err = cfg.NewMatcher()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 2
+		}
 	}
 
 	gitRoot, err := gitTopLevel()
@@ -874,13 +979,7 @@ Exit codes:
 
 	vs := defaultViolationStyles(colorAuto)
 	printed := 0
-	for _, r := range cfg.Rules {
-		if !r.IsEnabled() {
-			continue
-		}
-		if *flagRule != "" && r.Code != *flagRule {
-			continue
-		}
+	for _, r := range activeRules {
 		if *flagType != "" && !strings.EqualFold(r.Type, *flagType) {
 			continue
 		}
@@ -888,7 +987,7 @@ Exit codes:
 		var matching []string
 		for _, f := range diffFiles {
 			rel := relTo(cfgRoot, f)
-			if matcher.InScope(rel) && matcher.RuleApplies(r.Code, rel) && !matcher.Ignored(r.Code, rel) {
+			if fileInScopeForRule(r, rel, matcher) {
 				matching = append(matching, rel)
 			}
 		}
@@ -904,7 +1003,6 @@ Exit codes:
 		for _, f := range matching {
 			fmt.Printf("  %s\n", f)
 		}
-		// Print the description as "Check:" so the agent understands its purpose.
 		desc := strings.TrimSpace(r.Description)
 		if desc == "" {
 			desc = "(no description)"
@@ -931,7 +1029,8 @@ Exit codes:
 // Exit code: 0 = ok, 2 = error.
 func cmdShow(args []string) int {
 	fs := flag.NewFlagSet("show", flag.ContinueOnError)
-	flagRule := fs.String("rule", "", "filter to a specific rule code")
+	flagSelect := fs.String("select", "", "show only these rule codes (comma-separated; replaces config rules)")
+	flagExtendSelect := fs.String("extend-select", "", "add rule codes to the active set (comma-separated)")
 	flagType := fs.String("type", "", "filter to a specific type")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	fs.Usage = func() {
@@ -942,9 +1041,10 @@ Show rules and their in-scope files changed in a single commit.
 Defaults to HEAD. Pass a ref to inspect a specific commit.
 
 Flags:
-  -rule <code>       filter to a specific rule code
-  -type <name>       filter to a specific type
-  -config <path>     explicit config file path
+  -select <codes>         show only these rule codes (replaces config rules)
+  -extend-select <codes>  add rule codes to the active set
+  -type <name>            filter to a specific type
+  -config <path>          explicit config file path
 
 Exit codes:
   0  ok
@@ -959,6 +1059,10 @@ Exit codes:
 		return 2
 	}
 
+	selectList := splitComma(*flagSelect)
+	extendList := splitComma(*flagExtendSelect)
+
+	// Load config. Without selection flags, a missing config is an error.
 	var cfg *rpconfig.Config
 	var cfgRoot string
 	{
@@ -977,26 +1081,37 @@ Exit codes:
 		}
 		if err != nil {
 			if errors.Is(err, rpconfig.ErrNotFound) {
-				fmt.Fprintln(os.Stderr, "no revparrot.toml found")
+				if len(selectList) == 0 && len(extendList) == 0 {
+					fmt.Fprintln(os.Stderr, "no revparrot.toml found")
+					return 2
+				}
+				cfg = nil
+			} else {
+				fmt.Fprintln(os.Stderr, "error loading config:", err)
 				return 2
 			}
-			fmt.Fprintln(os.Stderr, "error loading config:", err)
-			return 2
-		}
-		cfgRoot = filepath.Dir(cfgPath)
-	}
-
-	if *flagRule != "" {
-		if _, ok := cfg.RuleByCode(*flagRule); !ok {
-			fmt.Fprintf(os.Stderr, "unknown rule code: %q\n", *flagRule)
-			return 2
+		} else {
+			cfgRoot = filepath.Dir(cfgPath)
 		}
 	}
 
-	matcher, err := cfg.NewMatcher()
+	activeRules, err := rpconfig.ResolveRuleset(cfg, selectList, extendList)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 2
+	}
+	if len(activeRules) == 0 {
+		fmt.Println("No active rules.")
+		return 0
+	}
+
+	var matcher *rpconfig.Matcher
+	if cfg != nil {
+		matcher, err = cfg.NewMatcher()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 2
+		}
 	}
 
 	gitRoot, err := gitTopLevel()
@@ -1013,13 +1128,7 @@ Exit codes:
 
 	vs := defaultViolationStyles(colorAuto)
 	printed := 0
-	for _, r := range cfg.Rules {
-		if !r.IsEnabled() {
-			continue
-		}
-		if *flagRule != "" && r.Code != *flagRule {
-			continue
-		}
+	for _, r := range activeRules {
 		if *flagType != "" && !strings.EqualFold(r.Type, *flagType) {
 			continue
 		}
@@ -1027,7 +1136,7 @@ Exit codes:
 		var matching []string
 		for _, f := range diffFiles {
 			rel := relTo(cfgRoot, f)
-			if matcher.InScope(rel) && matcher.RuleApplies(r.Code, rel) && !matcher.Ignored(r.Code, rel) {
+			if fileInScopeForRule(r, rel, matcher) {
 				matching = append(matching, rel)
 			}
 		}
@@ -1216,4 +1325,86 @@ func pluralS(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// splitComma splits a comma-separated flag value into trimmed, non-empty tokens.
+func splitComma(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(part); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// builtinActiveSet returns a map keyed by the built-in rule codes present in rules.
+func builtinActiveSet(rules []rpconfig.Rule) map[string]bool {
+	m := make(map[string]bool)
+	for _, r := range rules {
+		if rpconfig.IsBuiltinCode(r.Code) {
+			m[r.Code] = true
+		}
+	}
+	return m
+}
+
+// fileLineKey uniquely identifies a file:line position for set membership tests.
+type fileLineKey struct {
+	file string
+	line int
+}
+
+// gatherSyntaxViolations runs a loose RPT scan (with NORPT suppression) and
+// returns rpt-syntax violations for matches not present in strictSet (which
+// contains the well-formed annotations found by a prior strict scan).
+func gatherSyntaxViolations(paths []string, opts scanner.WalkOptions, strictSet map[fileLineKey]bool, matcher *rpconfig.Matcher, cfgRoot string) ([]scanner.Violation, error) {
+	looseRPT := scanner.Marker{Keyword: "RPT", Strict: false, Suppress: "NORPT"}
+	var out []scanner.Violation
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		var ms []scanner.Match
+		if info.IsDir() {
+			ms, err = scanner.ScanDirMarkers(path, []scanner.Marker{looseRPT}, opts)
+		} else {
+			ms, err = scanner.ScanFileMarkers(path, []scanner.Marker{looseRPT})
+		}
+		if err != nil {
+			return nil, fmt.Errorf("scanning %s: %w", path, err)
+		}
+		for _, m := range ms {
+			if strictSet[fileLineKey{m.File, m.Line}] {
+				continue // well-formed annotation already reported
+			}
+			if matcher != nil && !matcher.Keep(rpconfig.CodeRPTSyntax, relTo(cfgRoot, m.File)) {
+				continue
+			}
+			out = append(out, scanner.Violation{
+				File:    m.File,
+				Line:    m.Line,
+				Code:    rpconfig.CodeRPTSyntax,
+				Message: "RPT annotation does not match expected format",
+			})
+		}
+	}
+	return out, nil
+}
+
+// fileInScopeForRule reports whether the given relative path falls within a
+// rule's scope. For built-in rules (no per-rule globs) the global scope filter
+// applies; for config rules the per-rule include/exclude also applies.
+func fileInScopeForRule(r rpconfig.Rule, rel string, matcher *rpconfig.Matcher) bool {
+	if matcher == nil {
+		return true
+	}
+	if rpconfig.IsBuiltinCode(r.Code) {
+		return matcher.InScope(rel) && !matcher.Ignored(r.Code, rel)
+	}
+	return matcher.InScope(rel) && matcher.RuleApplies(r.Code, rel) && !matcher.Ignored(r.Code, rel)
 }

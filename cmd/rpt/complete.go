@@ -72,7 +72,7 @@ func isFlag(w string) bool {
 
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "-rule", "-config", "-n":
+	case "-select", "-extend-select", "-type", "-config", "-n":
 		return true
 	}
 	return false
@@ -120,9 +120,12 @@ func generateCompletions(ctx completionContext, ruleCodes ruleCodesFunc) []strin
 }
 
 func completeFlagValue(flag, prefix string, ruleCodes ruleCodesFunc) []string {
-	if flag == "-rule" && ruleCodes != nil {
-		codes := ruleCodes()
-		return filterPrefix(codes, prefix)
+	switch flag {
+	case "-select", "-extend-select":
+		if ruleCodes != nil {
+			codes := ruleCodes()
+			return filterPrefix(codes, prefix)
+		}
 	}
 	return nil
 }
@@ -131,16 +134,16 @@ func flagsForCmd(cmd string) []string {
 	switch cmd {
 	case "check":
 		return []string{
-			"--oneline", "--statistics", "--unknown",
+			"--oneline", "--statistics",
 			"--color", "--colour", "--no-color", "--no-colour",
-			"-n", "-rule", "-config",
+			"-n", "-select", "-extend-select", "-type", "-config",
 		}
 	case "rules":
-		return []string{"-config"}
+		return []string{"-select", "-extend-select", "-type", "-config"}
 	case "diff":
-		return []string{"-rule", "-config", "-a", "--cached", "--staged"}
+		return []string{"-select", "-extend-select", "-type", "-config", "-a", "--cached", "--staged"}
 	case "show":
-		return []string{"-rule", "-config"}
+		return []string{"-select", "-extend-select", "-type", "-config"}
 	}
 	return nil
 }
@@ -190,19 +193,20 @@ func listRefs() []string {
 	return refs
 }
 
-// ruleCodesFromConfig loads rule codes from the nearest revparrot.toml.
-// Returns nil if no config is found (not an error for completion purposes).
+// ruleCodesFromConfig loads rule codes from the nearest revparrot.toml, then
+// appends the built-in rule codes. Returns nil if no config is found but built-in
+// codes are always included for completion purposes.
 func ruleCodesFromConfig() []string {
+	var codes []string
 	cwd, err := os.Getwd()
-	if err != nil {
-		return nil
+	if err == nil {
+		if cfg, _, err := rpconfig.Load(cwd); err == nil {
+			for _, r := range cfg.Rules {
+				codes = append(codes, r.Code)
+			}
+		}
 	}
-	cfg, _, err := rpconfig.Load(cwd)
-	if err != nil {
-		return nil
-	}
-	codes := make([]string, 0, len(cfg.Rules))
-	for _, r := range cfg.Rules {
+	for _, r := range rpconfig.BuiltinRules() {
 		codes = append(codes, r.Code)
 	}
 	return codes
