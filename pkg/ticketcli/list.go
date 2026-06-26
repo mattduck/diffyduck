@@ -28,7 +28,7 @@ const (
 type ListOptions struct {
 	Source    string   // all (default), state, code
 	Markers   []string // restrict code markers to these keywords (empty = defaults)
-	Category  string   // --category filter (code markers only)
+	Type      string   // --type filter (code markers only)
 	File      string   // --file filter (trailing / = prefix match)
 	Grep      string   // --grep filter (case-insensitive)
 	Status    string   // ticket filter: unresolved (default), resolved, all
@@ -94,14 +94,14 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 		case strings.HasPrefix(arg, "--marker="):
 			o.Markers = append(o.Markers, splitList(strings.TrimPrefix(arg, "--marker="))...)
 
-		case arg == "--category":
+		case arg == "--type":
 			v, ok := next()
 			if !ok {
-				return o, fmt.Errorf("--category requires a value")
+				return o, fmt.Errorf("--type requires a value")
 			}
-			o.Category = v
-		case strings.HasPrefix(arg, "--category="):
-			o.Category = strings.TrimPrefix(arg, "--category=")
+			o.Type = v
+		case strings.HasPrefix(arg, "--type="):
+			o.Type = strings.TrimPrefix(arg, "--type=")
 
 		case arg == "--file":
 			v, ok := next()
@@ -234,8 +234,8 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 	if len(o.Markers) > 0 && o.Source == SourceState {
 		return o, fmt.Errorf("--marker is only valid when listing code markers")
 	}
-	if o.Category != "" && o.Source == SourceState {
-		return o, fmt.Errorf("--category is only valid when listing code markers")
+	if o.Type != "" && o.Source == SourceState {
+		return o, fmt.Errorf("--type is only valid when listing code markers")
 	}
 	if o.Rule != "" && o.Source == SourceCode {
 		return o, fmt.Errorf("--rule is only valid when listing tickets")
@@ -536,12 +536,16 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 		if !grepMatches(o.Grep, m.Message, "") {
 			continue
 		}
-		if o.Category != "" && !strings.EqualFold(m.Category, o.Category) {
+		if o.Type != "" && !strings.EqualFold(m.Type, o.Type) {
 			continue
 		}
 		kind := m.Keyword
-		if m.Category != "" {
-			kind = m.Keyword + ":" + m.Category
+		if m.Type != "" {
+			if m.Scope != "" {
+				kind = m.Keyword + " " + m.Type + "(" + m.Scope + ")"
+			} else {
+				kind = m.Keyword + " " + m.Type
+			}
 		}
 		rows = append(rows, listRow{
 			// Code markers keep their uppercase keyword (TODO, NOTE, …) so they

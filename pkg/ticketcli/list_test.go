@@ -116,7 +116,7 @@ func TestMarkerForKeyword(t *testing.T) {
 	assert.Equal(t, scanner.RPTMarker(), markerForKeyword("rpt"))
 	m := markerForKeyword("todo")
 	assert.Equal(t, "TODO", m.Keyword)
-	assert.False(t, m.RequireCode)
+	assert.False(t, m.Strict)
 }
 
 func TestSplitList(t *testing.T) {

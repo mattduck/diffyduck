@@ -21,7 +21,7 @@ func TestScanFile_Basic(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.py", `
 x = 1
-# RPT(bare-dict): use a dataclass here
+# RPT refactor(bare-dict): use a dataclass here
 y = {"a": 1}
 z = 2
 `)
@@ -44,7 +44,7 @@ func TestScanFile_NorevpInline(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.py", `
 x = {"a": 1}  # NORPT(bare-dict)
-# RPT(bare-dict): should not appear because suppressed inline
+# RPT refactor(bare-dict): should not appear because suppressed inline
 `)
 	// The RPT is on line 3, which has no inline suppression —
 	// it should still appear. The inline NORPT only suppresses line 2.
@@ -61,7 +61,7 @@ func TestScanFile_NorevpInlineSuppressesRevpOnSameLine(t *testing.T) {
 	dir := t.TempDir()
 	// RPT and NORPT on the same line (unusual but valid).
 	path := writeFile(t, dir, "foo.go", `package foo
-// RPT(some-rule): message  // NORPT(some-rule)
+// RPT fix(some-rule): message  // NORPT(some-rule)
 `)
 	vs, err := scanner.ScanFile(path)
 	if err != nil {
@@ -76,7 +76,7 @@ func TestScanFile_NorevpInlineSuppressesRevpOnSameLine(t *testing.T) {
 func TestScanFile_NorevpBareInline(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.py", `
-# RPT(rule-a): violation a  # NORPT
+# RPT fix(rule-a): violation a  # NORPT
 `)
 	vs, err := scanner.ScanFile(path)
 	if err != nil {
@@ -91,14 +91,13 @@ func TestScanFile_NorevpPrecedingLine(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.py", `
 # NORPT(bare-dict)
-# RPT(bare-dict): this should be suppressed
+# RPT refactor(bare-dict): annotation on comment line
 y = {"a": 1}
 `)
 	// NORPT on line 2 applies to next non-blank code line.
 	// The RPT comment on line 3 is itself a comment line — the NORPT stays
 	// pending until the code line on line 4.
-	// The RPT on line 3 is NOT a code line, so the suppression applies to line 4.
-	// But the RPT annotation itself is on line 3 — it is not suppressed.
+	// The RPT annotation itself is on line 3 — it is not suppressed.
 	vs, err := scanner.ScanFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +110,7 @@ y = {"a": 1}
 
 func TestScanFile_UnknownExtSkipped(t *testing.T) {
 	dir := t.TempDir()
-	path := writeFile(t, dir, "file.unknownext", `# RPT(rule): message`)
+	path := writeFile(t, dir, "file.unknownext", `# RPT fix(rule): message`)
 	vs, err := scanner.ScanFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -121,12 +120,12 @@ func TestScanFile_UnknownExtSkipped(t *testing.T) {
 	}
 }
 
-func TestScanFile_Category(t *testing.T) {
+func TestScanFile_Type(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.py", `
-# RPT(refactor:use-pathlib): switch to pathlib
+# RPT refactor(use-pathlib): switch to pathlib
 x = 1
-# RPT(use-bare-dict): no category
+# RPT fix(use-bare-dict): no type on this one (just scope)
 y = {"a": 1}
 `)
 	vs, err := scanner.ScanFile(path)
@@ -136,11 +135,11 @@ y = {"a": 1}
 	if len(vs) != 2 {
 		t.Fatalf("expected 2 violations, got %d: %v", len(vs), vs)
 	}
-	if vs[0].Category != "refactor" || vs[0].Code != "use-pathlib" {
-		t.Errorf("expected category=refactor code=use-pathlib, got category=%q code=%q", vs[0].Category, vs[0].Code)
+	if vs[0].Type != "refactor" || vs[0].Code != "use-pathlib" {
+		t.Errorf("expected type=refactor code=use-pathlib, got type=%q code=%q", vs[0].Type, vs[0].Code)
 	}
-	if vs[1].Category != "" || vs[1].Code != "use-bare-dict" {
-		t.Errorf("expected no category code=use-bare-dict, got category=%q code=%q", vs[1].Category, vs[1].Code)
+	if vs[1].Type != "fix" || vs[1].Code != "use-bare-dict" {
+		t.Errorf("expected type=fix code=use-bare-dict, got type=%q code=%q", vs[1].Type, vs[1].Code)
 	}
 }
 
@@ -148,7 +147,7 @@ func TestScanFile_GoSlashSlash(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.go", `package foo
 
-// RPT(some-rule): fix this
+// RPT refactor(some-rule): fix this
 func foo() {}
 `)
 	vs, err := scanner.ScanFile(path)
@@ -163,9 +162,9 @@ func foo() {}
 func TestScanFile_MultipleViolations(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.py", `
-# RPT(rule-a): first
+# RPT fix(rule-a): first
 x = 1
-# RPT(rule-b): second
+# RPT fix(rule-b): second
 y = 2
 `)
 	vs, err := scanner.ScanFile(path)
@@ -179,11 +178,11 @@ y = 2
 
 func TestScanDir_Basic(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "a.py", "# RPT(r1): one\nx = 1\n")
+	writeFile(t, dir, "a.py", "# RPT fix(r1): one\nx = 1\n")
 	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, "", filepath.Join(dir, "sub", "b.py"), "# RPT(r2): two\ny = 2\n")
+	writeFile(t, "", filepath.Join(dir, "sub", "b.py"), "# RPT fix(r2): two\ny = 2\n")
 
 	vs, err := scanner.ScanDir(dir, scanner.WalkOptions{})
 	if err != nil {
@@ -196,8 +195,8 @@ func TestScanDir_Basic(t *testing.T) {
 
 func TestScanDir_KeepFileFilters(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "keep.py", "# RPT(r1): one\nx = 1\n")
-	writeFile(t, dir, "skip.py", "# RPT(r2): two\ny = 2\n")
+	writeFile(t, dir, "keep.py", "# RPT fix(r1): one\nx = 1\n")
+	writeFile(t, dir, "skip.py", "# RPT fix(r2): two\ny = 2\n")
 
 	vs, err := scanner.ScanDir(dir, scanner.WalkOptions{
 		KeepFile: func(p string) bool { return filepath.Base(p) == "keep.py" },
@@ -212,11 +211,11 @@ func TestScanDir_KeepFileFilters(t *testing.T) {
 
 func TestScanDir_KeepDirPrunes(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "top.py", "# RPT(r1): one\nx = 1\n")
+	writeFile(t, dir, "top.py", "# RPT fix(r1): one\nx = 1\n")
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, "", filepath.Join(dir, ".git", "hook.py"), "# RPT(r2): two\ny = 2\n")
+	writeFile(t, "", filepath.Join(dir, ".git", "hook.py"), "# RPT fix(r2): two\ny = 2\n")
 
 	vs, err := scanner.ScanDir(dir, scanner.WalkOptions{
 		KeepDir: func(p string) bool { return filepath.Base(p) != ".git" },

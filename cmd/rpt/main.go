@@ -67,12 +67,12 @@ func main() {
 
 // violationStyles holds lipgloss styles for violation output (compact and verbose).
 type violationStyles struct {
-	header   lipgloss.Style // bold white — file basename
-	label    lipgloss.Style // dim — metadata labels, line numbers, separators
-	dirPart  lipgloss.Style // dim gray — directory part of file paths
-	rule     lipgloss.Style // red — rule code
-	category lipgloss.Style // blue — annotation category
-	target   lipgloss.Style // bold — verbose block > marker and target line number
+	header    lipgloss.Style // bold white — file basename
+	label     lipgloss.Style // dim — metadata labels, line numbers, separators
+	dirPart   lipgloss.Style // dim gray — directory part of file paths
+	rule      lipgloss.Style // red — rule code
+	typeStyle lipgloss.Style // blue — annotation type
+	target    lipgloss.Style // bold — verbose block > marker and target line number
 }
 
 type colorMode int
@@ -129,29 +129,29 @@ func defaultViolationStyles(mode colorMode) violationStyles {
 		renderer.SetColorProfile(termenv.Ascii)
 	}
 	return violationStyles{
-		header:   renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
-		label:    renderer.NewStyle().Foreground(lipgloss.Color("8")),
-		dirPart:  renderer.NewStyle().Foreground(lipgloss.Color("7")),
-		rule:     renderer.NewStyle().Foreground(lipgloss.Color("9")),
-		category: renderer.NewStyle().Foreground(lipgloss.Color("12")),
-		target:   renderer.NewStyle().Bold(true),
+		header:    renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
+		label:     renderer.NewStyle().Foreground(lipgloss.Color("8")),
+		dirPart:   renderer.NewStyle().Foreground(lipgloss.Color("7")),
+		rule:      renderer.NewStyle().Foreground(lipgloss.Color("9")),
+		typeStyle: renderer.NewStyle().Foreground(lipgloss.Color("12")),
+		target:    renderer.NewStyle().Bold(true),
 	}
 }
 
-// ruleIDPlain returns the plain-text rule identifier: "category:code" when the
-// rule has a category, otherwise just "code". Use this for column-width math.
+// ruleIDPlain returns the plain-text rule identifier: "type(code)" when the
+// rule has a type, otherwise just "code". Use this for column-width math.
 func ruleIDPlain(r rpconfig.Rule) string {
-	if r.Category != "" {
-		return r.Category + ":" + r.Code
+	if r.Type != "" {
+		return r.Type + "(" + r.Code + ")"
 	}
 	return r.Code
 }
 
-// ruleIDStyled returns the styled rule identifier with the category part in blue
+// ruleIDStyled returns the styled rule identifier with the type part in blue
 // and the code part in the rule color.
 func ruleIDStyled(r rpconfig.Rule, vs violationStyles) string {
-	if r.Category != "" {
-		return vs.category.Render(r.Category+":") + vs.rule.Render(r.Code)
+	if r.Type != "" {
+		return vs.typeStyle.Render(r.Type) + vs.label.Render("(") + vs.rule.Render(r.Code) + vs.label.Render(")")
 	}
 	return vs.rule.Render(r.Code)
 }
@@ -214,15 +214,17 @@ func readViolationContext(file, cfgRoot string, targetLine int) (above []string,
 }
 
 // formatViolationOneline renders a violation as a single coloured line:
-// [dim dir/][bold file][dim :linenum][dim :] [dim RPT(][cyan code][dim )] message
+// [dim dir/][bold file][dim :linenum][dim :] [dim RPT ][cyan type][dim (][red code][dim )] message
 func formatViolationOneline(v scanner.Violation, displayRoot string, vs violationStyles) string {
 	displayPath := relTo(displayRoot, v.File)
 	path := styleViolationPath(displayPath, v.Line, vs)
-	inner := vs.rule.Render(v.Code)
-	if v.Category != "" {
-		inner = vs.category.Render(v.Category+":") + vs.rule.Render(v.Code)
+	var keyword string
+	if v.Type != "" {
+		inner := vs.typeStyle.Render(v.Type) + vs.label.Render("(") + vs.rule.Render(v.Code) + vs.label.Render(")")
+		keyword = vs.label.Render("RPT ") + inner
+	} else {
+		keyword = vs.label.Render("RPT(") + vs.rule.Render(v.Code) + vs.label.Render(")")
 	}
-	keyword := vs.label.Render("RPT(") + inner + vs.label.Render(")")
 	return path + vs.label.Render(":") + " " + keyword + " " + v.Message
 }
 
@@ -235,18 +237,18 @@ func formatViolationBlock(v scanner.Violation, cfg *rpconfig.Config, displayRoot
 		return vs.label.Render(label) + value
 	}
 
-	// Rule line: optional-category:code + short title when available.
-	category := v.Category
+	// Rule line: optional type(code) + short title when available.
+	typeName := v.Type
 	if cfg != nil {
 		if r, ok := cfg.RuleByCode(v.Code); ok {
-			if category == "" {
-				category = r.Category
+			if typeName == "" {
+				typeName = r.Type
 			}
 		}
 	}
 	var ruleVal string
-	if category != "" {
-		ruleVal = vs.category.Render(category+":") + vs.rule.Render(v.Code)
+	if typeName != "" {
+		ruleVal = vs.typeStyle.Render(typeName) + vs.label.Render("(") + vs.rule.Render(v.Code) + vs.label.Render(")")
 	} else {
 		ruleVal = vs.rule.Render(v.Code)
 	}
@@ -368,7 +370,7 @@ func printViolationStats(violations []scanner.Violation, cfg *rpconfig.Config, v
 func cmdCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
-	flagCategory := fs.String("category", "", "filter to a specific category")
+	flagType := fs.String("type", "", "filter to a specific type")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
 	flagStats := fs.Bool("statistics", false, "show per-rule violation counts instead of individual violations")
@@ -399,7 +401,7 @@ Flags:
   --no-color          disable color output (alias: --no-colour)
   -n <count>          show at most N violations (total count still reported)
   -rule <code>        filter output to a specific rule code
-  -category <name>    filter output to a specific category
+  -type <name>        filter output to a specific type
   -config <path>      explicit config file path
 
 Exit codes:
@@ -551,18 +553,18 @@ Exit codes:
 		violations = filtered
 	}
 
-	// Apply -category filter. Resolves effective category from the annotation
-	// first, falling back to the rule config when the annotation has none.
-	if *flagCategory != "" {
+	// Apply -type filter. Resolves effective type from the annotation first,
+	// falling back to the rule config when the annotation has none.
+	if *flagType != "" {
 		var filtered []scanner.Violation
 		for _, v := range violations {
-			cat := v.Category
-			if cat == "" && cfg != nil {
+			typeName := v.Type
+			if typeName == "" && cfg != nil {
 				if r, ok := cfg.RuleByCode(v.Code); ok {
-					cat = r.Category
+					typeName = r.Type
 				}
 			}
-			if strings.EqualFold(cat, *flagCategory) {
+			if strings.EqualFold(typeName, *flagType) {
 				filtered = append(filtered, v)
 			}
 		}
@@ -678,14 +680,14 @@ func stateMessage(c *ticketdb.Comment) string {
 func cmdRules(args []string) int {
 	fs := flag.NewFlagSet("rules", flag.ContinueOnError)
 	flagConfig := fs.String("config", "", "explicit config file path")
-	flagCategory := fs.String("category", "", "filter to a specific category")
+	flagType := fs.String("type", "", "filter to a specific type")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt rules [flags]
 
 List rules defined in revparrot.toml.
 
 Flags:
-  -category <name>   filter to a specific category
+  -type <name>       filter to a specific type
   -config <path>     explicit config file path
 `)
 	}
@@ -730,7 +732,7 @@ Flags:
 	}
 
 	for _, r := range cfg.Rules {
-		if *flagCategory != "" && !strings.EqualFold(r.Category, *flagCategory) {
+		if *flagType != "" && !strings.EqualFold(r.Type, *flagType) {
 			continue
 		}
 		status := "enabled"
@@ -756,7 +758,7 @@ Flags:
 func cmdDiff(args []string) int {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
-	flagCategory := fs.String("category", "", "filter to a specific category")
+	flagType := fs.String("type", "", "filter to a specific type")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagAll := fs.Bool("a", false, "include untracked files (working-tree mode only)")
 	flagCached := fs.Bool("cached", false, "show staged changes only (alias: --staged)")
@@ -781,7 +783,7 @@ Flags:
   -a                 include untracked files (working-tree mode only)
   --cached           staged changes only
   -rule <code>       filter to a specific rule code
-  -category <name>   filter to a specific category
+  -type <name>       filter to a specific type
   -config <path>     explicit config file path
 
 Exit codes:
@@ -879,7 +881,7 @@ Exit codes:
 		if *flagRule != "" && r.Code != *flagRule {
 			continue
 		}
-		if *flagCategory != "" && !strings.EqualFold(r.Category, *flagCategory) {
+		if *flagType != "" && !strings.EqualFold(r.Type, *flagType) {
 			continue
 		}
 
@@ -930,7 +932,7 @@ Exit codes:
 func cmdShow(args []string) int {
 	fs := flag.NewFlagSet("show", flag.ContinueOnError)
 	flagRule := fs.String("rule", "", "filter to a specific rule code")
-	flagCategory := fs.String("category", "", "filter to a specific category")
+	flagType := fs.String("type", "", "filter to a specific type")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt show [flags] [ref]
@@ -941,7 +943,7 @@ Defaults to HEAD. Pass a ref to inspect a specific commit.
 
 Flags:
   -rule <code>       filter to a specific rule code
-  -category <name>   filter to a specific category
+  -type <name>       filter to a specific type
   -config <path>     explicit config file path
 
 Exit codes:
@@ -1018,7 +1020,7 @@ Exit codes:
 		if *flagRule != "" && r.Code != *flagRule {
 			continue
 		}
-		if *flagCategory != "" && !strings.EqualFold(r.Category, *flagCategory) {
+		if *flagType != "" && !strings.EqualFold(r.Type, *flagType) {
 			continue
 		}
 

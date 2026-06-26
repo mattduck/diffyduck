@@ -28,7 +28,7 @@ type GlobalConfig struct {
 // Rule defines a single review rule.
 type Rule struct {
 	Code        string   `toml:"code"`
-	Category    string   `toml:"category"`
+	Type        string   `toml:"type"`
 	Title       string   `toml:"title"`
 	Description string   `toml:"description"`
 	Include     []string `toml:"include"`
