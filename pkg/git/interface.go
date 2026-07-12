@@ -81,8 +81,9 @@ type Git interface {
 
 	// GetFileContentReader returns a reader for streaming file content at a given ref.
 	// The caller must close the returned ReadCloser when done.
-	// The cleanup function must be called after closing the reader to wait for the git process.
-	GetFileContentReader(ref, path string) (io.ReadCloser, func() error, error)
+	// The cleanup function must be called after closing the reader. Pass true when
+	// the caller stopped reading before EOF, so the underlying process can be killed.
+	GetFileContentReader(ref, path string) (io.ReadCloser, func(earlyStop bool) error, error)
 
 	// ListUntrackedFiles returns a list of untracked files (excluding ignored files).
 	// Uses git ls-files --others --exclude-standard.

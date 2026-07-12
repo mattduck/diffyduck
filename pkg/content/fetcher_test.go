@@ -2,9 +2,12 @@ package content
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mattduck/diffyduck/pkg/git"
 	"github.com/stretchr/testify/assert"
@@ -237,4 +240,67 @@ func TestFetcher_ConcurrentAccess(t *testing.T) {
 	new, err := f.GetNewContent("filea.go")
 	require.NoError(t, err)
 	assert.Equal(t, "new content a\n", new)
+}
+
+func TestFetcher_GitContentLinesStopsLargeBlob(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmpDir := t.TempDir()
+	runContentGit(t, tmpDir, "init")
+
+	var b strings.Builder
+	for b.Len() <= 2*1024*1024 {
+		b.WriteString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n")
+	}
+	err := os.WriteFile(filepath.Join(tmpDir, "large.txt"), []byte(b.String()), 0644)
+	require.NoError(t, err)
+
+	runContentGit(t, tmpDir, "add", "large.txt")
+	runContentGitWithEnv(t, tmpDir, []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}, "commit", "--no-verify", "-m", "large")
+
+	f := NewFetcher(git.NewWithDir(tmpDir), ModeShow, "HEAD", "")
+
+	type result struct {
+		lines     []string
+		truncated bool
+		err       error
+	}
+	done := make(chan result, 1)
+	go func() {
+		lines, truncated, err := f.GetNewContentLines("large.txt")
+		done <- result{lines: lines, truncated: truncated, err: err}
+	}()
+
+	select {
+	case got := <-done:
+		require.NoError(t, got.err)
+		assert.True(t, got.truncated)
+		assert.NotEmpty(t, got.lines)
+	case <-time.After(2 * time.Second):
+		t.Fatal("GetNewContentLines hung after stopping early on a large git blob")
+	}
+}
+
+func runContentGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	return runContentGitWithEnv(t, dir, nil, args...)
+}
+
+func runContentGitWithEnv(t *testing.T, dir string, env []string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+	return string(out)
 }

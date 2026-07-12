@@ -249,10 +249,17 @@ func (f *Fetcher) fetchGitContentLines(ref, path string) ([]string, bool, error)
 	if err != nil {
 		return nil, false, err
 	}
-	defer reader.Close()
-	defer cleanup()
 
-	return ReadLimitedLines(reader)
+	lines, truncated, readErr := ReadLimitedLines(reader)
+	_ = reader.Close()
+	cleanupErr := cleanup(truncated || readErr != nil)
+	if readErr != nil {
+		return nil, false, readErr
+	}
+	if cleanupErr != nil {
+		return nil, false, cleanupErr
+	}
+	return lines, truncated, nil
 }
 
 func (f *Fetcher) readWorkingTreeFileLines(path string) ([]string, bool, error) {

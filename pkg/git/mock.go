@@ -130,11 +130,11 @@ func (m *MockGit) GetFileContent(ref, path string) (string, error) {
 }
 
 // GetFileContentReader returns a reader for file content from the FileContents map.
-func (m *MockGit) GetFileContentReader(ref, path string) (io.ReadCloser, func() error, error) {
+func (m *MockGit) GetFileContentReader(ref, path string) (io.ReadCloser, func(earlyStop bool) error, error) {
 	key := ref + ":" + path
 	if content, ok := m.FileContents[key]; ok {
 		reader := io.NopCloser(strings.NewReader(content))
-		cleanup := func() error { return nil }
+		cleanup := func(earlyStop bool) error { return nil }
 		return reader, cleanup, nil
 	}
 	return nil, nil, fmt.Errorf("file not found: %s at %s", path, ref)

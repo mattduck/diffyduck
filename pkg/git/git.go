@@ -788,8 +788,9 @@ func (g *RealGit) GetFileContent(ref, path string) (string, error) {
 
 // GetFileContentReader returns a reader for streaming file content at a given ref.
 // The caller must close the returned ReadCloser when done.
-// The cleanup function must be called after closing the reader to wait for the git process.
-func (g *RealGit) GetFileContentReader(ref, path string) (io.ReadCloser, func() error, error) {
+// The cleanup function must be called after closing the reader. Pass true when
+// the caller stopped reading before EOF, so the git process can be killed.
+func (g *RealGit) GetFileContentReader(ref, path string) (io.ReadCloser, func(earlyStop bool) error, error) {
 	specifier := ref + ":" + path
 
 	cmd := g.command("show", specifier)
@@ -803,7 +804,15 @@ func (g *RealGit) GetFileContentReader(ref, path string) (io.ReadCloser, func() 
 		return nil, nil, err
 	}
 
-	cleanup := func() error {
+	cleanup := func(earlyStop bool) error {
+		if earlyStop {
+			_ = stdout.Close()
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			_ = cmd.Wait()
+			return nil
+		}
 		return cmd.Wait()
 	}
 
