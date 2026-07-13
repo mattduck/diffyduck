@@ -842,6 +842,33 @@ func (g *RealGit) ListUntrackedFiles() ([]string, error) {
 	return strings.Split(output, "\n"), nil
 }
 
+// ListFiles returns the repo-relative paths of every file git tracks or would
+// track — cached (tracked) plus untracked files, with ignored files excluded
+// via the standard ignore rules (.gitignore, .git/info/exclude, global excludes).
+// This is the set a repo-aware tool should scan; gitignored trees like virtualenvs
+// and node_modules are omitted.
+func (g *RealGit) ListFiles() ([]string, error) {
+	cmd := g.command("ls-files", "--cached", "--others", "--exclude-standard")
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, &GitError{
+				Command: "git ls-files",
+				Stderr:  strings.TrimSpace(string(exitErr.Stderr)),
+			}
+		}
+		return nil, err
+	}
+
+	output := strings.TrimSpace(string(out))
+	if output == "" {
+		return nil, nil
+	}
+
+	return strings.Split(output, "\n"), nil
+}
+
 // DiffNewFile generates a diff showing a file as entirely new.
 // Uses git diff --no-index to compare /dev/null against the file.
 func (g *RealGit) DiffNewFile(path string) (string, error) {

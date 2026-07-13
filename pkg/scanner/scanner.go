@@ -6,11 +6,17 @@ package scanner
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// maxScanLine caps the per-line buffer used when scanning source files for
+// markers. Lines longer than this are skipped (see scanFileMarkers): a comment
+// annotation never lives on a multi-megabyte line.
+const maxScanLine = 4 * 1024 * 1024
 
 // Marker defines a keyword family to scan for in source comments.
 type Marker struct {
@@ -153,6 +159,9 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 	var pending []suppress // whole-line suppressions awaiting the next code line
 
 	sc := bufio.NewScanner(f)
+	// Enlarge the line buffer well past bufio's 64KB default so ordinary long
+	// lines (minified JS, bundled assets, big JSON blobs) don't trip the scanner.
+	sc.Buffer(make([]byte, 64*1024), maxScanLine)
 	lineNum := 0
 	prefix := lang.linePrefix
 
@@ -201,7 +210,13 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, err
+		// A line longer than maxScanLine is never a hand-written comment (it is
+		// almost always minified or generated content). Rather than aborting the
+		// whole scan, treat it as end-of-file for this file and keep the matches
+		// found before it. Other read errors are still fatal.
+		if !errors.Is(err, bufio.ErrTooLong) {
+			return nil, err
+		}
 	}
 
 	// Build suppression lookup: (line, keyword) -> set of suppressed codes

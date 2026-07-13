@@ -563,7 +563,22 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 		markers = filtered
 	}
 
-	ms, err := scanner.ScanDirMarkers(root, markers, scanner.WalkOptions{KeepDir: keepCodeDir})
+	// Restrict the scan to files git tracks or would track — gitignored trees
+	// (virtualenvs, node_modules, build output) are skipped, so they are neither
+	// noise in the results nor a source of unreadable/huge files.
+	files, err := g.ListFiles()
+	if err != nil {
+		return nil, fmt.Errorf("listing repo files: %w", err)
+	}
+	allowed := make(map[string]bool, len(files))
+	for _, rel := range files {
+		allowed[filepath.Join(root, rel)] = true
+	}
+
+	ms, err := scanner.ScanDirMarkers(root, markers, scanner.WalkOptions{
+		KeepDir:  keepCodeDir,
+		KeepFile: func(p string) bool { return allowed[p] },
+	})
 	if err != nil {
 		return nil, fmt.Errorf("scanning code markers: %w", err)
 	}

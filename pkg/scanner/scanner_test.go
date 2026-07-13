@@ -3,6 +3,7 @@ package scanner_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mattduck/diffyduck/pkg/scanner"
@@ -206,6 +207,40 @@ func TestScanDir_KeepFileFilters(t *testing.T) {
 	}
 	if len(vs) != 1 || vs[0].Code != "r1" {
 		t.Fatalf("expected only r1 from keep.py, got %v", vs)
+	}
+}
+
+// TestScanFile_LongLineNotFatal covers a file with a line far longer than
+// bufio's 64KB default token size (minified/bundled content). The scan must not
+// fail with "token too long"; markers before the long line are still returned.
+func TestScanFile_LongLineNotFatal(t *testing.T) {
+	dir := t.TempDir()
+	long := strings.Repeat("x", 300*1024) // 300KB single line, > 64KB default
+	path := writeFile(t, dir, "big.py", "# RPT fix(r1): before long line\n"+long+"\ny = 2\n")
+
+	vs, err := scanner.ScanFile(path)
+	if err != nil {
+		t.Fatalf("expected no error on long line, got %v", err)
+	}
+	if len(vs) != 1 || vs[0].Code != "r1" {
+		t.Fatalf("expected r1 before the long line, got %v", vs)
+	}
+}
+
+// TestScanFile_OverCapLineTolerated covers a line longer than the scanner's
+// buffer cap: it must be treated as end-of-file (matches before it kept, no
+// error) rather than aborting the whole scan.
+func TestScanFile_OverCapLineTolerated(t *testing.T) {
+	dir := t.TempDir()
+	monster := strings.Repeat("y", 5*1024*1024) // 5MB, exceeds the 4MB cap
+	path := writeFile(t, dir, "monster.py", "# RPT fix(r1): before monster\n"+monster+"\n# RPT fix(r2): after monster\n")
+
+	vs, err := scanner.ScanFile(path)
+	if err != nil {
+		t.Fatalf("expected over-cap line to be tolerated, got %v", err)
+	}
+	if len(vs) != 1 || vs[0].Code != "r1" {
+		t.Fatalf("expected only r1 (scan stops at the over-cap line), got %v", vs)
 	}
 }
 

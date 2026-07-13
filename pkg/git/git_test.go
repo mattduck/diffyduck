@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -624,6 +625,44 @@ func TestMockGit_DiffNewFile(t *testing.T) {
 	diff, err := mock.DiffNewFile("test.txt")
 	require.NoError(t, err)
 	assert.Equal(t, "", diff)
+}
+
+// TestRealGit_ListFiles_Integration verifies ListFiles returns tracked and
+// untracked files while excluding gitignored paths.
+func TestRealGit_ListFiles_Integration(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+
+	writeFile(t, tmpDir, "tracked.go", "package main\n")
+	writeFile(t, tmpDir, ".gitignore", ".docs-venv/\n")
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".docs-venv"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, tmpDir, filepath.Join(".docs-venv", "ignored.go"), "package venv\n")
+	runGit(t, tmpDir, "add", "tracked.go", ".gitignore")
+	runGitWithEnv(t, tmpDir, []string{
+		"GIT_AUTHOR_NAME=Test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=Test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	}, "commit", "--no-verify", "-m", "initial")
+	// An untracked-but-not-ignored file should still be listed.
+	writeFile(t, tmpDir, "untracked.go", "package main\n")
+
+	g := NewWithDir(tmpDir)
+	files, err := g.ListFiles()
+	require.NoError(t, err)
+
+	got := make(map[string]bool)
+	for _, f := range files {
+		got[f] = true
+	}
+	assert.True(t, got["tracked.go"], "tracked file should be listed")
+	assert.True(t, got["untracked.go"], "untracked non-ignored file should be listed")
+	assert.False(t, got[filepath.Join(".docs-venv", "ignored.go")], "gitignored file should be excluded")
 }
 
 // =============================================================================
