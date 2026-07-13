@@ -17,7 +17,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattduck/diffyduck/pkg/rpconfig"
 	"github.com/mattduck/diffyduck/pkg/scanner"
-	"github.com/mattduck/diffyduck/pkg/ticketdb"
 	"github.com/muesli/termenv"
 )
 
@@ -364,54 +363,50 @@ func printViolationStats(violations []scanner.Violation, cfg *rpconfig.Config, v
 	}
 
 	n := len(violations)
-	fmt.Printf("\nFound %d violation%s.\n", n, pluralS(n))
+	fmt.Printf("\nFound %d problem%s.\n", n, pluralS(n))
 }
 
 // cmdCheck scans paths for RPT violations and prints them.
 // Exit code: 0 = clean, 1 = violations found, 2 = error.
 func cmdCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
-	flagSelect := fs.String("select", "", "run only these rule codes (comma-separated; replaces config rules)")
-	flagExtendSelect := fs.String("extend-select", "", "add rule codes to the active set (comma-separated)")
-	flagType := fs.String("type", "", "filter to a specific type")
+	flagSelect := fs.String("select", "", "run only these checks (comma-separated; default is all)")
+	flagExtendSelect := fs.String("extend-select", "", "add checks to the default set (comma-separated)")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
-	flagStats := fs.Bool("statistics", false, "show per-rule violation counts instead of individual violations")
-	flagN := fs.Int("n", 0, "show at most N violations (0 = no limit)")
+	flagStats := fs.Bool("statistics", false, "show per-check counts instead of individual problems")
+	flagN := fs.Int("n", 0, "show at most N problems (0 = no limit)")
 	color := colorAuto
 	registerColorFlags(fs, &color)
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: rpt check [flags] [path...]
 
-Scan for RPT violation annotations in source files.
-Reports violations not suppressed by NORPT.
+Validate RPT annotations in source files. Reports annotations that are
+malformed, reference an unknown scope, or use a mismatched type:
 
-Also reports file-attached rule-tagged tickets from the git-state
-store (tdb): an unresolved ticket with a rule code is a violation
-(resolved suppresses), subject to the same revparrot.toml scope as
-code annotations.
+  rpt-syntax         does not match "RPT type(scope): message"
+  rpt-unknown-scope  scope is not a rule defined in revparrot.toml
+  rpt-type-mismatch  type does not match the rule's declared type
 
-When a revparrot.toml is found, only violations whose code matches an
-active rule are reported. Use -select or -extend-select to override or
-extend the active rule set.
+All three run by default; use -select to run a subset. Annotations
+suppressed by NORPT or by an [ignore] entry are skipped.
 
-Built-in annotation-quality rules (rpt-syntax, rpt-unknown-scope,
-rpt-type-mismatch) are disabled by default; enable with -extend-select.
+This does NOT list valid annotations — use 'tdb list --marker RPT'
+(optionally --rule <code>) for the inventory of outstanding work items.
 
 Flags:
   --oneline               compact one-line output (default is verbose blocks)
-  --statistics            show per-rule counts instead of individual violations
+  --statistics            show per-check counts instead of individual problems
   --color                 force color output (alias: --colour)
   --no-color              disable color output (alias: --no-colour)
-  -n <count>              show at most N violations (total count still reported)
-  -select <codes>         run only these rule codes (replaces config rules)
-  -extend-select <codes>  add rule codes to the active set
-  -type <name>            filter output to a specific type
+  -n <count>              show at most N problems (total count still reported)
+  -select <checks>        run only these checks (rpt-syntax, rpt-unknown-scope, rpt-type-mismatch)
+  -extend-select <checks> add checks to the default set
   -config <path>          explicit config file path
 
 Exit codes:
-  0  no violations found
-  1  violations found
+  0  no problems found
+  1  problems found
   2  error
 `)
 	}
@@ -461,22 +456,41 @@ Exit codes:
 		}
 	}
 
-	// Resolve active rule set from config + selection flags.
-	activeRules, err := rpconfig.ResolveRuleset(cfg, selectList, extendList)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return 2
+	// Resolve which annotation-quality checks to run. All three run by default;
+	// -select restricts to the named subset, -extend-select adds to the default.
+	// Only the built-in check codes are valid selections.
+	allChecks := []string{rpconfig.CodeRPTSyntax, rpconfig.CodeRPTUnknownScope, rpconfig.CodeRPTTypeMismatch}
+	activeChecks := make(map[string]bool, len(allChecks))
+	if len(selectList) > 0 {
+		for _, c := range selectList {
+			if !rpconfig.IsBuiltinCode(c) {
+				fmt.Fprintf(os.Stderr, "error: check validates only %s; got %q\n", strings.Join(allChecks, ", "), c)
+				return 2
+			}
+			activeChecks[c] = true
+		}
+	} else {
+		for _, c := range allChecks {
+			activeChecks[c] = true
+		}
 	}
-	activeBuiltins := builtinActiveSet(activeRules)
+	for _, c := range extendList {
+		if !rpconfig.IsBuiltinCode(c) {
+			fmt.Fprintf(os.Stderr, "error: check validates only %s; got %q\n", strings.Join(allChecks, ", "), c)
+			return 2
+		}
+		activeChecks[c] = true
+	}
 
 	// Build the path matcher from config, if any.
 	var matcher *rpconfig.Matcher
 	if cfg != nil {
-		matcher, err = cfg.NewMatcher()
+		m, err := cfg.NewMatcher()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error in config patterns:", err)
 			return 2
 		}
+		matcher = m
 	}
 
 	opts := walkOptions(matcher, cfgRoot)
@@ -505,94 +519,62 @@ Exit codes:
 		rawCodeViolations = append(rawCodeViolations, vs...)
 	}
 
-	// Apply rule-level include/exclude and [ignore] suppression to code violations.
-	codeViolations := rawCodeViolations
-	if matcher != nil {
-		var kept []scanner.Violation
+	// Validate annotations. The strict scan (rawCodeViolations) already reflects
+	// the global include/exclude (the walk skips out-of-scope files); an [ignore]
+	// entry for a check's code suppresses it. Valid annotations are not reported —
+	// that inventory is `tdb list`'s job.
+	notIgnored := func(code, file string) bool {
+		return matcher == nil || !matcher.Ignored(code, relTo(cfgRoot, file))
+	}
+
+	var violations []scanner.Violation
+
+	// rpt-unknown-scope: well-formed annotations whose scope isn't a config rule.
+	if activeChecks[rpconfig.CodeRPTUnknownScope] && cfg != nil {
 		for _, v := range rawCodeViolations {
-			if matcher.Keep(v.Code, relTo(cfgRoot, v.File)) {
-				kept = append(kept, v)
+			if rpconfig.IsBuiltinCode(v.Code) {
+				continue
 			}
-		}
-		codeViolations = kept
-	}
-
-	// Generate built-in violations from the filtered code violations.
-	// rpt-unknown-scope: well-formed annotations whose scope isn't in config.
-	var builtinViolations []scanner.Violation
-	if activeBuiltins[rpconfig.CodeRPTUnknownScope] && cfg != nil {
-		for _, v := range codeViolations {
-			if !rpconfig.IsBuiltinCode(v.Code) {
-				if _, ok := cfg.RuleByCode(v.Code); !ok {
-					builtinViolations = append(builtinViolations, scanner.Violation{
-						File:    v.File,
-						Line:    v.Line,
-						Code:    rpconfig.CodeRPTUnknownScope,
-						Message: fmt.Sprintf("unknown scope %q", v.Code),
-					})
-				}
+			if _, ok := cfg.RuleByCode(v.Code); ok {
+				continue
 			}
-		}
-	}
-	// rpt-type-mismatch: annotations whose type doesn't match the config rule type.
-	if activeBuiltins[rpconfig.CodeRPTTypeMismatch] && cfg != nil {
-		for _, v := range codeViolations {
-			if !rpconfig.IsBuiltinCode(v.Code) && v.Type != "" {
-				if r, ok := cfg.RuleByCode(v.Code); ok && r.Type != "" && !strings.EqualFold(v.Type, r.Type) {
-					builtinViolations = append(builtinViolations, scanner.Violation{
-						File:    v.File,
-						Line:    v.Line,
-						Code:    rpconfig.CodeRPTTypeMismatch,
-						Message: fmt.Sprintf("type %q does not match rule type %q", v.Type, r.Type),
-					})
-				}
+			if !notIgnored(rpconfig.CodeRPTUnknownScope, v.File) {
+				continue
 			}
+			violations = append(violations, scanner.Violation{
+				File:    v.File,
+				Line:    v.Line,
+				Code:    rpconfig.CodeRPTUnknownScope,
+				Message: fmt.Sprintf("unknown scope %q", v.Code),
+			})
 		}
 	}
 
-	// Merge rule-tagged tickets from the git-state store. State sourcing is
-	// best-effort: outside a git repo (or on any store error) we warn and
-	// continue with code violations only.
-	stateViols, serr := gatherStateViolations()
-	if serr != nil {
-		fmt.Fprintln(os.Stderr, "warning: skipping git-state tickets:", serr)
-	}
-	// The global [revparrot] include/exclude is enforced for code by not walking
-	// excluded files; state violations bypass the walk, so apply it here.
-	if matcher != nil {
-		var inScope []scanner.Violation
-		for _, sv := range stateViols {
-			if matcher.InScope(relTo(cfgRoot, sv.File)) {
-				inScope = append(inScope, sv)
+	// rpt-type-mismatch: annotation type differs from the rule's declared type.
+	if activeChecks[rpconfig.CodeRPTTypeMismatch] && cfg != nil {
+		for _, v := range rawCodeViolations {
+			if rpconfig.IsBuiltinCode(v.Code) || v.Type == "" {
+				continue
 			}
-		}
-		stateViols = inScope
-	}
-
-	// Combine: filtered code + state + built-in violations.
-	violations := make([]scanner.Violation, 0, len(codeViolations)+len(stateViols)+len(builtinViolations))
-	violations = append(violations, codeViolations...)
-	violations = append(violations, stateViols...)
-	violations = append(violations, builtinViolations...)
-
-	// Apply active-rules filter: when a ruleset is active, keep only those codes.
-	if activeRules != nil {
-		activeSet := make(map[string]bool, len(activeRules))
-		for _, r := range activeRules {
-			activeSet[r.Code] = true
-		}
-		var kept []scanner.Violation
-		for _, v := range violations {
-			if activeSet[v.Code] {
-				kept = append(kept, v)
+			r, ok := cfg.RuleByCode(v.Code)
+			if !ok || r.Type == "" || strings.EqualFold(v.Type, r.Type) {
+				continue
 			}
+			if !notIgnored(rpconfig.CodeRPTTypeMismatch, v.File) {
+				continue
+			}
+			violations = append(violations, scanner.Violation{
+				File:    v.File,
+				Line:    v.Line,
+				Code:    rpconfig.CodeRPTTypeMismatch,
+				Message: fmt.Sprintf("type %q does not match rule type %q", v.Type, r.Type),
+			})
 		}
-		violations = kept
 	}
 
 	// rpt-syntax: loose scan to find malformed RPT annotations not caught by the
 	// strict scanner. Subtract the strict-scan locations to avoid double-reporting.
-	if activeBuiltins[rpconfig.CodeRPTSyntax] {
+	if activeChecks[rpconfig.CodeRPTSyntax] {
 		strictSet := make(map[fileLineKey]bool, len(rawCodeViolations))
 		for _, v := range rawCodeViolations {
 			strictSet[fileLineKey{v.File, v.Line}] = true
@@ -605,27 +587,9 @@ Exit codes:
 		violations = append(violations, syntaxViols...)
 	}
 
-	// Apply -type filter. Resolves effective type from the annotation first,
-	// falling back to the rule config when the annotation has none.
-	if *flagType != "" {
-		var filtered []scanner.Violation
-		for _, v := range violations {
-			typeName := v.Type
-			if typeName == "" && cfg != nil {
-				if r, ok := cfg.RuleByCode(v.Code); ok {
-					typeName = r.Type
-				}
-			}
-			if strings.EqualFold(typeName, *flagType) {
-				filtered = append(filtered, v)
-			}
-		}
-		violations = filtered
-	}
-
 	n := len(violations)
 	if n == 0 {
-		fmt.Println("No violations found.")
+		fmt.Println("No problems found.")
 		return 0
 	}
 
@@ -664,55 +628,14 @@ Exit codes:
 	return 1
 }
 
-// violationSummary returns the summary line for violation output. When fewer
-// violations are rendered than total (due to -n), it says "Showing R of N"
+// violationSummary returns the summary line for check output. When fewer
+// problems are rendered than total (due to -n), it says "Showing R of N"
 // instead of "Found N".
 func violationSummary(rendered, total int) string {
 	if rendered < total {
-		return fmt.Sprintf("Showing %d of %d violation%s.", rendered, total, pluralS(total))
+		return fmt.Sprintf("Showing %d of %d problem%s.", rendered, total, pluralS(total))
 	}
-	return fmt.Sprintf("Found %d violation%s.", total, pluralS(total))
-}
-
-// gatherStateViolations reads rule-tagged tickets from the git-state store and
-// maps them to scanner.Violation so they merge with code violations under the
-// same config scope. Resolved tickets are excluded (resolved is the state-side
-// suppression). Standalone (file-less) tickets are excluded: a rule violation is
-// inherently located in code, and the config path scope can't apply to a ticket
-// with no path.
-func gatherStateViolations() ([]scanner.Violation, error) {
-	store := ticketdb.NewStore("")
-	all, err := store.AllComments()
-	if err != nil {
-		return nil, err
-	}
-
-	var out []scanner.Violation
-	for _, c := range all {
-		if c.Rule == "" || c.Resolved || c.IsStandalone() {
-			continue
-		}
-		out = append(out, scanner.Violation{
-			File:    c.File,
-			Line:    c.Line,
-			Code:    c.Rule,
-			Message: stateMessage(c),
-		})
-	}
-	return out, nil
-}
-
-// stateMessage returns the violation message for a ticket: its title if set,
-// else the first line of its body.
-func stateMessage(c *ticketdb.Comment) string {
-	if c.Title != "" {
-		return c.Title
-	}
-	t := c.Text
-	if i := strings.IndexByte(t, '\n'); i >= 0 {
-		t = t[:i]
-	}
-	return t
+	return fmt.Sprintf("Found %d problem%s.", total, pluralS(total))
 }
 
 // cmdRules lists rules from rpconfig, including any selected built-in rules.
@@ -1584,17 +1507,6 @@ func splitComma(s string) []string {
 		}
 	}
 	return out
-}
-
-// builtinActiveSet returns a map keyed by the built-in rule codes present in rules.
-func builtinActiveSet(rules []rpconfig.Rule) map[string]bool {
-	m := make(map[string]bool)
-	for _, r := range rules {
-		if rpconfig.IsBuiltinCode(r.Code) {
-			m[r.Code] = true
-		}
-	}
-	return m
 }
 
 // fileLineKey uniquely identifies a file:line position for set membership tests.

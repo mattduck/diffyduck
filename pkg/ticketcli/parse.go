@@ -402,10 +402,11 @@ list merges git-state tickets and in-code markers (TODO/FIXME/RPT/…) into one 
   --exclude-marker LIST  exclude these marker keywords; code only
   --type VALUE           filter code markers by type (feat, fix, …); code only
   --status VALUE         unresolved (default), resolved, all; tickets only
-  --rule CODE            filter tickets by rule code; tickets only
+  --rule CODE            filter by rule code (ticket rule tag or RPT scope)
   --file PATH            filter by file (trailing / = prefix match)
   --grep TEXT            filter by text (case-insensitive)
   -n[N]                  limit combined rows (bare = all)
+  --exit-code            exit 1 if any rows match, 0 if none (CI gate)
   -b, --branch [NAME]    scope tickets to a branch (no value = all branches)
   --all-branches         tickets from all branches
 

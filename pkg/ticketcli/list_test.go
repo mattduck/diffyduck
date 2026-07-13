@@ -60,7 +60,6 @@ func TestParseListArgs_Errors(t *testing.T) {
 		{"list", "--bogus"},
 		{"list", "--all-branches", "--branch", "main"},
 		{"list", "--source", "state", "--marker", "TODO"},
-		{"list", "--source", "code", "--rule", "x"},
 		{"list", "-nfoo"},
 	}
 	for _, c := range cases {
@@ -109,6 +108,34 @@ func TestParseListArgs_Rule(t *testing.T) {
 	o, err = ParseListArgs([]string{"list", "--rule=other"})
 	require.NoError(t, err)
 	assert.Equal(t, "other", o.Rule)
+
+	// --rule is valid for every source: it filters ticket rule tags and
+	// code-marker scopes alike.
+	for _, src := range []string{"state", "code", "all"} {
+		o, err := ParseListArgs([]string{"list", "--source", src, "--rule", "r"})
+		require.NoError(t, err, src)
+		assert.Equal(t, "r", o.Rule, src)
+	}
+}
+
+func TestParseListArgs_ExitCode(t *testing.T) {
+	o, err := ParseListArgs([]string{"list"})
+	require.NoError(t, err)
+	assert.False(t, o.ExitCode)
+
+	// Valid for every source.
+	for _, src := range []string{"all", "state", "code"} {
+		o, err := ParseListArgs([]string{"list", "--source", src, "--exit-code"})
+		require.NoError(t, err, src)
+		assert.True(t, o.ExitCode, src)
+	}
+}
+
+func TestExitCodeResult(t *testing.T) {
+	assert.Nil(t, exitCodeResult(false, true), "gate off → nil")
+	assert.Nil(t, exitCodeResult(true, false), "no matches → nil")
+	assert.Nil(t, exitCodeResult(false, false))
+	assert.ErrorIs(t, exitCodeResult(true, true), ErrExitCode, "gate on + matches → sentinel")
 }
 
 func TestMarkerForKeyword(t *testing.T) {

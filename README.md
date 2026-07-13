@@ -48,7 +48,8 @@ and shared with dfd's in-TUI comment view.
 tdb list                          # List all tickets and in-code markers
 tdb list --source state           # Git-state tickets only
 tdb list --source code            # In-code markers (TODO/FIXME/HACK/…) only
-tdb list --rule SEC-AUTH          # Filter by rule code
+tdb list --rule SEC-AUTH          # Filter by rule code (ticket tag or RPT scope)
+tdb list --marker RPT --exit-code # Exit 1 if any RPT annotations remain (CI gate)
 tdb comment add src/foo.go:42     # Add a comment at a file:line
 tdb comment list                  # List comments
 tdb comment resolve <id>          # Resolve a comment
@@ -58,9 +59,12 @@ tdb completion bash               # Shell completion script
 
 ## rpt
 
-Rule-based reviewer. Rules are defined in `revparrot.toml`; the agent (Claude)
-scans code and places `RPT(code)` annotations or rule-tagged tickets; `rpt check`
-collects them and exits non-zero if violations exist.
+Rule-based reviewer. Rules are defined in `revparrot.toml`. The agent (Claude)
+places `RPT type(scope):` annotations at rule violations. `rpt check` *validates*
+those annotations — malformed, unknown scope, mismatched type — and exits
+non-zero if any are broken; `rpt ls` reports the review surface (rules × in-scope
+files). The inventory of outstanding work items lives in `tdb list` (both code
+annotations and rule-tagged tickets); `rpt check` no longer lists them.
 
 ```sh
 rpt rules                         # List defined rules
@@ -69,8 +73,8 @@ rpt ls --json src/pages           # Machine-readable, scoped to a set of paths
 rpt diff                          # Show rules × files touched by working-tree diff
 rpt diff main..HEAD               # Same, scoped to a ref range
 rpt diff --show abc123            # Same, scoped to a single commit
-rpt check                         # Scan for violations (exit 1 = violations found)
-rpt check -rule SEC-AUTH          # Filter to one rule
+rpt check                         # Validate RPT annotations (exit 1 = problems found)
+rpt check -select rpt-syntax      # Run only the syntax check
 rpt completion bash               # Shell completion script
 ```
 

@@ -10,7 +10,7 @@ This repo hosts three terminal tools built on a shared Go module (`github.com/ma
 |--------|--------------|------|
 | `dfd`  | diffyduck    | Side-by-side diff/log TUI (Bubble Tea, tree-sitter syntax highlighting, Vim-style navigation) |
 | `tdb`  | ticketdb     | CLI over the git-backed comment/note/ticket store |
-| `rpt`  | reviewparrot | Rule-based code review linter (`RPT` annotations + rule-tagged tickets) |
+| `rpt`  | reviewparrot | Rule-based code review linter (`RPT` annotations; recorded-violation inventory lives in `tdb`) |
 
 `tdb` and `rpt` are CGO-free (`CGO_ENABLED=0`). tree-sitter (cgo) is a `dfd`-only dependency. A `cgo-free` gate in `make check` enforces this.
 
@@ -41,7 +41,9 @@ Git Command → Parse unified diff → Transform to LinePairs → TUI Model → 
                                                                                   (tdb)
 User → tdb CLI → pkg/ticketcli → pkg/ticketdb (git-state store)
                                                                                   (rpt)
-User → rpt CLI → pkg/rpconfig (rules) + pkg/scanner (RPT markers) → violations
+User → rpt CLI → pkg/rpconfig (rules) + pkg/scanner (RPT annotations)
+                 → rpt ls (review surface) / rpt check (annotation validation)
+                 (the work-item inventory lives in tdb list)
 ```
 
 ### Package Structure

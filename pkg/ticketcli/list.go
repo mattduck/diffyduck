@@ -1,6 +1,7 @@
 package ticketcli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,20 @@ const (
 	SourceCode  = "code"
 )
 
+// ErrExitCode is a sentinel returned by list when --exit-code is set and at
+// least one row matched. It carries no user-facing message: the caller maps it
+// to exit status 1 (matches found) without printing an error.
+var ErrExitCode = errors.New("exit-code: matches found")
+
+// exitCodeResult returns ErrExitCode when the --exit-code gate is enabled and at
+// least one row matched, else nil.
+func exitCodeResult(enabled, matched bool) error {
+	if enabled && matched {
+		return ErrExitCode
+	}
+	return nil
+}
+
 // ListOptions holds the parsed inputs for the unified `tdb list` command, which
 // merges git-state tickets and in-code markers into one view.
 type ListOptions struct {
@@ -33,7 +48,7 @@ type ListOptions struct {
 	File           string   // --file filter (trailing / = prefix match)
 	Grep           string   // --grep filter (case-insensitive)
 	Status         string   // ticket filter: unresolved (default), resolved, all
-	Rule           string   // --rule filter (tickets carrying this rule code)
+	Rule           string   // --rule filter: ticket rule tag or code-marker scope
 	Kind           string   // ticket subtype filter: comment, note, all (state/all source only)
 	Since          string   // --since duration filter (state/all source only)
 	Author         string   // --author value (state/all source only)
@@ -43,6 +58,7 @@ type ListOptions struct {
 	ID             string   // positional ID lookup (state source only)
 	N              int      // -n cap on combined rows (0 = uncapped)
 	NSet           bool
+	ExitCode       bool // --exit-code: exit 1 if any rows match, 0 if none
 
 	AllBranches bool   // --all-branches
 	Branch      string // --branch / -b ("." = current branch)
@@ -174,6 +190,8 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 
 		case arg == "--all-branches":
 			o.AllBranches = true
+		case arg == "--exit-code":
+			o.ExitCode = true
 		case arg == "-b" || arg == "--branch":
 			if i+1 < len(rest) && !strings.HasPrefix(rest[i+1], "-") {
 				o.Branch = rest[i+1]
@@ -249,9 +267,6 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 	}
 	if o.Type != "" && o.Source == SourceState {
 		return o, fmt.Errorf("--type is only valid when listing code markers")
-	}
-	if o.Rule != "" && o.Source == SourceCode {
-		return o, fmt.Errorf("--rule is only valid when listing tickets")
 	}
 	if o.Source == SourceCode {
 		if o.Kind != "" {
@@ -366,7 +381,7 @@ func runList(o ListOptions) error {
 
 	if len(rows) == 0 {
 		fmt.Println("No tickets or code markers found")
-		return nil
+		return exitCodeResult(o.ExitCode, false)
 	}
 
 	// Tickets first (newest first), then code markers (by file/line).
@@ -394,7 +409,7 @@ func runList(o ListOptions) error {
 	if truncated {
 		fmt.Println(o.Styles.Label.Render(fmt.Sprintf("%d/%d", len(rows), totalCount)))
 	}
-	return nil
+	return exitCodeResult(o.ExitCode, true)
 }
 
 // listRow is a single line in the unified list, normalized across both sources.
@@ -563,6 +578,11 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 			continue
 		}
 		if o.Type != "" && !strings.EqualFold(m.Type, o.Type) {
+			continue
+		}
+		// --rule matches the annotation's scope (e.g. the "foo" in
+		// "RPT refactor(foo):"), the code-marker analogue of a ticket's rule tag.
+		if o.Rule != "" && !strings.EqualFold(o.Rule, m.Scope) {
 			continue
 		}
 		kind := m.Keyword

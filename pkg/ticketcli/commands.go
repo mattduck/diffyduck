@@ -261,7 +261,7 @@ func runStateList(o ListOptions) error {
 		} else {
 			fmt.Println("No comments")
 		}
-		return nil
+		return exitCodeResult(o.ExitCode, false)
 	}
 
 	sort.Slice(all, func(i, j int) bool {
@@ -314,7 +314,7 @@ func runStateList(o ListOptions) error {
 		if truncated {
 			fmt.Printf("%s\n", cs.Label.Render(fmt.Sprintf("%d/%d", len(all), totalCount)))
 		}
-		return nil
+		return exitCodeResult(o.ExitCode, true)
 	}
 
 	for i, c := range all {
@@ -333,7 +333,7 @@ func runStateList(o ListOptions) error {
 	if truncated && !o.Raw {
 		fmt.Printf("\n%s\n", cs.Label.Render(fmt.Sprintf("%d/%d", len(all), totalCount)))
 	}
-	return nil
+	return exitCodeResult(o.ExitCode, true)
 }
 
 func runCommentList(opts Options) error {

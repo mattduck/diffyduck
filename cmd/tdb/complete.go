@@ -172,7 +172,7 @@ func completeFlagValue(flag, prefix string) []string {
 func flagsForCmd(cmd, sub string) []string {
 	switch cmd {
 	case "list":
-		return []string{"--source", "--marker", "--exclude-marker", "--rule", "--file", "--grep", "--status", "-n", "-b", "--branch", "--all-branches", "--help"}
+		return []string{"--source", "--marker", "--exclude-marker", "--rule", "--file", "--grep", "--status", "-n", "--exit-code", "-b", "--branch", "--all-branches", "--help"}
 	case "comment", "c":
 		switch sub {
 		case "add":

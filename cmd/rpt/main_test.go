@@ -2,24 +2,14 @@ package main
 
 import (
 	"flag"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/mattduck/diffyduck/pkg/scanner"
-	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
-
-func TestStateMessage(t *testing.T) {
-	// Title wins when present.
-	if got := stateMessage(&ticketdb.Comment{Title: "the title", Text: "the body"}); got != "the title" {
-		t.Errorf("title: got %q", got)
-	}
-	// Otherwise the first line of the body.
-	if got := stateMessage(&ticketdb.Comment{Text: "first line\nsecond line"}); got != "first line" {
-		t.Errorf("body first line: got %q", got)
-	}
-}
 
 func TestColorFlagAliases(t *testing.T) {
 	tests := []struct {
@@ -91,18 +81,34 @@ func TestViolationSummary(t *testing.T) {
 		total    int
 		want     string
 	}{
-		{rendered: 5, total: 5, want: "Found 5 violations."},
-		{rendered: 1, total: 1, want: "Found 1 violation."},
-		{rendered: 0, total: 0, want: "Found 0 violations."},
-		{rendered: 5, total: 23, want: "Showing 5 of 23 violations."},
-		{rendered: 1, total: 10, want: "Showing 1 of 10 violations."},
-		{rendered: 0, total: 5, want: "Showing 0 of 5 violations."},
+		{rendered: 5, total: 5, want: "Found 5 problems."},
+		{rendered: 1, total: 1, want: "Found 1 problem."},
+		{rendered: 0, total: 0, want: "Found 0 problems."},
+		{rendered: 5, total: 23, want: "Showing 5 of 23 problems."},
+		{rendered: 1, total: 10, want: "Showing 1 of 10 problems."},
+		{rendered: 0, total: 5, want: "Showing 0 of 5 problems."},
 	}
 	for _, tt := range tests {
 		got := violationSummary(tt.rendered, tt.total)
 		if got != tt.want {
 			t.Errorf("violationSummary(%d, %d) = %q, want %q", tt.rendered, tt.total, got, tt.want)
 		}
+	}
+}
+
+func TestCheckSelectRejectsNonBuiltin(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "revparrot.toml")
+	if err := os.WriteFile(cfgPath, []byte("[[rules]]\ncode = \"use-x\"\ntype = \"refactor\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// check validates only built-in check codes; a config rule code is rejected.
+	if got := cmdCheck([]string{"-config", cfgPath, "-select", "use-x", dir}); got != 2 {
+		t.Errorf("cmdCheck(-select use-x) = %d, want 2", got)
+	}
+	// A real built-in check code is accepted; an empty tree yields no problems.
+	if got := cmdCheck([]string{"-config", cfgPath, "-select", "rpt-syntax", dir}); got != 0 {
+		t.Errorf("cmdCheck(-select rpt-syntax) = %d, want 0", got)
 	}
 }
 

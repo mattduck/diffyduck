@@ -136,7 +136,7 @@ func flagsForCmd(cmd string) []string {
 		return []string{
 			"--oneline", "--statistics",
 			"--color", "--colour", "--no-color", "--no-colour",
-			"-n", "-select", "-extend-select", "-type", "-config",
+			"-n", "-select", "-extend-select", "-config",
 		}
 	case "rules":
 		return []string{"-select", "-extend-select", "-type", "-config"}

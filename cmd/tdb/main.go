@@ -7,6 +7,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -37,13 +38,18 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: load config: %v\n", err)
-		os.Exit(1)
+		os.Exit(2)
 	}
 
+	// Exit codes follow the grep/git convention: 0 = ok, 1 = the --exit-code
+	// gate matched rows, 2 = an actual error.
 	if err := ticketcli.Run(args, ticketcli.Options{
 		Styles: ticketcli.StylesFromConfig(cfg.Theme),
 	}); err != nil {
+		if errors.Is(err, ticketcli.ErrExitCode) {
+			os.Exit(1)
+		}
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		os.Exit(2)
 	}
 }
