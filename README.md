@@ -64,6 +64,8 @@ collects them and exits non-zero if violations exist.
 
 ```sh
 rpt rules                         # List defined rules
+rpt ls                            # Show rules × in-scope files across the whole tree
+rpt ls --json src/pages           # Machine-readable, scoped to a set of paths
 rpt diff                          # Show rules × files touched by working-tree diff
 rpt diff main..HEAD               # Same, scoped to a ref range
 rpt diff --show abc123            # Same, scoped to a single commit

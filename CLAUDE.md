@@ -49,7 +49,7 @@ User → rpt CLI → pkg/rpconfig (rules) + pkg/scanner (RPT markers) → violat
 **Binaries:**
 - **`cmd/dfd/`** — TUI entry point, CLI parsing, command orchestration
 - **`cmd/tdb/`** — ticketdb CLI entry point; delegates to `pkg/ticketcli`
-- **`cmd/rpt/`** — reviewparrot CLI entry point; `check`, `rules`, `diff` subcommands
+- **`cmd/rpt/`** — reviewparrot CLI entry point; `check`, `rules`, `ls`, `diff`, `show` subcommands
 
 **Shared packages:**
 - **`pkg/ticketdb/`** — git-backed comment/note/ticket store (`Store`, `Comment`, `Index`, `Matcher`)

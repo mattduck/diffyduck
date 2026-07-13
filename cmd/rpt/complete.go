@@ -18,7 +18,7 @@ type completionContext struct {
 	expectFlagValue string   // if last committed word was a flag that takes a value
 }
 
-var rptSubcommands = []string{"check", "rules", "diff", "show", "version", "help", "completion"}
+var rptSubcommands = []string{"check", "rules", "ls", "diff", "show", "version", "help", "completion"}
 
 type ruleCodesFunc func() []string
 
@@ -60,7 +60,7 @@ func parseCompletionContext(words []string) completionContext {
 
 func isSubcommand(w string) bool {
 	switch w {
-	case "check", "rules", "diff", "show", "version", "help", "completion":
+	case "check", "rules", "ls", "diff", "show", "version", "help", "completion":
 		return true
 	}
 	return false
@@ -110,7 +110,7 @@ func generateCompletions(ctx completionContext, ruleCodes ruleCodesFunc) []strin
 		}
 		refs := listRefs()
 		return append(filterPrefix(refs, ctx.current), completeFlags(ctx)...)
-	case "check":
+	case "check", "ls":
 		// Positional args are file paths; just offer flags.
 		return completeFlags(ctx)
 	case "rules":
@@ -140,6 +140,12 @@ func flagsForCmd(cmd string) []string {
 		}
 	case "rules":
 		return []string{"-select", "-extend-select", "-type", "-config"}
+	case "ls":
+		return []string{
+			"--json",
+			"--color", "--colour", "--no-color", "--no-colour",
+			"-select", "-extend-select", "-type", "-config",
+		}
 	case "diff":
 		return []string{"-select", "-extend-select", "-type", "-config", "-a", "--cached", "--staged"}
 	case "show":

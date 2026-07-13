@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +28,7 @@ const usageGeneral = `Usage: rpt <command> [flags]
 Commands:
   check       Scan for RPT violations in code and git-state tickets
   rules       List rules defined in config
+  ls          List rules and their in-scope files across the working tree
   diff        Show rules and their in-scope files touched by a diff
   show        Show rules and their in-scope files changed in a commit
   completion  Print shell completion script
@@ -44,6 +47,8 @@ func main() {
 		os.Exit(cmdCheck(os.Args[2:]))
 	case "rules":
 		os.Exit(cmdRules(os.Args[2:]))
+	case "ls":
+		os.Exit(cmdLs(os.Args[2:]))
 	case "diff":
 		os.Exit(cmdDiff(os.Args[2:]))
 	case "show":
@@ -831,9 +836,26 @@ Flags:
 		}
 		id := ruleIDPlain(r)
 		pad := strings.Repeat(" ", maxID-len(id))
-		fmt.Printf("%s%s  %-8s  %s\n", ruleIDStyled(r, vs), pad, status, filepath.ToSlash(includes))
+		line := fmt.Sprintf("%s%s  %-8s  %s", ruleIDStyled(r, vs), pad, status, filepath.ToSlash(includes))
+		if hint := orchestrationHint(r); hint != "" {
+			line += "  " + vs.label.Render(hint)
+		}
+		fmt.Println(line)
 	}
 	return 0
+}
+
+// orchestrationHint renders a rule's advisory model/effort metadata as a compact
+// "model=… effort=…" suffix, or "" when neither is set.
+func orchestrationHint(r rpconfig.Rule) string {
+	var parts []string
+	if r.Model != "" {
+		parts = append(parts, "model="+r.Model)
+	}
+	if r.Effort != "" {
+		parts = append(parts, "effort="+r.Effort)
+	}
+	return strings.Join(parts, " ")
 }
 
 // cmdDiff shows, for each active rule, which files touched by the specified
@@ -978,14 +1000,32 @@ Exit codes:
 	}
 
 	vs := defaultViolationStyles(colorAuto)
-	printed := 0
-	for _, r := range activeRules {
-		if *flagType != "" && !strings.EqualFold(r.Type, *flagType) {
+	groups := ruleFileGroups(activeRules, diffFiles, matcher, cfgRoot, *flagType)
+	printRuleFileGroups(os.Stdout, groups, vs)
+	if len(groups) == 0 {
+		fmt.Println("No rules have files in scope for the current diff.")
+	}
+	return 0
+}
+
+// ruleFileGroup pairs a rule with the in-scope files that fall under it.
+type ruleFileGroup struct {
+	rule  rpconfig.Rule
+	files []string
+}
+
+// ruleFileGroups returns, for each rule (optionally filtered by type), the
+// subset of files that fall within the rule's scope, preserving the input file
+// order. Rules with no matching files are omitted. Shared by `rpt diff`,
+// `rpt show`, and `rpt ls`.
+func ruleFileGroups(rules []rpconfig.Rule, files []string, matcher *rpconfig.Matcher, cfgRoot, typeFilter string) []ruleFileGroup {
+	var groups []ruleFileGroup
+	for _, r := range rules {
+		if typeFilter != "" && !strings.EqualFold(r.Type, typeFilter) {
 			continue
 		}
-
 		var matching []string
-		for _, f := range diffFiles {
+		for _, f := range files {
 			rel := relTo(cfgRoot, f)
 			if fileInScopeForRule(r, rel, matcher) {
 				matching = append(matching, rel)
@@ -994,35 +1034,37 @@ Exit codes:
 		if len(matching) == 0 {
 			continue
 		}
+		groups = append(groups, ruleFileGroup{rule: r, files: matching})
+	}
+	return groups
+}
 
-		if printed > 0 {
-			fmt.Println()
+// printRuleFileGroups renders rule/file groups in the human-readable form shared
+// by `rpt diff`, `rpt show`, and `rpt ls`.
+func printRuleFileGroups(w io.Writer, groups []ruleFileGroup, vs violationStyles) {
+	for i, g := range groups {
+		if i > 0 {
+			fmt.Fprintln(w)
 		}
-		fmt.Printf("Rule: %s\n", ruleIDStyled(r, vs))
-		fmt.Println("Files:")
-		for _, f := range matching {
-			fmt.Printf("  %s\n", f)
+		fmt.Fprintf(w, "Rule: %s\n", ruleIDStyled(g.rule, vs))
+		fmt.Fprintln(w, "Files:")
+		for _, f := range g.files {
+			fmt.Fprintf(w, "  %s\n", f)
 		}
-		desc := strings.TrimSpace(r.Description)
+		desc := strings.TrimSpace(g.rule.Description)
 		if desc == "" {
 			desc = "(no description)"
 		}
 		lines := strings.Split(desc, "\n")
 		if len(lines) == 1 {
-			fmt.Printf("Check: %s\n", lines[0])
+			fmt.Fprintf(w, "Check: %s\n", lines[0])
 		} else {
-			fmt.Println("Check:")
+			fmt.Fprintln(w, "Check:")
 			for _, l := range lines {
-				fmt.Printf("  %s\n", l)
+				fmt.Fprintf(w, "  %s\n", l)
 			}
 		}
-		printed++
 	}
-
-	if printed == 0 {
-		fmt.Println("No rules have files in scope for the current diff.")
-	}
-	return 0
 }
 
 // cmdShow lists rules and their in-scope files changed in a single commit.
@@ -1127,49 +1169,252 @@ Exit codes:
 	}
 
 	vs := defaultViolationStyles(colorAuto)
-	printed := 0
-	for _, r := range activeRules {
-		if *flagType != "" && !strings.EqualFold(r.Type, *flagType) {
-			continue
-		}
+	groups := ruleFileGroups(activeRules, diffFiles, matcher, cfgRoot, *flagType)
+	printRuleFileGroups(os.Stdout, groups, vs)
+	if len(groups) == 0 {
+		fmt.Println("No rules have files in scope for the current commit.")
+	}
+	return 0
+}
 
-		var matching []string
-		for _, f := range diffFiles {
-			rel := relTo(cfgRoot, f)
-			if fileInScopeForRule(r, rel, matcher) {
-				matching = append(matching, rel)
-			}
-		}
-		if len(matching) == 0 {
-			continue
-		}
+// cmdLs lists, for each active rule, the in-scope files currently present in
+// the working tree (or under the given paths). It is the whole-tree analogue of
+// `rpt diff`: a scoping tool that tells an agent what to review and where,
+// independent of any diff. Exit code: 0 = ok, 2 = error.
+func cmdLs(args []string) int {
+	fs := flag.NewFlagSet("ls", flag.ContinueOnError)
+	flagSelect := fs.String("select", "", "show only these rule codes (comma-separated; replaces config rules)")
+	flagExtendSelect := fs.String("extend-select", "", "add rule codes to the active set (comma-separated)")
+	flagType := fs.String("type", "", "filter to a specific type")
+	flagConfig := fs.String("config", "", "explicit config file path")
+	flagJSON := fs.Bool("json", false, "machine-readable JSON output")
+	color := colorAuto
+	registerColorFlags(fs, &color)
+	fs.Usage = func() {
+		fmt.Fprint(os.Stderr, `Usage: rpt ls [flags] [path...]
 
-		if printed > 0 {
-			fmt.Println()
-		}
-		fmt.Printf("Rule: %s\n", ruleIDStyled(r, vs))
-		fmt.Println("Files:")
-		for _, f := range matching {
-			fmt.Printf("  %s\n", f)
-		}
-		desc := strings.TrimSpace(r.Description)
-		if desc == "" {
-			desc = "(no description)"
-		}
-		lines := strings.Split(desc, "\n")
-		if len(lines) == 1 {
-			fmt.Printf("Check: %s\n", lines[0])
-		} else {
-			fmt.Println("Check:")
-			for _, l := range lines {
-				fmt.Printf("  %s\n", l)
-			}
-		}
-		printed++
+List, for each active rule, the in-scope files in the working tree.
+
+Unlike 'rpt diff'/'rpt show', this is not tied to a diff: it walks the whole
+working tree (honouring revparrot.toml include/exclude), or only the given
+paths, and reports every file each rule applies to. Rules with no in-scope
+files are omitted.
+
+With no paths, the tree is walked from the revparrot.toml directory. Pass
+paths (files or directories) to restrict the listing to a specific set.
+
+Flags:
+  --json                  machine-readable JSON output
+  -select <codes>         show only these rule codes (replaces config rules)
+  -extend-select <codes>  add rule codes to the active set
+  -type <name>            filter to a specific type
+  -config <path>          explicit config file path
+  --color                 force color output (alias: --colour)
+  --no-color              disable color output (alias: --no-colour)
+
+Exit codes:
+  0  ok
+  2  error
+`)
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
 	}
 
-	if printed == 0 {
-		fmt.Println("No rules have files in scope for the current commit.")
+	paths := fs.Args()
+	selectList := splitComma(*flagSelect)
+	extendList := splitComma(*flagExtendSelect)
+
+	// Load config. Without selection flags, a missing config is an error (same
+	// policy as `rpt diff`).
+	var cfg *rpconfig.Config
+	var cfgRoot string
+	{
+		var err error
+		var cfgPath string
+		if *flagConfig != "" {
+			cfg, err = rpconfig.LoadFromPath(*flagConfig)
+			cfgPath = *flagConfig
+		} else {
+			cwd, werr := os.Getwd()
+			if werr != nil {
+				fmt.Fprintln(os.Stderr, "error:", werr)
+				return 2
+			}
+			cfg, cfgPath, err = rpconfig.Load(cwd)
+		}
+		if err != nil {
+			if errors.Is(err, rpconfig.ErrNotFound) {
+				if len(selectList) == 0 && len(extendList) == 0 {
+					fmt.Fprintln(os.Stderr, "no revparrot.toml found")
+					return 2
+				}
+				cfg = nil
+			} else {
+				fmt.Fprintln(os.Stderr, "error loading config:", err)
+				return 2
+			}
+		} else {
+			cfgRoot = filepath.Dir(cfgPath)
+		}
+	}
+
+	activeRules, err := rpconfig.ResolveRuleset(cfg, selectList, extendList)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+
+	var matcher *rpconfig.Matcher
+	if cfg != nil {
+		matcher, err = cfg.NewMatcher()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 2
+		}
+	}
+
+	var groups []ruleFileGroup
+	if len(activeRules) > 0 {
+		// Walk from the config directory when we have one, else the cwd.
+		walkRoot := cfgRoot
+		if walkRoot == "" {
+			cwd, werr := os.Getwd()
+			if werr != nil {
+				fmt.Fprintln(os.Stderr, "error:", werr)
+				return 2
+			}
+			walkRoot = cwd
+		}
+		files, ferr := lsCandidateFiles(walkRoot, paths, matcher)
+		if ferr != nil {
+			fmt.Fprintln(os.Stderr, "error:", ferr)
+			return 2
+		}
+		groups = ruleFileGroups(activeRules, files, matcher, cfgRoot, *flagType)
+	}
+
+	if *flagJSON {
+		return printLsJSON(os.Stdout, cfgRoot, groups)
+	}
+	if len(activeRules) == 0 {
+		fmt.Println("No active rules.")
+		return 0
+	}
+	printRuleFileGroups(os.Stdout, groups, defaultViolationStyles(color))
+	if len(groups) == 0 {
+		fmt.Println("No rules have files in scope.")
+	}
+	return 0
+}
+
+// lsCandidateFiles returns the absolute paths of files to consider for `rpt ls`.
+// With no paths it walks root (applying the matcher's global scope and pruning
+// version-control directories). With paths, each is resolved relative to the
+// current directory: a directory is walked, a file is included directly.
+// Results are deduplicated and sorted.
+func lsCandidateFiles(root string, paths []string, matcher *rpconfig.Matcher) ([]string, error) {
+	opts := walkOptions(matcher, root)
+	seen := make(map[string]bool)
+	var out []string
+	add := func(abs string) {
+		if !seen[abs] {
+			seen[abs] = true
+			out = append(out, abs)
+		}
+	}
+	walk := func(dir string) error {
+		return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				if opts.KeepDir != nil && !opts.KeepDir(path) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if opts.KeepFile != nil && !opts.KeepFile(path) {
+				return nil
+			}
+			add(path)
+			return nil
+		})
+	}
+
+	if len(paths) == 0 {
+		if err := walk(root); err != nil {
+			return nil, err
+		}
+	} else {
+		for _, p := range paths {
+			abs, err := filepath.Abs(p)
+			if err != nil {
+				return nil, err
+			}
+			info, err := os.Stat(abs)
+			if err != nil {
+				return nil, err
+			}
+			if info.IsDir() {
+				if err := walk(abs); err != nil {
+					return nil, err
+				}
+			} else {
+				add(abs)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// lsJSONRule is the JSON encoding of a rule and its in-scope files.
+type lsJSONRule struct {
+	Code        string   `json:"code"`
+	Type        string   `json:"type,omitempty"`
+	Title       string   `json:"title,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Model       string   `json:"model,omitempty"`
+	Effort      string   `json:"effort,omitempty"`
+	Files       []string `json:"files"`
+}
+
+// lsJSONOutput is the top-level `rpt ls --json` document: rule-centric, each
+// rule carrying its metadata and the files it applies to.
+type lsJSONOutput struct {
+	Root  string       `json:"root"`
+	Rules []lsJSONRule `json:"rules"`
+}
+
+// lsOutput builds the rule-centric JSON document from rule/file groups.
+func lsOutput(root string, groups []ruleFileGroup) lsJSONOutput {
+	out := lsJSONOutput{Root: root, Rules: []lsJSONRule{}}
+	for _, g := range groups {
+		files := g.files
+		if files == nil {
+			files = []string{}
+		}
+		out.Rules = append(out.Rules, lsJSONRule{
+			Code:        g.rule.Code,
+			Type:        g.rule.Type,
+			Title:       g.rule.Title,
+			Description: strings.TrimSpace(g.rule.Description),
+			Model:       g.rule.Model,
+			Effort:      g.rule.Effort,
+			Files:       files,
+		})
+	}
+	return out
+}
+
+// printLsJSON writes the rule-centric JSON document to w.
+func printLsJSON(w io.Writer, root string, groups []ruleFileGroup) int {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(lsOutput(root, groups)); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
 	}
 	return 0
 }

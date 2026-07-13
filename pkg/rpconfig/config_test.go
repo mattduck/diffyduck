@@ -124,6 +124,31 @@ enabled = false
 	}
 }
 
+func TestLoadModelEffort(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, dir, `
+[[rules]]
+code = "cheap-rule"
+type = "refactor"
+model = "haiku"
+effort = "low"
+
+[[rules]]
+code = "plain-rule"
+type = "refactor"
+`)
+	cfg, _, err := rpconfig.Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Rules[0]; got.Model != "haiku" || got.Effort != "low" {
+		t.Errorf("cheap-rule: got model=%q effort=%q, want haiku/low", got.Model, got.Effort)
+	}
+	if got := cfg.Rules[1]; got.Model != "" || got.Effort != "" {
+		t.Errorf("plain-rule: got model=%q effort=%q, want empty", got.Model, got.Effort)
+	}
+}
+
 func TestIgnoreSection(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, dir, `

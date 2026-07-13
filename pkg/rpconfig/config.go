@@ -34,6 +34,13 @@ type Rule struct {
 	Include     []string `toml:"include"`
 	Exclude     []string `toml:"exclude"`
 	Enabled     *bool    `toml:"enabled"`
+
+	// Model and Effort are orchestration hints for agent-driven review: which
+	// LLM model and reasoning effort to use when checking this rule. They are
+	// advisory metadata — rpt itself does not act on them; a driver (skill or
+	// workflow) reads them (e.g. from `rpt ls --json`) to tier its fan-out.
+	Model  string `toml:"model"`
+	Effort string `toml:"effort"`
 }
 
 // IsEnabled returns true if the rule is enabled (default true).
