@@ -563,22 +563,20 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 		markers = filtered
 	}
 
-	// Restrict the scan to files git tracks or would track — gitignored trees
-	// (virtualenvs, node_modules, build output) are skipped, so they are neither
-	// noise in the results nor a source of unreadable/huge files.
+	// Scan only the files git tracks or would track. Driving the scan from git's
+	// file list (rather than walking the tree and filtering) skips gitignored
+	// trees entirely — a repo's virtualenvs and node_modules can hold hundreds of
+	// thousands of files, and walking them dominates the runtime.
 	files, err := g.ListFiles()
 	if err != nil {
 		return nil, fmt.Errorf("listing repo files: %w", err)
 	}
-	allowed := make(map[string]bool, len(files))
-	for _, rel := range files {
-		allowed[filepath.Join(root, rel)] = true
+	paths := make([]string, len(files))
+	for i, rel := range files {
+		paths[i] = filepath.Join(root, rel)
 	}
 
-	ms, err := scanner.ScanDirMarkers(root, markers, scanner.WalkOptions{
-		KeepDir:  keepCodeDir,
-		KeepFile: func(p string) bool { return allowed[p] },
-	})
+	ms, err := scanner.ScanFilesMarkers(paths, markers)
 	if err != nil {
 		return nil, fmt.Errorf("scanning code markers: %w", err)
 	}
@@ -626,15 +624,6 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 // the loose (non-strict) form so all occurrences are visible in the list.
 func markerForKeyword(kw string) scanner.Marker {
 	return scanner.Marker{Keyword: strings.ToUpper(kw)}
-}
-
-// keepCodeDir prunes version-control directories during code-marker scans.
-func keepCodeDir(p string) bool {
-	switch filepath.Base(p) {
-	case ".git", ".hg", ".svn":
-		return false
-	}
-	return true
 }
 
 // relPath returns path relative to root using forward slashes, falling back to

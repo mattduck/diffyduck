@@ -495,28 +495,24 @@ Exit codes:
 
 	opts := walkOptions(matcher, cfgRoot)
 
+	// Resolve the file set once so the strict and syntax scans share it without
+	// re-walking the tree or re-invoking git. Directories in a git repo expand to
+	// git's file list (ignored trees skipped); the cache ensures at most one
+	// `git ls-files` per directory.
+	targets, err := resolveScanTargets(paths, newScanTargetCache(), opts)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+
 	// Strict scan — collect raw code violations before any filtering so that
 	// the full set is available for built-in rule generation and syntax checking.
-	var rawCodeViolations []scanner.Violation
-	for _, path := range paths {
-		info, statErr := os.Stat(path)
-		if statErr != nil {
-			fmt.Fprintln(os.Stderr, "error:", statErr)
-			return 2
-		}
-		var vs []scanner.Violation
-		if info.IsDir() {
-			vs, statErr = scanner.ScanDir(path, opts)
-		} else {
-			// Explicitly named files are always scanned; per-rule scope and
-			// [ignore] still apply to their violations below.
-			vs, statErr = scanner.ScanFile(path)
-		}
-		if statErr != nil {
-			fmt.Fprintln(os.Stderr, "error scanning:", statErr)
-			return 2
-		}
-		rawCodeViolations = append(rawCodeViolations, vs...)
+	// Explicitly named files are always included; per-rule scope and [ignore]
+	// still apply to their violations below.
+	rawCodeViolations, err := scanner.ScanFiles(targets)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error scanning:", err)
+		return 2
 	}
 
 	// Validate annotations. The strict scan (rawCodeViolations) already reflects
@@ -579,7 +575,7 @@ Exit codes:
 		for _, v := range rawCodeViolations {
 			strictSet[fileLineKey{v.File, v.Line}] = true
 		}
-		syntaxViols, syntaxErr := gatherSyntaxViolations(paths, opts, strictSet, matcher, cfgRoot)
+		syntaxViols, syntaxErr := gatherSyntaxViolations(targets, strictSet, matcher, cfgRoot)
 		if syntaxErr != nil {
 			fmt.Fprintln(os.Stderr, "error scanning for syntax violations:", syntaxErr)
 			return 2
@@ -1247,22 +1243,14 @@ func lsCandidateFiles(root string, paths []string, matcher *rpconfig.Matcher) ([
 		}
 	}
 	walk := func(dir string) error {
-		return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				if opts.KeepDir != nil && !opts.KeepDir(path) {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if opts.KeepFile != nil && !opts.KeepFile(path) {
-				return nil
-			}
-			add(path)
-			return nil
-		})
+		files, err := walkScanTargets(dir, opts)
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			add(f)
+		}
+		return nil
 	}
 
 	if len(paths) == 0 {
@@ -1471,6 +1459,100 @@ func walkOptions(matcher *rpconfig.Matcher, root string) scanner.WalkOptions {
 	}
 }
 
+// scanTargetCache memoizes the git-known file list per directory so a single rpt
+// invocation shells out to `git ls-files` at most once per directory, even when
+// several scan passes (strict, syntax) consume the same targets.
+type scanTargetCache struct {
+	dirs map[string][]string // dir -> absolute paths (nil = dir is not in a git repo)
+}
+
+func newScanTargetCache() *scanTargetCache {
+	return &scanTargetCache{dirs: map[string][]string{}}
+}
+
+// gitFilesUnder returns the absolute paths of files git tracks or would track
+// under dir (tracked + untracked, ignored excluded) and whether dir is inside a
+// git work tree. Results are cached per dir; ok=false signals the caller to fall
+// back to a filesystem walk.
+func (c *scanTargetCache) gitFilesUnder(dir string) (files []string, ok bool) {
+	if cached, seen := c.dirs[dir]; seen {
+		return cached, cached != nil
+	}
+	out, err := exec.Command("git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard").Output()
+	if err != nil {
+		c.dirs[dir] = nil // not a git repo (or git failed): remember to fall back
+		return nil, false
+	}
+	abs := []string{} // non-nil so an empty git repo is cached as "git, no files"
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		abs = append(abs, filepath.Join(dir, line))
+	}
+	c.dirs[dir] = abs
+	return abs, true
+}
+
+// resolveScanTargets returns the absolute paths of files to scan for the given
+// check paths, resolved once so multiple scan passes reuse the result. A
+// directory inside a git repo expands to git's file list (ignored trees skipped);
+// a directory outside a repo falls back to a filesystem walk. Explicitly named
+// files are always included, matching prior behaviour where a named file is
+// scanned regardless of scope. Scope filtering (opts.KeepFile) applies only to
+// files discovered under a directory.
+func resolveScanTargets(paths []string, cache *scanTargetCache, opts scanner.WalkOptions) ([]string, error) {
+	var out []string
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() {
+			out = append(out, path)
+			continue
+		}
+		if files, ok := cache.gitFilesUnder(path); ok {
+			for _, f := range files {
+				if opts.KeepFile == nil || opts.KeepFile(f) {
+					out = append(out, f)
+				}
+			}
+			continue
+		}
+		walked, err := walkScanTargets(path, opts)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, walked...)
+	}
+	return out, nil
+}
+
+// walkScanTargets walks dir and returns the files that pass opts, pruning
+// directories rejected by opts.KeepDir. It is the fallback for directories that
+// are not inside a git work tree.
+func walkScanTargets(dir string, opts scanner.WalkOptions) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if opts.KeepDir != nil && !opts.KeepDir(path) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if opts.KeepFile != nil && !opts.KeepFile(path) {
+			return nil
+		}
+		out = append(out, path)
+		return nil
+	})
+	return out, err
+}
+
 // relTo returns path relative to root, using forward slashes. It falls back to
 // the original path if a relative path cannot be computed.
 func relTo(root, path string) string {
@@ -1515,40 +1597,30 @@ type fileLineKey struct {
 	line int
 }
 
-// gatherSyntaxViolations runs a loose RPT scan (with NORPT suppression) and
-// returns rpt-syntax violations for matches not present in strictSet (which
-// contains the well-formed annotations found by a prior strict scan).
-func gatherSyntaxViolations(paths []string, opts scanner.WalkOptions, strictSet map[fileLineKey]bool, matcher *rpconfig.Matcher, cfgRoot string) ([]scanner.Violation, error) {
+// gatherSyntaxViolations runs a loose RPT scan (with NORPT suppression) over the
+// resolved scan targets and returns rpt-syntax violations for matches not present
+// in strictSet (which contains the well-formed annotations found by a prior
+// strict scan).
+func gatherSyntaxViolations(targets []string, strictSet map[fileLineKey]bool, matcher *rpconfig.Matcher, cfgRoot string) ([]scanner.Violation, error) {
 	looseRPT := scanner.Marker{Keyword: "RPT", Strict: false, Suppress: "NORPT"}
+	ms, err := scanner.ScanFilesMarkers(targets, []scanner.Marker{looseRPT})
+	if err != nil {
+		return nil, err
+	}
 	var out []scanner.Violation
-	for _, path := range paths {
-		info, err := os.Stat(path)
-		if err != nil {
-			return nil, err
+	for _, m := range ms {
+		if strictSet[fileLineKey{m.File, m.Line}] {
+			continue // well-formed annotation already reported
 		}
-		var ms []scanner.Match
-		if info.IsDir() {
-			ms, err = scanner.ScanDirMarkers(path, []scanner.Marker{looseRPT}, opts)
-		} else {
-			ms, err = scanner.ScanFileMarkers(path, []scanner.Marker{looseRPT})
+		if matcher != nil && !matcher.Keep(rpconfig.CodeRPTSyntax, relTo(cfgRoot, m.File)) {
+			continue
 		}
-		if err != nil {
-			return nil, fmt.Errorf("scanning %s: %w", path, err)
-		}
-		for _, m := range ms {
-			if strictSet[fileLineKey{m.File, m.Line}] {
-				continue // well-formed annotation already reported
-			}
-			if matcher != nil && !matcher.Keep(rpconfig.CodeRPTSyntax, relTo(cfgRoot, m.File)) {
-				continue
-			}
-			out = append(out, scanner.Violation{
-				File:    m.File,
-				Line:    m.Line,
-				Code:    rpconfig.CodeRPTSyntax,
-				Message: "RPT annotation does not match expected format",
-			})
-		}
+		out = append(out, scanner.Violation{
+			File:    m.File,
+			Line:    m.Line,
+			Code:    rpconfig.CodeRPTSyntax,
+			Message: "RPT annotation does not match expected format",
+		})
 	}
 	return out, nil
 }

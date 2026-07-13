@@ -244,6 +244,40 @@ func TestScanFile_OverCapLineTolerated(t *testing.T) {
 	}
 }
 
+func TestScanFiles_ExplicitList(t *testing.T) {
+	dir := t.TempDir()
+	a := writeFile(t, dir, "a.py", "# RPT fix(r1): one\nx = 1\n")
+	b := writeFile(t, dir, "b.py", "# RPT fix(r2): two\ny = 2\n")
+	// A third file exists but is not in the list, so it must not be scanned.
+	writeFile(t, dir, "c.py", "# RPT fix(r3): three\nz = 3\n")
+
+	vs, err := scanner.ScanFiles([]string{a, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vs) != 2 {
+		t.Fatalf("expected 2 violations from the listed files, got %d: %v", len(vs), vs)
+	}
+	got := map[string]bool{vs[0].Code: true, vs[1].Code: true}
+	if !got["r1"] || !got["r2"] || got["r3"] {
+		t.Fatalf("expected r1 and r2 only, got %v", vs)
+	}
+}
+
+func TestScanFilesMarkers_UnknownExtSkipped(t *testing.T) {
+	dir := t.TempDir()
+	py := writeFile(t, dir, "a.py", "# TODO: real one\n")
+	unknown := writeFile(t, dir, "notes.xyz", "# TODO: should be skipped\n")
+
+	ms, err := scanner.ScanFilesMarkers([]string{py, unknown}, scanner.DefaultMarkers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || ms[0].Keyword != "TODO" {
+		t.Fatalf("expected 1 TODO from the .py file only, got %v", ms)
+	}
+}
+
 func TestScanDir_KeepDirPrunes(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "top.py", "# RPT fix(r1): one\nx = 1\n")

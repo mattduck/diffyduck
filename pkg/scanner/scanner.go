@@ -112,6 +112,18 @@ func ScanDir(dir string, opts WalkOptions) ([]Violation, error) {
 	return toViolations(ms), nil
 }
 
+// ScanFiles scans an explicit list of files for RPT violations, applying NORPT
+// suppressions. Unlike ScanDir it performs no directory traversal: callers that
+// already hold a file list (e.g. from git) avoid walking ignored trees. Files
+// with unknown extensions are skipped.
+func ScanFiles(paths []string) ([]Violation, error) {
+	ms, err := ScanFilesMarkers(paths, []Marker{RPTMarker()})
+	if err != nil {
+		return nil, err
+	}
+	return toViolations(ms), nil
+}
+
 func toViolations(ms []Match) []Violation {
 	if len(ms) == 0 {
 		return nil
@@ -394,6 +406,21 @@ type WalkOptions struct {
 	// KeepDir reports whether ScanDir should descend into the directory at path.
 	// Returning false prunes the directory and everything beneath it.
 	KeepDir func(path string) bool
+}
+
+// ScanFilesMarkers scans an explicit list of files for the given markers,
+// returning all unsuppressed matches. It performs no directory traversal. Files
+// with unknown extensions are skipped.
+func ScanFilesMarkers(paths []string, markers []Marker) ([]Match, error) {
+	var out []Match
+	for _, path := range paths {
+		ms, err := ScanFileMarkers(path, markers)
+		if err != nil {
+			return nil, fmt.Errorf("scanning %s: %w", path, err)
+		}
+		out = append(out, ms...)
+	}
+	return out, nil
 }
 
 // ScanDirMarkers recursively scans files under dir for the given markers,

@@ -112,6 +112,53 @@ func TestCheckSelectRejectsNonBuiltin(t *testing.T) {
 	}
 }
 
+func TestWalkScanTargets_PrunesAndFilters(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "keep.py"), []byte("x = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "skip.py"), []byte("y = 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(dir, "vendor")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "dep.py"), []byte("z = 3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := scanner.WalkOptions{
+		KeepDir:  func(p string) bool { return filepath.Base(p) != "vendor" },
+		KeepFile: func(p string) bool { return filepath.Base(p) == "keep.py" },
+	}
+	got, err := walkScanTargets(dir, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || filepath.Base(got[0]) != "keep.py" {
+		t.Fatalf("expected only keep.py (vendor pruned, skip.py filtered), got %v", got)
+	}
+}
+
+func TestResolveScanTargets_ExplicitFilesBypassScope(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "a.py")
+	if err := os.WriteFile(f, []byte("x = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A KeepFile that rejects everything must not affect an explicitly named file:
+	// named files are always scanned. No git is invoked for a file argument.
+	opts := scanner.WalkOptions{KeepFile: func(string) bool { return false }}
+	got, err := resolveScanTargets([]string{f}, newScanTargetCache(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != f {
+		t.Fatalf("expected the explicit file to be included, got %v", got)
+	}
+}
+
 func TestNFlagTakesValue(t *testing.T) {
 	if !flagTakesValue("-n") {
 		t.Error("-n should be recognised as a value-taking flag for completion purposes")
