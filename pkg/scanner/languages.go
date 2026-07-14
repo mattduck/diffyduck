@@ -3,42 +3,50 @@ package scanner
 // language holds comment syntax for a source language.
 type language struct {
 	linePrefix string // single-line comment prefix, e.g. "//" or "#"
+	blockStart string // block-comment opener, e.g. "/*" (empty if unsupported)
+	blockEnd   string // block-comment closer, e.g. "*/" (empty if unsupported)
 }
+
+// cLike is the comment syntax shared by C-family languages (JS/TS/Go/Rust/…):
+// "//" line comments plus "/* */" block comments. JSX/TSX inherit this, which
+// is what lets `{/* RPT ... */}` annotations be scanned (a "//" between JSX
+// tags would render as literal text, so block comments are the usable form).
+var cLike = language{linePrefix: "//", blockStart: "/*", blockEnd: "*/"}
 
 // langByExt maps file extensions (without leading dot) to their language.
 var langByExt = map[string]language{
 	// Go
-	"go": {linePrefix: "//"},
+	"go": cLike,
 	// Python
 	"py": {linePrefix: "#"},
 	// JavaScript / TypeScript
-	"js":  {linePrefix: "//"},
-	"ts":  {linePrefix: "//"},
-	"jsx": {linePrefix: "//"},
-	"tsx": {linePrefix: "//"},
+	"js":  cLike,
+	"ts":  cLike,
+	"jsx": cLike,
+	"tsx": cLike,
 	// Ruby
 	"rb": {linePrefix: "#"},
 	// Shell
 	"sh":   {linePrefix: "#"},
 	"bash": {linePrefix: "#"},
-	// SQL
-	"sql": {linePrefix: "--"},
-	// Lua
+	// SQL ("--" line comments, "/* */" block comments)
+	"sql": {linePrefix: "--", blockStart: "/*", blockEnd: "*/"},
+	// Lua (block comment is --[[ ]], not handled)
 	"lua": {linePrefix: "--"},
 	// Config / data formats
 	"toml": {linePrefix: "#"},
 	"yaml": {linePrefix: "#"},
 	"yml":  {linePrefix: "#"},
 	// Rust
-	"rs": {linePrefix: "//"},
+	"rs": cLike,
 	// C / C++
-	"c":   {linePrefix: "//"},
-	"cpp": {linePrefix: "//"},
-	"h":   {linePrefix: "//"},
+	"c":   cLike,
+	"cpp": cLike,
+	"h":   cLike,
 	// Java / Kotlin / Swift
-	"java":  {linePrefix: "//"},
-	"kt":    {linePrefix: "//"},
-	"swift": {linePrefix: "//"},
+	"java":  cLike,
+	"kt":    cLike,
+	"swift": cLike,
 }
 
 // langForFile returns the language for the given filename, and false if unknown.

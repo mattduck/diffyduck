@@ -66,6 +66,11 @@ non-zero if any are broken; `rpt ls` reports the review surface (rules × in-sco
 files). The inventory of outstanding work items lives in `tdb list` (both code
 annotations and rule-tagged tickets); `rpt check` no longer lists them.
 
+Annotations are written in the file's comment syntax — a line comment
+(`//`, `#`, `--`) or a block comment (`/* ... */`) where the language has one.
+In JSX/TSX, use the block form `{/* RPT type(scope): msg */}`: a `//` between
+JSX tags renders as literal text, not a comment.
+
 ```sh
 rpt rules                         # List defined rules
 rpt ls                            # Show rules × in-scope files across the whole tree

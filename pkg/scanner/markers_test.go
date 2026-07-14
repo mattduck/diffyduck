@@ -118,6 +118,99 @@ y = {"a": 1}  # TODO: but this TODO stays
 	}
 }
 
+func TestScanFileMarkers_JSXBlockComment(t *testing.T) {
+	dir := t.TempDir()
+	// The motivating case: in JSX a "//" between tags renders as literal text,
+	// so annotations must use the `{/* ... */}` block form. The scanner must
+	// see the RPT marker inside it.
+	path := writeFile(t, dir, "LoginPage.tsx", `export function LoginPage() {
+  return (
+    <div className="card">
+      {/* RPT refactor(use-tailwind): inline style object on the card */}
+      <div style={{ background: 'var(--card)' }} />
+    </div>
+  )
+}
+`)
+	ms, err := scanner.ScanFileMarkers(path, []scanner.Marker{scanner.RPTMarker()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 {
+		t.Fatalf("expected 1 RPT match, got %d: %v", len(ms), ms)
+	}
+	if ms[0].Line != 4 || ms[0].Type != "refactor" || ms[0].Scope != "use-tailwind" ||
+		ms[0].Message != "inline style object on the card" {
+		t.Errorf("unexpected JSX block-comment marker: %+v", ms[0])
+	}
+}
+
+func TestScanFileMarkers_BlockComment(t *testing.T) {
+	dir := t.TempDir()
+	// A plain single-line /* */ block comment in a C-family file is scanned;
+	// a trailing block comment after code is scanned too.
+	path := writeFile(t, dir, "foo.ts", `/* TODO: block form */
+const x = 1 /* FIXME: trailing block */
+`)
+	ms, err := scanner.ScanFileMarkers(path, scanner.DefaultMarkers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 2 {
+		t.Fatalf("expected 2 markers, got %d: %v", len(ms), ms)
+	}
+	if ms[0].Keyword != "TODO" || ms[0].Line != 1 || ms[0].Message != "block form" {
+		t.Errorf("unexpected first (whole-line block) marker: %+v", ms[0])
+	}
+	if ms[1].Keyword != "FIXME" || ms[1].Line != 2 || ms[1].Message != "trailing block" {
+		t.Errorf("unexpected second (trailing block) marker: %+v", ms[1])
+	}
+}
+
+func TestScanFileMarkers_BlockCommentSuppression(t *testing.T) {
+	dir := t.TempDir()
+	// NORPT in a same-line JSX block comment suppresses the RPT on that line.
+	path := writeFile(t, dir, "x.tsx", `const a = 1 {/* RPT fix(rule-a): flagged */} {/* NORPT(rule-a) */}
+`)
+	ms, err := scanner.ScanFileMarkers(path, []scanner.Marker{scanner.RPTMarker()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 0 {
+		t.Fatalf("expected RPT suppressed by same-line block NORPT, got %d: %v", len(ms), ms)
+	}
+}
+
+func TestScanFileMarkers_BlockNotRecognizedForHashLangs(t *testing.T) {
+	dir := t.TempDir()
+	// Python has no /* */ block comment; such a line is code, not a comment,
+	// so the "marker" inside it must not be detected.
+	path := writeFile(t, dir, "foo.py", `x = 1  /* TODO: not a python comment */
+`)
+	ms, err := scanner.ScanFileMarkers(path, scanner.DefaultMarkers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 0 {
+		t.Fatalf("expected no markers (py has no block comments), got %d: %v", len(ms), ms)
+	}
+}
+
+func TestScanFileMarkers_LineCommentTrailingSuppressionStillWorks(t *testing.T) {
+	dir := t.TempDir()
+	// Regression: a "//" RPT with a trailing "// NORPT" on the same line stays
+	// suppressed after adding block-comment support.
+	path := writeFile(t, dir, "y.ts", `const z = 1 // RPT fix(rule-a): msg // NORPT(rule-a)
+`)
+	ms, err := scanner.ScanFileMarkers(path, []scanner.Marker{scanner.RPTMarker()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 0 {
+		t.Fatalf("expected RPT suppressed by trailing line NORPT, got %d: %v", len(ms), ms)
+	}
+}
+
 func TestScanDirMarkers_Basic(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "a.go", "package a\n// TODO: alpha\n")

@@ -175,14 +175,13 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 	// lines (minified JS, bundled assets, big JSON blobs) don't trip the scanner.
 	sc.Buffer(make([]byte, 64*1024), maxScanLine)
 	lineNum := 0
-	prefix := lang.linePrefix
 
 	for sc.Scan() {
 		lineNum++
 		text := sc.Text()
 		trimmed := strings.TrimSpace(text)
 
-		segments := commentSegments(text, prefix)
+		segments := commentSegments(text, lang)
 		if len(segments) == 0 {
 			// No comment on this line. Flush any pending preceding-line
 			// suppressions onto the first non-blank, non-comment line.
@@ -272,33 +271,81 @@ type commentSegment struct {
 	isWholeLine bool   // true if nothing but whitespace precedes the first prefix
 }
 
-// commentSegments returns all comment segments on a line, in order.
-// Each occurrence of prefix that is not inside a string is returned.
-// We do not parse strings — this is intentionally simple; false positives
-// from prefix-like content inside string literals are acceptable.
-func commentSegments(line, prefix string) []commentSegment {
+// commentSegments returns all comment segments on a line, in order. It handles
+// both single-line comments (lang.linePrefix, consuming to end of line) and
+// single-line block comments (lang.blockStart..lang.blockEnd) where the
+// language defines them. The block form is what makes JSX `{/* RPT ... */}`
+// annotations scannable: a "//" between JSX tags renders as literal text, so
+// block comments are the only usable annotation form there.
+//
+// We do not parse strings — this is intentionally simple; false positives from
+// comment-like content inside string literals are acceptable. Block comments
+// are only recognised when they open and close on the same line; a block that
+// opens without closing takes the rest of the line as its body.
+func commentSegments(line string, lang language) []commentSegment {
 	var segs []commentSegment
-	search := line
-	offset := 0
-	firstPrefix := true
-	for {
-		idx := strings.Index(search, prefix)
-		if idx < 0 {
+	prefix := lang.linePrefix
+	bStart, bEnd := lang.blockStart, lang.blockEnd
+
+	pos := 0
+	firstComment := true
+	// Once we enter a line comment, the rest of the line is that comment; we
+	// keep scanning only for further line-prefixes (to catch a co-located
+	// suppression like "RPT ... // NORPT(x)"), not for block starts.
+	inLineComment := false
+	for pos < len(line) {
+		lineIdx := -1
+		if prefix != "" {
+			if r := strings.Index(line[pos:], prefix); r >= 0 {
+				lineIdx = pos + r
+			}
+		}
+		blockIdx := -1
+		if !inLineComment && bStart != "" {
+			if r := strings.Index(line[pos:], bStart); r >= 0 {
+				blockIdx = pos + r
+			}
+		}
+		if lineIdx < 0 && blockIdx < 0 {
 			break
 		}
-		absIdx := offset + idx
-		body := strings.TrimSpace(search[idx+len(prefix):])
-		isWholeLine := firstPrefix && strings.TrimSpace(line[:absIdx]) == ""
+
+		if blockIdx >= 0 && (lineIdx < 0 || blockIdx < lineIdx) {
+			// Block comment.
+			contentStart := blockIdx + len(bStart)
+			endRel := -1
+			if bEnd != "" {
+				endRel = strings.Index(line[contentStart:], bEnd)
+			}
+			var body string
+			if endRel >= 0 {
+				endIdx := contentStart + endRel
+				body = strings.TrimSpace(line[contentStart:endIdx])
+				pos = endIdx + len(bEnd)
+			} else {
+				body = strings.TrimSpace(line[contentStart:])
+				pos = len(line)
+			}
+			segs = append(segs, commentSegment{
+				startIdx:    blockIdx,
+				body:        body,
+				isWholeLine: firstComment && strings.TrimSpace(line[:blockIdx]) == "",
+			})
+			firstComment = false
+			continue
+		}
+
+		// Line comment: consumes to end of line, but advance only past the
+		// prefix so a trailing suppression comment is still found.
+		body := strings.TrimSpace(line[lineIdx+len(prefix):])
 		segs = append(segs, commentSegment{
-			startIdx:    absIdx,
+			startIdx:    lineIdx,
 			body:        body,
-			isWholeLine: isWholeLine,
+			isWholeLine: firstComment && strings.TrimSpace(line[:lineIdx]) == "",
 		})
-		// Advance past this prefix to find subsequent ones.
-		advance := idx + len(prefix)
-		search = search[advance:]
-		offset += advance
-		firstPrefix = false
+		firstComment = false
+		inLineComment = true
+		pos = lineIdx + len(prefix)
 	}
 	return segs
 }
