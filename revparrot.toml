@@ -1,0 +1,23 @@
+# revparrot.toml — reviewparrot (rpt) rule config for this repo.
+#
+# Starter config with a single, tightly-scoped rule used to exercise the
+# rpt-find review flow. Broaden `include` / add rules as the flow matures.
+
+[revparrot]
+include = ["**/*"]
+
+[[rules]]
+code = "comment-terminal-punctuation"
+type = "refactor"
+title = "Inline comments should end with terminal punctuation"
+description = """
+Inline comments — the `//` comments that sit on their own line inside a
+function body to explain the code below them — should read as complete
+sentences and end with terminal punctuation (`.`, `?`, or `!`).
+
+Flag any such inline comment whose text does not end with terminal
+punctuation. Out of scope (do NOT flag): doc comments that sit immediately
+above a declaration (func/type/var/const), trailing comments on the same line
+as code, comment directives (e.g. `//go:`), and commented-out code.
+"""
+include = ["pkg/content/reader.go"]

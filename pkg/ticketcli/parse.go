@@ -237,16 +237,40 @@ func (o *Options) parseFlag(arg string, args []string, i int) (int, error) {
 			return 0, fmt.Errorf("--grep requires a search pattern")
 		}
 
-	case arg == "--rule":
+	case arg == "--marker":
 		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--rule requires a value")
+			return 0, fmt.Errorf("--marker requires a value")
 		}
-		o.Rule = args[i+1]
+		o.Marker = args[i+1]
 		return 1, nil
-	case strings.HasPrefix(arg, "--rule="):
-		o.Rule = strings.TrimPrefix(arg, "--rule=")
-		if o.Rule == "" {
-			return 0, fmt.Errorf("--rule requires a value")
+	case strings.HasPrefix(arg, "--marker="):
+		o.Marker = strings.TrimPrefix(arg, "--marker=")
+		if o.Marker == "" {
+			return 0, fmt.Errorf("--marker requires a value")
+		}
+
+	case arg == "--type":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--type requires a value")
+		}
+		o.Type = args[i+1]
+		return 1, nil
+	case strings.HasPrefix(arg, "--type="):
+		o.Type = strings.TrimPrefix(arg, "--type=")
+		if o.Type == "" {
+			return 0, fmt.Errorf("--type requires a value")
+		}
+
+	case arg == "--scope":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--scope requires a value")
+		}
+		o.Scope = args[i+1]
+		return 1, nil
+	case strings.HasPrefix(arg, "--scope="):
+		o.Scope = strings.TrimPrefix(arg, "--scope=")
+		if o.Scope == "" {
+			return 0, fmt.Errorf("--scope requires a value")
 		}
 
 	case arg == "--raw":
@@ -370,8 +394,14 @@ func (o *Options) validate() error {
 	if o.Grep != "" && o.Sub != "list" {
 		return fmt.Errorf("--grep is only valid for %s list", name)
 	}
-	if o.Rule != "" && o.Sub != "list" {
-		return fmt.Errorf("--rule is only valid for %s list", name)
+	if o.Marker != "" && o.Sub != "add" && o.Sub != "list" {
+		return fmt.Errorf("--marker is only valid for %s add and %s list", name, name)
+	}
+	if o.Type != "" && o.Sub != "add" && o.Sub != "list" {
+		return fmt.Errorf("--type is only valid for %s add and %s list", name, name)
+	}
+	if o.Scope != "" && o.Sub != "add" && o.Sub != "list" {
+		return fmt.Errorf("--scope is only valid for %s add and %s list", name, name)
 	}
 	if o.Sub == "add" && o.AuthorSet && o.Author == "" {
 		return fmt.Errorf("--author requires an author argument for %s add", name)
@@ -398,11 +428,11 @@ func PrintUsage(w io.Writer) {
 
 list merges git-state tickets and in-code markers (TODO/FIXME/RPT/…) into one view:
   --source VALUE         all (default), state (tickets), code (markers)
-  --marker LIST          restrict code markers to these keywords; code only
-  --exclude-marker LIST  exclude these marker keywords; code only
-  --type VALUE           filter code markers by type (feat, fix, …); code only
+  --marker LIST          filter by marker keyword(s) (TODO, RPT, …); both sources
+  --exclude-marker LIST  exclude these marker keyword(s); both sources
+  --type VALUE           filter by type (feat, fix, refactor, …); both sources
+  --scope CODE           filter by scope/code (ticket tag or RPT annotation scope)
   --status VALUE         unresolved (default), resolved, all; tickets only
-  --rule CODE            filter by rule code (ticket rule tag or RPT scope)
   --file PATH            filter by file (trailing / = prefix match)
   --grep TEXT            filter by text (case-insensitive)
   -n[N]                  limit combined rows (bare = all)
@@ -430,12 +460,17 @@ List options:
   --author [NAME]        Filter by author (bare = no author)
   --file PATH            Filter by file (trailing / = prefix match)
   --grep TEXT            Filter by comment text (case-insensitive)
-  --rule CODE            Filter by rule code
+  --marker KW            Filter by marker keyword (RPT, TODO, …)
+  --type VALUE           Filter by type (feat, fix, refactor, …)
+  --scope CODE           Filter by scope/code
 
 Add options:
   -m MESSAGE             Comment text (else read from stdin)
   --ref REF              Commit/branch/tag to attach to
   --author NAME          Set author
+  --marker KW            Tag with a marker keyword (RPT, TODO, …)
+  --type VALUE           Tag with a type (feat, fix, refactor, …)
+  --scope CODE           Tag with a scope/code identifier
 
 Edit options:
   --resolved true|false  Set resolved state without opening the editor

@@ -49,7 +49,7 @@ type ListOptions struct {
 	File           string   // --file filter (trailing / = prefix match)
 	Grep           string   // --grep filter (case-insensitive)
 	Status         string   // ticket filter: unresolved (default), resolved, all
-	Rule           string   // --rule filter: ticket rule tag or code-marker scope
+	Scope          string   // --scope filter: ticket scope tag or code-marker scope
 	Kind           string   // ticket subtype filter: comment, note, all (state/all source only)
 	Since          string   // --since duration filter (state/all source only)
 	Author         string   // --author value (state/all source only)
@@ -162,14 +162,14 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 				return o, err
 			}
 
-		case arg == "--rule":
+		case arg == "--scope":
 			v, ok := next()
 			if !ok {
-				return o, fmt.Errorf("--rule requires a value")
+				return o, fmt.Errorf("--scope requires a value")
 			}
-			o.Rule = v
-		case strings.HasPrefix(arg, "--rule="):
-			o.Rule = strings.TrimPrefix(arg, "--rule=")
+			o.Scope = v
+		case strings.HasPrefix(arg, "--scope="):
+			o.Scope = strings.TrimPrefix(arg, "--scope=")
 
 		case arg == "-n":
 			if i+1 < len(rest) {
@@ -270,15 +270,6 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 	if o.JSON && o.ID != "" {
 		return o, fmt.Errorf("--json cannot be combined with an ID lookup")
 	}
-	if len(o.Markers) > 0 && o.Source == SourceState {
-		return o, fmt.Errorf("--marker is only valid when listing code markers")
-	}
-	if len(o.ExcludeMarkers) > 0 && o.Source == SourceState {
-		return o, fmt.Errorf("--exclude-marker is only valid when listing code markers")
-	}
-	if o.Type != "" && o.Source == SourceState {
-		return o, fmt.Errorf("--type is only valid when listing code markers")
-	}
 	if o.Source == SourceCode {
 		if o.Kind != "" {
 			return o, fmt.Errorf("--kind is only valid when listing tickets")
@@ -342,6 +333,26 @@ func setListStatus(o *ListOptions, v string) error {
 	default:
 		return fmt.Errorf("--status must be unresolved, resolved, or all; got %q", v)
 	}
+}
+
+// markerList wraps a single marker keyword as a slice (nil when empty), so the
+// singular `comment`/`note` --marker maps onto the plural list-path filter.
+func markerList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return []string{s}
+}
+
+// markerMatches reports whether kw equals any keyword in list (case-insensitive).
+// An empty list matches nothing (callers guard with len(list) > 0).
+func markerMatches(list []string, kw string) bool {
+	for _, m := range list {
+		if strings.EqualFold(m, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // splitList splits a comma-separated flag value into trimmed, non-empty parts.
@@ -454,13 +465,12 @@ type listRow struct {
 	body     string // ticket full text (text is only the one-line summary)
 	author   string // ticket author
 	status   string // ticket effective status
-	rule     string // ticket rule tag
 	branch   string // ticket branch
 	commit   string // ticket attached commit SHA
 	resolved bool   // ticket resolved flag
-	marker   string // code-marker keyword (RPT, TODO, …)
-	mtype    string // code-marker conventional-commit type
-	scope    string // code-marker scope/rule code
+	marker   string // marker keyword (RPT, TODO, …) — both sources
+	mtype    string // conventional-commit type — both sources
+	scope    string // scope/code identifier — both sources
 }
 
 func gatherTickets(o ListOptions) ([]listRow, error) {
@@ -549,7 +559,16 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 		if !grepMatches(o.Grep, c.Text, c.Title) {
 			continue
 		}
-		if o.Rule != "" && !strings.EqualFold(o.Rule, c.Rule) {
+		if o.Scope != "" && !strings.EqualFold(o.Scope, c.Scope) {
+			continue
+		}
+		if o.Type != "" && !strings.EqualFold(o.Type, c.Type) {
+			continue
+		}
+		if len(o.Markers) > 0 && !markerMatches(o.Markers, c.Marker) {
+			continue
+		}
+		if len(o.ExcludeMarkers) > 0 && markerMatches(o.ExcludeMarkers, c.Marker) {
 			continue
 		}
 
@@ -579,7 +598,9 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 			body:     c.Text,
 			author:   c.Author,
 			status:   c.EffectiveStatus(),
-			rule:     c.Rule,
+			marker:   c.Marker,
+			mtype:    c.Type,
+			scope:    c.Scope,
 			branch:   c.Branch,
 			commit:   c.CommitSHA,
 			resolved: c.Resolved,
@@ -646,9 +667,9 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 		if o.Type != "" && !strings.EqualFold(m.Type, o.Type) {
 			continue
 		}
-		// --rule matches the annotation's scope (e.g. the "foo" in
-		// "RPT refactor(foo):"), the code-marker analogue of a ticket's rule tag.
-		if o.Rule != "" && !strings.EqualFold(o.Rule, m.Scope) {
+		// --scope matches the annotation's scope (e.g. the "foo" in
+		// "RPT refactor(foo):").
+		if o.Scope != "" && !strings.EqualFold(o.Scope, m.Scope) {
 			continue
 		}
 		kind := m.Keyword
@@ -744,22 +765,21 @@ type listRowJSON struct {
 	Text   string `json:"text"`           // one-line summary (title or first body line)
 	Body   string `json:"body,omitempty"` // ticket full text; empty for markers
 
-	// ticket fields
+	// tag fields — carried by both sources (a ticket can be tagged to mirror a marker)
+	Marker string `json:"marker,omitempty"` // RPT, TODO, …
+	Type   string `json:"type,omitempty"`   // conventional-commit type
+	Scope  string `json:"scope,omitempty"`  // scope / code identifier
+
+	// ticket-only fields
 	ID       string `json:"id,omitempty"`
 	ShortID  string `json:"short_id,omitempty"`
 	Kind     string `json:"kind,omitempty"` // "comment" | "note"
 	Author   string `json:"author,omitempty"`
 	Status   string `json:"status,omitempty"`
 	Resolved *bool  `json:"resolved,omitempty"`
-	Rule     string `json:"rule,omitempty"`
 	Branch   string `json:"branch,omitempty"`
 	Commit   string `json:"commit,omitempty"`
 	Created  string `json:"created,omitempty"` // RFC3339
-
-	// marker fields
-	Marker string `json:"marker,omitempty"` // RPT, TODO, …
-	Type   string `json:"type,omitempty"`   // conventional-commit type
-	Scope  string `json:"scope,omitempty"`  // scope / rule code
 }
 
 // rowsToJSON converts unified-list rows to their machine-readable form, mapping
@@ -786,13 +806,15 @@ func rowsToJSON(rows []listRow) []listRowJSON {
 			Line:     r.line,
 			Text:     r.text,
 			Body:     r.body,
+			Marker:   r.marker,
+			Type:     r.mtype,
+			Scope:    r.scope,
 			ID:       r.fullID,
 			ShortID:  r.id,
 			Kind:     r.tkind,
 			Author:   r.author,
 			Status:   r.status,
 			Resolved: &resolved,
-			Rule:     r.rule,
 			Branch:   r.branch,
 			Commit:   r.commit,
 		}

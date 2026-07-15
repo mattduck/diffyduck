@@ -96,7 +96,7 @@ func isFlag(w string) bool {
 
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--since", "--status", "--kind", "-n", "-b", "--branch", "-m", "--ref", "--author", "--file", "--grep", "--source", "--marker", "--exclude-marker", "--rule":
+	case "--since", "--status", "--kind", "-n", "-b", "--branch", "-m", "--ref", "--author", "--file", "--grep", "--source", "--marker", "--exclude-marker", "--type", "--scope":
 		return true
 	}
 	return false
@@ -172,26 +172,26 @@ func completeFlagValue(flag, prefix string) []string {
 func flagsForCmd(cmd, sub string) []string {
 	switch cmd {
 	case "list":
-		return []string{"--source", "--marker", "--exclude-marker", "--rule", "--file", "--grep", "--status", "-n", "--json", "--exit-code", "-b", "--branch", "--all-branches", "--help"}
+		return []string{"--source", "--marker", "--exclude-marker", "--type", "--scope", "--file", "--grep", "--status", "-n", "--json", "--exit-code", "-b", "--branch", "--all-branches", "--help"}
 	case "comment", "c":
 		switch sub {
 		case "add":
-			return []string{"-m", "--ref", "--author", "--help"}
+			return []string{"-m", "--ref", "--author", "--marker", "--type", "--scope", "--help"}
 		case "edit":
 			return []string{"-m", "--help"}
 		case "resolve", "unresolve":
 			return []string{"--help"}
 		default: // list or no sub
-			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--kind", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--rule", "--help"}
+			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--kind", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--marker", "--type", "--scope", "--help"}
 		}
 	case "note", "n":
 		switch sub {
 		case "add":
-			return []string{"-m", "--ref", "--author", "--help"}
+			return []string{"-m", "--ref", "--author", "--marker", "--type", "--scope", "--help"}
 		case "edit":
 			return []string{"-m", "--help"}
 		default:
-			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--rule", "--help"}
+			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--marker", "--type", "--scope", "--help"}
 		}
 	}
 	return []string{"--help"}

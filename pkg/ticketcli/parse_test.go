@@ -192,6 +192,29 @@ func TestParseArgs_AddBareAuthorErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "requires an author argument")
 }
 
+func TestParseArgs_AddTags(t *testing.T) {
+	o, err := ParseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--marker", "RPT", "--type", "refactor", "--scope", "use-tailwind"})
+	require.NoError(t, err)
+	assert.Equal(t, "RPT", o.Marker)
+	assert.Equal(t, "refactor", o.Type)
+	assert.Equal(t, "use-tailwind", o.Scope)
+}
+
+func TestParseArgs_TagsValidOnListAndAdd(t *testing.T) {
+	// Valid as filters on list.
+	o, err := ParseArgs([]string{"comment", "list", "--marker", "RPT", "--type", "fix", "--scope", "x"})
+	require.NoError(t, err)
+	assert.Equal(t, "RPT", o.Marker)
+	assert.Equal(t, "fix", o.Type)
+	assert.Equal(t, "x", o.Scope)
+
+	// Rejected on edit/resolve.
+	for _, flag := range []string{"--marker", "--type", "--scope"} {
+		_, err := ParseArgs([]string{"comment", "resolve", "abc", flag, "v"})
+		assert.Error(t, err, flag)
+	}
+}
+
 func TestParseArgs_ListBareAuthor(t *testing.T) {
 	o, err := ParseArgs([]string{"comment", "list", "--author"})
 	require.NoError(t, err)

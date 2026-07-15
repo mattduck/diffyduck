@@ -68,9 +68,19 @@ type Comment struct {
 	// Title is an optional short title/summary for a ticket.
 	Title string
 
-	// Rule is an optional rule code that flags this ticket as a rule violation,
-	// surfaced by rpt alongside in-code RPT annotations.
-	Rule string
+	// Marker is an optional marker keyword grouping this ticket with a family of
+	// in-code markers (e.g. "RPT", "TODO"). The ticket analogue of a code
+	// marker's leading keyword.
+	Marker string
+
+	// Type is an optional conventional-commit type ("refactor", "fix", "perf",
+	// …), the ticket analogue of a code marker's type.
+	Type string
+
+	// Scope is an optional scope/code identifier, the ticket analogue of a code
+	// marker's scope (the "foo" in "RPT refactor(foo):"). rpt reads this as its
+	// rule code.
+	Scope string
 }
 
 // Lifecycle status values for a ticket. These extend the binary Resolved flag;
@@ -180,7 +190,9 @@ func isKnownMetadataField(s string) bool {
 		strings.HasPrefix(s, "AUTHOR:") ||
 		strings.HasPrefix(s, "STATUS:") ||
 		strings.HasPrefix(s, "TITLE:") ||
-		strings.HasPrefix(s, "RULE:") ||
+		strings.HasPrefix(s, "MARKER:") ||
+		strings.HasPrefix(s, "TYPE:") ||
+		strings.HasPrefix(s, "SCOPE:") ||
 		strings.HasPrefix(s, "RESOLVED:")
 }
 
@@ -271,10 +283,17 @@ func (c *Comment) Serialize() string {
 	if c.Title != "" {
 		b.WriteString(fmt.Sprintf("# TITLE: %s\n", c.Title))
 	}
-	// RULE is always written (even when empty) so it is discoverable and
-	// editable via `tdb comment edit`: a user fills it in to flag the ticket as
-	// an rpt rule violation. An empty value parses back to no rule.
-	b.WriteString(fmt.Sprintf("# RULE: %s\n", c.Rule))
+	// Marker/Type/Scope tag the ticket with the same fields a code marker
+	// carries (keyword, conventional-commit type, scope). Written only when set.
+	if c.Marker != "" {
+		b.WriteString(fmt.Sprintf("# MARKER: %s\n", c.Marker))
+	}
+	if c.Type != "" {
+		b.WriteString(fmt.Sprintf("# TYPE: %s\n", c.Type))
+	}
+	if c.Scope != "" {
+		b.WriteString(fmt.Sprintf("# SCOPE: %s\n", c.Scope))
+	}
 	b.WriteString(fmt.Sprintf("# RESOLVED: %t\n", c.Resolved))
 	b.WriteString(fmt.Sprintf("# FILE: %s\n", c.File))
 	b.WriteString(fmt.Sprintf("# LINE: %d\n", c.Line))
@@ -400,8 +419,16 @@ func ParseComment(id string, data string) (*Comment, error) {
 			c.Title = strings.TrimPrefix(line, "# TITLE: ")
 			continue
 		}
-		if strings.HasPrefix(line, "# RULE: ") {
-			c.Rule = strings.TrimPrefix(line, "# RULE: ")
+		if strings.HasPrefix(line, "# MARKER: ") {
+			c.Marker = strings.TrimPrefix(line, "# MARKER: ")
+			continue
+		}
+		if strings.HasPrefix(line, "# TYPE: ") {
+			c.Type = strings.TrimPrefix(line, "# TYPE: ")
+			continue
+		}
+		if strings.HasPrefix(line, "# SCOPE: ") {
+			c.Scope = strings.TrimPrefix(line, "# SCOPE: ")
 			continue
 		}
 		if strings.HasPrefix(line, "# RESOLVED: ") {

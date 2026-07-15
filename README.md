@@ -11,7 +11,7 @@ Three terminal tools for reading, reviewing, and annotating code changes.
 | `rpt`  | reviewparrot | Rule-based code review linter: scans for `RPT` annotations and rule-tagged tickets |
 
 All three share a common git-state store (`refs/dfd/comments`) for inline comments,
-standalone notes, and rule-tagged review tickets.
+standalone notes, and tagged review tickets (marker/type/scope).
 
 ## Install
 
@@ -48,10 +48,13 @@ and shared with dfd's in-TUI comment view.
 tdb list                          # List all tickets and in-code markers
 tdb list --source state           # Git-state tickets only
 tdb list --source code            # In-code markers (TODO/FIXME/HACK/…) only
-tdb list --rule SEC-AUTH          # Filter by rule code (ticket tag or RPT scope)
+tdb list --marker RPT             # Filter by marker keyword (both sources)
+tdb list --type refactor          # Filter by type (both sources)
+tdb list --scope SEC-AUTH         # Filter by scope/code (both sources)
 tdb list --json                   # Machine-readable JSON array (any source/filter)
 tdb list --marker RPT --exit-code # Exit 1 if any RPT annotations remain (CI gate)
 tdb comment add src/foo.go:42     # Add a comment at a file:line
+tdb comment add src/foo.go:9 --marker RPT --type refactor --scope SEC-AUTH -m "…"
 tdb comment list                  # List comments
 tdb comment resolve <id>          # Resolve a comment
 tdb note add -m "remember this"   # Add a standalone note
@@ -65,7 +68,9 @@ places `RPT type(scope):` annotations at rule violations. `rpt check` *validates
 those annotations — malformed, unknown scope, mismatched type — and exits
 non-zero if any are broken; `rpt ls` reports the review surface (rules × in-scope
 files). The inventory of outstanding work items lives in `tdb list` (both code
-annotations and rule-tagged tickets); `rpt check` no longer lists them.
+annotations and tagged tickets); `rpt check` no longer lists them. rpt's rule
+code maps onto a ticket's generic `scope` tag (`tdb comment add --scope <code>`),
+so a violation can be recorded either as an in-code annotation or as a ticket.
 
 Annotations are written in the file's comment syntax — a line comment
 (`//`, `#`, `--`) or a block comment (`/* ... */`) where the language has one.

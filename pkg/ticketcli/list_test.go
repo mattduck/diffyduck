@@ -60,7 +60,6 @@ func TestParseListArgs_Errors(t *testing.T) {
 		{"list", "--status", "bogus"},
 		{"list", "--bogus"},
 		{"list", "--all-branches", "--branch", "main"},
-		{"list", "--source", "state", "--marker", "TODO"},
 		{"list", "-nfoo"},
 	}
 	for _, c := range cases {
@@ -113,7 +112,8 @@ func TestRowsToJSON(t *testing.T) {
 			kind: "comment", file: "pkg/foo.go", line: 12, id: "881",
 			text: "refactor this", body: "refactor this\n\nsecond paragraph", created: created,
 			fullID: "1779209418881", tkind: "comment", author: "Claude",
-			status: "open", rule: "no-bare-dict", branch: "main", resolved: false,
+			status: "open", marker: "RPT", mtype: "refactor", scope: "no-bare-dict",
+			branch: "main", resolved: false,
 		},
 		{
 			kind: "RPT fix(rule-a)", file: "pkg/bar.go", line: 88, text: "fix this",
@@ -130,7 +130,10 @@ func TestRowsToJSON(t *testing.T) {
 	assert.Equal(t, "881", tk.ShortID)
 	assert.Equal(t, "comment", tk.Kind)
 	assert.Equal(t, "Claude", tk.Author)
-	assert.Equal(t, "no-bare-dict", tk.Rule)
+	// A ticket can be tagged to mirror a marker: marker/type/scope on the ticket too.
+	assert.Equal(t, "RPT", tk.Marker)
+	assert.Equal(t, "refactor", tk.Type)
+	assert.Equal(t, "no-bare-dict", tk.Scope)
 	require.NotNil(t, tk.Resolved)
 	assert.False(t, *tk.Resolved)
 	assert.Equal(t, "2026-05-19T17:50:18Z", tk.Created)
@@ -172,21 +175,23 @@ func TestGrepMatches(t *testing.T) {
 	assert.False(t, grepMatches("zzz", "nope", "also nope"))
 }
 
-func TestParseListArgs_Rule(t *testing.T) {
-	o, err := ParseListArgs([]string{"list", "--rule", "no-bare-dict"})
+func TestParseListArgs_Scope(t *testing.T) {
+	o, err := ParseListArgs([]string{"list", "--scope", "no-bare-dict"})
 	require.NoError(t, err)
-	assert.Equal(t, "no-bare-dict", o.Rule)
+	assert.Equal(t, "no-bare-dict", o.Scope)
 
-	o, err = ParseListArgs([]string{"list", "--rule=other"})
+	o, err = ParseListArgs([]string{"list", "--scope=other"})
 	require.NoError(t, err)
-	assert.Equal(t, "other", o.Rule)
+	assert.Equal(t, "other", o.Scope)
 
-	// --rule is valid for every source: it filters ticket rule tags and
-	// code-marker scopes alike.
+	// --scope/--type/--marker are valid for every source: they filter ticket
+	// tags and code-marker fields alike.
 	for _, src := range []string{"state", "code", "all"} {
-		o, err := ParseListArgs([]string{"list", "--source", src, "--rule", "r"})
+		o, err := ParseListArgs([]string{"list", "--source", src, "--scope", "r", "--type", "fix", "--marker", "RPT"})
 		require.NoError(t, err, src)
-		assert.Equal(t, "r", o.Rule, src)
+		assert.Equal(t, "r", o.Scope, src)
+		assert.Equal(t, "fix", o.Type, src)
+		assert.Equal(t, []string{"RPT"}, o.Markers, src)
 	}
 }
 

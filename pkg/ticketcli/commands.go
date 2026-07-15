@@ -244,10 +244,30 @@ func runStateList(o ListOptions) error {
 			all = filtered
 		}
 
-		if o.Rule != "" {
+		if len(o.Markers) > 0 {
 			var filtered []*ticketdb.Comment
 			for _, c := range all {
-				if strings.EqualFold(o.Rule, c.Rule) {
+				if markerMatches(o.Markers, c.Marker) {
+					filtered = append(filtered, c)
+				}
+			}
+			all = filtered
+		}
+
+		if o.Type != "" {
+			var filtered []*ticketdb.Comment
+			for _, c := range all {
+				if strings.EqualFold(o.Type, c.Type) {
+					filtered = append(filtered, c)
+				}
+			}
+			all = filtered
+		}
+
+		if o.Scope != "" {
+			var filtered []*ticketdb.Comment
+			for _, c := range all {
+				if strings.EqualFold(o.Scope, c.Scope) {
 					filtered = append(filtered, c)
 				}
 			}
@@ -346,7 +366,9 @@ func runCommentList(opts Options) error {
 		AuthorSet:   opts.AuthorSet,
 		File:        opts.File,
 		Grep:        opts.Grep,
-		Rule:        opts.Rule,
+		Markers:     markerList(opts.Marker),
+		Type:        opts.Type,
+		Scope:       opts.Scope,
 		N:           opts.N,
 		NSet:        opts.NSet,
 		AllBranches: opts.AllBranches,
@@ -996,6 +1018,9 @@ func runCommentAddStandalone(opts Options) error {
 		Branch:     branch,
 		BranchHead: branchHead,
 		Author:     opts.Author,
+		Marker:     opts.Marker,
+		Type:       opts.Type,
+		Scope:      opts.Scope,
 	}
 
 	store := ticketdb.NewStore("")
@@ -1101,6 +1126,9 @@ func runCommentAddFile(opts Options) error {
 		Branch:     branch,
 		BranchHead: branchHead,
 		Author:     opts.Author,
+		Marker:     opts.Marker,
+		Type:       opts.Type,
+		Scope:      opts.Scope,
 	}
 
 	// Write to store
