@@ -3,7 +3,7 @@ user-invocable: true
 context: fork
 ---
 
-Review code changes and leave comments using dfd.
+Review code changes and leave comments using tdb.
 
 User instructions: $ARGUMENTS
 
@@ -13,7 +13,7 @@ First, determine what to review based on the user instructions:
   Run `git diff HEAD` to see what's changed since the last commit.
   Add comments via stdin heredoc:
   ```
-  dfd comment add <file>:<line> --author Claude <<'EOF'
+  tdb comment add <file>:<line> --author Claude <<'EOF'
   comment text here
   EOF
   ```
@@ -22,7 +22,7 @@ First, determine what to review based on the user instructions:
   Run `git diff <ref>~1..<ref>` (or `git show <ref>` for context).
   Anchor comments to the commit:
   ```
-  dfd comment add <file>:<line> --ref <ref> --author Claude <<'EOF'
+  tdb comment add <file>:<line> --ref <ref> --author Claude <<'EOF'
   comment text here
   EOF
   ```
@@ -31,7 +31,7 @@ First, determine what to review based on the user instructions:
   Run `git diff <start>..<end>` to see all changes.
   Anchor comments to the end ref:
   ```
-  dfd comment add <file>:<line> --ref <end> --author Claude <<'EOF'
+  tdb comment add <file>:<line> --ref <end> --author Claude <<'EOF'
   comment text here
   EOF
   ```
@@ -42,7 +42,7 @@ Then:
 2. Conduct a code review. If the user provided instructions above, follow them
    (e.g. focus areas, review style). Otherwise, do a general review covering
    correctness, edge cases, clarity, and potential bugs.
-3. For each piece of feedback, leave a comment using `dfd comment add` as
+3. For each piece of feedback, leave a comment using `tdb comment add` as
    described above.
    - Pick the most relevant line for the comment.
    - Keep messages concise and actionable.
@@ -53,15 +53,18 @@ Then:
    - Don't leave trivial or nitpick comments unless the user asked for that.
 4. Managing comments:
    - Comments cannot be deleted, but you can edit a comment's text:
-     `dfd comment edit <id> -m "updated message"`
+     `tdb comment edit <id> -m "updated message"`
    - You can resolve comments authored by "Claude":
-     `dfd comment resolve <id>`
+     `tdb comment resolve <id>`
    - NEVER resolve comments that have no author or a different author, unless
      the user explicitly tells you to.
 5. After leaving all comments, report back a short summary: how many comments
    were left and a one-liner for each.
 
 If the user asks to list or resolve comments in follow-up conversation:
-- List unresolved: `dfd comment list --raw`
-- Resolve a comment: `dfd comment resolve <id>`
+- List unresolved: `tdb list --json --source state --kind comment`
+  (a JSON array; each row has `id`, `file`, `line`, `author`, `resolved`, and the
+  full comment in `body`). Scopes to the current branch by default; add
+  `--all-branches` for every branch.
+- Resolve a comment: `tdb comment resolve <id>`
 - Only resolve comments when the user asks.

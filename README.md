@@ -49,6 +49,7 @@ tdb list                          # List all tickets and in-code markers
 tdb list --source state           # Git-state tickets only
 tdb list --source code            # In-code markers (TODO/FIXME/HACK/…) only
 tdb list --rule SEC-AUTH          # Filter by rule code (ticket tag or RPT scope)
+tdb list --json                   # Machine-readable JSON array (any source/filter)
 tdb list --marker RPT --exit-code # Exit 1 if any RPT annotations remain (CI gate)
 tdb comment add src/foo.go:42     # Add a comment at a file:line
 tdb comment list                  # List comments

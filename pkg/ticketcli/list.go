@@ -1,6 +1,7 @@
 package ticketcli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -55,6 +56,7 @@ type ListOptions struct {
 	AuthorSet      bool     // true if --author was explicitly passed
 	Verbose        bool     // -v: block output (state source only)
 	Raw            bool     // --raw: serialized blob output (state source only)
+	JSON           bool     // --json: machine-readable output (any source)
 	ID             string   // positional ID lookup (state source only)
 	N              int      // -n cap on combined rows (0 = uncapped)
 	NSet           bool
@@ -245,6 +247,9 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 		case arg == "--raw":
 			o.Raw = true
 
+		case arg == "--json":
+			o.JSON = true
+
 		default:
 			if strings.HasPrefix(arg, "-") {
 				return o, fmt.Errorf("unknown flag: %s", arg)
@@ -258,6 +263,12 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 
 	if o.AllBranches && o.Branch != "" {
 		return o, fmt.Errorf("--all-branches and --branch cannot be used together")
+	}
+	if o.JSON && (o.Verbose || o.Raw) {
+		return o, fmt.Errorf("--json cannot be combined with -v/--raw")
+	}
+	if o.JSON && o.ID != "" {
+		return o, fmt.Errorf("--json cannot be combined with an ID lookup")
 	}
 	if len(o.Markers) > 0 && o.Source == SourceState {
 		return o, fmt.Errorf("--marker is only valid when listing code markers")
@@ -356,8 +367,9 @@ func RunList(argv []string, cfg Options) error {
 }
 
 func runList(o ListOptions) error {
-	// State-only mode: use the richer ticket renderer.
-	if o.Source == SourceState {
+	// State-only mode uses the richer ticket renderer — except under --json,
+	// which routes every source through the merged path for one uniform schema.
+	if o.Source == SourceState && !o.JSON {
 		return runStateList(o)
 	}
 
@@ -380,7 +392,11 @@ func runList(o ListOptions) error {
 	}
 
 	if len(rows) == 0 {
-		fmt.Println("No tickets or code markers found")
+		if o.JSON {
+			fmt.Println("[]")
+		} else {
+			fmt.Println("No tickets or code markers found")
+		}
 		return exitCodeResult(o.ExitCode, false)
 	}
 
@@ -405,6 +421,13 @@ func runList(o ListOptions) error {
 		truncated = true
 	}
 
+	if o.JSON {
+		if err := renderRowsJSON(rows); err != nil {
+			return err
+		}
+		return exitCodeResult(o.ExitCode, true)
+	}
+
 	renderRows(rows, o.Styles)
 	if truncated {
 		fmt.Println(o.Styles.Label.Render(fmt.Sprintf("%d/%d", len(rows), totalCount)))
@@ -413,8 +436,10 @@ func runList(o ListOptions) error {
 }
 
 // listRow is a single line in the unified list, normalized across both sources.
+// The display renderer uses only kind/file/line/id/text/dim/code; the remaining
+// fields carry the richer per-source detail that --json emits.
 type listRow struct {
-	kind    string    // "comment", "note", or a lowercased marker keyword
+	kind    string    // "comment", "note", or a marker keyword (+ type/scope for display)
 	file    string    // path for path-style location ("" when using id)
 	line    int       // line number for path location
 	id      string    // short id (standalone notes)
@@ -422,6 +447,20 @@ type listRow struct {
 	created time.Time // ticket creation time (zero for code markers)
 	dim     bool      // resolved/closed → render dim
 	code    bool      // true for code markers
+
+	// JSON-only detail (ignored by the aligned-column renderer).
+	fullID   string // ticket full id
+	tkind    string // "comment" | "note" (ticket kind without in-progress suffix)
+	body     string // ticket full text (text is only the one-line summary)
+	author   string // ticket author
+	status   string // ticket effective status
+	rule     string // ticket rule tag
+	branch   string // ticket branch
+	commit   string // ticket attached commit SHA
+	resolved bool   // ticket resolved flag
+	marker   string // code-marker keyword (RPT, TODO, …)
+	mtype    string // code-marker conventional-commit type
+	scope    string // code-marker scope/rule code
 }
 
 func gatherTickets(o ListOptions) ([]listRow, error) {
@@ -522,6 +561,10 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 			kind = kind + "*" // in-progress marker
 		}
 
+		tkind := "comment"
+		if c.IsStandalone() {
+			tkind = "note"
+		}
 		rows = append(rows, listRow{
 			kind:    kind,
 			file:    c.File,
@@ -530,6 +573,16 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 			text:    ticketText(c),
 			created: c.Created,
 			dim:     c.Resolved,
+
+			fullID:   c.ID,
+			tkind:    tkind,
+			body:     c.Text,
+			author:   c.Author,
+			status:   c.EffectiveStatus(),
+			rule:     c.Rule,
+			branch:   c.Branch,
+			commit:   c.CommitSHA,
+			resolved: c.Resolved,
 		})
 	}
 	return rows, nil
@@ -610,11 +663,14 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 			// Code markers keep their uppercase keyword (TODO, NOTE, …) so they
 			// stay visually distinct from lowercase ticket kinds (comment, note)
 			// even in uncolored output.
-			kind: kind,
-			file: rel,
-			line: m.Line,
-			text: m.Message,
-			code: true,
+			kind:   kind,
+			file:   rel,
+			line:   m.Line,
+			text:   m.Message,
+			code:   true,
+			marker: m.Keyword,
+			mtype:  m.Type,
+			scope:  m.Scope,
 		})
 	}
 	return rows, nil
@@ -674,6 +730,89 @@ func grepMatches(needle string, fields ...string) bool {
 		}
 	}
 	return false
+}
+
+// listRowJSON is the machine-readable form of a unified-list row emitted by
+// --json. Ticket-only and marker-only fields are omitted for the other source,
+// so consumers can branch on "source". Tickets carry "id" (usable with
+// `tdb comment resolve/edit`); markers carry no id and are acted on by editing
+// the annotated line in place.
+type listRowJSON struct {
+	Source string `json:"source"` // "ticket" | "marker"
+	File   string `json:"file,omitempty"`
+	Line   int    `json:"line,omitempty"`
+	Text   string `json:"text"`           // one-line summary (title or first body line)
+	Body   string `json:"body,omitempty"` // ticket full text; empty for markers
+
+	// ticket fields
+	ID       string `json:"id,omitempty"`
+	ShortID  string `json:"short_id,omitempty"`
+	Kind     string `json:"kind,omitempty"` // "comment" | "note"
+	Author   string `json:"author,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Resolved *bool  `json:"resolved,omitempty"`
+	Rule     string `json:"rule,omitempty"`
+	Branch   string `json:"branch,omitempty"`
+	Commit   string `json:"commit,omitempty"`
+	Created  string `json:"created,omitempty"` // RFC3339
+
+	// marker fields
+	Marker string `json:"marker,omitempty"` // RPT, TODO, …
+	Type   string `json:"type,omitempty"`   // conventional-commit type
+	Scope  string `json:"scope,omitempty"`  // scope / rule code
+}
+
+// rowsToJSON converts unified-list rows to their machine-readable form, mapping
+// each source to its field subset.
+func rowsToJSON(rows []listRow) []listRowJSON {
+	out := make([]listRowJSON, 0, len(rows))
+	for _, r := range rows {
+		if r.code {
+			out = append(out, listRowJSON{
+				Source: "marker",
+				File:   r.file,
+				Line:   r.line,
+				Text:   r.text,
+				Marker: r.marker,
+				Type:   r.mtype,
+				Scope:  r.scope,
+			})
+			continue
+		}
+		resolved := r.resolved
+		jr := listRowJSON{
+			Source:   "ticket",
+			File:     r.file,
+			Line:     r.line,
+			Text:     r.text,
+			Body:     r.body,
+			ID:       r.fullID,
+			ShortID:  r.id,
+			Kind:     r.tkind,
+			Author:   r.author,
+			Status:   r.status,
+			Resolved: &resolved,
+			Rule:     r.rule,
+			Branch:   r.branch,
+			Commit:   r.commit,
+		}
+		if !r.created.IsZero() {
+			jr.Created = r.created.Format(time.RFC3339)
+		}
+		out = append(out, jr)
+	}
+	return out
+}
+
+// renderRowsJSON prints the unified list as a JSON array to stdout. Field order
+// and the empty-list `[]` case are stable so agents can parse the output.
+func renderRowsJSON(rows []listRow) error {
+	b, err := json.MarshalIndent(rowsToJSON(rows), "", "  ")
+	if err != nil {
+		return fmt.Errorf("encoding json: %w", err)
+	}
+	fmt.Println(string(b))
+	return nil
 }
 
 // renderRows prints the unified list as aligned KIND / LOCATION / TEXT columns.

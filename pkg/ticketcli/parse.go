@@ -406,6 +406,7 @@ list merges git-state tickets and in-code markers (TODO/FIXME/RPT/…) into one 
   --file PATH            filter by file (trailing / = prefix match)
   --grep TEXT            filter by text (case-insensitive)
   -n[N]                  limit combined rows (bare = all)
+  --json                 machine-readable JSON array (any source)
   --exit-code            exit 1 if any rows match, 0 if none (CI gate)
   -b, --branch [NAME]    scope tickets to a branch (no value = all branches)
   --all-branches         tickets from all branches

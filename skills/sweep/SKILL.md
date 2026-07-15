@@ -7,11 +7,14 @@ Audit review comments on the current branch to check they've been addressed.
 Additional context from user: $ARGUMENTS
 
 If the user specifies a time range (e.g. "last 2 days", "past 3 hours"), add
-`--since <duration>` to the commands below. Format: 1h, 6h, 1d, 2d, 1w, 2w, 1m, 1y.
+`--since <duration>` to the commands below. Format: 30m, 6h, 30d, 2w, 3M, 1y
+(note: `m` is minutes, `M` is months).
 
-1. Run `dfd comment list -n 0 --raw` to get all unresolved comments on the
-   current branch.
-2. If there are no unresolved comments, run `dfd comment list -n 15 --status resolved --raw`
+1. Run `tdb list --json --source state --kind comment -n 0` to get all unresolved
+   comments on the current branch as a JSON array (each row has `id`, `file`,
+   `line`, `author`, `resolved`, `text`, and the full `body`).
+2. If the array is empty, run
+   `tdb list --json --source state --kind comment -n 15 --status resolved`
    to get the 15 most recently resolved comments and double-check them.
 3. Delegate the analysis to a sub-agent: for each comment, have the agent read
    the current state of the referenced file and line, compare the code against

@@ -2,7 +2,7 @@
 user-invocable: true
 ---
 
-Add a dfd note to track something for later.
+Add a note to track something for later.
 
 User description: $ARGUMENTS
 
@@ -11,13 +11,13 @@ description is vague, infer the intent from the recent conversation context.
 
 - If the note relates to a specific file and line, attach it there:
   ```
-  dfd comment add <file>:<line> --author Claude <<'EOF'
+  tdb comment add <file>:<line> --author Claude <<'EOF'
   note text
   EOF
   ```
 - Otherwise, create a standalone note:
   ```
-  dfd comment add --author Claude <<'EOF'
+  tdb comment add --author Claude <<'EOF'
   note text
   EOF
   ```

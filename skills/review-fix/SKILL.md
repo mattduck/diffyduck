@@ -16,7 +16,7 @@ Determine what to review based on the user instructions:
   Run `git diff HEAD` to see what's changed since the last commit.
   Add comments via stdin heredoc:
   ```
-  dfd comment add <file>:<line> --author Claude <<'EOF'
+  tdb comment add <file>:<line> --author Claude <<'EOF'
   comment text here
   EOF
   ```
@@ -25,7 +25,7 @@ Determine what to review based on the user instructions:
   Run `git diff <ref>~1..<ref>` (or `git show <ref>` for context).
   Anchor comments to the commit:
   ```
-  dfd comment add <file>:<line> --ref <ref> --author Claude <<'EOF'
+  tdb comment add <file>:<line> --ref <ref> --author Claude <<'EOF'
   comment text here
   EOF
   ```
@@ -34,7 +34,7 @@ Determine what to review based on the user instructions:
   Run `git diff <start>..<end>` to see all changes.
   Anchor comments to the end ref:
   ```
-  dfd comment add <file>:<line> --ref <end> --author Claude <<'EOF'
+  tdb comment add <file>:<line> --ref <end> --author Claude <<'EOF'
   comment text here
   EOF
   ```
@@ -45,7 +45,7 @@ Then:
 2. Conduct a code review. If the user provided instructions above, follow them
    (e.g. focus areas, review style). Otherwise, do a general review covering
    correctness, edge cases, clarity, and potential bugs.
-3. For each piece of feedback, leave a comment using `dfd comment add` as
+3. For each piece of feedback, leave a comment using `tdb comment add` as
    described above. **Capture the comment ID from the output** (printed as
    `Created comment <id> on <file>:<line>`). Keep a list of all IDs created
    during this review.
@@ -72,10 +72,10 @@ For each comment:
 2. Address the feedback:
    - If the comment requests a code change, make the change.
    - If the comment asks a question, answer it inline (edit the comment with
-     the answer using `dfd comment edit <id> -m "answer"`).
+     the answer using `tdb comment edit <id> -m "answer"`).
 3. After addressing the comment, decide whether to resolve it:
    - If the fix is clear-cut and complete, resolve it:
-     `dfd comment resolve <id>`
+     `tdb comment resolve <id>`
    - If the comment is optional or suggestive (e.g. "you could...",
      "consider...", "might want to..."), do NOT resolve it yet — leave it
      for the summary table.
