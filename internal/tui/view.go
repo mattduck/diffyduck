@@ -1125,7 +1125,7 @@ func (m Model) buildRows() []displayRow {
 					maxCommitAbsTimeWidth = tw
 				}
 			} else {
-				tw := len(formatShortRelativeDate(commit.Info.Date))
+				tw := len(formatShortRelativeDate(m.now(), commit.Info.Date))
 				if tw > maxCommitTimeWidth {
 					maxCommitTimeWidth = tw
 				}
@@ -1179,7 +1179,7 @@ func (m Model) buildRows() []displayRow {
 			filesWidth := len(fmt.Sprintf("%d", fileCount))
 			addedWidth := len(fmt.Sprintf("+%d", totalAdded))
 			removedWidth := len(fmt.Sprintf("-%d", totalRemoved))
-			timeWidth := len(formatShortRelativeDate(commit.Info.Date))
+			timeWidth := len(formatShortRelativeDate(m.now(), commit.Info.Date))
 			if commit.IsSnapshot {
 				timeWidth = len(formatAbsoluteTime(commit.Info.Date))
 			}

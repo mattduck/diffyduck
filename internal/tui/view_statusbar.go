@@ -372,7 +372,7 @@ func FormatRelativeAge(now, t time.Time) string {
 // formatShortRelativeDate returns abbreviated relative time without "ago".
 // Used in commit header rows for compact display.
 // Format: "now", "1m", "4h", "2d", "3w", "1M", "1y"
-func formatShortRelativeDate(isoDate string) string {
+func formatShortRelativeDate(now time.Time, isoDate string) string {
 	if isoDate == "" {
 		return ""
 	}
@@ -391,7 +391,6 @@ func formatShortRelativeDate(isoDate string) string {
 		}
 	}
 
-	now := time.Now()
 	if now.Sub(t) < time.Minute {
 		return "now"
 	}

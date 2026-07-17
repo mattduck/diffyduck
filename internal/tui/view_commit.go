@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
@@ -316,7 +315,7 @@ func (m Model) renderCommitHeaderRow(row displayRow, isCursorRow bool) string {
 	if isSnapshot {
 		timeText = formatAbsoluteTime(commitInfo.Date)
 	} else {
-		timeText = formatShortRelativeDate(commitInfo.Date)
+		timeText = formatShortRelativeDate(m.now(), commitInfo.Date)
 	}
 
 	// Pad columns to max widths for alignment across commits (right-align numbers)
@@ -819,7 +818,7 @@ func (m Model) buildCommitInfoRows(commit *sidebyside.CommitSet, commitIdx int) 
 	}
 
 	// Header text for the commit-info node - show formatted date if available
-	now := time.Now()
+	now := m.now()
 	dateParts := info.FormattedDateParts(now)
 	headerText := dateParts.Plain()
 

@@ -311,7 +311,8 @@ type Model struct {
 
 	// Configuration
 	keys        KeyMap
-	hscrollStep int // columns to scroll horizontally per keypress
+	hscrollStep int              // columns to scroll horizontally per keypress
+	nowFunc     func() time.Time // clock seam for relative-time rendering; nil = time.Now (tests pin it)
 
 	// Search state (query is shared across windows, navigation is per-window)
 	searchMode    bool   // true when in search input mode
@@ -785,6 +786,16 @@ func New(files []sidebyside.FilePair, opts ...Option) Model {
 
 // NewWithCommits creates a new Model with the given commit sets.
 // Use this for log view or when commit metadata is available.
+// now returns the current time via the model's clock seam, defaulting to
+// time.Now when unset. Tests pin nowFunc so relative-time rendering (e.g.
+// "2 years ago") is deterministic.
+func (m Model) now() time.Time {
+	if m.nowFunc != nil {
+		return m.nowFunc()
+	}
+	return time.Now()
+}
+
 func NewWithCommits(commits []sidebyside.CommitSet, opts ...Option) Model {
 	// Initialize spinner with compact style and slower speed
 	s := spinner.New()
@@ -1656,7 +1667,7 @@ func (m *Model) updateColumnWidths() {
 				m.cachedCommitAbsTimeWidth = tw
 			}
 		} else {
-			tw := len(formatShortRelativeDate(commit.Info.Date))
+			tw := len(formatShortRelativeDate(m.now(), commit.Info.Date))
 			if tw > m.cachedCommitTimeWidth {
 				m.cachedCommitTimeWidth = tw
 			}

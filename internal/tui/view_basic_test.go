@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattduck/diffyduck/pkg/sidebyside"
@@ -683,6 +684,11 @@ func TestView_MultiCommitLogView(t *testing.T) {
 	m.width = 100
 	m.height = 20
 	m.focused = true
+	// Pin the clock so relative-time rendering ("2y" / "2 years ago") is
+	// deterministic and doesn't drift with wall-clock time. Chosen so both
+	// Jan 2024 commits land ~2.2 years in the past.
+	fixedNow := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	m.nowFunc = func() time.Time { return fixedNow }
 	m.RefreshLayout()
 
 	output := m.View()
