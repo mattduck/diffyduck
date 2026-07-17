@@ -63,22 +63,15 @@ If no comments were left, skip Phase 2 and tell the user the code looks good.
 
 ## Phase 2: Fix
 
-Work through **only the comments created in Phase 1** (using the captured IDs),
-ignoring any other pre-existing comments.
+Hand the comment IDs created in Phase 1 to the **`work` skill in batch mode** and
+follow it:
 
-For each comment:
-
-1. Read the referenced file and line to understand the context.
-2. Address the feedback:
-   - If the comment requests a code change, make the change.
-   - If the comment asks a question, answer it inline (edit the comment with
-     the answer using `tdb comment edit <id> -m "answer"`).
-3. After addressing the comment, decide whether to resolve it:
-   - If the fix is clear-cut and complete, resolve it:
-     `tdb comment resolve <id>`
-   - If the comment is optional or suggestive (e.g. "you could...",
-     "consider...", "might want to..."), do NOT resolve it yet — leave it
-     for the summary table.
+- Invoke `work` with `--batch` over **only those IDs** (ignore any pre-existing
+  comments).
+- Batch mode works through the set in sequence, makes the clear-cut fixes and
+  auto-resolves them per `work`'s author-aware rules, and — because this skill
+  runs in a fork and cannot ask questions — makes a best-effort fix for
+  non-obvious items or leaves them unresolved rather than blocking.
 
 ## Phase 3: Summary
 
@@ -91,8 +84,8 @@ Output a markdown table summarising every comment from this review:
 
 Status values:
 - **Resolved** — the fix was made and the comment was resolved.
-- **Needs input** — the comment is optional/suggestive; briefly say what
-  decision the user needs to make.
+- **Needs input** — the comment is optional/suggestive, or non-obvious and left
+  for the user; briefly say what decision the user needs to make.
 - **Answered** — a question was answered (include the short answer).
 
 Ask the user if they want to resolve any of the outstanding items.
