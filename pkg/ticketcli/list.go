@@ -66,8 +66,10 @@ type ListOptions struct {
 	ID             string   // positional ID lookup (state source only)
 	N              int      // -n cap on combined rows (0 = uncapped)
 	NSet           bool
-	ExitCode       bool // --exit-code: exit 1 if any rows match, 0 if none
-	Random         bool // --random: shuffle rows and (unless -n given) return one
+	ExitCode       bool   // --exit-code: exit 1 if any rows match, 0 if none
+	Random         bool   // --random: shuffle rows and (unless -n given) return one
+	Stats          bool   // --stats: show counts instead of the row list
+	StatsGroup     string // --stats-group FIELD: collapse --stats to one dimension
 
 	AllBranches bool   // --all-branches
 	Branch      string // --branch / -b ("." = current branch)
@@ -203,6 +205,18 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 			o.ExitCode = true
 		case arg == "--random":
 			o.Random = true
+		case arg == "--stats":
+			o.Stats = true
+		case arg == "--stats-group":
+			v, ok := next()
+			if !ok {
+				return o, fmt.Errorf("--stats-group requires a field (source, marker, kind, type, scope, author, file, branch)")
+			}
+			o.Stats = true
+			o.StatsGroup = v
+		case strings.HasPrefix(arg, "--stats-group="):
+			o.Stats = true
+			o.StatsGroup = strings.TrimPrefix(arg, "--stats-group=")
 		case arg == "-b" || arg == "--branch":
 			if i+1 < len(rest) && !strings.HasPrefix(rest[i+1], "-") {
 				o.Branch = rest[i+1]
@@ -285,6 +299,20 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 		}
 		if o.Verbose || o.Raw {
 			return o, fmt.Errorf("--random cannot be combined with -v/--raw")
+		}
+	}
+	if o.Stats {
+		if o.ID != "" {
+			return o, fmt.Errorf("--stats cannot be combined with an ID lookup")
+		}
+		if o.Verbose || o.Raw {
+			return o, fmt.Errorf("--stats cannot be combined with -v/--raw")
+		}
+		if o.Random {
+			return o, fmt.Errorf("--stats cannot be combined with --random")
+		}
+		if o.StatsGroup != "" && !validStatField(o.StatsGroup) {
+			return o, fmt.Errorf("invalid --stats-group %q (want source, marker, kind, type, scope, author, file, branch)", o.StatsGroup)
 		}
 	}
 	if o.Source == SourceCode {
@@ -396,9 +424,9 @@ func RunList(argv []string, cfg Options) error {
 
 func runList(o ListOptions) error {
 	// State-only mode uses the richer ticket renderer — except under --json
-	// (one uniform schema) or --random (compact one-per-row selection), which
-	// route every source through the merged path.
-	if o.Source == SourceState && !o.JSON && !o.Random {
+	// (one uniform schema), --random (compact one-per-row selection), or --stats
+	// (counts), which route every source through the merged path.
+	if o.Source == SourceState && !o.JSON && !o.Random && !o.Stats {
 		return runStateList(o)
 	}
 
@@ -418,6 +446,10 @@ func runList(o ListOptions) error {
 			return err
 		}
 		rows = append(rows, markerRows...)
+	}
+
+	if o.Stats {
+		return renderStats(rows, o)
 	}
 
 	if len(rows) == 0 {
@@ -481,6 +513,137 @@ func selectRows(rows []listRow, o ListOptions) (selected []listRow, total int, t
 		truncated = true
 	}
 	return rows, total, truncated
+}
+
+// defaultStatDimensions is the multi-dimension breakdown shown by bare --stats.
+var defaultStatDimensions = []string{"source", "marker", "kind", "type", "scope"}
+
+// validStatField reports whether f is a groupable --stats-group dimension.
+func validStatField(f string) bool {
+	switch f {
+	case "source", "marker", "kind", "type", "scope", "author", "file", "branch":
+		return true
+	}
+	return false
+}
+
+// statFieldValue extracts the value of a stats dimension from a row ("" = unset).
+func statFieldValue(r listRow, field string) string {
+	switch field {
+	case "source":
+		if r.code {
+			return "marker"
+		}
+		return "ticket"
+	case "marker":
+		return r.marker
+	case "kind":
+		return r.tkind
+	case "type":
+		return r.mtype
+	case "scope":
+		return r.scope
+	case "author":
+		return r.author
+	case "file":
+		return r.file
+	case "branch":
+		return r.branch
+	}
+	return ""
+}
+
+// statCount is one value/count pair within a stats dimension.
+type statCount struct {
+	Value string `json:"value"`
+	Count int    `json:"count"`
+}
+
+// countStatDim tallies rows by a dimension, ordered by count desc then value asc.
+func countStatDim(rows []listRow, field string) []statCount {
+	counts := map[string]int{}
+	for _, r := range rows {
+		counts[statFieldValue(r, field)]++
+	}
+	out := make([]statCount, 0, len(counts))
+	for v, c := range counts {
+		out = append(out, statCount{Value: v, Count: c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Value < out[j].Value
+	})
+	return out
+}
+
+// renderStats prints counts for the (already filtered) rows: a multi-dimension
+// breakdown by default, or a single dimension when --stats-group is set.
+func renderStats(rows []listRow, o ListOptions) error {
+	dims := defaultStatDimensions
+	if o.StatsGroup != "" {
+		dims = []string{o.StatsGroup}
+	}
+
+	type dimResult struct {
+		field  string
+		counts []statCount
+	}
+	var results []dimResult
+	for _, field := range dims {
+		counts := countStatDim(rows, field)
+		// For the default breakdown, drop dimensions no row populates.
+		if o.StatsGroup == "" {
+			if len(counts) == 0 || (len(counts) == 1 && counts[0].Value == "") {
+				continue
+			}
+		}
+		results = append(results, dimResult{field: field, counts: counts})
+	}
+
+	if o.JSON {
+		type dimJSON struct {
+			Field  string      `json:"field"`
+			Counts []statCount `json:"counts"`
+		}
+		payload := struct {
+			Total      int       `json:"total"`
+			Dimensions []dimJSON `json:"dimensions"`
+		}{Total: len(rows), Dimensions: []dimJSON{}}
+		for _, r := range results {
+			payload.Dimensions = append(payload.Dimensions, dimJSON{Field: r.field, Counts: r.counts})
+		}
+		b, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return exitCodeResult(o.ExitCode, len(rows) > 0)
+	}
+
+	if len(rows) == 0 {
+		fmt.Println("No tickets or code markers found")
+		return exitCodeResult(o.ExitCode, false)
+	}
+
+	cs := o.Styles
+	countW := len(strconv.Itoa(len(rows)))
+	for i, r := range results {
+		if i > 0 {
+			fmt.Println()
+		}
+		fmt.Println(cs.Header.Render(r.field))
+		for _, sc := range r.counts {
+			val := sc.Value
+			if val == "" {
+				val = "(none)"
+			}
+			fmt.Printf("  %s  %s\n", cs.Label.Render(fmt.Sprintf("%*d", countW, sc.Count)), val)
+		}
+	}
+	fmt.Printf("\n%s %d\n", cs.Label.Render("total"), len(rows))
+	return exitCodeResult(o.ExitCode, len(rows) > 0)
 }
 
 // listRow is a single line in the unified list, normalized across both sources.

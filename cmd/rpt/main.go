@@ -374,7 +374,7 @@ func cmdCheck(args []string) int {
 	flagExtendSelect := fs.String("extend-select", "", "add checks to the default set (comma-separated)")
 	flagConfig := fs.String("config", "", "explicit config file path")
 	flagOneline := fs.Bool("oneline", false, "compact one-line output instead of verbose blocks")
-	flagStats := fs.Bool("statistics", false, "show per-check counts instead of individual problems")
+	flagStats := fs.Bool("stats", false, "show per-check counts instead of individual problems")
 	flagN := fs.Int("n", 0, "show at most N problems (0 = no limit)")
 	color := colorAuto
 	registerColorFlags(fs, &color)
@@ -396,7 +396,7 @@ This does NOT list valid annotations — use 'tdb list --marker RPT'
 
 Flags:
   --oneline               compact one-line output (default is verbose blocks)
-  --statistics            show per-check counts instead of individual problems
+  --stats                 show per-check counts instead of individual problems
   --color                 force color output (alias: --colour)
   --no-color              disable color output (alias: --no-colour)
   -n <count>              show at most N problems (total count still reported)

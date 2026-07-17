@@ -127,6 +127,60 @@ func TestParseListArgs_Random(t *testing.T) {
 	}
 }
 
+func TestParseListArgs_Stats(t *testing.T) {
+	o, err := ParseListArgs([]string{"list", "--stats"})
+	require.NoError(t, err)
+	assert.True(t, o.Stats)
+	assert.Empty(t, o.StatsGroup)
+
+	// --stats-group implies --stats and sets the field.
+	o, err = ParseListArgs([]string{"list", "--stats-group", "scope"})
+	require.NoError(t, err)
+	assert.True(t, o.Stats)
+	assert.Equal(t, "scope", o.StatsGroup)
+
+	o, err = ParseListArgs([]string{"list", "--stats-group=marker"})
+	require.NoError(t, err)
+	assert.Equal(t, "marker", o.StatsGroup)
+
+	// Invalid combinations / unknown field.
+	for _, c := range [][]string{
+		{"list", "--stats-group", "bogus"},
+		{"list", "--stats", "abc123"},
+		{"list", "--stats", "-v"},
+		{"list", "--stats", "--random"},
+	} {
+		_, err := ParseListArgs(c)
+		assert.Error(t, err, "%v", c)
+	}
+}
+
+func TestCountStatDim(t *testing.T) {
+	rows := []listRow{
+		{code: true, marker: "RPT", mtype: "refactor", scope: "rule-a"},
+		{code: true, marker: "RPT", mtype: "refactor", scope: "rule-a"},
+		{code: true, marker: "TODO", mtype: "fix", scope: "rule-b"},
+		{code: false, tkind: "comment", author: "Claude"},
+	}
+
+	// source: 3 markers, 1 ticket → ordered by count desc.
+	src := countStatDim(rows, "source")
+	require.Len(t, src, 2)
+	assert.Equal(t, statCount{"marker", 3}, src[0])
+	assert.Equal(t, statCount{"ticket", 1}, src[1])
+
+	// scope: rule-a (2), rule-b (1), and the ticket with no scope ("").
+	sc := countStatDim(rows, "scope")
+	require.Len(t, sc, 3)
+	assert.Equal(t, statCount{"rule-a", 2}, sc[0])
+	// count-1 buckets tie-break alphabetically: "" sorts before "rule-b".
+	assert.Equal(t, statCount{"", 1}, sc[1])
+	assert.Equal(t, statCount{"rule-b", 1}, sc[2])
+
+	assert.True(t, validStatField("scope"))
+	assert.False(t, validStatField("bogus"))
+}
+
 func TestSelectRows(t *testing.T) {
 	mkRows := func() []listRow {
 		return []listRow{

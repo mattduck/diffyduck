@@ -57,6 +57,8 @@ Ideas to explore:
 
 ## Related (already noted in review-flow.md)
 
-- `tdb --statistics` — per-rule/marker/kind counts. The fix skill's "what's
-  available?" survey step wants this; until it exists the skill aggregates
-  `tdb list --json` itself.
+- `tdb list --stats` — DONE. Multi-dimension counts (source/marker/kind/type/
+  scope) with `--stats-group FIELD` to collapse to one; `--json` for machines.
+  The `work` survey step now reads `tdb list --stats --json` instead of
+  hand-aggregating. (`rpt check --statistics` was renamed to `--stats` for
+  consistency.) See `renderStats` in `pkg/ticketcli/list.go`.

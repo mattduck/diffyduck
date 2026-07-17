@@ -437,6 +437,9 @@ list merges git-state tickets and in-code markers (TODO/FIXME/RPT/…) into one 
   --grep TEXT            filter by text (case-insensitive)
   -n[N]                  limit combined rows (bare = all)
   --random               shuffle rows; returns one (or -n N) at random
+  --stats                counts breakdown instead of the list (multi-dimension)
+  --stats-group FIELD    collapse --stats to one field (source/marker/kind/
+                         type/scope/author/file/branch)
   --json                 machine-readable JSON array (any source)
   --exit-code            exit 1 if any rows match, 0 if none (CI gate)
   -b, --branch [NAME]    scope tickets to a branch (no value = all branches)

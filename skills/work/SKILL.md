@@ -35,16 +35,20 @@ updated:
    - If they gave nothing, do the **survey** below.
 
 2. **Survey (no explicit target).** Run
-   `tdb list --json` for the **current branch** (main or feature — whatever is
-   checked out; this is `tdb list`'s default). Aggregate the rows yourself and
-   show the user what's available, grouped so they can pick a category, e.g.:
+   `tdb list --stats --json` for the **current branch** (main or feature —
+   whatever is checked out; this is `tdb list`'s default). This returns a
+   `{total, dimensions:[{field, counts:[{value, count}]}]}` breakdown across
+   source/marker/kind/type/scope — no need to aggregate rows yourself. Present it
+   so the user can pick a category, e.g.:
 
    > On branch `feature/x` there are 31 open items:
-   > - marker RPT · studio-pages-use-components — 18
-   > - marker RPT · studio-tailwind-not-inline-styles — 9
-   > - ticket · review comment (human) — 4
+   > - scope · studio-pages-use-components — 18
+   > - scope · studio-tailwind-not-inline-styles — 9
+   > - source · ticket — 4
    >
    > What would you like to work on?
+
+   Use `--stats-group <field>` if you want a single-dimension count.
 
    Wait for the user to pick a category (or a specific item).
 

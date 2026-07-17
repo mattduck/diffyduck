@@ -134,7 +134,7 @@ func flagsForCmd(cmd string) []string {
 	switch cmd {
 	case "check":
 		return []string{
-			"--oneline", "--statistics",
+			"--oneline", "--stats",
 			"--color", "--colour", "--no-color", "--no-colour",
 			"-n", "-select", "-extend-select", "-config",
 		}

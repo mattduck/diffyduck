@@ -54,6 +54,8 @@ tdb list --scope SEC-AUTH         # Filter by scope/code (both sources)
 tdb list --json                   # Machine-readable JSON array (any source/filter)
 tdb list --random                 # One item at random (respects all filters)
 tdb list --marker RPT --random -n5 # Five random RPT items to work on
+tdb list --stats                  # Counts breakdown (source/marker/kind/type/scope)
+tdb list --stats-group scope      # Counts grouped by a single field
 tdb list --marker RPT --exit-code # Exit 1 if any RPT annotations remain (CI gate)
 tdb comment add src/foo.go:42     # Add a comment at a file:line
 tdb comment add src/foo.go:9 --marker RPT --type refactor --scope SEC-AUTH -m "…"

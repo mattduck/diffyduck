@@ -96,7 +96,7 @@ func isFlag(w string) bool {
 
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--since", "--status", "--kind", "-n", "-b", "--branch", "-m", "--ref", "--author", "--file", "--grep", "--source", "--marker", "--exclude-marker", "--type", "--scope":
+	case "--since", "--status", "--kind", "-n", "-b", "--branch", "-m", "--ref", "--author", "--file", "--grep", "--source", "--marker", "--exclude-marker", "--type", "--scope", "--stats-group":
 		return true
 	}
 	return false
@@ -163,6 +163,8 @@ func completeFlagValue(flag, prefix string) []string {
 		values = []string{"unresolved", "resolved", "all"}
 	case "--kind":
 		values = []string{"comment", "note", "all"}
+	case "--stats-group":
+		values = []string{"source", "marker", "kind", "type", "scope", "author", "file", "branch"}
 	default:
 		return nil
 	}
@@ -172,7 +174,7 @@ func completeFlagValue(flag, prefix string) []string {
 func flagsForCmd(cmd, sub string) []string {
 	switch cmd {
 	case "list":
-		return []string{"--source", "--marker", "--exclude-marker", "--type", "--scope", "--file", "--grep", "--status", "-n", "--random", "--json", "--exit-code", "-b", "--branch", "--all-branches", "--help"}
+		return []string{"--source", "--marker", "--exclude-marker", "--type", "--scope", "--file", "--grep", "--status", "-n", "--random", "--stats", "--stats-group", "--json", "--exit-code", "-b", "--branch", "--all-branches", "--help"}
 	case "comment", "c":
 		switch sub {
 		case "add":
