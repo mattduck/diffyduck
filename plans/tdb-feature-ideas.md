@@ -20,17 +20,15 @@ than just open/resolved.
   `pkg/ticketcli` (subcommand + rendering), `tdb list --json` (expose the log),
   completions.
 
-## 2. `--random` selection
+## 2. `--random` selection — DONE
 
-A flag that returns a single random item to work on, respecting all active
-filters (`--marker`, `--scope`, `--type`, `--source`, `--status`, …). Lets the
-fix skill (and a human) grab "one thing to do" from a filtered backlog without
-scanning the whole list.
-
-- Likely `tdb list --random` (or `-1`/`--pick`): apply filters, return one item
-  chosen at random. Pairs naturally with the fix skill's "work one item" loop.
-- Consider determinism/seeding for tests (the codebase avoids `Math.random`
-  patterns in some places; pick a testable RNG seam).
+Implemented as `tdb list --random`: shuffles the filtered rows and returns one,
+or `-n N` for N random items. Modelled as an ordering override (not a `--sort`
+framework — none exists yet; that's the generalisation if other sort methods are
+ever wanted). Routes through the merged list path like `--json`, and rejects
+`-v`/`--raw`/ID lookup. Determinism handled via a `randShuffle` package seam that
+tests override; production uses the auto-seeded global `math/rand` (Go 1.20+).
+See `selectRows` in `pkg/ticketcli/list.go`.
 
 ## 3. Keep ticket lifecycle aligned with the git branch / merge
 

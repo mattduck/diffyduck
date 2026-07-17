@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,6 +18,11 @@ import (
 	"github.com/mattduck/diffyduck/pkg/ticketdb"
 	"golang.org/x/term"
 )
+
+// randShuffle shuffles n elements via swap. It's a package seam so tests can
+// substitute a deterministic ordering; production uses the auto-seeded global
+// rand (Go 1.20+).
+var randShuffle = rand.Shuffle
 
 // Source values for the unified list.
 const (
@@ -61,6 +67,7 @@ type ListOptions struct {
 	N              int      // -n cap on combined rows (0 = uncapped)
 	NSet           bool
 	ExitCode       bool // --exit-code: exit 1 if any rows match, 0 if none
+	Random         bool // --random: shuffle rows and (unless -n given) return one
 
 	AllBranches bool   // --all-branches
 	Branch      string // --branch / -b ("." = current branch)
@@ -194,6 +201,8 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 			o.AllBranches = true
 		case arg == "--exit-code":
 			o.ExitCode = true
+		case arg == "--random":
+			o.Random = true
 		case arg == "-b" || arg == "--branch":
 			if i+1 < len(rest) && !strings.HasPrefix(rest[i+1], "-") {
 				o.Branch = rest[i+1]
@@ -269,6 +278,14 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 	}
 	if o.JSON && o.ID != "" {
 		return o, fmt.Errorf("--json cannot be combined with an ID lookup")
+	}
+	if o.Random {
+		if o.ID != "" {
+			return o, fmt.Errorf("--random cannot be combined with an ID lookup")
+		}
+		if o.Verbose || o.Raw {
+			return o, fmt.Errorf("--random cannot be combined with -v/--raw")
+		}
 	}
 	if o.Source == SourceCode {
 		if o.Kind != "" {
@@ -378,9 +395,10 @@ func RunList(argv []string, cfg Options) error {
 }
 
 func runList(o ListOptions) error {
-	// State-only mode uses the richer ticket renderer — except under --json,
-	// which routes every source through the merged path for one uniform schema.
-	if o.Source == SourceState && !o.JSON {
+	// State-only mode uses the richer ticket renderer — except under --json
+	// (one uniform schema) or --random (compact one-per-row selection), which
+	// route every source through the merged path.
+	if o.Source == SourceState && !o.JSON && !o.Random {
 		return runStateList(o)
 	}
 
@@ -411,26 +429,7 @@ func runList(o ListOptions) error {
 		return exitCodeResult(o.ExitCode, false)
 	}
 
-	// Tickets first (newest first), then code markers (by file/line).
-	sort.SliceStable(rows, func(i, j int) bool {
-		if rows[i].code != rows[j].code {
-			return !rows[i].code
-		}
-		if !rows[i].code {
-			return rows[i].created.After(rows[j].created)
-		}
-		if rows[i].file != rows[j].file {
-			return rows[i].file < rows[j].file
-		}
-		return rows[i].line < rows[j].line
-	})
-
-	totalCount := len(rows)
-	truncated := false
-	if o.NSet && o.N > 0 && o.N < len(rows) {
-		rows = rows[:o.N]
-		truncated = true
-	}
+	rows, totalCount, truncated := selectRows(rows, o)
 
 	if o.JSON {
 		if err := renderRowsJSON(rows); err != nil {
@@ -444,6 +443,44 @@ func runList(o ListOptions) error {
 		fmt.Println(o.Styles.Label.Render(fmt.Sprintf("%d/%d", len(rows), totalCount)))
 	}
 	return exitCodeResult(o.ExitCode, true)
+}
+
+// selectRows applies ordering then the row limit. Default ordering is tickets
+// first (newest first) then code markers (by file/line); --random shuffles via
+// the randShuffle seam instead. The limit is -n if set, otherwise 1 when
+// --random is given (--random implies a single result unless -n overrides it).
+// It returns the selected rows, the pre-limit total, and whether truncation
+// occurred.
+func selectRows(rows []listRow, o ListOptions) (selected []listRow, total int, truncated bool) {
+	if o.Random {
+		randShuffle(len(rows), func(i, j int) { rows[i], rows[j] = rows[j], rows[i] })
+	} else {
+		sort.SliceStable(rows, func(i, j int) bool {
+			if rows[i].code != rows[j].code {
+				return !rows[i].code
+			}
+			if !rows[i].code {
+				return rows[i].created.After(rows[j].created)
+			}
+			if rows[i].file != rows[j].file {
+				return rows[i].file < rows[j].file
+			}
+			return rows[i].line < rows[j].line
+		})
+	}
+
+	total = len(rows)
+	limit := 0
+	if o.NSet && o.N > 0 {
+		limit = o.N
+	} else if o.Random && !o.NSet {
+		limit = 1
+	}
+	if limit > 0 && limit < len(rows) {
+		rows = rows[:limit]
+		truncated = true
+	}
+	return rows, total, truncated
 }
 
 // listRow is a single line in the unified list, normalized across both sources.

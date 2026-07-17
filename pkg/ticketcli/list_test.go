@@ -105,6 +105,73 @@ func TestParseListArgs_JSON(t *testing.T) {
 	}
 }
 
+func TestParseListArgs_Random(t *testing.T) {
+	o, err := ParseListArgs([]string{"list", "--random"})
+	require.NoError(t, err)
+	assert.True(t, o.Random)
+
+	// Valid alongside -n and filters.
+	o, err = ParseListArgs([]string{"list", "--random", "-n3", "--marker", "RPT"})
+	require.NoError(t, err)
+	assert.True(t, o.Random)
+	assert.Equal(t, 3, o.N)
+
+	// --random is mutually exclusive with ID lookup and the detail modes.
+	for _, c := range [][]string{
+		{"list", "--random", "abc123"},
+		{"list", "--random", "-v"},
+		{"list", "--random", "--raw"},
+	} {
+		_, err := ParseListArgs(c)
+		assert.Error(t, err, "%v", c)
+	}
+}
+
+func TestSelectRows(t *testing.T) {
+	mkRows := func() []listRow {
+		return []listRow{
+			{kind: "comment", file: "a.go", line: 1, created: time.Unix(300, 0)},
+			{kind: "comment", file: "b.go", line: 2, created: time.Unix(100, 0)},
+			{kind: "RPT", file: "c.go", line: 3, code: true},
+			{kind: "TODO", file: "d.go", line: 4, code: true},
+		}
+	}
+
+	// Default ordering: tickets (newest first) then markers (by file/line).
+	sel, total, trunc := selectRows(mkRows(), ListOptions{})
+	assert.Equal(t, 4, total)
+	assert.False(t, trunc)
+	assert.Equal(t, "a.go", sel[0].file)
+	assert.Equal(t, "b.go", sel[1].file)
+	assert.True(t, sel[2].code)
+
+	// Deterministic stand-in for the shuffle: reverse the slice.
+	orig := randShuffle
+	randShuffle = func(n int, swap func(i, j int)) {
+		for i := 0; i < n/2; i++ {
+			swap(i, n-1-i)
+		}
+	}
+	defer func() { randShuffle = orig }()
+
+	// --random implies exactly one result unless -n overrides.
+	sel, total, trunc = selectRows(mkRows(), ListOptions{Random: true})
+	assert.Equal(t, 4, total)
+	assert.True(t, trunc)
+	require.Len(t, sel, 1)
+	assert.Equal(t, "d.go", sel[0].file) // reversed → last element first
+
+	// --random with -n returns that many.
+	sel, _, trunc = selectRows(mkRows(), ListOptions{Random: true, N: 3, NSet: true})
+	require.Len(t, sel, 3)
+	assert.True(t, trunc)
+
+	// -n above the available count returns all rows, untruncated.
+	sel, _, trunc = selectRows(mkRows(), ListOptions{Random: true, N: 10, NSet: true})
+	require.Len(t, sel, 4)
+	assert.False(t, trunc)
+}
+
 func TestRowsToJSON(t *testing.T) {
 	created := time.Date(2026, 5, 19, 17, 50, 18, 0, time.UTC)
 	rows := []listRow{
