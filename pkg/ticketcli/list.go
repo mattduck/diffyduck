@@ -520,10 +520,10 @@ func renderRowsVerbose(rows []listRow, o ListOptions) {
 
 // selectRows applies ordering then the row limit. Default ordering is tickets
 // first (newest first) then code markers (by file/line); --random shuffles via
-// the randShuffle seam instead. The limit is -n if set, otherwise 1 when
-// --random is given (--random implies a single result unless -n overrides it).
-// It returns the selected rows, the pre-limit total, and whether truncation
-// occurred.
+// the randShuffle seam instead. The limit is -n if set; otherwise 1 under
+// --random and 5 under -v (verbose blocks are large), and uncapped for the
+// default one-line view. It returns the selected rows, the pre-limit total, and
+// whether truncation occurred.
 func selectRows(rows []listRow, o ListOptions) (selected []listRow, total int, truncated bool) {
 	if o.Random {
 		randShuffle(len(rows), func(i, j int) { rows[i], rows[j] = rows[j], rows[i] })
@@ -544,10 +544,15 @@ func selectRows(rows []listRow, o ListOptions) (selected []listRow, total int, t
 
 	total = len(rows)
 	limit := 0
-	if o.NSet && o.N > 0 {
+	switch {
+	case o.NSet && o.N > 0:
 		limit = o.N
-	} else if o.Random && !o.NSet {
+	case o.Random && !o.NSet:
 		limit = 1
+	case o.Verbose && !o.NSet:
+		// Verbose blocks are large, so default to a small cap (matching the db
+		// renderer); an explicit -n — including bare -n for all — overrides.
+		limit = 5
 	}
 	if limit > 0 && limit < len(rows) {
 		rows = rows[:limit]
