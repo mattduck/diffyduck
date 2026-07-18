@@ -16,8 +16,15 @@ Progress:
   `Ticket` field (serialized `TICKET:`). Internal read-sites updated
   (`list.go`, `commands.go`); user-facing flag names left unchanged this phase.
   Round-trip + legacy-key tests added. Full suite + vet green.
-- [ ] Phase 2 — CLI vocabulary (`--source`→`--store`, values, `--kind note`→
-  `issue`, `--marker`→`--prefix`, stats dims, `--ticket`, `--ref`→`--commit`).
+- [x] **Phase 2 — CLI vocabulary**: `--source`→`--store` (`state`/`code`→
+  `db`/`file`, old values kept as aliases), `--kind note`→`issue`,
+  `--marker`/`--exclude-marker`→`--prefix`/`--exclude-prefix`, `--ref`→
+  `--commit`, new `--ticket` filter + add flag, stats dims
+  (`store/kind/prefix/type/scope/ticket`), JSON `store`/`prefix`/`ticket`,
+  `(n/a — file comments)` label, friendly error on `--store file --kind issue`.
+  Usage text, completion, README, tests updated. `make check` green.
+  Note: the `comment`/`note` write verbs still exist and `note` still sets the
+  legacy internal `kind=note` (runStateList accepts both) — removed in Phase 3.
 - [ ] Phase 3 — write-verb collapse (`comment`/`note` → `tdb add` + ID ops).
 - [ ] Phase 4 — scanner grammar (parse leading ticket token from file comments).
 

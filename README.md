@@ -45,23 +45,26 @@ CLI over the git-backed ticket store. Tickets are stored in `refs/dfd/comments`
 and shared with dfd's in-TUI comment view.
 
 ```sh
-tdb list                          # List all tickets and in-code markers
-tdb list --source state           # Git-state tickets only
-tdb list --source code            # In-code markers (TODO/FIXME/HACK/…) only
-tdb list --marker RPT             # Filter by marker keyword (both sources)
-tdb list --type refactor          # Filter by type (both sources)
-tdb list --scope SEC-AUTH         # Filter by scope/code (both sources)
-tdb list --json                   # Machine-readable JSON array (any source/filter)
+tdb list                          # List all db entries and in-file comments
+tdb list --store db               # db entries only (issues + comments)
+tdb list --store file             # In-file comments (TODO/FIXME/HACK/…) only
+tdb list --kind issue             # Standalone db issues only
+tdb list --kind comment           # Entries attached to a code range only
+tdb list --prefix RPT             # Filter by prefix keyword (any store)
+tdb list --type refactor          # Filter by type (any store)
+tdb list --scope SEC-AUTH         # Filter by scope/code (any store)
+tdb list --ticket ABC-123         # Filter by external ticket ref (any store)
+tdb list --json                   # Machine-readable JSON array (any store/filter)
 tdb list --random                 # One item at random (respects all filters)
-tdb list --marker RPT --random -n5 # Five random RPT items to work on
-tdb list --stats                  # Counts breakdown (source/marker/kind/type/scope)
+tdb list --prefix RPT --random -n5 # Five random RPT items to work on
+tdb list --stats                  # Counts breakdown (store/kind/prefix/type/scope/ticket)
 tdb list --stats-group scope      # Counts grouped by a single field
-tdb list --marker RPT --exit-code # Exit 1 if any RPT annotations remain (CI gate)
-tdb comment add src/foo.go:42     # Add a comment at a file:line
-tdb comment add src/foo.go:9 --marker RPT --type refactor --scope SEC-AUTH -m "…"
-tdb comment list                  # List comments
-tdb comment resolve <id>          # Resolve a comment
-tdb note add -m "remember this"   # Add a standalone note
+tdb list --prefix RPT --exit-code # Exit 1 if any RPT annotations remain (CI gate)
+tdb comment add src/foo.go:42     # Add a db comment at a file:line
+tdb comment add src/foo.go:9 --prefix RPT --type refactor --scope SEC-AUTH -m "…"
+tdb comment list                  # List db comments
+tdb comment resolve <id>          # Resolve a db entry
+tdb note add -m "remember this"   # Add a standalone db issue
 tdb completion bash               # Shell completion script
 ```
 

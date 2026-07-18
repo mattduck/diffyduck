@@ -187,16 +187,16 @@ func (o *Options) parseFlag(arg string, args []string, i int) (int, error) {
 	case strings.HasPrefix(arg, "-m"):
 		o.AddMessage = strings.TrimPrefix(arg, "-m")
 
-	case arg == "--ref":
+	case arg == "--commit":
 		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--ref requires a ref argument (branch, tag, or commit)")
+			return 0, fmt.Errorf("--commit requires a commit/branch/tag argument")
 		}
-		o.AddRef = args[i+1]
+		o.AddCommit = args[i+1]
 		return 1, nil
-	case strings.HasPrefix(arg, "--ref="):
-		o.AddRef = strings.TrimPrefix(arg, "--ref=")
-		if o.AddRef == "" {
-			return 0, fmt.Errorf("--ref requires a ref argument")
+	case strings.HasPrefix(arg, "--commit="):
+		o.AddCommit = strings.TrimPrefix(arg, "--commit=")
+		if o.AddCommit == "" {
+			return 0, fmt.Errorf("--commit requires a commit/branch/tag argument")
 		}
 
 	case arg == "--author":
@@ -237,16 +237,28 @@ func (o *Options) parseFlag(arg string, args []string, i int) (int, error) {
 			return 0, fmt.Errorf("--grep requires a search pattern")
 		}
 
-	case arg == "--marker":
+	case arg == "--prefix":
 		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--marker requires a value")
+			return 0, fmt.Errorf("--prefix requires a value")
 		}
-		o.Marker = args[i+1]
+		o.Prefix = args[i+1]
 		return 1, nil
-	case strings.HasPrefix(arg, "--marker="):
-		o.Marker = strings.TrimPrefix(arg, "--marker=")
-		if o.Marker == "" {
-			return 0, fmt.Errorf("--marker requires a value")
+	case strings.HasPrefix(arg, "--prefix="):
+		o.Prefix = strings.TrimPrefix(arg, "--prefix=")
+		if o.Prefix == "" {
+			return 0, fmt.Errorf("--prefix requires a value")
+		}
+
+	case arg == "--ticket":
+		if i+1 >= len(args) {
+			return 0, fmt.Errorf("--ticket requires a reference (e.g. ABC-123, #123)")
+		}
+		o.Ticket = args[i+1]
+		return 1, nil
+	case strings.HasPrefix(arg, "--ticket="):
+		o.Ticket = strings.TrimPrefix(arg, "--ticket=")
+		if o.Ticket == "" {
+			return 0, fmt.Errorf("--ticket requires a reference (e.g. ABC-123, #123)")
 		}
 
 	case arg == "--type":
@@ -382,8 +394,8 @@ func (o *Options) validate() error {
 	if o.AddMessage != "" && o.Sub != "add" {
 		return fmt.Errorf("-m is only valid for %s add", name)
 	}
-	if o.AddRef != "" && o.Sub != "add" {
-		return fmt.Errorf("--ref is only valid for %s add", name)
+	if o.AddCommit != "" && o.Sub != "add" {
+		return fmt.Errorf("--commit is only valid for %s add", name)
 	}
 	if o.AuthorSet && o.Sub != "add" && o.Sub != "list" {
 		return fmt.Errorf("--author is only valid for %s add and %s list", name, name)
@@ -394,14 +406,17 @@ func (o *Options) validate() error {
 	if o.Grep != "" && o.Sub != "list" {
 		return fmt.Errorf("--grep is only valid for %s list", name)
 	}
-	if o.Marker != "" && o.Sub != "add" && o.Sub != "list" {
-		return fmt.Errorf("--marker is only valid for %s add and %s list", name, name)
+	if o.Prefix != "" && o.Sub != "add" && o.Sub != "list" {
+		return fmt.Errorf("--prefix is only valid for %s add and %s list", name, name)
 	}
 	if o.Type != "" && o.Sub != "add" && o.Sub != "list" {
 		return fmt.Errorf("--type is only valid for %s add and %s list", name, name)
 	}
 	if o.Scope != "" && o.Sub != "add" && o.Sub != "list" {
 		return fmt.Errorf("--scope is only valid for %s add and %s list", name, name)
+	}
+	if o.Ticket != "" && o.Sub != "add" && o.Sub != "list" {
+		return fmt.Errorf("--ticket is only valid for %s add and %s list", name, name)
 	}
 	if o.Sub == "add" && o.AuthorSet && o.Author == "" {
 		return fmt.Errorf("--author requires an author argument for %s add", name)
@@ -426,55 +441,59 @@ func PrintUsage(w io.Writer) {
        tdb comment <subcommand> [options]
        tdb note <subcommand> [options]
 
-list merges git-state tickets and in-code markers (TODO/FIXME/RPT/…) into one view:
-  --source VALUE         all (default), state (tickets), code (markers)
-  --marker LIST          filter by marker keyword(s) (TODO, RPT, …); both sources
-  --exclude-marker LIST  exclude these marker keyword(s); both sources
-  --type VALUE           filter by type (feat, fix, refactor, …); both sources
-  --scope CODE           filter by scope/code (ticket tag or RPT annotation scope)
-  --status VALUE         unresolved (default), resolved, all; tickets only
+list merges db entries and in-file comments (TODO/FIXME/RPT/…) into one view:
+  --store VALUE          all (default), db, file
+  --kind VALUE           all (default), comment, issue (db/all store only)
+  --prefix LIST          filter by prefix keyword(s) (TODO, RPT, …); any store
+  --exclude-prefix LIST  exclude these prefix keyword(s); any store
+  --type VALUE           filter by type (feat, bug, epic, …); any store
+  --scope CODE           filter by scope/code; any store
+  --ticket REF           filter by external ticket ref (ABC-123, #123); any store
+  --status VALUE         unresolved (default), resolved, all; db only
   --file PATH            filter by file (trailing / = prefix match)
   --grep TEXT            filter by text (case-insensitive)
   -n[N]                  limit combined rows (bare = all)
   --random               shuffle rows; returns one (or -n N) at random
   --stats                counts breakdown instead of the list (multi-dimension)
-  --stats-group FIELD    collapse --stats to one field (source/marker/kind/
-                         type/scope/author/file/branch)
-  --json                 machine-readable JSON array (any source)
+  --stats-group FIELD    collapse --stats to one field (store/kind/prefix/
+                         type/scope/ticket/author/file/branch)
+  --json                 machine-readable JSON array (any store)
   --exit-code            exit 1 if any rows match, 0 if none (CI gate)
-  -b, --branch [NAME]    scope tickets to a branch (no value = all branches)
-  --all-branches         tickets from all branches
+  -b, --branch [NAME]    scope db entries to a branch (no value = all branches)
+  --all-branches         db entries from all branches
 
 comment / note subcommands:
-  list [ID]              List comments (or show one by ID suffix)
-  add [file:line]        Add a comment (file:line) or standalone note
-  edit <ID>              Edit a comment in $EDITOR
-  resolve <ID>           Mark a comment resolved
-  unresolve <ID>         Mark a comment unresolved
+  list [ID]              List db entries (or show one by ID suffix)
+  add [file:line]        Add a db comment (file:line) or db issue (standalone)
+  edit <ID>              Edit a db entry in $EDITOR
+  resolve <ID>           Mark a db entry resolved
+  unresolve <ID>         Mark a db entry unresolved
 
 List options:
   -v                     Verbose block output
   --raw                  Raw serialized blob output
   -n[N]                  Limit count (newest N; negative = oldest; bare = all)
   --status VALUE         unresolved (default), resolved, all
-  --kind VALUE           comment, note, all (comment only)
+  --kind VALUE           comment, issue, all (comment only)
   --since DURATION       e.g. 30m, 6h, 30d, 2w, 3M, 1y, all
   -b, --branch [NAME]    Filter by branch (no value = all branches)
-  --all-branches         Show comments from all branches
+  --all-branches         Show db entries from all branches
   --author [NAME]        Filter by author (bare = no author)
   --file PATH            Filter by file (trailing / = prefix match)
-  --grep TEXT            Filter by comment text (case-insensitive)
-  --marker KW            Filter by marker keyword (RPT, TODO, …)
-  --type VALUE           Filter by type (feat, fix, refactor, …)
+  --grep TEXT            Filter by text (case-insensitive)
+  --prefix KW            Filter by prefix keyword (RPT, TODO, …)
+  --type VALUE           Filter by type (feat, bug, epic, …)
   --scope CODE           Filter by scope/code
+  --ticket REF           Filter by external ticket ref (ABC-123, #123)
 
 Add options:
-  -m MESSAGE             Comment text (else read from stdin)
-  --ref REF              Commit/branch/tag to attach to
+  -m MESSAGE             Entry text (else read from stdin)
+  --commit REF           Commit/branch/tag to attach to
   --author NAME          Set author
-  --marker KW            Tag with a marker keyword (RPT, TODO, …)
-  --type VALUE           Tag with a type (feat, fix, refactor, …)
+  --prefix KW            Tag with a prefix keyword (RPT, TODO, …)
+  --type VALUE           Tag with a type (feat, bug, epic, …)
   --scope CODE           Tag with a scope/code identifier
+  --ticket REF           Tag with an external ticket ref (ABC-123, #123)
 
 Edit options:
   --resolved true|false  Set resolved state without opening the editor

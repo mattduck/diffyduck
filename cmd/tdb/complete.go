@@ -96,7 +96,7 @@ func isFlag(w string) bool {
 
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--since", "--status", "--kind", "-n", "-b", "--branch", "-m", "--ref", "--author", "--file", "--grep", "--source", "--marker", "--exclude-marker", "--type", "--scope", "--stats-group":
+	case "--since", "--status", "--kind", "-n", "-b", "--branch", "-m", "--commit", "--author", "--file", "--grep", "--store", "--prefix", "--exclude-prefix", "--type", "--scope", "--ticket", "--stats-group":
 		return true
 	}
 	return false
@@ -157,14 +157,14 @@ func commentSubTakesID(sub string) bool {
 func completeFlagValue(flag, prefix string) []string {
 	var values []string
 	switch flag {
-	case "--source":
-		values = []string{"all", "state", "code"}
+	case "--store":
+		values = []string{"all", "db", "file"}
 	case "--status":
 		values = []string{"unresolved", "resolved", "all"}
 	case "--kind":
-		values = []string{"comment", "note", "all"}
+		values = []string{"comment", "issue", "all"}
 	case "--stats-group":
-		values = []string{"source", "marker", "kind", "type", "scope", "author", "file", "branch"}
+		values = []string{"store", "kind", "prefix", "type", "scope", "ticket", "author", "file", "branch"}
 	default:
 		return nil
 	}
@@ -174,26 +174,26 @@ func completeFlagValue(flag, prefix string) []string {
 func flagsForCmd(cmd, sub string) []string {
 	switch cmd {
 	case "list":
-		return []string{"--source", "--marker", "--exclude-marker", "--type", "--scope", "--file", "--grep", "--status", "-n", "--random", "--stats", "--stats-group", "--json", "--exit-code", "-b", "--branch", "--all-branches", "--help"}
+		return []string{"--store", "--kind", "--prefix", "--exclude-prefix", "--type", "--scope", "--ticket", "--file", "--grep", "--status", "-n", "--random", "--stats", "--stats-group", "--json", "--exit-code", "-b", "--branch", "--all-branches", "--help"}
 	case "comment", "c":
 		switch sub {
 		case "add":
-			return []string{"-m", "--ref", "--author", "--marker", "--type", "--scope", "--help"}
+			return []string{"-m", "--commit", "--author", "--prefix", "--type", "--scope", "--ticket", "--help"}
 		case "edit":
 			return []string{"-m", "--help"}
 		case "resolve", "unresolve":
 			return []string{"--help"}
 		default: // list or no sub
-			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--kind", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--marker", "--type", "--scope", "--help"}
+			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--kind", "--raw", "--all-branches", "--resolved", "--commit", "--author", "--file", "--grep", "--prefix", "--type", "--scope", "--ticket", "--help"}
 		}
 	case "note", "n":
 		switch sub {
 		case "add":
-			return []string{"-m", "--ref", "--author", "--marker", "--type", "--scope", "--help"}
+			return []string{"-m", "--commit", "--author", "--prefix", "--type", "--scope", "--ticket", "--help"}
 		case "edit":
 			return []string{"-m", "--help"}
 		default:
-			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--raw", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--marker", "--type", "--scope", "--help"}
+			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--raw", "--all-branches", "--resolved", "--commit", "--author", "--file", "--grep", "--prefix", "--type", "--scope", "--ticket", "--help"}
 		}
 	}
 	return []string{"--help"}

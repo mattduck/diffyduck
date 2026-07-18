@@ -89,8 +89,8 @@ func runComment(opts Options) error {
 }
 
 // runCommentList lists comments filtered by status and limited by -n.
-// runStateList renders git-state tickets using ListOptions. It is the shared
-// implementation for `tdb list --source state` and `tdb comment list`.
+// runStateList renders db entries using ListOptions. It is the shared
+// implementation for `tdb list --store db` and `tdb comment list`.
 func runStateList(o ListOptions) error {
 	cs := o.Styles
 	store := ticketdb.NewStore("")
@@ -141,7 +141,7 @@ func runStateList(o ListOptions) error {
 				}
 			}
 			all = filtered
-		case "note":
+		case "issue", "note": // "note" is the legacy write-verb value (removed in phase 3)
 			var filtered []*ticketdb.Comment
 			for _, c := range all {
 				if c.IsStandalone() {
@@ -244,10 +244,10 @@ func runStateList(o ListOptions) error {
 			all = filtered
 		}
 
-		if len(o.Markers) > 0 {
+		if len(o.Prefixes) > 0 {
 			var filtered []*ticketdb.Comment
 			for _, c := range all {
-				if markerMatches(o.Markers, c.Prefix) {
+				if prefixMatches(o.Prefixes, c.Prefix) {
 					filtered = append(filtered, c)
 				}
 			}
@@ -358,7 +358,7 @@ func runStateList(o ListOptions) error {
 
 func runCommentList(opts Options) error {
 	return runStateList(ListOptions{
-		Source:      SourceState,
+		Store:       StoreDB,
 		Kind:        opts.Kind,
 		Status:      opts.Status,
 		Since:       opts.Since,
@@ -366,9 +366,10 @@ func runCommentList(opts Options) error {
 		AuthorSet:   opts.AuthorSet,
 		File:        opts.File,
 		Grep:        opts.Grep,
-		Markers:     markerList(opts.Marker),
+		Prefixes:    prefixList(opts.Prefix),
 		Type:        opts.Type,
 		Scope:       opts.Scope,
+		Ticket:      opts.Ticket,
 		N:           opts.N,
 		NSet:        opts.NSet,
 		AllBranches: opts.AllBranches,
@@ -983,10 +984,10 @@ func runCommentAddStandalone(opts Options) error {
 	var commitSHA string
 	var branch string
 
-	if opts.AddRef != "" {
-		sha, err := g.RevParse(opts.AddRef)
+	if opts.AddCommit != "" {
+		sha, err := g.RevParse(opts.AddCommit)
 		if err != nil {
-			return fmt.Errorf("cannot resolve ref %q: %w", opts.AddRef, err)
+			return fmt.Errorf("cannot resolve ref %q: %w", opts.AddCommit, err)
 		}
 		commitSHA = sha
 		if cb, err := g.CurrentBranch(); err == nil && cb != "HEAD" {
@@ -1018,9 +1019,10 @@ func runCommentAddStandalone(opts Options) error {
 		Branch:     branch,
 		BranchHead: branchHead,
 		Author:     opts.Author,
-		Prefix:     opts.Marker,
+		Prefix:     opts.Prefix,
 		Type:       opts.Type,
 		Scope:      opts.Scope,
+		Ticket:     opts.Ticket,
 	}
 
 	store := ticketdb.NewStore("")
@@ -1060,17 +1062,17 @@ func runCommentAddFile(opts Options) error {
 	var commitSHA string
 	var branch string
 
-	if opts.AddRef != "" {
+	if opts.AddCommit != "" {
 		// --ref provided: resolve to commit SHA and read file from that commit
-		sha, err := g.RevParse(opts.AddRef)
+		sha, err := g.RevParse(opts.AddCommit)
 		if err != nil {
-			return fmt.Errorf("cannot resolve ref %q: %w", opts.AddRef, err)
+			return fmt.Errorf("cannot resolve ref %q: %w", opts.AddCommit, err)
 		}
 		commitSHA = sha
 
 		content, err := g.GetFileContent(sha, relPath)
 		if err != nil {
-			return fmt.Errorf("cannot read %s at %s: %w", relPath, opts.AddRef, err)
+			return fmt.Errorf("cannot read %s at %s: %w", relPath, opts.AddCommit, err)
 		}
 		fileLines = splitFileLines(content)
 
@@ -1126,9 +1128,10 @@ func runCommentAddFile(opts Options) error {
 		Branch:     branch,
 		BranchHead: branchHead,
 		Author:     opts.Author,
-		Prefix:     opts.Marker,
+		Prefix:     opts.Prefix,
 		Type:       opts.Type,
 		Scope:      opts.Scope,
+		Ticket:     opts.Ticket,
 	}
 
 	// Write to store

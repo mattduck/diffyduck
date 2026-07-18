@@ -14,49 +14,49 @@ import (
 func TestParseListArgs_Defaults(t *testing.T) {
 	o, err := ParseListArgs([]string{"list"})
 	require.NoError(t, err)
-	assert.Equal(t, SourceAll, o.Source)
-	assert.Empty(t, o.Markers)
+	assert.Equal(t, StoreAll, o.Store)
+	assert.Empty(t, o.Prefixes)
 	assert.False(t, o.NSet)
 }
 
 func TestParseListArgs_Flags(t *testing.T) {
 	o, err := ParseListArgs([]string{
 		"list",
-		"--source", "code",
-		"--marker", "TODO,FIXME",
+		"--store", "code",
+		"--prefix", "TODO,FIXME",
 		"--file=pkg/",
 		"--grep", "buffer",
 		"-n5",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, SourceCode, o.Source)
-	assert.Equal(t, []string{"TODO", "FIXME"}, o.Markers)
+	assert.Equal(t, StoreFile, o.Store)
+	assert.Equal(t, []string{"TODO", "FIXME"}, o.Prefixes)
 	assert.Equal(t, "pkg/", o.File)
 	assert.Equal(t, "buffer", o.Grep)
 	assert.True(t, o.NSet)
 	assert.Equal(t, 5, o.N)
 }
 
-func TestParseListArgs_SourceAliases(t *testing.T) {
+func TestParseListArgs_StoreAliases(t *testing.T) {
 	for _, tc := range []struct {
 		in   string
 		want string
 	}{
-		{"tickets", SourceState},
-		{"state", SourceState},
-		{"markers", SourceCode},
-		{"code", SourceCode},
-		{"all", SourceAll},
+		{"tickets", StoreDB},
+		{"state", StoreDB},
+		{"markers", StoreFile},
+		{"code", StoreFile},
+		{"all", StoreAll},
 	} {
-		o, err := ParseListArgs([]string{"list", "--source", tc.in})
+		o, err := ParseListArgs([]string{"list", "--store", tc.in})
 		require.NoError(t, err, tc.in)
-		assert.Equal(t, tc.want, o.Source, tc.in)
+		assert.Equal(t, tc.want, o.Store, tc.in)
 	}
 }
 
 func TestParseListArgs_Errors(t *testing.T) {
 	cases := [][]string{
-		{"list", "--source", "bogus"},
+		{"list", "--store", "bogus"},
 		{"list", "--status", "bogus"},
 		{"list", "--bogus"},
 		{"list", "--all-branches", "--branch", "main"},
@@ -88,7 +88,7 @@ func TestParseListArgs_BranchValueVsAll(t *testing.T) {
 func TestParseListArgs_JSON(t *testing.T) {
 	// --json parses and is valid for every source.
 	for _, src := range []string{"all", "state", "code"} {
-		o, err := ParseListArgs([]string{"list", "--source", src, "--json"})
+		o, err := ParseListArgs([]string{"list", "--store", src, "--json"})
 		require.NoError(t, err, src)
 		assert.True(t, o.JSON, src)
 	}
@@ -97,7 +97,7 @@ func TestParseListArgs_JSON(t *testing.T) {
 	for _, c := range [][]string{
 		{"list", "--json", "--raw"},
 		{"list", "--json", "-v"},
-		{"list", "--source", "state", "--json", "--raw"},
+		{"list", "--store", "state", "--json", "--raw"},
 		{"list", "--json", "abc123"},
 	} {
 		_, err := ParseListArgs(c)
@@ -111,7 +111,7 @@ func TestParseListArgs_Random(t *testing.T) {
 	assert.True(t, o.Random)
 
 	// Valid alongside -n and filters.
-	o, err = ParseListArgs([]string{"list", "--random", "-n3", "--marker", "RPT"})
+	o, err = ParseListArgs([]string{"list", "--random", "-n3", "--prefix", "RPT"})
 	require.NoError(t, err)
 	assert.True(t, o.Random)
 	assert.Equal(t, 3, o.N)
@@ -139,9 +139,9 @@ func TestParseListArgs_Stats(t *testing.T) {
 	assert.True(t, o.Stats)
 	assert.Equal(t, "scope", o.StatsGroup)
 
-	o, err = ParseListArgs([]string{"list", "--stats-group=marker"})
+	o, err = ParseListArgs([]string{"list", "--stats-group=prefix"})
 	require.NoError(t, err)
-	assert.Equal(t, "marker", o.StatsGroup)
+	assert.Equal(t, "prefix", o.StatsGroup)
 
 	// Invalid combinations / unknown field.
 	for _, c := range [][]string{
@@ -163,11 +163,11 @@ func TestCountStatDim(t *testing.T) {
 		{code: false, tkind: "comment", author: "Claude"},
 	}
 
-	// source: 3 markers, 1 ticket → ordered by count desc.
-	src := countStatDim(rows, "source")
+	// store: 3 file comments, 1 db entry → ordered by count desc.
+	src := countStatDim(rows, "store")
 	require.Len(t, src, 2)
-	assert.Equal(t, statCount{"marker", 3}, src[0])
-	assert.Equal(t, statCount{"ticket", 1}, src[1])
+	assert.Equal(t, statCount{"file", 3}, src[0])
+	assert.Equal(t, statCount{"db", 1}, src[1])
 
 	// scope: rule-a (2), rule-b (1), and the ticket with no scope ("").
 	sc := countStatDim(rows, "scope")
@@ -244,15 +244,15 @@ func TestRowsToJSON(t *testing.T) {
 	out := rowsToJSON(rows)
 	require.Len(t, out, 2)
 
-	// Ticket carries the actionable id + metadata; resolved is always present.
+	// A db entry carries the actionable id + metadata; resolved is always present.
 	tk := out[0]
-	assert.Equal(t, "ticket", tk.Source)
+	assert.Equal(t, "db", tk.Store)
 	assert.Equal(t, "1779209418881", tk.ID)
 	assert.Equal(t, "881", tk.ShortID)
 	assert.Equal(t, "comment", tk.Kind)
 	assert.Equal(t, "Claude", tk.Author)
-	// A ticket can be tagged to mirror a marker: marker/type/scope on the ticket too.
-	assert.Equal(t, "RPT", tk.Marker)
+	// A db entry carries the same shared tags a file comment does: prefix/type/scope.
+	assert.Equal(t, "RPT", tk.Prefix)
 	assert.Equal(t, "refactor", tk.Type)
 	assert.Equal(t, "no-bare-dict", tk.Scope)
 	require.NotNil(t, tk.Resolved)
@@ -262,23 +262,23 @@ func TestRowsToJSON(t *testing.T) {
 	assert.Equal(t, "refactor this\n\nsecond paragraph", tk.Body)
 	assert.Equal(t, "refactor this", tk.Text)
 
-	// Marker carries no id or body; keyword/type/scope are split out.
+	// A file comment carries no id or body; prefix/type/scope are split out.
 	mk := out[1]
-	assert.Equal(t, "marker", mk.Source)
+	assert.Equal(t, "file", mk.Store)
 	assert.Empty(t, mk.ID)
 	assert.Empty(t, mk.Body)
 	assert.Nil(t, mk.Resolved)
-	assert.Equal(t, "RPT", mk.Marker)
+	assert.Equal(t, "RPT", mk.Prefix)
 	assert.Equal(t, "fix", mk.Type)
 	assert.Equal(t, "rule-a", mk.Scope)
 
-	// Marshalling drops the omitempty ticket-only fields from markers, and
-	// resolved:false survives on tickets (pointer, not bare bool).
+	// Marshalling drops the omitempty db-only fields from file comments, and
+	// resolved:false survives on db entries (pointer, not bare bool).
 	b, err := json.Marshal(out)
 	require.NoError(t, err)
 	s := string(b)
 	assert.Contains(t, s, `"resolved":false`)
-	assert.Contains(t, s, `"marker":"RPT"`)
+	assert.Contains(t, s, `"prefix":"RPT"`)
 }
 
 func TestFileMatches(t *testing.T) {
@@ -308,11 +308,11 @@ func TestParseListArgs_Scope(t *testing.T) {
 	// --scope/--type/--marker are valid for every source: they filter ticket
 	// tags and code-marker fields alike.
 	for _, src := range []string{"state", "code", "all"} {
-		o, err := ParseListArgs([]string{"list", "--source", src, "--scope", "r", "--type", "fix", "--marker", "RPT"})
+		o, err := ParseListArgs([]string{"list", "--store", src, "--scope", "r", "--type", "fix", "--prefix", "RPT"})
 		require.NoError(t, err, src)
 		assert.Equal(t, "r", o.Scope, src)
 		assert.Equal(t, "fix", o.Type, src)
-		assert.Equal(t, []string{"RPT"}, o.Markers, src)
+		assert.Equal(t, []string{"RPT"}, o.Prefixes, src)
 	}
 }
 
@@ -323,7 +323,7 @@ func TestParseListArgs_ExitCode(t *testing.T) {
 
 	// Valid for every source.
 	for _, src := range []string{"all", "state", "code"} {
-		o, err := ParseListArgs([]string{"list", "--source", src, "--exit-code"})
+		o, err := ParseListArgs([]string{"list", "--store", src, "--exit-code"})
 		require.NoError(t, err, src)
 		assert.True(t, o.ExitCode, src)
 	}

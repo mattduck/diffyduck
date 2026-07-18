@@ -163,12 +163,12 @@ func TestParseArgs_NoteRejectsKind(t *testing.T) {
 }
 
 func TestParseArgs_Add(t *testing.T) {
-	o, err := ParseArgs([]string{"comment", "add", "f.go:12", "-m", "hello", "--ref", "HEAD"})
+	o, err := ParseArgs([]string{"comment", "add", "f.go:12", "-m", "hello", "--commit", "HEAD"})
 	require.NoError(t, err)
 	assert.Equal(t, "add", o.Sub)
 	assert.Equal(t, "f.go:12", o.AddTarget)
 	assert.Equal(t, "hello", o.AddMessage)
-	assert.Equal(t, "HEAD", o.AddRef)
+	assert.Equal(t, "HEAD", o.AddCommit)
 }
 
 func TestParseArgs_AddStandalone(t *testing.T) {
@@ -193,23 +193,23 @@ func TestParseArgs_AddBareAuthorErrors(t *testing.T) {
 }
 
 func TestParseArgs_AddTags(t *testing.T) {
-	o, err := ParseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--marker", "RPT", "--type", "refactor", "--scope", "use-tailwind"})
+	o, err := ParseArgs([]string{"comment", "add", "f.go:1", "-m", "x", "--prefix", "RPT", "--type", "refactor", "--scope", "use-tailwind"})
 	require.NoError(t, err)
-	assert.Equal(t, "RPT", o.Marker)
+	assert.Equal(t, "RPT", o.Prefix)
 	assert.Equal(t, "refactor", o.Type)
 	assert.Equal(t, "use-tailwind", o.Scope)
 }
 
 func TestParseArgs_TagsValidOnListAndAdd(t *testing.T) {
 	// Valid as filters on list.
-	o, err := ParseArgs([]string{"comment", "list", "--marker", "RPT", "--type", "fix", "--scope", "x"})
+	o, err := ParseArgs([]string{"comment", "list", "--prefix", "RPT", "--type", "fix", "--scope", "x"})
 	require.NoError(t, err)
-	assert.Equal(t, "RPT", o.Marker)
+	assert.Equal(t, "RPT", o.Prefix)
 	assert.Equal(t, "fix", o.Type)
 	assert.Equal(t, "x", o.Scope)
 
 	// Rejected on edit/resolve.
-	for _, flag := range []string{"--marker", "--type", "--scope"} {
+	for _, flag := range []string{"--prefix", "--type", "--scope"} {
 		_, err := ParseArgs([]string{"comment", "resolve", "abc", flag, "v"})
 		assert.Error(t, err, flag)
 	}

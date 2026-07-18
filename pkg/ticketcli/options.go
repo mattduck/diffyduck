@@ -36,13 +36,14 @@ type Options struct {
 	AuthorSet bool   // true if --author was explicitly passed
 	File      string // --file filter (list only)
 	Grep      string // --grep filter (list only)
-	Marker    string // --marker (add: set; list: filter) — marker keyword tag
-	Type      string // --type (add: set; list: filter) — conventional-commit type
+	Prefix    string // --prefix (add: set; list: filter) — prefix keyword tag
+	Type      string // --type (add: set; list: filter) — classification
 	Scope     string // --scope (add: set; list: filter) — scope/code identifier
+	Ticket    string // --ticket (add: set; list: filter) — external tracker ref
 
 	AddTarget  string // file:line positional arg (add)
 	AddMessage string // -m message (add)
-	AddRef     string // --ref commit/branch/tag (add)
+	AddCommit  string // --commit commit/branch/tag to attach to (add)
 
 	// Styles drives colored output. The zero value renders without color.
 	Styles CommentListStyles
