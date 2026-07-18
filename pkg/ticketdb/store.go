@@ -474,6 +474,8 @@ func (s *Store) buildRootTree(indexSHA, dataSHA string) (string, error) {
 // CAS failures from update-ref are identifiable by their stderr signature:
 //   - "cannot lock ref ...: reference already exists" (oldSHA="" but ref exists)
 //   - "cannot lock ref ...: is at X but expected Y" (oldSHA mismatch)
+//   - "cannot lock ref ...: Unable to create '...lock': File exists" (another
+//     process holds the ref lock right now — pure timing contention)
 //
 // Anything else — non-zero exit without one of those messages — is treated
 // as a real error so callers see it immediately instead of burning through
@@ -492,12 +494,30 @@ func (s *Store) casUpdateRef(newSHA, oldSHA string) error {
 	return nil
 }
 
-// isCASConflict matches update-ref's stderr for the two CAS-rejection cases.
-// Conservative on purpose: any unrecognised failure is treated as a real
-// error rather than silently retried.
+// isCASConflict matches update-ref's stderr for the retryable ref-update
+// failures. Conservative on purpose: any unrecognised failure is treated as a
+// real error rather than silently retried.
+//
+// Two kinds of failure are retryable:
+//
+//  1. The compare-and-swap was rejected because the ref moved out from under us
+//     ("reference already exists" when we expected no ref, or "…but expected…"
+//     when the old SHA no longer matches). Re-reading and rebuilding converges.
+//
+//  2. update-ref couldn't acquire the ref lock because another process held it
+//     at that instant ("Unable to create '…lock': File exists"). This is pure
+//     timing contention between processes — the exact "multiple agents in
+//     different terminals" case — and jittered retry lets the loser take the
+//     lock next. We match on "File exists" specifically rather than any "cannot
+//     lock ref" so a permission-denied or stale-lock failure stays fatal
+//     instead of silently burning the whole retry budget.
 func isCASConflict(stderr string) bool {
-	return strings.Contains(stderr, "reference already exists") ||
-		strings.Contains(stderr, "but expected")
+	if strings.Contains(stderr, "reference already exists") ||
+		strings.Contains(stderr, "but expected") {
+		return true
+	}
+	return strings.Contains(stderr, "cannot lock ref") &&
+		strings.Contains(stderr, "File exists")
 }
 
 // ReachableCommits returns the set of commit SHAs reachable from ref.

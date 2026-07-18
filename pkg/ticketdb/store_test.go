@@ -956,3 +956,99 @@ func TestCASRetryConvergesUnderHeavyContention(t *testing.T) {
 		t.Errorf("index has %d entries, want %d (N=%d, failed=%d)", len(idx.All()), want, N, failed)
 	}
 }
+
+// TestIsCASConflictRecognisesRetryableFailures pins the stderr signatures that
+// update() must treat as retryable rather than fatal. The lock-contention case
+// ("Unable to create '…lock': File exists") is the one that regressed: it's how
+// git reports two processes racing on the ref lock — the multi-terminal / multi
+// agent scenario — and mis-classifying it as fatal makes concurrent writes fail
+// spuriously instead of retrying. Messages are the real git output captured from
+// `git update-ref`.
+func TestIsCASConflictRecognisesRetryableFailures(t *testing.T) {
+	retryable := []string{
+		// oldSHA="" but the ref already exists (lost the first-write race).
+		"fatal: update_ref failed for ref 'refs/dfd/comments': cannot lock ref 'refs/dfd/comments': reference already exists",
+		// oldSHA no longer matches the ref's current value.
+		"fatal: cannot lock ref 'refs/dfd/comments': is at abc123 but expected def456",
+		// Another process holds the ref lock this instant — pure contention.
+		"fatal: update_ref failed for ref 'refs/dfd/comments': cannot lock ref 'refs/dfd/comments': Unable to create '/repo/.git/refs/dfd/comments.lock': File exists.",
+	}
+	for _, msg := range retryable {
+		if !isCASConflict(msg) {
+			t.Errorf("expected retryable, got fatal for:\n%s", msg)
+		}
+	}
+
+	fatal := []string{
+		// Real failures must stay fatal so they surface immediately.
+		"fatal: cannot lock ref 'refs/dfd/comments': Unable to create '/repo/.git/refs/dfd/comments.lock': Permission denied",
+		"error: unable to write object: No space left on device",
+		"fatal: not a git repository",
+		"",
+	}
+	for _, msg := range fatal {
+		if isCASConflict(msg) {
+			t.Errorf("expected fatal, got retryable for:\n%s", msg)
+		}
+	}
+}
+
+// TestUpdateRetriesThroughHeldRefLock proves the fix end-to-end: while another
+// process holds the ref lock, update() must keep retrying (not fail) and succeed
+// once the lock is released. We simulate the concurrent holder by creating the
+// ref's .lock file directly, then removing it shortly after the write starts.
+func TestUpdateRetriesThroughHeldRefLock(t *testing.T) {
+	dir := setupTestRepo(t)
+	store := NewStore(dir)
+
+	// Establish the ref so the .lock path is the loose-ref lock we expect.
+	now := time.Now()
+	seed := &Comment{ID: "seed", Text: "seed", File: "foo.go", Line: 1, Created: now, Updated: now, Context: LineContext{Line: "a"}}
+	if _, err := store.WriteComment(seed); err != nil {
+		t.Fatalf("seed WriteComment: %v", err)
+	}
+
+	lockPath := filepath.Join(dir, ".git", "refs", "dfd", "comments.lock")
+	if err := os.WriteFile(lockPath, nil, 0644); err != nil {
+		t.Fatalf("creating fake ref lock: %v", err)
+	}
+
+	// Release the lock shortly after the write begins. The write must be
+	// blocked (retrying) until then; with maxUpdateAttempts * jitter the retry
+	// budget comfortably outlasts this delay.
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		_ = os.Remove(lockPath)
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		c := &Comment{ID: "second", Text: "second", File: "foo.go", Line: 2, Created: now, Updated: now, Context: LineContext{Line: "b"}}
+		_, err := store.WriteComment(c)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("WriteComment should have retried through the held lock, got: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("WriteComment did not complete — retry loop may be stuck")
+	}
+
+	// Both comments must survive: the retry must not have clobbered the seed.
+	idx, err := store.ReadIndex()
+	if err != nil {
+		t.Fatalf("ReadIndex: %v", err)
+	}
+	got := make(map[string]bool)
+	for _, id := range idx.All() {
+		got[id] = true
+	}
+	for _, id := range []string{"seed", "second"} {
+		if !got[id] {
+			t.Errorf("comment %s missing after lock-contention retry", id)
+		}
+	}
+}
