@@ -422,7 +422,7 @@ list merges db entries and in-file comments (TODO/FIXME/RPT/…) into one view:
   --author [NAME]        filter by author (bare = no author); db only
   --file PATH            filter by file (trailing / = prefix match)
   --grep TEXT            filter by text (case-insensitive)
-  -v                     verbose block output (db only)
+  -v                     verbose block output with code context (any store)
   --raw                  raw serialized blob output (db only)
   -n[N]                  limit combined rows (bare = all)
   --random               shuffle rows; returns one (or -n N) at random

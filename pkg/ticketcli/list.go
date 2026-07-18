@@ -61,8 +61,8 @@ type ListOptions struct {
 	Since           string   // --since duration filter (db/all store only)
 	Author          string   // --author value (db/all store only)
 	AuthorSet       bool     // true if --author was explicitly passed
-	Verbose         bool     // -v: block output (state source only)
-	Raw             bool     // --raw: serialized blob output (state source only)
+	Verbose         bool     // -v: block output with code context (any store)
+	Raw             bool     // --raw: serialized blob output (db store only)
 	JSON            bool     // --json: machine-readable output (any source)
 	ID              string   // positional ID lookup (state source only)
 	N               int      // -n cap on combined rows (0 = uncapped)
@@ -336,11 +336,9 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 		if o.AuthorSet {
 			return o, fmt.Errorf("--author is only valid for db entries")
 		}
-		if o.Verbose {
-			return o, fmt.Errorf("-v/--verbose is only valid for db entries")
-		}
 		if o.Raw {
-			return o, fmt.Errorf("--raw is only valid for db entries")
+			// --raw dumps the git-ref serialized blob, which only db entries have.
+			return o, fmt.Errorf("--raw requires --store db")
 		}
 		if o.ID != "" {
 			return o, fmt.Errorf("ID lookup is only valid for db entries")
@@ -350,8 +348,8 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 		if o.ID != "" {
 			return o, fmt.Errorf("ID lookup requires --store db")
 		}
-		if o.Verbose || o.Raw {
-			return o, fmt.Errorf("-v/--raw require --store db")
+		if o.Raw {
+			return o, fmt.Errorf("--raw requires --store db")
 		}
 	}
 	return o, nil
@@ -473,11 +471,51 @@ func runList(o ListOptions) error {
 		return exitCodeResult(o.ExitCode, true)
 	}
 
+	if o.Verbose {
+		renderRowsVerbose(rows, o)
+		if truncated {
+			fmt.Printf("\n%s\n", o.Styles.Label.Render(fmt.Sprintf("%d/%d", len(rows), totalCount)))
+		}
+		return exitCodeResult(o.ExitCode, true)
+	}
+
 	renderRows(rows, o.Styles)
 	if truncated {
 		fmt.Println(o.Styles.Label.Render(fmt.Sprintf("%d/%d", len(rows), totalCount)))
 	}
 	return exitCodeResult(o.ExitCode, true)
+}
+
+// renderRowsVerbose prints each row as a full block: db entries via
+// formatCommentBlock, file comments via formatMarkerBlock (which reads their
+// surrounding source). It backs the merged (--store all/file) verbose path;
+// --store db verbose is handled by runStateList's richer renderer.
+func renderRowsVerbose(rows []listRow, o ListOptions) {
+	termWidth := 80
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		termWidth = w
+	}
+	// Resolve the repo root once, only if a file comment needs its context read.
+	var root string
+	for _, r := range rows {
+		if r.code {
+			if rt, err := git.New().TopLevel(); err == nil {
+				root = rt
+			}
+			break
+		}
+	}
+	now := time.Now()
+	for i, r := range rows {
+		if i > 0 {
+			fmt.Print("\n\n")
+		}
+		if r.comment != nil {
+			fmt.Print(formatCommentBlock(r.comment, o.Highlighter, termWidth, "", now, o.Styles))
+		} else {
+			fmt.Print(formatMarkerBlock(r, root, o.Highlighter, termWidth, o.Styles))
+		}
+	}
 }
 
 // selectRows applies ordering then the row limit. Default ordering is tickets
@@ -683,6 +721,10 @@ type listRow struct {
 	mtype    string // type — both stores
 	scope    string // scope/code identifier — both stores
 	ticket   string // external tracker ref — both stores
+
+	// comment is the source db entry (nil for file comments); retained so the
+	// merged verbose renderer can produce the full block without re-reading.
+	comment *ticketdb.Comment
 }
 
 func gatherTickets(o ListOptions) ([]listRow, error) {
@@ -820,6 +862,7 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 			branch:   c.Branch,
 			commit:   c.CommitSHA,
 			resolved: c.Resolved,
+			comment:  c,
 		})
 	}
 	return rows, nil

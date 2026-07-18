@@ -105,6 +105,24 @@ func TestParseListArgs_JSON(t *testing.T) {
 	}
 }
 
+func TestParseListArgs_VerboseAnyStore_RawDBOnly(t *testing.T) {
+	// -v (verbose block) is valid for every store.
+	for _, store := range []string{"all", "db", "file"} {
+		o, err := ParseListArgs([]string{"list", "--store", store, "-v"})
+		require.NoError(t, err, store)
+		assert.True(t, o.Verbose, store)
+	}
+	// --raw dumps the git-ref blob, so it stays db-only.
+	for _, store := range []string{"all", "file"} {
+		_, err := ParseListArgs([]string{"list", "--store", store, "--raw"})
+		require.Error(t, err, store)
+		assert.Contains(t, err.Error(), "--store db", store)
+	}
+	o, err := ParseListArgs([]string{"list", "--store", "db", "--raw"})
+	require.NoError(t, err)
+	assert.True(t, o.Raw)
+}
+
 func TestParseListArgs_Random(t *testing.T) {
 	o, err := ParseListArgs([]string{"list", "--random"})
 	require.NoError(t, err)

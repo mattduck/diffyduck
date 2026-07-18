@@ -653,24 +653,8 @@ func formatCommentBlock(c *ticketdb.Comment, ch ContextHighlighter, termWidth in
 
 	// Diff context (with optional syntax highlighting) — skip for standalone comments
 	if !c.IsStandalone() {
-		targetLineStyle := cs.Header.Bold(true)
-		contextLineStyle := cs.Label.Faint(true)
 		b.WriteString("\n")
-		contextLines := highlightedContext(c, ch)
-		targetIdx := len(c.Context.Above)
-		startLine := c.Line - len(c.Context.Above)
-		// Determine width for line number gutter
-		lastLine := startLine + len(contextLines) - 1
-		gutterW := len(strconv.Itoa(lastLine))
-		for i, hl := range contextLines {
-			lineNo := startLine + i
-			lineNumStr := fmt.Sprintf("%*d", gutterW, lineNo)
-			if i == targetIdx {
-				fmt.Fprintf(&b, "%s %s %s\n", targetLineStyle.Render(">"), targetLineStyle.Render(lineNumStr), hl)
-			} else {
-				fmt.Fprintf(&b, "  %s %s\n", contextLineStyle.Render(lineNumStr), hl)
-			}
-		}
+		writeContextBlock(&b, c, ch, cs)
 	}
 
 	// Comment text — word-wrap long lines to fit within terminal width.
@@ -701,10 +685,35 @@ func formatCommentBlock(c *ticketdb.Comment, ch ContextHighlighter, termWidth in
 		}
 	}
 
-	// Add grey left margin bar to every line
+	return barPrefix(b.String(), cs)
+}
+
+// writeContextBlock appends c's syntax-highlighted, line-numbered code context
+// to b. c must carry a file:line and populated Context; the target line is
+// marked with ">". Shared by the comment and file-comment (marker) block views.
+func writeContextBlock(b *strings.Builder, c *ticketdb.Comment, ch ContextHighlighter, cs CommentListStyles) {
+	targetLineStyle := cs.Header.Bold(true)
+	contextLineStyle := cs.Label.Faint(true)
+	contextLines := highlightedContext(c, ch)
+	targetIdx := len(c.Context.Above)
+	startLine := c.Line - len(c.Context.Above)
+	lastLine := startLine + len(contextLines) - 1
+	gutterW := len(strconv.Itoa(lastLine))
+	for i, hl := range contextLines {
+		lineNo := startLine + i
+		lineNumStr := fmt.Sprintf("%*d", gutterW, lineNo)
+		if i == targetIdx {
+			fmt.Fprintf(b, "%s %s %s\n", targetLineStyle.Render(">"), targetLineStyle.Render(lineNumStr), hl)
+		} else {
+			fmt.Fprintf(b, "  %s %s\n", contextLineStyle.Render(lineNumStr), hl)
+		}
+	}
+}
+
+// barPrefix prepends a grey "┃ " left margin bar to every line of s.
+func barPrefix(s string, cs CommentListStyles) string {
 	bar := cs.Label.Render("┃") + " "
-	raw := b.String()
-	lines := strings.Split(strings.TrimRight(raw, "\n"), "\n")
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	var out strings.Builder
 	for _, line := range lines {
 		out.WriteString(bar)
@@ -712,6 +721,58 @@ func formatCommentBlock(c *ticketdb.Comment, ch ContextHighlighter, termWidth in
 		out.WriteByte('\n')
 	}
 	return out.String()
+}
+
+// formatMarkerBlock renders a file comment (scanned marker) as a verbose block:
+// a header (prefix/type/scope + optional ticket), its file:line, the surrounding
+// source context, and the message. root resolves the row's relative path so the
+// context can be read from disk. Unlike a db comment it has no date/status/id/
+// author, so those fields are omitted rather than shown blank.
+func formatMarkerBlock(r listRow, root string, ch ContextHighlighter, termWidth int, cs CommentListStyles) string {
+	var b strings.Builder
+
+	header := cs.Header.Render(r.kind)
+	if r.ticket != "" {
+		header += "   " + cs.Branch.Render(r.ticket)
+	}
+	fmt.Fprintf(&b, "%s\n", header)
+	fmt.Fprintf(&b, "%s%s\n", cs.Label.Render("File:"), "   "+styleCommentPath(r.file, r.line, cs))
+
+	c := markerAsComment(r, root)
+	if c.Context.Line != "" || len(c.Context.Above) > 0 || len(c.Context.Below) > 0 {
+		b.WriteString("\n")
+		writeContextBlock(&b, c, ch, cs)
+	}
+
+	if r.text != "" {
+		wrapWidth := termWidth - 2
+		if wrapWidth > 70 {
+			wrapWidth = 70
+		}
+		if wrapWidth < 20 {
+			wrapWidth = 20
+		}
+		b.WriteString("\n")
+		for _, line := range strings.Split(ansi.Wordwrap(r.text, wrapWidth, ""), "\n") {
+			fmt.Fprintf(&b, "%s\n", line)
+		}
+	}
+
+	return barPrefix(b.String(), cs)
+}
+
+// markerAsComment synthesizes a Comment for a file-comment row so the shared
+// context renderer can show its surrounding source. root resolves the row's
+// relative path; on any read error the Context is left empty (the block then
+// shows just the header and message).
+func markerAsComment(r listRow, root string) *ticketdb.Comment {
+	c := &ticketdb.Comment{File: r.file, Line: r.line, Text: r.text}
+	data, err := os.ReadFile(filepath.Join(root, r.file))
+	if err != nil {
+		return c
+	}
+	c.Context = ticketdb.ExtractContextForLine(splitFileLines(string(data)), r.line)
+	return c
 }
 
 // shortSuffixes forwards to ticketdb.ShortSuffixes.
