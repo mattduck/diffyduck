@@ -673,7 +673,7 @@ func printUsage(cmd string) {
 		fmt.Print(usageStatus)
 	case "config":
 		fmt.Print(usageConfig)
-	case "comment", "note":
+	case "list", "add", "edit", "resolve", "unresolve":
 		ticketcli.PrintUsage(os.Stdout)
 	case "completion":
 		fmt.Print(usageCompletion)
@@ -695,8 +695,9 @@ Commands:
   clean      Delete persisted snapshots
   branch, b  Show branch dependency tree
   status, s  Show rich working tree status (default)
-  comment, c List and edit comments
-  note, n    Standalone notes (shorthand for comment --kind note)
+  list       List db entries and file comments (see 'dfd help list')
+  add        Add a db comment (file:line) or db issue (standalone)
+  edit       Edit a db entry; resolve/unresolve toggle its state
   config     Manage configuration
   completion Print shell completion script
 
@@ -885,9 +886,10 @@ func run() error {
 			return runCompletion(os.Args[2:])
 		case "__complete":
 			return runComplete(os.Args[2:])
-		case "comment", "c", "note", "n":
-			// Delegate comment/note to ticketcli before dfd argument parsing.
-			// dfd supplies a tree-sitter highlighter for code context; tdb passes nil.
+		case "list", "add", "edit", "resolve", "unresolve":
+			// Delegate the shared ticket surface to ticketcli before dfd argument
+			// parsing. dfd supplies a tree-sitter highlighter for code context;
+			// tdb passes nil.
 			cfg, _ := config.Load()
 			ad := newContextHighlighter()
 			defer ad.Close()

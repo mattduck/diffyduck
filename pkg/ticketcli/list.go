@@ -391,15 +391,6 @@ func setListStatus(o *ListOptions, v string) error {
 	}
 }
 
-// prefixList wraps a single prefix keyword as a slice (nil when empty), so the
-// singular write-side --prefix maps onto the plural list-path filter.
-func prefixList(s string) []string {
-	if s == "" {
-		return nil
-	}
-	return []string{s}
-}
-
 // prefixMatches reports whether kw equals any keyword in list (case-insensitive).
 // An empty list matches nothing (callers guard with len(list) > 0).
 func prefixMatches(list []string, kw string) bool {

@@ -1,6 +1,7 @@
-// Command tdb (ticketdb) is the CLI over the git-state ticket store: listing,
-// adding, and editing comments and notes. It is a sibling frontend to dfd, built
-// on the shared pkg/ticketcli and pkg/ticketdb packages.
+// Command tdb (ticketdb) is the CLI over the git-state store: listing db
+// entries and file comments (tdb list) and adding/editing db entries
+// (add/edit/resolve/unresolve). It is a sibling frontend to dfd, built on the
+// shared pkg/ticketcli and pkg/ticketdb packages.
 //
 // tdb is deliberately free of any tree-sitter dependency and builds with
 // CGO_ENABLED=0; the verbose comment view renders code context as plain text.

@@ -25,7 +25,14 @@ Progress:
   Usage text, completion, README, tests updated. `make check` green.
   Note: the `comment`/`note` write verbs still exist and `note` still sets the
   legacy internal `kind=note` (runStateList accepts both) — removed in Phase 3.
-- [ ] Phase 3 — write-verb collapse (`comment`/`note` → `tdb add` + ID ops).
+- [x] **Phase 3 — write-verb collapse**: removed the `comment`/`note` verbs;
+  flat top-level commands are now `tdb add [file:line]` (kind inferred from the
+  file:line's presence), `tdb edit|resolve|unresolve <ID>` (ID-addressed,
+  kind-agnostic), plus the `tdb list` reader. Dropped `Options.Note`/`Kind`, the
+  write-side `--kind`, and dead code (`runNote`/`runComment`/`runCommentList`/
+  `prefixList`). `validate()` rewritten: reader-only flags point back to
+  `tdb list`, add-only flags rejected on the ID ops. Updated `tdb`/`dfd`
+  dispatch, usage, and completion. `make check` green.
 - [ ] Phase 4 — scanner grammar (parse leading ticket token from file comments).
 
 Chosen defaults for the open decisions: `--ref`→`--commit` (yes), strict `add`

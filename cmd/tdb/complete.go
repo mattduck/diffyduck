@@ -9,18 +9,14 @@ import (
 
 // completionContext holds the parsed state of a partial tdb command line.
 type completionContext struct {
-	cmd             string   // top-level command: "list", "comment", "note", etc.
-	sub             string   // sub-subcommand for comment/note: "list", "add", "edit", …
+	cmd             string   // top-level command: "list", "add", "edit", …
 	flags           []string // flags already committed
-	args            []string // non-flag positional args after cmd/sub
+	args            []string // non-flag positional args after cmd
 	current         string   // word being completed (may be empty)
 	expectFlagValue string   // if last committed word was a flag that takes a value
 }
 
-var subcommands = []string{"list", "comment", "note", "help", "completion"}
-
-var commentSubcmds = []string{"list", "add", "edit", "resolve", "unresolve"}
-var noteSubcmds = []string{"list", "add", "edit"}
+var subcommands = []string{"list", "add", "edit", "resolve", "unresolve", "help", "completion"}
 
 type commentIDsFunc func() []string
 
@@ -35,13 +31,6 @@ func parseCompletionContext(words []string) completionContext {
 	i := 0
 	if i < len(committed) && isSubcommand(committed[i]) {
 		ctx.cmd = committed[i]
-		i++
-	}
-
-	// For comment/note, consume the sub-subcommand.
-	if (ctx.cmd == "comment" || ctx.cmd == "c" || ctx.cmd == "note" || ctx.cmd == "n") &&
-		i < len(committed) && isCommentSub(committed[i], ctx.cmd) {
-		ctx.sub = committed[i]
 		i++
 	}
 
@@ -69,22 +58,7 @@ func parseCompletionContext(words []string) completionContext {
 
 func isSubcommand(w string) bool {
 	switch w {
-	case "list", "comment", "c", "note", "n", "help", "completion":
-		return true
-	}
-	return false
-}
-
-func isCommentSub(w, cmd string) bool {
-	if cmd == "note" || cmd == "n" {
-		switch w {
-		case "list", "add", "edit":
-			return true
-		}
-		return false
-	}
-	switch w {
-	case "list", "add", "edit", "resolve", "unresolve":
+	case "list", "add", "edit", "resolve", "unresolve", "help", "completion":
 		return true
 	}
 	return false
@@ -120,38 +94,20 @@ func generateCompletions(ctx completionContext, commentIDs commentIDsFunc) []str
 		return filterPrefix([]string{"bash", "zsh", "fish"}, ctx.current)
 	case "help":
 		return filterPrefix(subcommands, ctx.current)
-	case "list":
-		return completeFlags(ctx)
-	case "comment", "c":
-		if ctx.sub == "" {
-			return filterPrefix(commentSubcmds, ctx.current)
-		}
-		if len(ctx.args) == 0 && commentSubTakesID(ctx.sub) && commentIDs != nil {
+	case "edit", "resolve", "unresolve":
+		// First positional is the entry ID.
+		if len(ctx.args) == 0 && commentIDs != nil {
 			if ids := commentIDs(); len(ids) > 0 {
 				return filterPrefix(ids, ctx.current)
 			}
 		}
 		return completeFlags(ctx)
-	case "note", "n":
-		if ctx.sub == "" {
-			return filterPrefix(noteSubcmds, ctx.current)
-		}
-		if len(ctx.args) == 0 && commentSubTakesID(ctx.sub) && commentIDs != nil {
-			if ids := commentIDs(); len(ids) > 0 {
-				return filterPrefix(ids, ctx.current)
-			}
-		}
+	case "list", "add":
+		// list has no positional; add's positional is a file:line (left to the
+		// shell's file completion). Either way, offer flags.
 		return completeFlags(ctx)
 	}
 	return nil
-}
-
-func commentSubTakesID(sub string) bool {
-	switch sub {
-	case "edit", "resolve", "unresolve":
-		return true
-	}
-	return false
 }
 
 func completeFlagValue(flag, prefix string) []string {
@@ -171,36 +127,22 @@ func completeFlagValue(flag, prefix string) []string {
 	return filterPrefix(values, prefix)
 }
 
-func flagsForCmd(cmd, sub string) []string {
+func flagsForCmd(cmd string) []string {
 	switch cmd {
 	case "list":
-		return []string{"--store", "--kind", "--prefix", "--exclude-prefix", "--type", "--scope", "--ticket", "--file", "--grep", "--status", "-n", "--random", "--stats", "--stats-group", "--json", "--exit-code", "-b", "--branch", "--all-branches", "--help"}
-	case "comment", "c":
-		switch sub {
-		case "add":
-			return []string{"-m", "--commit", "--author", "--prefix", "--type", "--scope", "--ticket", "--help"}
-		case "edit":
-			return []string{"-m", "--help"}
-		case "resolve", "unresolve":
-			return []string{"--help"}
-		default: // list or no sub
-			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--kind", "--raw", "--all-branches", "--resolved", "--commit", "--author", "--file", "--grep", "--prefix", "--type", "--scope", "--ticket", "--help"}
-		}
-	case "note", "n":
-		switch sub {
-		case "add":
-			return []string{"-m", "--commit", "--author", "--prefix", "--type", "--scope", "--ticket", "--help"}
-		case "edit":
-			return []string{"-m", "--help"}
-		default:
-			return []string{"-n", "-v", "--verbose", "-b", "--branch", "--since", "--status", "--raw", "--all-branches", "--resolved", "--commit", "--author", "--file", "--grep", "--prefix", "--type", "--scope", "--ticket", "--help"}
-		}
+		return []string{"--store", "--kind", "--prefix", "--exclude-prefix", "--type", "--scope", "--ticket", "--file", "--grep", "--status", "--since", "--author", "-v", "--raw", "-n", "--random", "--stats", "--stats-group", "--json", "--exit-code", "-b", "--branch", "--all-branches", "--help"}
+	case "add":
+		return []string{"-m", "--commit", "--author", "--prefix", "--type", "--scope", "--ticket", "--help"}
+	case "edit":
+		return []string{"--resolved", "--help"}
+	case "resolve", "unresolve":
+		return []string{"--help"}
 	}
 	return []string{"--help"}
 }
 
 func completeFlags(ctx completionContext) []string {
-	available := flagsForCmd(ctx.cmd, ctx.sub)
+	available := flagsForCmd(ctx.cmd)
 	used := make(map[string]bool, len(ctx.flags))
 	for _, f := range ctx.flags {
 		used[f] = true

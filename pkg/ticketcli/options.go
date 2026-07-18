@@ -9,22 +9,17 @@ import (
 	"github.com/mattduck/diffyduck/pkg/ticketdb"
 )
 
-// Options holds the parsed inputs for a single comment/note CLI invocation,
-// plus the rendering dependencies (styles and optional highlighter) supplied by
-// the host binary.
+// Options holds the parsed inputs for a single write-side CLI invocation
+// (add/edit/resolve/unresolve), plus the rendering dependencies (styles and
+// optional highlighter) supplied by the host binary.
 type Options struct {
-	// Note is true when the command was invoked via the "note" alias, which
-	// scopes listing/editing to standalone comments.
-	Note bool
-
-	Sub     string // list, edit, add, resolve, unresolve
-	ID      string // comment ID/suffix for edit or list lookup
-	Kind    string // list filter: comment, note, all
-	Status  string // list filter: unresolved (default), resolved, all
-	N       int    // -n count: positive=newest, negative=oldest, 0=uncapped
+	Sub     string // add, edit, resolve, unresolve
+	ID      string // entry ID/suffix for edit/resolve/unresolve
+	Status  string // (list-domain; rejected by validate on the write path)
+	N       int    // -n count (list-domain; rejected on the write path)
 	NSet    bool   // true if -n was explicitly passed
-	Verbose bool   // -v: block output
-	Raw     bool   // --raw: serialized blob output
+	Verbose bool   // -v: block output (list-domain)
+	Raw     bool   // --raw: serialized blob output (list-domain)
 
 	AllBranches bool   // --all-branches
 	Branch      string // --branch / -b filter ("." resolves to current branch)

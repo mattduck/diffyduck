@@ -12,12 +12,13 @@ import (
 // errHelp is returned by ParseArgs when -h/--help is requested.
 var errHelp = errors.New("help requested")
 
-// Run parses a comment/note invocation (argv[0] is the "comment"/"c"/"note"/"n"
-// token) and dispatches it. Styles and Highlighter from cfg are merged into the
-// parsed options. A nil Highlighter yields plain (cgo-free) context rendering.
+// Run parses a write-side invocation (argv[0] is "add"/"edit"/"resolve"/
+// "unresolve") and dispatches it. The unified `list` reader is handled
+// separately. Styles and Highlighter from cfg are merged into the parsed
+// options. A nil Highlighter yields plain (cgo-free) context rendering.
 func Run(argv []string, cfg Options) error {
-	// The unified `list` command merges tickets and code markers; it has its own
-	// parser and is not a comment/note sub-invocation.
+	// The unified `list` command merges db entries and file comments; it has its
+	// own parser and is not a write-side invocation.
 	if len(argv) > 0 && argv[0] == "list" {
 		err := RunList(argv, cfg)
 		if errors.Is(err, errHelp) {
@@ -37,14 +38,26 @@ func Run(argv []string, cfg Options) error {
 	}
 	opts.Styles = cfg.Styles
 	opts.Highlighter = cfg.Highlighter
-	if opts.Note {
-		return runNote(opts)
+	switch opts.Sub {
+	case "add":
+		// add infers kind from the presence of a file:line target.
+		return runCommentAdd(opts)
+	case "edit":
+		return runCommentEdit(opts.ID, opts.Resolved)
+	case "resolve":
+		resolved := true
+		return runCommentEdit(opts.ID, &resolved)
+	case "unresolve":
+		resolved := false
+		return runCommentEdit(opts.ID, &resolved)
+	default:
+		usage()
+		return nil
 	}
-	return runComment(opts)
 }
 
-// ParseArgs parses comment/note command-line arguments into Options. argv[0] must
-// be the command token ("comment", "c", "note", or "n").
+// ParseArgs parses write-side command-line arguments into Options. argv[0] must
+// be a write command: "add", "edit", "resolve", or "unresolve".
 func ParseArgs(argv []string) (Options, error) {
 	var opts Options
 	if len(argv) == 0 {
@@ -52,34 +65,20 @@ func ParseArgs(argv []string) (Options, error) {
 	}
 
 	switch argv[0] {
-	case "comment", "c":
-		opts.Note = false
-	case "note", "n":
-		opts.Note = true
+	case "add", "edit", "resolve", "unresolve":
+		opts.Sub = argv[0]
 	default:
-		return opts, fmt.Errorf("not a comment/note command: %q", argv[0])
+		return opts, fmt.Errorf("unknown command %q (want add, edit, resolve, unresolve, or list)", argv[0])
 	}
 	rest := argv[1:]
 
-	// Consume sub-subcommand (list/edit/add/resolve/unresolve), default "list".
-	if len(rest) > 0 {
-		switch rest[0] {
-		case "list", "edit", "add", "resolve", "unresolve":
-			opts.Sub = rest[0]
-			rest = rest[1:]
-		}
-	}
-	if opts.Sub == "" {
-		opts.Sub = "list"
-	}
-
-	// Consume a positional argument: file:line for add, comment ID otherwise.
+	// Consume a positional argument: file:line for add, entry ID otherwise.
 	if opts.Sub == "add" {
 		if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
 			opts.AddTarget = rest[0]
 			rest = rest[1:]
 		}
-	} else if subTakesID(opts.Sub, false) && len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
+	} else if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
 		opts.ID = rest[0]
 		rest = rest[1:]
 	}
@@ -103,20 +102,17 @@ func ParseArgs(argv []string) (Options, error) {
 	return opts, nil
 }
 
-// subTakesID reports whether a subcommand accepts a comment ID argument. When
-// require is true, only subcommands that require an ID match (excludes "list").
-func subTakesID(sub string, require bool) bool {
+// subTakesID reports whether a write subcommand is addressed by an entry ID.
+func subTakesID(sub string) bool {
 	switch sub {
 	case "edit", "resolve", "unresolve":
 		return true
-	case "list":
-		return !require
 	default:
 		return false
 	}
 }
 
-// parseFlag handles a single comment/note flag. Returns extra args consumed.
+// parseFlag handles a single write-side flag. Returns extra args consumed.
 func (o *Options) parseFlag(arg string, args []string, i int) (int, error) {
 	switch {
 	case arg == "--help" || arg == "-h":
@@ -290,19 +286,6 @@ func (o *Options) parseFlag(arg string, args []string, i int) (int, error) {
 	case arg == "--all-branches":
 		o.AllBranches = true
 
-	case arg == "--kind":
-		if i+1 >= len(args) {
-			return 0, fmt.Errorf("--kind requires a value (comment, note, all)")
-		}
-		if err := setKind(o, args[i+1]); err != nil {
-			return 0, err
-		}
-		return 1, nil
-	case strings.HasPrefix(arg, "--kind="):
-		if err := setKind(o, strings.TrimPrefix(arg, "--kind=")); err != nil {
-			return 0, err
-		}
-
 	case arg == "--status":
 		if i+1 >= len(args) {
 			return 0, fmt.Errorf("--status requires a value (unresolved, resolved, all)")
@@ -335,16 +318,6 @@ func (o *Options) parseFlag(arg string, args []string, i int) (int, error) {
 	return 0, nil
 }
 
-func setKind(o *Options, val string) error {
-	switch val {
-	case "comment", "note", "all":
-		o.Kind = val
-		return nil
-	default:
-		return fmt.Errorf("--kind must be comment, note, or all; got %q", val)
-	}
-}
-
 func setStatus(o *Options, val string) error {
 	switch val {
 	case "unresolved", "resolved", "all":
@@ -369,77 +342,72 @@ func setResolved(o *Options, val string) error {
 	return nil
 }
 
-// validate checks for invalid flag/subcommand combinations.
+// validate checks for invalid flag/subcommand combinations on the write path
+// (add/edit/resolve/unresolve). Reader-only flags are pointed back to `tdb list`.
 func (o *Options) validate() error {
-	name := "comment"
-	if o.Note {
-		name = "note"
-	}
-
-	if subTakesID(o.Sub, true) && o.ID == "" {
-		return fmt.Errorf("%s %s requires a comment ID", name, o.Sub)
+	if subTakesID(o.Sub) && o.ID == "" {
+		return fmt.Errorf("%s requires an entry ID", o.Sub)
 	}
 	if o.Resolved != nil && o.Sub != "edit" {
 		if o.Sub == "resolve" || o.Sub == "unresolve" {
-			return fmt.Errorf("--resolved cannot be combined with %s %s (it already sets resolved state)", name, o.Sub)
+			return fmt.Errorf("--resolved cannot be combined with %s (it already sets resolved state)", o.Sub)
 		}
-		return fmt.Errorf("--resolved is only valid for %s edit", name)
+		return fmt.Errorf("--resolved is only valid for edit")
 	}
-	if o.Kind != "" && o.Sub != "list" {
-		return fmt.Errorf("--kind is only valid for %s list", name)
+
+	// Reader-domain flags don't apply to the write commands.
+	for _, c := range []struct {
+		flag string
+		set  bool
+	}{
+		{"--file", o.File != ""},
+		{"--grep", o.Grep != ""},
+		{"--status", o.Status != ""},
+		{"--since", o.Since != ""},
+		{"-v/--verbose", o.Verbose},
+		{"--raw", o.Raw},
+		{"-n", o.NSet},
+		{"-b/--branch", o.Branch != ""},
+		{"--all-branches", o.AllBranches},
+	} {
+		if c.set {
+			return fmt.Errorf("%s is only valid for `tdb list`", c.flag)
+		}
 	}
-	if o.Kind != "" && o.Note {
-		return fmt.Errorf("--kind cannot be used with note (use comment list --kind instead)")
-	}
-	if o.AddMessage != "" && o.Sub != "add" {
-		return fmt.Errorf("-m is only valid for %s add", name)
-	}
-	if o.AddCommit != "" && o.Sub != "add" {
-		return fmt.Errorf("--commit is only valid for %s add", name)
-	}
-	if o.AuthorSet && o.Sub != "add" && o.Sub != "list" {
-		return fmt.Errorf("--author is only valid for %s add and %s list", name, name)
-	}
-	if o.File != "" && o.Sub != "list" {
-		return fmt.Errorf("--file is only valid for %s list", name)
-	}
-	if o.Grep != "" && o.Sub != "list" {
-		return fmt.Errorf("--grep is only valid for %s list", name)
-	}
-	if o.Prefix != "" && o.Sub != "add" && o.Sub != "list" {
-		return fmt.Errorf("--prefix is only valid for %s add and %s list", name, name)
-	}
-	if o.Type != "" && o.Sub != "add" && o.Sub != "list" {
-		return fmt.Errorf("--type is only valid for %s add and %s list", name, name)
-	}
-	if o.Scope != "" && o.Sub != "add" && o.Sub != "list" {
-		return fmt.Errorf("--scope is only valid for %s add and %s list", name, name)
-	}
-	if o.Ticket != "" && o.Sub != "add" && o.Sub != "list" {
-		return fmt.Errorf("--ticket is only valid for %s add and %s list", name, name)
+
+	// Content/tag flags apply only to add.
+	for _, c := range []struct {
+		flag string
+		set  bool
+	}{
+		{"-m", o.AddMessage != ""},
+		{"--commit", o.AddCommit != ""},
+		{"--author", o.AuthorSet},
+		{"--prefix", o.Prefix != ""},
+		{"--type", o.Type != ""},
+		{"--scope", o.Scope != ""},
+		{"--ticket", o.Ticket != ""},
+	} {
+		if c.set && o.Sub != "add" {
+			return fmt.Errorf("%s is only valid for add", c.flag)
+		}
 	}
 	if o.Sub == "add" && o.AuthorSet && o.Author == "" {
-		return fmt.Errorf("--author requires an author argument for %s add", name)
-	}
-	if o.Note && o.Sub == "add" && o.AddTarget != "" {
-		return fmt.Errorf("note add does not accept a file:line argument (use comment add instead)")
-	}
-	if o.AllBranches && o.Branch != "" {
-		return fmt.Errorf("--all-branches and --branch cannot be used together")
+		return fmt.Errorf("--author requires an author argument for add")
 	}
 	return nil
 }
 
-// usage prints comment/note CLI help to stdout.
+// usage prints the tdb CLI help to stdout.
 func usage() {
 	PrintUsage(os.Stdout)
 }
 
-// PrintUsage writes comment/note usage text to w.
+// PrintUsage writes the tdb usage text to w.
 func PrintUsage(w io.Writer) {
 	fmt.Fprint(w, `Usage: tdb list [options]
-       tdb comment <subcommand> [options]
-       tdb note <subcommand> [options]
+       tdb add [file:line] [options]
+       tdb edit|resolve|unresolve <ID> [options]
 
 list merges db entries and in-file comments (TODO/FIXME/RPT/…) into one view:
   --store VALUE          all (default), db, file
@@ -450,8 +418,12 @@ list merges db entries and in-file comments (TODO/FIXME/RPT/…) into one view:
   --scope CODE           filter by scope/code; any store
   --ticket REF           filter by external ticket ref (ABC-123, #123); any store
   --status VALUE         unresolved (default), resolved, all; db only
+  --since DURATION       e.g. 30m, 6h, 30d, 2w, 3M, 1y, all; db only
+  --author [NAME]        filter by author (bare = no author); db only
   --file PATH            filter by file (trailing / = prefix match)
   --grep TEXT            filter by text (case-insensitive)
+  -v                     verbose block output (db only)
+  --raw                  raw serialized blob output (db only)
   -n[N]                  limit combined rows (bare = all)
   --random               shuffle rows; returns one (or -n N) at random
   --stats                counts breakdown instead of the list (multi-dimension)
@@ -462,29 +434,11 @@ list merges db entries and in-file comments (TODO/FIXME/RPT/…) into one view:
   -b, --branch [NAME]    scope db entries to a branch (no value = all branches)
   --all-branches         db entries from all branches
 
-comment / note subcommands:
-  list [ID]              List db entries (or show one by ID suffix)
-  add [file:line]        Add a db comment (file:line) or db issue (standalone)
+write commands (db store only):
+  add [file:line]        Add a db comment (with file:line) or db issue (standalone)
   edit <ID>              Edit a db entry in $EDITOR
   resolve <ID>           Mark a db entry resolved
   unresolve <ID>         Mark a db entry unresolved
-
-List options:
-  -v                     Verbose block output
-  --raw                  Raw serialized blob output
-  -n[N]                  Limit count (newest N; negative = oldest; bare = all)
-  --status VALUE         unresolved (default), resolved, all
-  --kind VALUE           comment, issue, all (comment only)
-  --since DURATION       e.g. 30m, 6h, 30d, 2w, 3M, 1y, all
-  -b, --branch [NAME]    Filter by branch (no value = all branches)
-  --all-branches         Show db entries from all branches
-  --author [NAME]        Filter by author (bare = no author)
-  --file PATH            Filter by file (trailing / = prefix match)
-  --grep TEXT            Filter by text (case-insensitive)
-  --prefix KW            Filter by prefix keyword (RPT, TODO, …)
-  --type VALUE           Filter by type (feat, bug, epic, …)
-  --scope CODE           Filter by scope/code
-  --ticket REF           Filter by external ticket ref (ABC-123, #123)
 
 Add options:
   -m MESSAGE             Entry text (else read from stdin)

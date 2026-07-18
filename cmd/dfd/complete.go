@@ -25,7 +25,7 @@ type completionContext struct {
 // subcommands is the list of completable subcommand names.
 // Aliases (d, l, b, s) are excluded — users who know them don't need completion.
 var subcommands = []string{
-	"diff", "show", "log", "clean", "branch", "status", "config", "comment", "note", "help", "completion",
+	"diff", "show", "log", "clean", "branch", "status", "config", "list", "add", "edit", "resolve", "unresolve", "help", "completion",
 }
 
 // parseCompletionContext parses a word list from __complete into a context.
@@ -81,7 +81,7 @@ func parseCompletionContext(words []string) completionContext {
 func isSubcommand(w string) bool {
 	switch w {
 	case "diff", "d", "show", "log", "l", "clean", "branch", "b",
-		"config", "status", "s", "comment", "c", "note", "n", "help", "completion":
+		"config", "status", "s", "list", "add", "edit", "resolve", "unresolve", "help", "completion":
 		return true
 	}
 	return false
@@ -94,7 +94,7 @@ func isFlag(w string) bool {
 // flagTakesValue returns true if the flag consumes a separate next word as its value.
 func flagTakesValue(flag string) bool {
 	switch flag {
-	case "--exclude", "-e", "-n", "--since", "--status", "--kind", "-b", "--branch", "--cpuprofile", "-m", "--ref", "--author", "--file", "--grep", "--marker", "--type", "--scope":
+	case "--exclude", "-e", "-n", "--since", "--status", "--kind", "-b", "--branch", "--cpuprofile", "-m", "--commit", "--author", "--file", "--grep", "--store", "--prefix", "--exclude-prefix", "--type", "--scope", "--ticket", "--stats-group":
 		return true
 	}
 	return false
@@ -146,34 +146,18 @@ func generateCompletions(ctx completionContext, g git.Git, commentIDs commentIDs
 		return filterPrefix([]string{"bash", "zsh", "fish"}, ctx.current)
 	case "diff", "show", "log":
 		return completeRefs(ctx, g)
-	case "comment", "note":
-		// Complete sub-subcommand (list, edit, add) if not yet given.
-		if len(ctx.refs) == 0 {
-			return filterPrefix([]string{"list", "edit", "add", "resolve", "unresolve"}, ctx.current)
-		}
-		// Complete comment ID after "edit", "resolve", or "unresolve" sub-subcommand.
-		if len(ctx.refs) == 1 && commentSubTakesID(ctx.refs[0], true) && commentIDs != nil {
+	case "edit", "resolve", "unresolve":
+		// First positional is the entry ID.
+		if len(ctx.refs) == 0 && commentIDs != nil {
 			if ids := commentIDs(); len(ids) > 0 {
 				return filterPrefix(ids, ctx.current)
 			}
 		}
 		return completeFlags(ctx)
 	default:
-		// clean, config, branch, status: no positional args, offer flags.
+		// list, add, clean, config, branch, status: offer flags (add's file:line
+		// positional is left to shell file completion).
 		return completeFlags(ctx)
-	}
-}
-
-// commentSubTakesID reports whether a comment/note sub-subcommand accepts a positional ID.
-// When require is true, only subcommands that require an ID match (excludes "list").
-func commentSubTakesID(sub string, require bool) bool {
-	switch sub {
-	case "edit", "resolve", "unresolve":
-		return true
-	case "list":
-		return !require
-	default:
-		return false
 	}
 }
 
@@ -186,8 +170,12 @@ func completeFlagValue(flag, prefix string) []string {
 		values = []string{"no", "normal", "all"}
 	case "--status":
 		values = []string{"unresolved", "resolved", "all"}
+	case "--store":
+		values = []string{"all", "db", "file"}
 	case "--kind":
-		values = []string{"comment", "note", "all"}
+		values = []string{"comment", "issue", "all"}
+	case "--stats-group":
+		values = []string{"store", "kind", "prefix", "type", "scope", "ticket", "author", "file", "branch"}
 	case "--resolved":
 		values = []string{"true", "false"}
 	default:
@@ -216,10 +204,14 @@ func flagsForCmd(cmd string) []string {
 		return append(global, "--verbose", "--since")
 	case "status":
 		return append(global, "--symbols", "--untracked-files", "--branches")
-	case "comment":
-		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--kind", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--marker", "--type", "--scope")
-	case "note":
-		return append(global, "-n", "-v", "-b", "-m", "--since", "--status", "--verbose", "--raw", "--branch", "--all-branches", "--resolved", "--ref", "--author", "--file", "--grep", "--marker", "--type", "--scope")
+	case "list":
+		return append(global, "--store", "--kind", "--prefix", "--exclude-prefix", "--type", "--scope", "--ticket", "--file", "--grep", "--status", "--since", "--author", "-v", "--verbose", "--raw", "-n", "--random", "--stats", "--stats-group", "--json", "--exit-code", "-b", "--branch", "--all-branches")
+	case "add":
+		return append(global, "-m", "--commit", "--author", "--prefix", "--type", "--scope", "--ticket")
+	case "edit":
+		return append(global, "--resolved")
+	case "resolve", "unresolve":
+		return global
 	case "config":
 		return append(global, "--init", "--force", "--print", "--path", "--edit")
 	default:

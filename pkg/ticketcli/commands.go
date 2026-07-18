@@ -20,75 +20,6 @@ import (
 	"golang.org/x/term"
 )
 
-// runNote dispatches note sub-commands. Notes are standalone comments
-// (no file attachment). This is shorthand for comment commands with --kind note.
-func runNote(opts Options) error {
-	switch opts.Sub {
-	case "list":
-		opts.Kind = "note"
-		return runCommentList(opts)
-	case "edit":
-		return runNoteEdit(opts.ID, opts.Resolved)
-	case "resolve":
-		resolved := true
-		return runNoteEdit(opts.ID, &resolved)
-	case "unresolve":
-		resolved := false
-		return runNoteEdit(opts.ID, &resolved)
-	case "add":
-		return runCommentAddStandalone(opts)
-	default:
-		usage()
-		return nil
-	}
-}
-
-// runNoteEdit validates that the comment is standalone, then delegates to runCommentEdit.
-func runNoteEdit(id string, resolved *bool) error {
-	store := ticketdb.NewStore("")
-
-	fullID, err := resolveCommentID(store, id)
-	if err != nil {
-		return err
-	}
-
-	c, err := store.ReadComment(fullID)
-	if err != nil {
-		return fmt.Errorf("comment %s not found: %w", fullID, err)
-	}
-
-	if !c.IsStandalone() {
-		return fmt.Errorf("comment %s is attached to %s:%d (use 'comment edit' instead)", id, c.File, c.Line)
-	}
-
-	return runCommentEdit(fullID, resolved)
-}
-
-// runComment dispatches comment sub-commands.
-func runComment(opts Options) error {
-	switch opts.Sub {
-	case "list":
-		if opts.Kind == "" {
-			opts.Kind = "comment"
-		}
-		return runCommentList(opts)
-	case "edit":
-		return runCommentEdit(opts.ID, opts.Resolved)
-	case "resolve":
-		resolved := true
-		return runCommentEdit(opts.ID, &resolved)
-	case "unresolve":
-		resolved := false
-		return runCommentEdit(opts.ID, &resolved)
-	case "add":
-		return runCommentAdd(opts)
-	default:
-		usage()
-		return nil
-	}
-}
-
-// runCommentList lists comments filtered by status and limited by -n.
 // runStateList renders db entries using ListOptions. It is the shared
 // implementation for `tdb list --store db` and `tdb comment list`.
 func runStateList(o ListOptions) error {
@@ -141,7 +72,7 @@ func runStateList(o ListOptions) error {
 				}
 			}
 			all = filtered
-		case "issue", "note": // "note" is the legacy write-verb value (removed in phase 3)
+		case "issue":
 			var filtered []*ticketdb.Comment
 			for _, c := range all {
 				if c.IsStandalone() {
@@ -354,32 +285,6 @@ func runStateList(o ListOptions) error {
 		fmt.Printf("\n%s\n", cs.Label.Render(fmt.Sprintf("%d/%d", len(all), totalCount)))
 	}
 	return exitCodeResult(o.ExitCode, true)
-}
-
-func runCommentList(opts Options) error {
-	return runStateList(ListOptions{
-		Store:       StoreDB,
-		Kind:        opts.Kind,
-		Status:      opts.Status,
-		Since:       opts.Since,
-		Author:      opts.Author,
-		AuthorSet:   opts.AuthorSet,
-		File:        opts.File,
-		Grep:        opts.Grep,
-		Prefixes:    prefixList(opts.Prefix),
-		Type:        opts.Type,
-		Scope:       opts.Scope,
-		Ticket:      opts.Ticket,
-		N:           opts.N,
-		NSet:        opts.NSet,
-		AllBranches: opts.AllBranches,
-		Branch:      opts.Branch,
-		Verbose:     opts.Verbose,
-		Raw:         opts.Raw,
-		ID:          opts.ID,
-		Styles:      opts.Styles,
-		Highlighter: opts.Highlighter,
-	})
 }
 
 // onelineCols holds the computed column widths for oneline output,
