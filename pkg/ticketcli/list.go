@@ -637,7 +637,13 @@ func renderStats(rows []listRow, o ListOptions) error {
 		for _, sc := range r.counts {
 			val := sc.Value
 			if val == "" {
-				val = "(none)"
+				// The kind dimension (comment/note) only applies to tickets;
+				// an empty value there is a code marker, not an unset field.
+				if r.field == "kind" {
+					val = "(n/a — markers)"
+				} else {
+					val = "(none)"
+				}
 			}
 			fmt.Printf("  %s  %s\n", cs.Label.Render(fmt.Sprintf("%*d", countW, sc.Count)), val)
 		}
@@ -765,10 +771,10 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 		if o.Type != "" && !strings.EqualFold(o.Type, c.Type) {
 			continue
 		}
-		if len(o.Markers) > 0 && !markerMatches(o.Markers, c.Marker) {
+		if len(o.Markers) > 0 && !markerMatches(o.Markers, c.Prefix) {
 			continue
 		}
-		if len(o.ExcludeMarkers) > 0 && markerMatches(o.ExcludeMarkers, c.Marker) {
+		if len(o.ExcludeMarkers) > 0 && markerMatches(o.ExcludeMarkers, c.Prefix) {
 			continue
 		}
 
@@ -798,7 +804,7 @@ func gatherTickets(o ListOptions) ([]listRow, error) {
 			body:     c.Text,
 			author:   c.Author,
 			status:   c.EffectiveStatus(),
-			marker:   c.Marker,
+			marker:   c.Prefix,
 			mtype:    c.Type,
 			scope:    c.Scope,
 			branch:   c.Branch,

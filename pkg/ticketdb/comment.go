@@ -68,19 +68,23 @@ type Comment struct {
 	// Title is an optional short title/summary for a ticket.
 	Title string
 
-	// Marker is an optional marker keyword grouping this ticket with a family of
-	// in-code markers (e.g. "RPT", "TODO"). The ticket analogue of a code
-	// marker's leading keyword.
-	Marker string
+	// Prefix is an optional keyword grouping this entry with a family of code
+	// comments (e.g. "RPT", "TODO"). It is the leading keyword a file comment
+	// carries; a db entry stores the same field so it can translate to/from a
+	// file comment. (Serialized as PREFIX:; legacy blobs used MARKER:.)
+	Prefix string
 
-	// Type is an optional conventional-commit type ("refactor", "fix", "perf",
-	// …), the ticket analogue of a code marker's type.
+	// Type is an optional classification ("feat", "fix", "refactor", "epic",
+	// …), the same field a file comment carries.
 	Type string
 
-	// Scope is an optional scope/code identifier, the ticket analogue of a code
-	// marker's scope (the "foo" in "RPT refactor(foo):"). rpt reads this as its
-	// rule code.
+	// Scope is an optional scope/code identifier (the "foo" in
+	// "RPT refactor(foo):"). rpt reads this as its rule code.
 	Scope string
+
+	// Ticket is an optional reference to an item in an external tracker, e.g.
+	// "ABC-123" (JIRA) or "#123" (GitHub). Shared across all entry kinds.
+	Ticket string
 }
 
 // Lifecycle status values for a ticket. These extend the binary Resolved flag;
@@ -190,9 +194,11 @@ func isKnownMetadataField(s string) bool {
 		strings.HasPrefix(s, "AUTHOR:") ||
 		strings.HasPrefix(s, "STATUS:") ||
 		strings.HasPrefix(s, "TITLE:") ||
-		strings.HasPrefix(s, "MARKER:") ||
+		strings.HasPrefix(s, "PREFIX:") ||
+		strings.HasPrefix(s, "MARKER:") || // legacy name for PREFIX
 		strings.HasPrefix(s, "TYPE:") ||
 		strings.HasPrefix(s, "SCOPE:") ||
+		strings.HasPrefix(s, "TICKET:") ||
 		strings.HasPrefix(s, "RESOLVED:")
 }
 
@@ -283,16 +289,19 @@ func (c *Comment) Serialize() string {
 	if c.Title != "" {
 		b.WriteString(fmt.Sprintf("# TITLE: %s\n", c.Title))
 	}
-	// Marker/Type/Scope tag the ticket with the same fields a code marker
-	// carries (keyword, conventional-commit type, scope). Written only when set.
-	if c.Marker != "" {
-		b.WriteString(fmt.Sprintf("# MARKER: %s\n", c.Marker))
+	// Prefix/Type/Scope/Ticket tag the entry with the same fields a file
+	// comment carries. Written only when set.
+	if c.Prefix != "" {
+		b.WriteString(fmt.Sprintf("# PREFIX: %s\n", c.Prefix))
 	}
 	if c.Type != "" {
 		b.WriteString(fmt.Sprintf("# TYPE: %s\n", c.Type))
 	}
 	if c.Scope != "" {
 		b.WriteString(fmt.Sprintf("# SCOPE: %s\n", c.Scope))
+	}
+	if c.Ticket != "" {
+		b.WriteString(fmt.Sprintf("# TICKET: %s\n", c.Ticket))
 	}
 	b.WriteString(fmt.Sprintf("# RESOLVED: %t\n", c.Resolved))
 	b.WriteString(fmt.Sprintf("# FILE: %s\n", c.File))
@@ -419,8 +428,17 @@ func ParseComment(id string, data string) (*Comment, error) {
 			c.Title = strings.TrimPrefix(line, "# TITLE: ")
 			continue
 		}
+		if strings.HasPrefix(line, "# PREFIX: ") {
+			c.Prefix = strings.TrimPrefix(line, "# PREFIX: ")
+			continue
+		}
 		if strings.HasPrefix(line, "# MARKER: ") {
-			c.Marker = strings.TrimPrefix(line, "# MARKER: ")
+			// Legacy name for PREFIX; still read so old blobs parse.
+			c.Prefix = strings.TrimPrefix(line, "# MARKER: ")
+			continue
+		}
+		if strings.HasPrefix(line, "# TICKET: ") {
+			c.Ticket = strings.TrimPrefix(line, "# TICKET: ")
 			continue
 		}
 		if strings.HasPrefix(line, "# TYPE: ") {

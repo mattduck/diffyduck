@@ -705,9 +705,10 @@ func TestCommentStatusTitleTagsRoundTrip(t *testing.T) {
 		Text:    "needs work",
 		Status:  StatusInProgress,
 		Title:   "Refactor the parser",
-		Marker:  "RPT",
+		Prefix:  "RPT",
 		Type:    "refactor",
 		Scope:   "no-bare-dict",
+		Ticket:  "ABC-123",
 		Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		Updated: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
@@ -715,9 +716,10 @@ func TestCommentStatusTitleTagsRoundTrip(t *testing.T) {
 	serialized := c.Serialize()
 	assert.Contains(t, serialized, "# STATUS: in-progress")
 	assert.Contains(t, serialized, "# TITLE: Refactor the parser")
-	assert.Contains(t, serialized, "# MARKER: RPT")
+	assert.Contains(t, serialized, "# PREFIX: RPT")
 	assert.Contains(t, serialized, "# TYPE: refactor")
 	assert.Contains(t, serialized, "# SCOPE: no-bare-dict")
+	assert.Contains(t, serialized, "# TICKET: ABC-123")
 
 	parsed, err := ParseComment("800", serialized)
 	if err != nil {
@@ -725,19 +727,41 @@ func TestCommentStatusTitleTagsRoundTrip(t *testing.T) {
 	}
 	assert.Equal(t, StatusInProgress, parsed.Status)
 	assert.Equal(t, "Refactor the parser", parsed.Title)
-	assert.Equal(t, "RPT", parsed.Marker)
+	assert.Equal(t, "RPT", parsed.Prefix)
 	assert.Equal(t, "refactor", parsed.Type)
 	assert.Equal(t, "no-bare-dict", parsed.Scope)
+	assert.Equal(t, "ABC-123", parsed.Ticket)
 	assert.Equal(t, "needs work", parsed.Text)
 }
 
+func TestParseCommentLegacyMarkerKey(t *testing.T) {
+	// Blobs written before the PREFIX rename used MARKER:; still parse into Prefix.
+	data := `# ID: 805
+# CREATED: 2026-01-01T00:00:00Z
+# UPDATED: 2026-01-01T00:00:00Z
+# MARKER: TODO
+# COMMENT:
+#| legacy blob
+# FILE:
+# LINE: 0
+# ANCHOR:
+# RESOLVED: false
+`
+	c, err := ParseComment("805", data)
+	if err != nil {
+		t.Fatalf("ParseComment failed: %v", err)
+	}
+	assert.Equal(t, "TODO", c.Prefix)
+}
+
 func TestSerializeOmitsEmptyTags(t *testing.T) {
-	// Marker/Type/Scope are written only when set (unlike the old always-on RULE).
+	// Prefix/Type/Scope/Ticket are written only when set (unlike the old always-on RULE).
 	c := &Comment{ID: "801", Text: "x", Created: time.Now(), Updated: time.Now()}
 	s := c.Serialize()
-	assert.NotContains(t, s, "# MARKER:")
+	assert.NotContains(t, s, "# PREFIX:")
 	assert.NotContains(t, s, "# TYPE:")
 	assert.NotContains(t, s, "# SCOPE:")
+	assert.NotContains(t, s, "# TICKET:")
 }
 
 func TestCommentEffectiveStatus(t *testing.T) {
@@ -770,7 +794,7 @@ func TestParseCommentNewFieldsBackwardCompat(t *testing.T) {
 	}
 	assert.Empty(t, c.Status)
 	assert.Empty(t, c.Title)
-	assert.Empty(t, c.Marker)
+	assert.Empty(t, c.Prefix)
 	assert.Empty(t, c.Type)
 	assert.Empty(t, c.Scope)
 	assert.Equal(t, StatusOpen, c.EffectiveStatus())

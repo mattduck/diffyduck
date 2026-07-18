@@ -247,7 +247,7 @@ func runStateList(o ListOptions) error {
 		if len(o.Markers) > 0 {
 			var filtered []*ticketdb.Comment
 			for _, c := range all {
-				if markerMatches(o.Markers, c.Marker) {
+				if markerMatches(o.Markers, c.Prefix) {
 					filtered = append(filtered, c)
 				}
 			}
@@ -1018,7 +1018,7 @@ func runCommentAddStandalone(opts Options) error {
 		Branch:     branch,
 		BranchHead: branchHead,
 		Author:     opts.Author,
-		Marker:     opts.Marker,
+		Prefix:     opts.Marker,
 		Type:       opts.Type,
 		Scope:      opts.Scope,
 	}
@@ -1126,7 +1126,7 @@ func runCommentAddFile(opts Options) error {
 		Branch:     branch,
 		BranchHead: branchHead,
 		Author:     opts.Author,
-		Marker:     opts.Marker,
+		Prefix:     opts.Marker,
 		Type:       opts.Type,
 		Scope:      opts.Scope,
 	}
