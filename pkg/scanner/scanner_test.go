@@ -144,6 +144,52 @@ y = {"a": 1}
 	}
 }
 
+func TestScanFileMarkers_Ticket(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "foo.py", `
+# RPT refactor(scope): ABC-123 extract this helper
+# TODO #45 handle the empty case
+# FIXME no ticket on this line
+# TODO use-tailwind not a ticket, it is lowercase
+`)
+	ms, err := scanner.ScanFileMarkers(path, scanner.DefaultMarkers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 4 {
+		t.Fatalf("expected 4 matches, got %d: %v", len(ms), ms)
+	}
+	// Structured form: JIRA ticket stripped from the message.
+	if ms[0].Ticket != "ABC-123" || ms[0].Message != "extract this helper" {
+		t.Errorf("match 0: got ticket=%q msg=%q", ms[0].Ticket, ms[0].Message)
+	}
+	// Loose form: GitHub ref stripped from the message.
+	if ms[1].Ticket != "#45" || ms[1].Message != "handle the empty case" {
+		t.Errorf("match 1: got ticket=%q msg=%q", ms[1].Ticket, ms[1].Message)
+	}
+	// No ticket: message unchanged.
+	if ms[2].Ticket != "" || ms[2].Message != "no ticket on this line" {
+		t.Errorf("match 2: got ticket=%q msg=%q", ms[2].Ticket, ms[2].Message)
+	}
+	// A lowercase hyphenated word is not a ticket.
+	if ms[3].Ticket != "" || ms[3].Message != "use-tailwind not a ticket, it is lowercase" {
+		t.Errorf("match 3: got ticket=%q msg=%q", ms[3].Ticket, ms[3].Message)
+	}
+}
+
+func TestScanFile_TicketFoldedIntoViolationMessage(t *testing.T) {
+	// rpt has no ticket field, so a parsed ticket stays in Violation.Message.
+	dir := t.TempDir()
+	path := writeFile(t, dir, "foo.py", `# RPT fix(rule-a): ABC-9 do the thing`)
+	vs, err := scanner.ScanFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vs) != 1 || vs[0].Message != "ABC-9 do the thing" {
+		t.Errorf("expected message with ticket preserved, got %v", vs)
+	}
+}
+
 func TestScanFile_GoSlashSlash(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "foo.go", `package foo

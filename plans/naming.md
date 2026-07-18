@@ -33,7 +33,15 @@ Progress:
   `prefixList`). `validate()` rewritten: reader-only flags point back to
   `tdb list`, add-only flags rejected on the ID ops. Updated `tdb`/`dfd`
   dispatch, usage, and completion. `make check` green.
-- [ ] Phase 4 — scanner grammar (parse leading ticket token from file comments).
+- [x] **Phase 4 — scanner grammar**: the scanner now parses a leading ticket ref
+  (JIRA `ABC-123` or GitHub `#123`, `ticketRE`) from a marker's message into
+  `Match.Ticket`, stripping it from `Match.Message`. rpt is unaffected —
+  `toViolations` folds the ticket back into `Violation.Message`. `tdb list`
+  populates the ticket column/JSON for file comments and `--ticket` now matches
+  them (the Phase 2 stopgap that excluded all file comments is removed).
+  `make check` green; verified end-to-end in a scratch repo.
+
+This completes the reshape in plans/naming.md.
 
 Chosen defaults for the open decisions: `--ref`→`--commit` (yes), strict `add`
 inference with no `--standalone` override, friendly error on

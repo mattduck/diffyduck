@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -54,7 +55,8 @@ type Match struct {
 	Keyword string // the marker keyword, e.g. "TODO" or "RPT"
 	Type    string // optional conventional-commit type ("feat", "refactor", …)
 	Scope   string // optional scope/code identifier ("auth", "use-pathlib", …)
-	Message string
+	Ticket  string // optional external tracker ref parsed from the message ("ABC-123", "#123")
+	Message string // message with any leading ticket ref removed
 }
 
 func (m Match) String() string {
@@ -69,10 +71,39 @@ func (m Match) String() string {
 	default:
 		kw = m.Keyword
 	}
-	if m.Message == "" {
+	msg := joinTicket(m.Ticket, m.Message)
+	if msg == "" {
 		return fmt.Sprintf("%s:%d: %s", m.File, m.Line, kw)
 	}
-	return fmt.Sprintf("%s:%d: %s %s", m.File, m.Line, kw, m.Message)
+	return fmt.Sprintf("%s:%d: %s %s", m.File, m.Line, kw, msg)
+}
+
+// ticketRE matches a leading external tracker reference in a marker message:
+// a JIRA-style key ("ABC-123", uppercase project key + number) or a GitHub-style
+// issue reference ("#123"), terminated by whitespace or end of string.
+var ticketRE = regexp.MustCompile(`^(#\d+|[A-Z][A-Z0-9]*-\d+)(\s|$)`)
+
+// splitTicket extracts a leading ticket reference from a marker message,
+// returning the ticket ("" if none) and the remaining message. See ticketRE.
+func splitTicket(msg string) (ticket, rest string) {
+	loc := ticketRE.FindStringSubmatchIndex(msg)
+	if loc == nil {
+		return "", msg
+	}
+	return msg[loc[2]:loc[3]], strings.TrimSpace(msg[loc[3]:])
+}
+
+// joinTicket recombines a ticket ref and message into a single string, the
+// inverse of splitTicket for display/back-compat (e.g. rpt's Violation.Message).
+func joinTicket(ticket, msg string) string {
+	switch {
+	case ticket == "":
+		return msg
+	case msg == "":
+		return ticket
+	default:
+		return ticket + " " + msg
+	}
 }
 
 // Violation is an RPT annotation found in a source file. It is the RPT-specific
@@ -130,7 +161,9 @@ func toViolations(ms []Match) []Violation {
 	}
 	out := make([]Violation, len(ms))
 	for i, m := range ms {
-		out[i] = Violation{File: m.File, Line: m.Line, Type: m.Type, Code: m.Scope, Message: m.Message}
+		// rpt does not model a separate ticket field, so fold any parsed ticket
+		// back into the message to keep its output unchanged.
+		out[i] = Violation{File: m.File, Line: m.Line, Type: m.Type, Code: m.Scope, Message: joinTicket(m.Ticket, m.Message)}
 	}
 	return out
 }
@@ -158,6 +191,7 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 		keyword  string
 		typeName string
 		scope    string
+		ticket   string
 		msg      string
 	}
 	type suppress struct {
@@ -200,7 +234,8 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 			// common prefix), so stop at the first hit.
 			for _, m := range markers {
 				if typeName, scope, msg, ok := parseMarker(m, seg.body); ok {
-					matches = append(matches, rawMatch{lineNum, m.Keyword, typeName, scope, msg})
+					ticket, rest := splitTicket(msg)
+					matches = append(matches, rawMatch{lineNum, m.Keyword, typeName, scope, ticket, rest})
 					break
 				}
 			}
@@ -250,7 +285,7 @@ func scanFileMarkers(path string, lang language, markers []Marker) ([]Match, err
 		if isSuppressed(suppressed[supKey{m.line, m.keyword}], m.scope) {
 			continue
 		}
-		out = append(out, Match{File: path, Line: m.line, Keyword: m.keyword, Type: m.typeName, Scope: m.scope, Message: m.msg})
+		out = append(out, Match{File: path, Line: m.line, Keyword: m.keyword, Type: m.typeName, Scope: m.scope, Ticket: m.ticket, Message: m.msg})
 	}
 	return out, nil
 }

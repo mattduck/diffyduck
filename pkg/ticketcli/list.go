@@ -877,7 +877,7 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 		if !fileMatches(o.File, rel) {
 			continue
 		}
-		if !grepMatches(o.Grep, m.Message, "") {
+		if !grepMatches(o.Grep, m.Message, m.Ticket) {
 			continue
 		}
 		if o.Type != "" && !strings.EqualFold(m.Type, o.Type) {
@@ -888,9 +888,7 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 		if o.Scope != "" && !strings.EqualFold(o.Scope, m.Scope) {
 			continue
 		}
-		// File comments don't yet parse a ticket ref (Phase 4), so a --ticket
-		// filter excludes them all until the scanner extracts m.Ticket.
-		if o.Ticket != "" {
+		if o.Ticket != "" && !strings.EqualFold(o.Ticket, m.Ticket) {
 			continue
 		}
 		kind := m.Keyword
@@ -913,6 +911,7 @@ func gatherMarkers(o ListOptions) ([]listRow, error) {
 			marker: m.Keyword,
 			mtype:  m.Type,
 			scope:  m.Scope,
+			ticket: m.Ticket,
 		})
 	}
 	return rows, nil
