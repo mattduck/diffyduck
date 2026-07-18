@@ -938,15 +938,24 @@ type ruleFileGroup struct {
 // order. Rules with no matching files are omitted. Shared by `rpt diff`,
 // `rpt show`, and `rpt ls`.
 func ruleFileGroups(rules []rpconfig.Rule, files []string, matcher *rpconfig.Matcher, cfgRoot, typeFilter string) []ruleFileGroup {
+	// Precompute each file's config-root-relative path and global-scope result
+	// once. Both are rule-independent, so recomputing them inside the per-rule
+	// loop (which is O(rules × files)) is wasted work on large trees.
+	rels := make([]string, len(files))
+	inScope := make([]bool, len(files))
+	for i, f := range files {
+		rels[i] = relTo(cfgRoot, f)
+		inScope[i] = matcher == nil || matcher.InScope(rels[i])
+	}
+
 	var groups []ruleFileGroup
 	for _, r := range rules {
 		if typeFilter != "" && !strings.EqualFold(r.Type, typeFilter) {
 			continue
 		}
 		var matching []string
-		for _, f := range files {
-			rel := relTo(cfgRoot, f)
-			if fileInScopeForRule(r, rel, matcher) {
+		for i, rel := range rels {
+			if inScope[i] && ruleAppliesInScope(r, rel, matcher) {
 				matching = append(matching, rel)
 			}
 		}
@@ -1228,52 +1237,44 @@ Exit codes:
 }
 
 // lsCandidateFiles returns the absolute paths of files to consider for `rpt ls`.
-// With no paths it walks root (applying the matcher's global scope and pruning
-// version-control directories). With paths, each is resolved relative to the
-// current directory: a directory is walked, a file is included directly.
+// With no paths it lists root; with paths, each directory is listed and each
+// named file included directly. Directories inside a git work tree expand to
+// git's file list (git-ignored trees skipped) via resolveScanTargets, matching
+// `rpt check`; directories outside a repo fall back to a filesystem walk. The
+// matcher's global scope prunes discovered files (named files bypass it).
 // Results are deduplicated and sorted.
 func lsCandidateFiles(root string, paths []string, matcher *rpconfig.Matcher) ([]string, error) {
 	opts := walkOptions(matcher, root)
-	seen := make(map[string]bool)
-	var out []string
-	add := func(abs string) {
-		if !seen[abs] {
-			seen[abs] = true
-			out = append(out, abs)
-		}
-	}
-	walk := func(dir string) error {
-		files, err := walkScanTargets(dir, opts)
-		if err != nil {
-			return err
-		}
-		for _, f := range files {
-			add(f)
-		}
-		return nil
-	}
 
-	if len(paths) == 0 {
-		if err := walk(root); err != nil {
-			return nil, err
-		}
+	// Default to the walk root when no paths are given. Resolve every target to
+	// an absolute path so git's per-directory listing and the later relTo
+	// conversions stay consistent.
+	targets := paths
+	if len(targets) == 0 {
+		targets = []string{root}
 	} else {
-		for _, p := range paths {
+		targets = make([]string, len(paths))
+		for i, p := range paths {
 			abs, err := filepath.Abs(p)
 			if err != nil {
 				return nil, err
 			}
-			info, err := os.Stat(abs)
-			if err != nil {
-				return nil, err
-			}
-			if info.IsDir() {
-				if err := walk(abs); err != nil {
-					return nil, err
-				}
-			} else {
-				add(abs)
-			}
+			targets[i] = abs
+		}
+	}
+
+	files, err := resolveScanTargets(targets, newScanTargetCache(), opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// A file may be reachable via more than one target; deduplicate and sort.
+	seen := make(map[string]bool, len(files))
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		if !seen[f] {
+			seen[f] = true
+			out = append(out, f)
 		}
 	}
 	sort.Strings(out)
@@ -1625,15 +1626,18 @@ func gatherSyntaxViolations(targets []string, strictSet map[fileLineKey]bool, ma
 	return out, nil
 }
 
-// fileInScopeForRule reports whether the given relative path falls within a
-// rule's scope. For built-in rules (no per-rule globs) the global scope filter
-// applies; for config rules the per-rule include/exclude also applies.
-func fileInScopeForRule(r rpconfig.Rule, rel string, matcher *rpconfig.Matcher) bool {
+// ruleAppliesInScope reports whether a rule applies to rel, assuming rel already
+// satisfies the global include/exclude scope (see Matcher.InScope). For built-in
+// rules (no per-rule globs) only the [ignore] section applies; for config rules
+// the per-rule include/exclude applies too. ruleFileGroups checks the shared
+// global scope once per file and calls this per rule, keeping the O(rules ×
+// files) loop free of the redundant InScope pass.
+func ruleAppliesInScope(r rpconfig.Rule, rel string, matcher *rpconfig.Matcher) bool {
 	if matcher == nil {
 		return true
 	}
 	if rpconfig.IsBuiltinCode(r.Code) {
-		return matcher.InScope(rel) && !matcher.Ignored(r.Code, rel)
+		return !matcher.Ignored(r.Code, rel)
 	}
-	return matcher.InScope(rel) && matcher.RuleApplies(r.Code, rel) && !matcher.Ignored(r.Code, rel)
+	return matcher.RuleApplies(r.Code, rel) && !matcher.Ignored(r.Code, rel)
 }
