@@ -391,8 +391,8 @@ malformed, reference an unknown scope, or use a mismatched type:
 All three run by default; use -select to run a subset. Annotations
 suppressed by NORPT or by an [ignore] entry are skipped.
 
-This does NOT list valid annotations — use 'tdb list --marker RPT'
-(optionally --rule <code>) for the inventory of outstanding work items.
+This does NOT list valid annotations — use 'tdb list --prefix RPT'
+(optionally --scope <code>) for the inventory of outstanding work items.
 
 Flags:
   --oneline               compact one-line output (default is verbose blocks)

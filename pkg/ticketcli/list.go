@@ -240,7 +240,7 @@ func ParseListArgs(argv []string) (ListOptions, error) {
 		case arg == "--kind":
 			v, ok := next()
 			if !ok {
-				return o, fmt.Errorf("--kind requires a value (comment, note, all)")
+				return o, fmt.Errorf("--kind requires a value (comment, issue, all)")
 			}
 			if err := setListKind(&o, v); err != nil {
 				return o, err
