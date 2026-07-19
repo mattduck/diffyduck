@@ -149,6 +149,15 @@ When adding or changing features, update all related surfaces.
 3. `rptSubcommands` / `flagsForCmd()` in `cmd/rpt/complete.go`
 4. `completeFlagValue()` in `cmd/rpt/complete.go` if the flag takes enumerated values
 
+## Claude Plugin (`skills/`, `.claude-plugin/`)
+
+When a change touches anything under `skills/` (or otherwise changes what
+the plugin does — `.claude-plugin/plugin.json`, `marketplace.json`), ask the
+user whether to bump `.claude-plugin/plugin.json`'s `version` before
+committing. Don't bump it silently and don't skip asking because the change
+looks small — let the user decide. Patch for wording/reference fixes, minor
+for added/removed/restructured skills, per semver norms.
+
 ## Commit Conventions
 
 Use commitlint keywords: `feat`, `fix`, `refactor`, `test`, `docs`, `style`, `build`, `chore`, `ci`, `perf`
