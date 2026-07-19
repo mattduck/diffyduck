@@ -288,6 +288,22 @@ func TestFetcher_GitContentLinesStopsLargeBlob(t *testing.T) {
 	}
 }
 
+// cleanGitEnv returns os.Environ() with git-specific variables removed, so
+// test git commands use cmd.Dir instead of inheriting GIT_DIR/GIT_INDEX_FILE
+// from pre-commit hooks.
+func cleanGitEnv(environ []string) []string {
+	var env []string
+	for _, e := range environ {
+		if strings.HasPrefix(e, "GIT_DIR=") ||
+			strings.HasPrefix(e, "GIT_WORK_TREE=") ||
+			strings.HasPrefix(e, "GIT_INDEX_FILE=") {
+			continue
+		}
+		env = append(env, e)
+	}
+	return env
+}
+
 func runContentGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	return runContentGitWithEnv(t, dir, nil, args...)
@@ -297,7 +313,7 @@ func runContentGitWithEnv(t *testing.T, dir string, env []string, args ...string
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(cleanGitEnv(os.Environ()), env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, out)
