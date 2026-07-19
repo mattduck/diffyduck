@@ -11,13 +11,13 @@ description is vague, infer the intent from the recent conversation context.
 
 - If the note relates to a specific file and line, attach it there:
   ```
-  tdb comment add <file>:<line> --author Claude <<'EOF'
+  tdb add <file>:<line> --author Claude <<'EOF'
   note text
   EOF
   ```
 - Otherwise, create a standalone note:
   ```
-  tdb comment add --author Claude <<'EOF'
+  tdb add --author Claude <<'EOF'
   note text
   EOF
   ```

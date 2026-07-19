@@ -21,8 +21,8 @@ the rule's `code` as the scope):
   above the offending line, in the file's comment syntax. Minimal-diff, travels
   with the branch, fixed later by editing the line. `rpt check` validates them.
 - **tickets** (git-state): creates one tdb ticket per violation via
-  `tdb comment add <file>:<line> --marker RPT --type <type> --scope <scope>`.
-  No code churn, id-addressable, resolved later with `tdb comment resolve <id>`.
+  `tdb add <file>:<line> --prefix RPT --type <type> --scope <scope>`.
+  No code churn, id-addressable, resolved later with `tdb resolve <id>`.
 
 ## Phase 0: Choose the recording mode
 
@@ -122,11 +122,11 @@ Agent instructions:
 > Read each file. Where the code genuinely violates the rule, record a ticket for
 > the offending line — do NOT edit any files:
 >
->     tdb comment add <file>:<line> --marker RPT --type <type> --scope <code> --author Claude -m "<message>"
+>     tdb add <file>:<line> --prefix RPT --type <type> --scope <code> --author Claude -m "<message>"
 >
 > using the exact `<type>` and `<code>` given.
 > - **Dedup:** before you start, run once
->   `tdb list --source state --scope <code> --json` and skip any `<file>:<line>`
+>   `tdb list --store db --scope <code> --json` and skip any `<file>:<line>`
 >   that already has a ticket for this scope, so re-runs don't duplicate.
 > - Capture the id printed as `Created comment <id> on <file>:<line>`.
 >
@@ -138,7 +138,7 @@ Agent instructions:
    additions only — are the source of truth for the final report**, because
    `tdb list` also shows items recorded on previous runs.
    - The tdb store serialises concurrent writes with CAS retries, so parallel
-     `tdb comment add` calls across agents are safe (tickets mode).
+     `tdb add` calls across agents are safe (tickets mode).
 
 ## Phase 3: Validate & report
 
@@ -148,7 +148,7 @@ Agent instructions:
    clean. If it reports `rpt-syntax`, `rpt-unknown-scope`, or `rpt-type-mismatch`,
    an agent wrote a malformed annotation: read the offending lines, fix the
    format (do not change what was flagged), and re-run until clean.
-2. **Cross-check** with `tdb list --source code --marker RPT` (or `--scope <code>`
+2. **Cross-check** with `tdb list --store file --prefix RPT` (or `--scope <code>`
    per rule). If totals diverge from the agents' added-this-run counts by more
    than the pre-existing annotations, call it out.
 
@@ -156,7 +156,7 @@ Agent instructions:
 
 1. `rpt check` does **not** apply — it validates code annotations, and there are
    none. **Confirm** the tickets landed with
-   `tdb list --source state --marker RPT --json` (or `--scope <code>` per rule):
+   `tdb list --store db --prefix RPT --json` (or `--scope <code>` per rule):
    its count should equal the agents' added-this-run totals plus any pre-existing
    tickets. If it diverges, an agent miscounted or a write failed — investigate.
 
@@ -167,7 +167,7 @@ Report to the user, driven by the **agents' added-this-run counts**:
 - The grand total recorded this run, the mode used, and the confirmation result
   (clean `rpt check` for annotations, matching `tdb list` count for tickets).
 - A reminder that this only recorded violations; run the fix stage next
-  (annotations are fixed by editing the line; tickets by `tdb comment resolve`).
+  (annotations are fixed by editing the line; tickets by `tdb resolve`).
 
 ## Notes
 

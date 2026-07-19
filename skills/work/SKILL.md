@@ -17,20 +17,20 @@ User instructions: $ARGUMENTS
 something to work on, works it, and records the result. It is aimed at
 fix/refactor/perf-style items, not feature work.
 
-The one branch that matters is the **source**, because it determines how state is
+The one field that matters is the **store**, because it determines how state is
 updated:
 
-- **ticket** (`source: "ticket"`, has an `id`) → fix the code, then resolve the
-  ticket (`tdb comment resolve <id>`).
-- **marker** (`source: "marker"`, no `id`) → fix the code, then delete the
+- **ticket** (`store: "db"`, has an `id`) → fix the code, then resolve the
+  ticket (`tdb resolve <id>`).
+- **marker** (`store: "file"`, no `id`) → fix the code, then delete the
   annotation line. `rpt check` must stay clean afterwards.
 
 ## Phase 1: Choose what to work on
 
 1. **Work out the target from the user's instructions.**
-   - If they named a filter — a marker (`--marker RPT`), a scope/rule
+   - If they named a filter — a marker (`--prefix RPT`), a scope/rule
      (`--scope studio-a11y`), a type, `--kind comment`, a `--file`, a `--grep`,
-     or `--source {state,code}` — carry those `tdb list` flags through.
+     or `--store {db,file}` — carry those `tdb list` flags through.
    - If they named specific ticket ids or a `file:line`, work those directly.
    - If they gave nothing, do the **survey** below.
 
@@ -38,13 +38,13 @@ updated:
    `tdb list --stats --json` for the **current branch** (main or feature —
    whatever is checked out; this is `tdb list`'s default). This returns a
    `{total, dimensions:[{field, counts:[{value, count}]}]}` breakdown across
-   source/marker/kind/type/scope — no need to aggregate rows yourself. Present it
+   store/prefix/kind/type/scope — no need to aggregate rows yourself. Present it
    so the user can pick a category, e.g.:
 
    > On branch `feature/x` there are 31 open items:
    > - scope · studio-pages-use-components — 18
    > - scope · studio-tailwind-not-inline-styles — 9
-   > - source · ticket — 4
+   > - store · db — 4
    >
    > What would you like to work on?
 
@@ -66,8 +66,8 @@ user asks). Once a category/filter is settled:
 
 1. Run `tdb list --json <filters>` and take the most relevant single row (most
    recent, or ask if it's ambiguous).
-2. Note its `source`, `file`, `line`, `text`/`body`, and — for tickets — its
-   `id` and `author`; for markers — its `marker`/`type`/`scope`.
+2. Note its `store`, `file`, `line`, `text`/`body`, and — for tickets — its
+   `id` and `author`; for markers — its `prefix`/`type`/`scope`.
 3. Read the referenced file around `line` to understand the full context.
 
 ## Phase 3: Work the item
@@ -90,7 +90,7 @@ Resolve according to authorship (this is the same author-aware rule the
 `feedback` flow uses):
 
 - **Claude-authored** (the `author` field says so) and the fix is **clear-cut and
-  complete** → resolve it: `tdb comment resolve <id>`.
+  complete** → resolve it: `tdb resolve <id>`.
 - **Claude-authored but suggestive/optional** ("consider…", "you could…",
   "might want to…") → do **not** auto-resolve; leave it open and note it for the
   summary.
