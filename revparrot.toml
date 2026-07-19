@@ -1,7 +1,4 @@
 # revparrot.toml — reviewparrot (rpt) rule config for this repo.
-#
-# Starter config with a single, tightly-scoped rule used to exercise the
-# rpt-find review flow. Broaden `include` / add rules as the flow matures.
 
 [revparrot]
 include = ["**/*"]
@@ -20,4 +17,33 @@ punctuation. Out of scope (do NOT flag): doc comments that sit immediately
 above a declaration (func/type/var/const), trailing comments on the same line
 as code, comment directives (e.g. `//go:`), and commented-out code.
 """
-include = ["pkg/content/reader.go"]
+include = ["**/*.go"]
+model = "haiku"
+effort = "low"
+
+[[rules]]
+code = "git-isolation-in-tests"
+type = "bug"
+title = "Git commands must use a sanitised/isolated environment"
+description = """
+Per CLAUDE.md: tests must never run a raw `exec.Command("git", ...)` (or
+`exec.CommandContext`) against an environment that still carries GIT_DIR,
+GIT_WORK_TREE, or GIT_INDEX_FILE — those get set by pre-commit hooks and can
+redirect git commands at the real project repo, corrupting state.
+
+Flag any `exec.Command("git", ...)` / `exec.CommandContext(ctx, "git", ...)`
+call whose surrounding code does not clearly set `cmd.Env` from a sanitised
+environment (e.g. a `cleanGitEnv()`-style helper that strips those three
+variables) before running. In production code under pkg/git/, calls should go
+through `g.command(...)` / `g.commandWithEnv(...)` instead of exec.Command
+directly.
+
+Out of scope (do NOT flag): cmd/rpt/ — its diffedFiles() and completion code
+intentionally call exec.Command("git", ...) directly, always pinned with
+`-C <gitRoot>`, and do not inherit GIT_DIR during normal CLI use. This is a
+documented, deliberate exception, not a violation.
+"""
+include = ["**/*.go"]
+exclude = ["cmd/rpt/**"]
+model = "sonnet"
+effort = "medium"
