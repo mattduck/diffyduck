@@ -1,70 +1,89 @@
 ---
 user-invocable: true
-context: fork
 ---
 
-Review code changes and leave comments using tdb.
+Find problems in code — either in a diff (code review) or against `rpt`
+rules (compliance scan) — and record them. Recording uses `tdb` (see the
+**`tdb` skill** for CLI mechanics); this skill only covers what to look for,
+how to scope the search, and how to record findings.
 
 User instructions: $ARGUMENTS
 
-First, determine what to review based on the user instructions:
+Runs interactively by default (can ask about scope, focus areas, ambiguous
+calls). The one exception is the **review-fix** mode below, which explicitly
+trades interactivity for running straight through to a fix.
 
-- **Default (no ref specified):** Review uncommitted changes (staged + unstaged).
-  Run `git diff HEAD` to see what's changed since the last commit.
-  Add comments via stdin heredoc:
-  ```
-  tdb add <file>:<line> --author Claude <<'EOF'
-  comment text here
-  EOF
-  ```
+## Mode: review a diff
 
-- **Single commit (e.g. "review abc123"):** Review that commit's changes.
-  Run `git diff <ref>~1..<ref>` (or `git show <ref>` for context).
-  Anchor comments to the commit:
-  ```
-  tdb add <file>:<line> --commit <ref> --author Claude <<'EOF'
-  comment text here
-  EOF
-  ```
+Default when the user asks for a review with no rule/compliance framing
+("review my changes", "review abc123", "review abc123..def456").
 
-- **Commit range (e.g. "review abc123..def456"):** Review the range.
-  Run `git diff <start>..<end>` to see all changes.
-  Anchor comments to the end ref:
-  ```
-  tdb add <file>:<line> --commit <end> --author Claude <<'EOF'
-  comment text here
-  EOF
-  ```
+1. Determine scope from the request:
+   - No ref → uncommitted changes: `git diff HEAD` (staged + unstaged).
+   - Single ref → that commit: `git diff <ref>~1..<ref>` (or `git show <ref>`
+     for fuller context). Anchor comments with `--commit <ref>`.
+   - A range → `git diff <start>..<end>`. Anchor comments to the end ref.
+2. Read the changed files for full context, not just the diff hunks.
+3. Review for correctness, edge cases, clarity, bugs — or whatever focus the
+   user specified.
+4. For each real finding, `tdb add <file>:<line> --author Claude` (heredoc
+   body). Every comment must request a change, flag a bug, or ask a
+   question — never a comment that only describes or praises the code. Skip
+   nitpicks unless asked for them.
+5. Report a one-liner per comment created (or say the code looks good if
+   none were left).
 
-Then:
+## Mode: rule/compliance scan
 
-1. Read the changed files to understand the full context around each change.
-2. Conduct a code review. If the user provided instructions above, follow them
-   (e.g. focus areas, review style). Otherwise, do a general review covering
-   correctness, edge cases, clarity, and potential bugs.
-3. For each piece of feedback, leave a comment using `tdb add` as
-   described above.
-   - Pick the most relevant line for the comment.
-   - Keep messages concise and actionable.
-   - Every comment must request a change, flag a bug, or ask a question.
-     Do NOT leave comments that merely describe, explain, or approve code
-     (e.g. "this correctly handles X", "nice use of Y", "just noting that Z").
-     If there's nothing to change, don't comment.
-   - Don't leave trivial or nitpick comments unless the user asked for that.
-4. Managing comments:
-   - Comments cannot be deleted, but you can edit a comment's text in $EDITOR:
-     `tdb edit <id>`
-   - You can resolve comments authored by "Claude":
-     `tdb resolve <id>`
-   - NEVER resolve comments that have no author or a different author, unless
-     the user explicitly tells you to.
-5. After leaving all comments, report back a short summary: how many comments
-   were left and a one-liner for each.
+Trigger on intent ("find rule violations", "check compliance", "scan for
+RPT issues") rather than any fixed phrase. If scope and recording target
+aren't obvious from context, ask before running anything:
 
-If the user asks to list or resolve comments in follow-up conversation:
-- List unresolved: `tdb list --json --store db --kind comment`
-  (a JSON array; each row has `id`, `file`, `line`, `author`, `resolved`, and the
-  full comment in `body`). Scopes to the current branch by default; add
-  `--all-branches` for every branch.
-- Resolve a comment: `tdb resolve <id>`
-- Only resolve comments when the user asks.
+- **Scope** — current diff, or the whole repo / a subsection?
+  - Diff: `rpt diff` (working tree vs HEAD; `-a` adds untracked, `--cached`
+    for staged only, or pass ref(s) for `rpt diff <ref>` / `rpt diff <r1> <r2>`).
+  - Whole repo or a subsection: `rpt ls [path...]` — walks the working tree
+    (or just the given paths) independent of any diff.
+  - A single commit: `rpt show [ref]` (defaults to HEAD).
+- **Recording target** — inline `RPT` annotations in the code, or `tdb add`
+  db comments?
+
+Each of `rpt diff`/`ls`/`show` reports, per active rule, which in-scope files
+it touches — that's your worklist. For batches of files/rules, delegate the
+actual finding to subagents rather than churning through them serially:
+
+- **Prefer the cheapest/fastest model that can do the job reliably.** Most
+  `rpt` rules are mechanical pattern/style/naming checks with a clear
+  yes/no — those are a good fit for a fast, cheap model. Only use a
+  stronger model for rules that need real judgment (architectural or
+  semantic calls), or if a fast-model pass is coming back noisy/wrong.
+- Batch reasonably (e.g. one subagent per rule, or per file group) — don't
+  spawn one subagent per file if the batch is small.
+
+Record each genuine violation, one of two ways:
+
+- **Annotation**: insert `RPT <type>(<scope>): message` as a new line at the
+  violation. After annotating, run `rpt check` — it must stay clean; if it
+  flags a malformed annotation you added, fix the format without changing
+  what was flagged.
+- **db comment**: `tdb add <file>:<line> --author Claude --prefix RPT --type
+  <type> --scope <code>` (heredoc body).
+
+This mode only records — it never fixes. Hand fixing off to the `work`
+skill (or `review-fix` below).
+
+## Mode: review-fix (review, then fix — non-interactive)
+
+Only when the user explicitly wants review immediately followed by fixing,
+unattended (e.g. "review and fix", "review this and clean it up").
+
+1. Run the **review a diff** mode above, keeping the list of comment IDs
+   created.
+2. Hand those IDs to the **`work` skill**, invoked so it does not stop to
+   ask questions (see `work`'s unattended behavior) — make the clear-cut
+   fixes and resolve them per its author-aware rules; for anything
+   non-obvious, make a best-effort fix if safe, otherwise leave it
+   unresolved and record it, rather than blocking.
+3. Output a summary table: `| ID | File:Line | Comment | Status |`, where
+   Status is Resolved / Needs input (say what decision is needed) /
+   Answered. Ask if the user wants to resolve any of the outstanding items.
