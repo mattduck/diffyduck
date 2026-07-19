@@ -231,7 +231,7 @@ func hasOldFlatKeys(path string) bool {
 	}
 	defer f.Close()
 
-	// Old flat keys that would appear directly under [keys]
+	// Old flat keys that would appear directly under [keys].
 	oldKeys := []string{"up =", "down =", "quit =", "page_up =", "search_fwd =", "fold ="}
 
 	scanner := bufio.NewScanner(f)

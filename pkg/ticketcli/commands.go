@@ -345,7 +345,7 @@ func computeOnelineCols(all []*ticketdb.Comment, shortIDs map[string]string, now
 			}
 		}
 	}
-	// Apply max caps
+	// Apply max caps.
 	if cols.id > 8 {
 		cols.id = 8
 	}
@@ -471,7 +471,7 @@ func formatCommentOneline(c *ticketdb.Comment, displayID string, termWidth int, 
 		authorWidth = len(c.Author) + 3 // "[author] "
 	}
 
-	// Calculate remaining width for title
+	// Calculate remaining width for title.
 	usedWidth := cols.id + 1 + cols.date + 1 + cols.commit + 1
 	if cols.branch > 0 {
 		usedWidth += cols.branch + 1
@@ -500,7 +500,7 @@ func formatCommentOneline(c *ticketdb.Comment, displayID string, termWidth int, 
 		text = cs.Label.Render(text)
 	}
 
-	// Build the line with padded columns
+	// Build the line with padded columns.
 	var b strings.Builder
 	b.WriteString(idStyled)
 	b.WriteString(strings.Repeat(" ", cols.id-len(idCol)))

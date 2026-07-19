@@ -45,7 +45,7 @@ func TopChanges(diff *StructuralDiff, maxItems int) (nodes []DisplayNode, trunca
 	}
 
 	// Among the top N, detect containment and group children under parents.
-	// Only compare entries from the same file version (both new or both old)
+	// Only compare entries from the same file version (both new or both old).
 	// to avoid false matches between added and deleted items.
 	parentOf := make(map[int]int) // child index -> parent index
 	for i, child := range changes {
@@ -107,12 +107,12 @@ func TopChanges(diff *StructuralDiff, maxItems int) (nodes []DisplayNode, trunca
 		topLevel = append(topLevel, node)
 	}
 
-	// Sort top-level by total lines changed (own + visible children)
+	// Sort top-level by total lines changed (own + visible children).
 	sort.SliceStable(topLevel, func(i, j int) bool {
 		return topLevel[i].TotalLines() > topLevel[j].TotalLines()
 	})
 
-	// Sort children within each node by lines changed (descending)
+	// Sort children within each node by lines changed (descending).
 	for i := range topLevel {
 		sort.SliceStable(topLevel[i].Children, func(a, b int) bool {
 			ca := topLevel[i].Children[a]

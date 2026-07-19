@@ -12,7 +12,7 @@ import (
 
 // handleCommentInput handles keypresses while in comment input mode.
 func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Handle bracketed paste (Cmd+V in terminal) - sanitize the entire pasted content
+	// Handle bracketed paste (Cmd+V in terminal) - sanitize the entire pasted content.
 	if msg.Paste && len(msg.Runes) > 0 {
 		text := sanitizePastedText(string(msg.Runes))
 		if text != "" {
@@ -38,7 +38,7 @@ func (m Model) handleCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEnter:
-		// Enter inserts newline
+		// Enter inserts newline.
 		m.insertCommentRune('\n')
 		m.commentEnsureCursorVisible()
 		m.clampScroll() // main diff scroll may need adjustment due to prompt height change
@@ -432,8 +432,8 @@ func sanitizePastedText(text string) string {
 		result.WriteRune(r)
 	}
 
-	// Strip trailing whitespace/newlines that can cause empty line issues
-	// Use unicode.IsSpace to catch all Unicode whitespace variants (e.g., NO-BREAK SPACE U+00A0)
+	// Strip trailing whitespace/newlines that can cause empty line issues.
+	// Use unicode.IsSpace to catch all Unicode whitespace variants (e.g., NO-BREAK SPACE U+00A0).
 	return strings.TrimRightFunc(result.String(), unicode.IsSpace)
 }
 
@@ -553,7 +553,7 @@ func commentCursorVisualPos(input string, cursor int, wrapWidth int) (visualLine
 		visualOffset += len(wrapped)
 	}
 
-	// Now wrap the cursor's logical line and find which visual sub-line the cursor falls on
+	// Now wrap the cursor's logical line and find which visual sub-line the cursor falls on.
 	wrapped, wrappedOffsets := wrapWithOffsets(logicalLines[logicalLine], wrapWidth)
 	for i := len(wrapped) - 1; i >= 0; i-- {
 		if logicalCol >= wrappedOffsets[i] {

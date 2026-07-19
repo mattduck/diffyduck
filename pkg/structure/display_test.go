@@ -60,7 +60,7 @@ func TestTopChanges_GroupsMethodsUnderTypes(t *testing.T) {
 	// MyType with 2 children (total: 1+5+3 = 9)
 	assert.Equal(t, "MyType", nodes[1].Change.Name())
 	assert.Len(t, nodes[1].Children, 2)
-	// Children sorted by lines changed (descending)
+	// Children sorted by lines changed (descending).
 	assert.Equal(t, "Method1", nodes[1].Children[0].Name())
 	assert.Equal(t, "Method2", nodes[1].Children[1].Name())
 }

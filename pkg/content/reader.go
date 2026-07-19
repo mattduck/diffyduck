@@ -24,11 +24,11 @@ func ReadLimitedLinesWithLimits(r io.Reader, maxLines, maxBytes int) ([]string, 
 	var lines []string
 	truncated := false
 
-	// Use a limited reader to cap total bytes
+	// Use a limited reader to cap total bytes.
 	limitedReader := &limitedReader{r: r, remaining: maxBytes}
 	scanner := bufio.NewScanner(limitedReader)
 
-	// Set a large buffer for scanning (to handle long lines)
+	// Set a large buffer for scanning (to handle long lines).
 	buf := make([]byte, 64*1024) // 64KB buffer
 	scanner.Buffer(buf, maxBytes)
 
@@ -40,7 +40,7 @@ func ReadLimitedLinesWithLimits(r io.Reader, maxLines, maxBytes int) ([]string, 
 
 		lines = append(lines, scanner.Text())
 
-		// Check if we hit the byte limit
+		// Check if we hit the byte limit.
 		if limitedReader.hitLimit {
 			truncated = true
 			break
@@ -48,7 +48,7 @@ func ReadLimitedLinesWithLimits(r io.Reader, maxLines, maxBytes int) ([]string, 
 	}
 
 	if err := scanner.Err(); err != nil {
-		// If we hit the byte limit, that's not an error condition
+		// If we hit the byte limit, that's not an error condition.
 		if limitedReader.hitLimit {
 			truncated = true
 			return lines, truncated, nil

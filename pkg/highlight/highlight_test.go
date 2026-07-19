@@ -124,8 +124,8 @@ var (
 	if !categories[CategoryNumber] {
 		t.Error("Expected CategoryNumber")
 	}
-	// Standard tree-sitter queries use @constant.builtin for true, false, nil
-	// so they all map to CategoryConstant
+	// Standard tree-sitter queries use @constant.builtin for true, false, nil.
+	// so they all map to CategoryConstant.
 	if !categories[CategoryConstant] {
 		t.Error("Expected CategoryConstant (for true, false, nil)")
 	}
@@ -237,7 +237,7 @@ items:
 		categories[s.Category] = true
 	}
 
-	// Should have property (keys like "name:", "version:")
+	// Should have property (keys like "name:", "version:").
 	if !categories[CategoryField] {
 		t.Error("Expected CategoryField (property) in spans")
 	}
@@ -346,7 +346,7 @@ x = 42
 		t.Error("Expected CategoryFunction in spans")
 	}
 
-	// Should have a keyword (def, return)
+	// Should have a keyword (def, return).
 	if !categories[CategoryKeyword] {
 		t.Error("Expected CategoryKeyword in spans")
 	}
@@ -600,7 +600,7 @@ func TestSpansForLine_SpanningMultipleLines(t *testing.T) {
 	if len(line0Spans) != 1 {
 		t.Fatalf("Expected 1 span for line 0, got %d", len(line0Spans))
 	}
-	// Should be clipped: starts at 5, ends at 10 (line end)
+	// Should be clipped: starts at 5, ends at 10 (line end).
 	if line0Spans[0].Start != 5 || line0Spans[0].End != 10 {
 		t.Errorf("Expected span [5,10), got [%d,%d)", line0Spans[0].Start, line0Spans[0].End)
 	}
@@ -609,7 +609,7 @@ func TestSpansForLine_SpanningMultipleLines(t *testing.T) {
 	if len(line1Spans) != 1 {
 		t.Fatalf("Expected 1 span for line 1, got %d", len(line1Spans))
 	}
-	// Should cover entire line: 0 to 9 (relative)
+	// Should cover entire line: 0 to 9 (relative).
 	if line1Spans[0].Start != 0 || line1Spans[0].End != 9 {
 		t.Errorf("Expected span [0,9), got [%d,%d)", line1Spans[0].Start, line1Spans[0].End)
 	}

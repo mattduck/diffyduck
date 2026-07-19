@@ -75,7 +75,7 @@ func TestRender_LinearChain(t *testing.T) {
 
 	got := RenderAt(roots, false, now, nil)
 
-	// Non-verbose: should have tree structure, counts, SHA, date — but not subject
+	// Non-verbose: should have tree structure, counts, SHA, date — but not subject.
 	assert.Contains(t, got, "main")
 	assert.Contains(t, got, "┌─")
 	assert.Contains(t, got, "├─")
@@ -88,7 +88,7 @@ func TestRender_LinearChain(t *testing.T) {
 	assert.Contains(t, got, "5m ago")
 	assert.NotContains(t, got, "refactor: extract parser")
 
-	// Verbose: should include subject and author
+	// Verbose: should include subject and author.
 	verbose := RenderAt(roots, true, now, nil)
 	assert.Contains(t, verbose, "refactor: extract parser")
 }
@@ -114,7 +114,7 @@ func TestRender_SingleBranch(t *testing.T) {
 	assert.Contains(t, got, "main")
 	assert.Contains(t, got, "a1b2c3d")
 	assert.Contains(t, got, "1h ago")
-	// No tree connectors for single root
+	// No tree connectors for single root.
 	assert.NotContains(t, got, "┌─")
 	assert.NotContains(t, got, "├─")
 	assert.NotContains(t, got, "└─")
@@ -138,7 +138,7 @@ func TestRender_MultipleTrees(t *testing.T) {
 	}
 
 	got := RenderAt(roots, false, now, nil)
-	// Should have a blank line between trees
+	// Should have a blank line between trees.
 	assert.Contains(t, got, "\n\n")
 	assert.Contains(t, got, "main")
 	assert.Contains(t, got, "orphan")
@@ -192,15 +192,15 @@ func TestRender_UpstreamTracking(t *testing.T) {
 
 	got := RenderAt(roots, false, now, nil)
 
-	// Synced upstream shows "="
+	// Synced upstream shows "=".
 	assert.Contains(t, got, "origin/main =")
-	// Ahead-only shows arrow up
+	// Ahead-only shows arrow up.
 	assert.Contains(t, got, "origin/feature ↑2")
-	// Behind shows arrow down
+	// Behind shows arrow down.
 	assert.Contains(t, got, "origin/stale ↓5")
-	// Gone upstream
+	// Gone upstream.
 	assert.Contains(t, got, "origin/pruned gone")
-	// No upstream for local-only
+	// No upstream for local-only.
 	assert.NotContains(t, got, "local-only =")
 	assert.NotContains(t, got, "origin/local-only")
 }
@@ -223,10 +223,10 @@ func TestRender_MultipleUpstreams(t *testing.T) {
 	}
 
 	got := RenderAt(roots, false, now, nil)
-	// Each upstream is individually colored, so check them separately
+	// Each upstream is individually colored, so check them separately.
 	assert.Contains(t, got, "origin/main =")
 	assert.Contains(t, got, "origin/release ↑1")
-	// Synced and ahead-only upstreams should be dim (fg=8)
+	// Synced and ahead-only upstreams should be dim (fg=8).
 	assert.Contains(t, got, colorBrightBlk+"origin/main =")
 	assert.Contains(t, got, colorBrightBlk+"origin/release ↑1")
 }
@@ -250,20 +250,20 @@ func TestRender_HeadRefUnderline(t *testing.T) {
 	}
 
 	got := RenderAt(roots, false, now, nil)
-	// Asterisk should be before the HEAD branch, not the first name
+	// Asterisk should be before the HEAD branch, not the first name.
 	assert.Contains(t, got, "*\033[4msecond\033[24m")
 	assert.NotContains(t, got, "*main")
-	// HEAD branch name should be underlined, others should not
+	// HEAD branch name should be underlined, others should not.
 	assert.Contains(t, got, "\033[4msecond\033[24m")
 	assert.NotContains(t, got, "\033[4mmain\033[24m")
 	assert.NotContains(t, got, "\033[4mthird\033[24m")
-	// Matching upstream should be underlined
+	// Matching upstream should be underlined.
 	assert.Contains(t, got, "\033[4morigin/second\033[24m")
 	assert.NotContains(t, got, "\033[4morigin/main\033[24m")
 }
 
 func TestRender_ColumnAlignment(t *testing.T) {
-	// Verify that root branches (no tree-drawing chars) align with child
+	// Verify that root branches (no tree-drawing chars) align with child.
 	// branches (which contain multi-byte box-drawing chars like ┌─).
 	now := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
 
@@ -290,7 +290,7 @@ func TestRender_ColumnAlignment(t *testing.T) {
 
 	got := RenderAt(roots, false, now, nil)
 
-	// Strip ANSI escape codes for alignment checking
+	// Strip ANSI escape codes for alignment checking.
 	stripped := stripANSI(got)
 	lines := strings.Split(strings.TrimRight(stripped, "\n"), "\n")
 
@@ -310,7 +310,7 @@ func TestRender_ColumnAlignment(t *testing.T) {
 		}
 	}
 
-	// All SHA columns should start at the same position
+	// All SHA columns should start at the same position.
 	assert.NotEmpty(t, shaPositions, "should find SHA in output lines")
 	for i := 1; i < len(shaPositions); i++ {
 		assert.Equal(t, shaPositions[0], shaPositions[i],

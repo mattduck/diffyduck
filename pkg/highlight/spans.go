@@ -13,15 +13,15 @@ type Span struct {
 func SpansForLine(spans []Span, lineStart, lineEnd int) []Span {
 	var result []Span
 	for _, s := range spans {
-		// Skip spans entirely before this line
+		// Skip spans entirely before this line.
 		if s.End <= lineStart {
 			continue
 		}
-		// Stop once we're past this line
+		// Stop once we're past this line.
 		if s.Start >= lineEnd {
 			break
 		}
-		// Clip span to line boundaries and adjust to line-relative offsets
+		// Clip span to line boundaries and adjust to line-relative offsets.
 		start := max(0, s.Start-lineStart)
 		end := min(lineEnd-lineStart, s.End-lineStart)
 		result = append(result, Span{
@@ -46,25 +46,25 @@ func MergeSpans(spans []Span) []Span {
 	for i := 1; i < len(spans); i++ {
 		next := spans[i]
 		if next.Start >= current.End {
-			// No overlap, emit current and move on
+			// No overlap, emit current and move on.
 			result = append(result, current)
 			current = next
 		} else {
-			// Overlap: later span wins for the overlapping region
+			// Overlap: later span wins for the overlapping region.
 			if next.Start > current.Start {
-				// Emit the non-overlapping part of current
+				// Emit the non-overlapping part of current.
 				result = append(result, Span{
 					Start:    current.Start,
 					End:      next.Start,
 					Category: current.Category,
 				})
 			}
-			// The overlapping region uses next's category
+			// The overlapping region uses next's category.
 			if next.End > current.End {
 				current = next
 			} else {
-				// next is contained within current
-				// Emit next, then continue with remainder of current
+				// next is contained within current.
+				// Emit next, then continue with remainder of current.
 				result = append(result, next)
 				if next.End < current.End {
 					current = Span{
@@ -73,7 +73,7 @@ func MergeSpans(spans []Span) []Span {
 						Category: current.Category,
 					}
 				} else {
-					// next.End == current.End, need to get next span
+					// next.End == current.End, need to get next span.
 					if i+1 < len(spans) {
 						current = spans[i+1]
 						i++

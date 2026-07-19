@@ -84,17 +84,17 @@ func (r *Registry) Register(cfg *LanguageConfig) {
 
 // ForFile returns the language configuration for a filename, or nil if unknown.
 func (r *Registry) ForFile(filename string) *LanguageConfig {
-	// Check exact filename match first (e.g., "Makefile", "Dockerfile")
+	// Check exact filename match first (e.g., "Makefile", "Dockerfile").
 	base := filepath.Base(filename)
 	if cfg := r.byFilename[base]; cfg != nil {
 		return cfg
 	}
-	// Fall back to extension match
+	// Fall back to extension match.
 	ext := strings.ToLower(filepath.Ext(filename))
 	if cfg := r.byExtension[ext]; cfg != nil {
 		return cfg
 	}
-	// Fall back to predicate match (e.g., basename contains "Dockerfile")
+	// Fall back to predicate match (e.g., basename contains "Dockerfile").
 	for _, cfg := range r.predicates {
 		if cfg.FilenamePredicate(base) {
 			return cfg
@@ -125,7 +125,7 @@ func (r *Registry) forShebang(content []byte) *LanguageConfig {
 		firstLine = content[:i]
 	}
 
-	// Parse interpreter from shebang:
+	// Parse interpreter from shebang:.
 	//   #!/usr/bin/env python3  → "python3"
 	//   #!/bin/bash             → "bash"
 	//   #!/usr/bin/perl -w      → "perl"
@@ -136,7 +136,7 @@ func (r *Registry) forShebang(content []byte) *LanguageConfig {
 	}
 
 	// If invoked via "env", the interpreter is the next argument
-	// (skip env flags like -S)
+	// (skip env flags like -S).
 	cmd := filepath.Base(parts[0])
 	if cmd == "env" {
 		for _, arg := range parts[1:] {

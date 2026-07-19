@@ -11,7 +11,7 @@ import (
 )
 
 func TestPythonExtractor_CommentsAndTrailingCommas(t *testing.T) {
-	// Reproduce the issue with comments and trailing commas in parameters
+	// Reproduce the issue with comments and trailing commas in parameters.
 	pythonContent := `class StorybookView:
     def get(
         # type: ignore[override]
@@ -52,20 +52,20 @@ func TestPythonExtractor_CommentsAndTrailingCommas(t *testing.T) {
 		t.Errorf("Expected name 'get', got %q", method.Name)
 	}
 
-	// Check that params don't contain comments
+	// Check that params don't contain comments.
 	for _, p := range method.Params {
 		if strings.Contains(p, "#") || strings.Contains(p, "type: ignore") {
 			t.Errorf("Params should not contain comment, got %v", method.Params)
 		}
 	}
 
-	// Check expected params (no comments, no trailing commas)
+	// Check expected params (no comments, no trailing commas).
 	expectedParams := []string{"self", "request: HttpRequest", "*args", "**kwargs"}
 	if !reflect.DeepEqual(method.Params, expectedParams) {
 		t.Errorf("Expected params %v, got %v", expectedParams, method.Params)
 	}
 
-	// Check compact signature format (no params, just ...)
+	// Check compact signature format (no params, just ...).
 	sig := method.FormatSignature(0)
 	expected := "get(...)"
 	if sig != expected {
@@ -74,7 +74,7 @@ func TestPythonExtractor_CommentsAndTrailingCommas(t *testing.T) {
 }
 
 func TestPythonExtractor_MultilineParams(t *testing.T) {
-	// Reproduce the issue with multiline function parameters
+	// Reproduce the issue with multiline function parameters.
 	pythonContent := `def save_form_POST_to_session(
     request: HttpRequest, key: str, *, pk: int | None = None
 ) -> None:
@@ -112,14 +112,14 @@ func TestPythonExtractor_MultilineParams(t *testing.T) {
 		t.Errorf("Expected return type 'None', got %q", e.ReturnType)
 	}
 
-	// Check that params don't contain newlines
+	// Check that params don't contain newlines.
 	for _, p := range e.Params {
 		if strings.Contains(p, "\n") {
 			t.Errorf("Params should not contain newlines, got %v", e.Params)
 		}
 	}
 
-	// Check compact signature format (no params, prioritize return type)
+	// Check compact signature format (no params, prioritize return type).
 	sig := e.FormatSignature(0)
 	expected := "save_form_POST_to_session(...) -> None"
 	if sig != expected {
@@ -128,7 +128,7 @@ func TestPythonExtractor_MultilineParams(t *testing.T) {
 }
 
 func TestGoExtractor_MultilineParams(t *testing.T) {
-	// Test that Go multiline function parameters are normalized
+	// Test that Go multiline function parameters are normalized.
 	goContent := `package main
 
 func ProcessRequest(
@@ -171,14 +171,14 @@ func ProcessRequest(
 		t.Errorf("Expected return type 'error', got %q", e.ReturnType)
 	}
 
-	// Check that params don't contain newlines
+	// Check that params don't contain newlines.
 	for _, p := range e.Params {
 		if strings.Contains(p, "\n") {
 			t.Errorf("Params should not contain newlines, got %v", e.Params)
 		}
 	}
 
-	// Check compact signature (no params, prioritize return type)
+	// Check compact signature (no params, prioritize return type).
 	sig := e.FormatSignature(0)
 	expected := "ProcessRequest(...) -> error"
 	if sig != expected {
@@ -187,7 +187,7 @@ func ProcessRequest(
 }
 
 func TestGoExtractor_MultilineReceiver(t *testing.T) {
-	// Test that Go multiline method receivers are normalized
+	// Test that Go multiline method receivers are normalized.
 	goContent := `package main
 
 func (m *Model[
@@ -226,12 +226,12 @@ func (m *Model[
 		t.Errorf("Expected name 'Process', got %q", e.Name)
 	}
 
-	// Check receiver doesn't have trailing comma in generics
+	// Check receiver doesn't have trailing comma in generics.
 	if strings.Contains(e.Receiver, ",]") {
 		t.Errorf("Receiver should not have trailing comma, got %q", e.Receiver)
 	}
 
-	// Check compact signature (receiver + name + empty params + return type)
+	// Check compact signature (receiver + name + empty params + return type).
 	sig := e.FormatSignature(0)
 	expected := "(m *Model[K, V]) Process() -> error"
 	if sig != expected {
@@ -240,7 +240,7 @@ func (m *Model[
 }
 
 func TestPythonExtractor_SingleParam(t *testing.T) {
-	// Test single-param function signatures
+	// Test single-param function signatures.
 	pythonContent := `def get_user(user_id: int) -> User:
     pass
 `
@@ -273,7 +273,7 @@ func TestPythonExtractor_SingleParam(t *testing.T) {
 }
 
 func TestGoExtractor_SingleParam(t *testing.T) {
-	// Test single-param function signatures
+	// Test single-param function signatures.
 	goContent := `package main
 
 func GetUser(userID int) *User {
@@ -309,7 +309,7 @@ func GetUser(userID int) *User {
 }
 
 func TestFormatSignature_WidthTruncation(t *testing.T) {
-	// Test that signatures truncate properly based on width
+	// Test that signatures truncate properly based on width.
 	e := Entry{
 		Name:       "ProcessRequest",
 		Kind:       "func",
@@ -398,7 +398,7 @@ func TestFormatSignature_NoParams(t *testing.T) {
 }
 
 func TestFormatSignature_NoReturnType(t *testing.T) {
-	// Test function with no return type (like Python __init__)
+	// Test function with no return type (like Python __init__).
 	e := Entry{
 		Name:   "__init__",
 		Kind:   "def",

@@ -181,7 +181,7 @@ func (h *Highlighter) getParserAndQuery(cfg *LanguageConfig) (*tree_sitter.Parse
 		var qErr *tree_sitter.QueryError
 		query, qErr = tree_sitter.NewQuery(lang, cfg.HighlightQuery)
 		if qErr != nil {
-			// Query compilation failed - log would be nice but just skip highlighting
+			// Query compilation failed - log would be nice but just skip highlighting.
 			return nil, nil
 		}
 		h.queries[cfg.Name] = query
@@ -216,7 +216,7 @@ func (h *Highlighter) runQuery(node *tree_sitter.Node, query *tree_sitter.Query,
 			break
 		}
 
-		// captureIdx is the index into match.Captures for the current capture
+		// captureIdx is the index into match.Captures for the current capture.
 		if captureIdx >= uint(len(match.Captures)) {
 			continue
 		}
@@ -239,7 +239,7 @@ func (h *Highlighter) runQuery(node *tree_sitter.Node, query *tree_sitter.Query,
 		order++
 	}
 
-	// Sort by start position, then by capture order (later captures come last)
+	// Sort by start position, then by capture order (later captures come last).
 	sort.Slice(spansOrdered, func(i, j int) bool {
 		if spansOrdered[i].Start != spansOrdered[j].Start {
 			return spansOrdered[i].Start < spansOrdered[j].Start

@@ -339,7 +339,7 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 	// Untracked files: -u<mode>, --untracked-files=<mode>
 	// Modes: no, normal, all (default: all)
 	case arg == "--untracked-files":
-		// Bare flag without value means "all"
+		// Bare flag without value means "all".
 		p.untrackedFiles = "all"
 	case strings.HasPrefix(arg, "--untracked-files="):
 		mode := strings.TrimPrefix(arg, "--untracked-files=")
@@ -365,7 +365,7 @@ func (p *parsedArgs) parseFlag(arg string, args []string, i int) (int, error) {
 		p.showBranches = true
 	case arg == "-b":
 		if p.cmd == "diff" || p.cmd == "show" || p.cmd == "log" || p.cmd == "" {
-			// -b <branch> sets comment branch filter for the TUI
+			// -b <branch> sets comment branch filter for the TUI.
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return 0, fmt.Errorf("-b requires a branch name")
 			}

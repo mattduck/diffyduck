@@ -15,7 +15,7 @@ func TestComputeDiff_BothNil(t *testing.T) {
 }
 
 func TestComputeDiff_OnlyNew(t *testing.T) {
-	// All entries in new are "added"
+	// All entries in new are "added".
 	newMap := NewMap([]Entry{
 		{StartLine: 1, EndLine: 5, Name: "Foo", Kind: "func"},
 		{StartLine: 7, EndLine: 10, Name: "Bar", Kind: "type"},
@@ -32,7 +32,7 @@ func TestComputeDiff_OnlyNew(t *testing.T) {
 }
 
 func TestComputeDiff_OnlyOld(t *testing.T) {
-	// All entries in old are "deleted"
+	// All entries in old are "deleted".
 	oldMap := NewMap([]Entry{
 		{StartLine: 1, EndLine: 5, Name: "Foo", Kind: "func"},
 	})
@@ -46,7 +46,7 @@ func TestComputeDiff_OnlyOld(t *testing.T) {
 }
 
 func TestComputeDiff_Unchanged(t *testing.T) {
-	// Same entry in both, no overlapping diff lines -> unchanged
+	// Same entry in both, no overlapping diff lines -> unchanged.
 	oldMap := NewMap([]Entry{
 		{StartLine: 1, EndLine: 5, Name: "Foo", Kind: "func"},
 	})
@@ -63,7 +63,7 @@ func TestComputeDiff_Unchanged(t *testing.T) {
 }
 
 func TestComputeDiff_Modified_AddedLines(t *testing.T) {
-	// Same entry in both, but added lines overlap with new entry -> modified
+	// Same entry in both, but added lines overlap with new entry -> modified.
 	oldMap := NewMap([]Entry{
 		{StartLine: 1, EndLine: 5, Name: "Foo", Kind: "func"},
 	})
@@ -82,7 +82,7 @@ func TestComputeDiff_Modified_AddedLines(t *testing.T) {
 }
 
 func TestComputeDiff_Modified_RemovedLines(t *testing.T) {
-	// Same entry in both, but removed lines overlap with old entry -> modified
+	// Same entry in both, but removed lines overlap with old entry -> modified.
 	oldMap := NewMap([]Entry{
 		{StartLine: 1, EndLine: 7, Name: "Foo", Kind: "func"},
 	})
@@ -135,7 +135,7 @@ func TestComputeDiff_Mixed(t *testing.T) {
 }
 
 func TestComputeDiff_MethodsWithReceiver(t *testing.T) {
-	// Methods on different types with same name should be distinguished
+	// Methods on different types with same name should be distinguished.
 	oldMap := NewMap([]Entry{
 		{StartLine: 1, EndLine: 5, Name: "String", Kind: "func", Receiver: "(f Foo)"},
 		{StartLine: 7, EndLine: 10, Name: "String", Kind: "func", Receiver: "(b Bar)"},

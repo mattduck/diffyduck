@@ -264,7 +264,7 @@ func getFileLinesForMatching(file sidebyside.FilePair) []string {
 		return nil
 	}
 
-	// Convert to slice (may have gaps for deleted lines, but that's ok)
+	// Convert to slice (may have gaps for deleted lines, but that's ok).
 	lines := make([]string, maxLine)
 	for i := 1; i <= maxLine; i++ {
 		if content, ok := lineMap[i]; ok {
@@ -297,7 +297,7 @@ func (m *Model) persistComment(key commentKey, text string) *ticketdb.Comment {
 	ctx := ticketdb.ExtractContextForLine(fileLines, key.newLineNum)
 	now := time.Now()
 
-	// Check if we're updating an existing persisted comment
+	// Check if we're updating an existing persisted comment.
 	existingID := m.w().commentEditID
 
 	c := &ticketdb.Comment{

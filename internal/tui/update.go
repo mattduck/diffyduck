@@ -39,7 +39,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.w().scroll += 3
 			m.clampScroll()
 			m.resetSearchMatchForRow()
-			// Check if we should load more commits after scrolling down
+			// Check if we should load more commits after scrolling down.
 			if m.shouldLoadMoreCommits() {
 				return m, m.fetchMoreCommits()
 			}
@@ -47,19 +47,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.WindowSizeMsg:
-		// Capture cursor row index before resize changes cursorOffset()
+		// Capture cursor row index before resize changes cursorOffset().
 		savedRowIdx := m.cursorLine()
 
 		m.width = msg.Width
 		m.height = msg.Height
 
-		// Comment row counts depend on text wrapping which is width-dependent,
+		// Comment row counts depend on text wrapping which is width-dependent.
 		// so invalidate all row caches when comments exist.
 		if len(m.comments) > 0 {
 			m.invalidateAllRowCaches()
 		}
 
-		// Rebuild help content on resize (column layout depends on width)
+		// Rebuild help content on resize (column layout depends on width).
 		if m.helpMode {
 			m.helpLines = m.buildHelpLines()
 			m.clampHelpScroll()
@@ -70,29 +70,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.initialFoldSet && len(m.files) > 0 && len(m.commits) > 0 && m.loadedCommitCount == 0 {
 			m.initialFoldSet = true
 			if len(m.files) == 1 || m.estimateNormalRows() <= m.autoUnfoldLimit {
-				// Fits within limit: fully expand (hunks + info)
+				// Fits within limit: fully expand (hunks + info).
 				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHunks)
-				// Sync load content + highlighting so the first render is complete
+				// Sync load content + highlighting so the first render is complete.
 				if m.fetcher != nil {
 					for i := range m.files {
 						m.loadAndHighlightFileSync(i)
 					}
 				}
 			} else if m.commits[0].Info.HasMetadata() {
-				// Show view over limit: expand info + files at structure level
+				// Show view over limit: expand info + files at structure level.
 				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileStructure)
 				m.setCommitInfoExpanded(0, true)
 			} else {
-				// Diff view over limit: file headers only
+				// Diff view over limit: file headers only.
 				m.setCommitsToLevel(0, len(m.commits), sidebyside.CommitFileHeaders)
 			}
 			m.calculateTotalLines()
 		}
 
-		// Restore cursor to same row index
+		// Restore cursor to same row index.
 		m.adjustScrollToRow(savedRowIdx)
 
-		// Start loading supported files on first window size
+		// Start loading supported files on first window size.
 		cmd := m.initStartupQueue()
 		return m, cmd
 
@@ -103,11 +103,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.FileIndex >= 0 && msg.FileIndex < len(m.files) {
 			// Check if loading this file's content affects visible rows.
 			// In full-file view, content arrival changes the row layout directly.
-			// Otherwise, content loading only affects layout after highlighting
+			// Otherwise, content loading only affects layout after highlighting.
 			// completes via storeHighlightSpans.
 			affectsVisibleRows := m.files[msg.FileIndex].ShowFullFile
 
-			// Capture cursor identity before content changes the row layout
+			// Capture cursor identity before content changes the row layout.
 			var identity cursorRowIdentity
 			if affectsVisibleRows {
 				identity = m.getCursorRowIdentity()
@@ -120,16 +120,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.files[msg.FileIndex].NewContentTruncated = msg.NewTruncated
 			m.calculateTotalLines()
 
-			// Preserve scroll position only if the loaded file affects visible rows
+			// Preserve scroll position only if the loaded file affects visible rows.
 			if affectsVisibleRows {
 				newRowIdx := m.findRowOrNearestAbove(identity)
 				m.adjustScrollToRow(newRowIdx)
 			}
 
-			// File content loaded, but still loading until highlight is ready
+			// File content loaded, but still loading until highlight is ready.
 			// (loading state will be cleared when HighlightReadyMsg arrives)
 
-			// Trigger syntax highlighting for this file
+			// Trigger syntax highlighting for this file.
 			return m, m.RequestHighlight(msg.FileIndex)
 		}
 		return m, nil
@@ -138,15 +138,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Gen != m.reloadGen {
 			return m, nil // stale message from before reload
 		}
-		// Capture cursor identity before highlight changes the row layout
+		// Capture cursor identity before highlight changes the row layout.
 		// (expandSemanticContext adds context lines, structural diff adds rows)
 		identity := m.getCursorRowIdentity()
 
 		layoutChanged := m.storeHighlightSpans(msg)
-		// Clear loading state - file is fully loaded now
+		// Clear loading state - file is fully loaded now.
 		m.clearFileLoading(msg.FileIndex)
 
-		// Restore cursor if layout changed (storeHighlightSpans already recalculated totalLines)
+		// Restore cursor if layout changed (storeHighlightSpans already recalculated totalLines).
 		if layoutChanged {
 			newRowIdx := m.findRowOrNearestAbove(identity)
 			m.adjustScrollToRow(newRowIdx)

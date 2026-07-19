@@ -73,7 +73,7 @@ func NewFetcher(g git.Git, mode Mode, ref1, ref2 string) *Fetcher {
 func (f *Fetcher) GetOldContent(path string) (string, error) {
 	cacheKey := "old:" + path
 
-	// Check cache with read lock
+	// Check cache with read lock.
 	f.cacheMu.RLock()
 	if content, ok := f.cache[cacheKey]; ok {
 		f.cacheMu.RUnlock()
@@ -83,7 +83,7 @@ func (f *Fetcher) GetOldContent(path string) (string, error) {
 
 	content, err := f.fetchOld(path)
 	if err != nil {
-		// Check if this is a "file not found" error (new file case)
+		// Check if this is a "file not found" error (new file case).
 		if isFileNotFoundError(err) {
 			f.cacheMu.Lock()
 			f.cache[cacheKey] = ""
@@ -107,7 +107,7 @@ func (f *Fetcher) GetOldContent(path string) (string, error) {
 func (f *Fetcher) GetNewContent(path string) (string, error) {
 	cacheKey := "new:" + path
 
-	// Check cache with read lock
+	// Check cache with read lock.
 	f.cacheMu.RLock()
 	if content, ok := f.cache[cacheKey]; ok {
 		f.cacheMu.RUnlock()
@@ -117,7 +117,7 @@ func (f *Fetcher) GetNewContent(path string) (string, error) {
 
 	content, err := f.fetchNew(path)
 	if err != nil {
-		// Check if this is a "file not found" error (deleted file case)
+		// Check if this is a "file not found" error (deleted file case).
 		if isFileNotFoundError(err) {
 			f.cacheMu.Lock()
 			f.cache[cacheKey] = ""
@@ -143,7 +143,7 @@ func (f *Fetcher) GetNewContent(path string) (string, error) {
 func (f *Fetcher) GetOldContentLines(path string) ([]string, bool, error) {
 	cacheKey := "old:" + path
 
-	// Check cache with read lock
+	// Check cache with read lock.
 	f.linesCacheMu.RLock()
 	if result, ok := f.linesCache[cacheKey]; ok {
 		f.linesCacheMu.RUnlock()
@@ -178,7 +178,7 @@ func (f *Fetcher) GetOldContentLines(path string) ([]string, bool, error) {
 func (f *Fetcher) GetNewContentLines(path string) ([]string, bool, error) {
 	cacheKey := "new:" + path
 
-	// Check cache with read lock
+	// Check cache with read lock.
 	f.linesCacheMu.RLock()
 	if result, ok := f.linesCache[cacheKey]; ok {
 		f.linesCacheMu.RUnlock()
@@ -280,16 +280,16 @@ func (f *Fetcher) readWorkingTreeFileLines(path string) ([]string, bool, error) 
 func (f *Fetcher) fetchOld(path string) (string, error) {
 	switch f.mode {
 	case ModeShow:
-		// Old = parent commit
+		// Old = parent commit.
 		return f.git.GetFileContent(f.ref1+"^", path)
 	case ModeDiffUnstaged:
-		// Old = index (staged content)
+		// Old = index (staged content).
 		return f.git.GetFileContent("", path)
 	case ModeDiffCached:
-		// Old = HEAD
+		// Old = HEAD.
 		return f.git.GetFileContent("HEAD", path)
 	case ModeDiffRefs:
-		// Old = first ref
+		// Old = first ref.
 		return f.git.GetFileContent(f.ref1, path)
 	default:
 		return f.git.GetFileContent("HEAD", path)
@@ -302,13 +302,13 @@ func (f *Fetcher) fetchNew(path string) (string, error) {
 		// New = commit
 		return f.git.GetFileContent(f.ref1, path)
 	case ModeDiffUnstaged:
-		// New = working tree (read file from disk)
+		// New = working tree (read file from disk).
 		return f.readWorkingTreeFile(path)
 	case ModeDiffCached:
 		// New = index (staged content)
 		return f.git.GetFileContent("", path)
 	case ModeDiffRefs:
-		// If ref2 is empty, this is "diff <ref>" which compares to working tree
+		// If ref2 is empty, this is "diff <ref>" which compares to working tree.
 		if f.ref2 == "" {
 			return f.readWorkingTreeFile(path)
 		}
@@ -337,7 +337,7 @@ func isFileNotFoundError(err error) bool {
 		return false
 	}
 	msg := err.Error()
-	// Git errors for missing files
+	// Git errors for missing files.
 	return strings.Contains(msg, "does not exist") ||
 		strings.Contains(msg, "not found") ||
 		strings.Contains(msg, "path") && strings.Contains(msg, "exist") ||

@@ -240,7 +240,7 @@ func TestComment_AddingCommentIncreasesTotalLines(t *testing.T) {
 	// Rebuild the cache to reflect the comment
 	m.rebuildRowsCache()
 
-	// Total lines should increase by the number of comment box rows (3 minimum: top border, content, bottom border)
+	// Total lines should increase by the number of comment box rows (3 minimum: top border, content, bottom border).
 	assert.Greater(t, m.w().totalLines, initialTotalLines,
 		"totalLines should increase after adding a comment (was %d, now %d)",
 		initialTotalLines, m.w().totalLines)
@@ -289,10 +289,10 @@ func TestComment_CursorTracksCommentRows(t *testing.T) {
 	m.w().rowsCacheValid = false
 	m.rebuildRowsCache()
 
-	// Now scroll down so cursor is on line 5 (which should be offset by comment rows)
+	// Now scroll down so cursor is on line 5 (which should be offset by comment rows).
 	// The comment box adds rows, so line 5 of the original content is now at a higher row index
 	// Move cursor to what should be line 3 of the file (third content line)
-	// Without the fix, the cursor position calculation is wrong
+	// Without the fix, the cursor position calculation is wrong.
 
 	// Find the row for file line 3 in the new row list
 	rows = m.buildRows()

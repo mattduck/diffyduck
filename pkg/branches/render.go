@@ -35,7 +35,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time, dirtyBranches ma
 		return ""
 	}
 
-	// First pass: collect all lines to compute column widths
+	// First pass: collect all lines to compute column widths.
 	type upstreamEntry struct {
 		text    string // plain text for this upstream (e.g. "origin/main =")
 		color   string // per-upstream color
@@ -93,7 +93,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time, dirtyBranches ma
 			}
 		}
 
-		// Virtual nodes only show name (with SHA) and counts
+		// Virtual nodes only show name (with SHA) and counts.
 		sha := node.SHA
 		dateStr := relativeTime(node.Date, now)
 		subject := node.Subject
@@ -105,7 +105,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time, dirtyBranches ma
 			author = ""
 		}
 
-		// Build per-upstream entries
+		// Build per-upstream entries.
 		var upstreams []upstreamEntry
 		for _, u := range node.Upstreams {
 			text := u.Name
@@ -127,7 +127,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time, dirtyBranches ma
 			upstreams = append(upstreams, upstreamEntry{text: text, color: color})
 		}
 
-		// Recurse into children first (bottom-up: children appear above parent)
+		// Recurse into children first (bottom-up: children appear above parent).
 		childPrefix := prefix
 		if !isRoot {
 			if isFirst {
@@ -146,7 +146,7 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time, dirtyBranches ma
 				if strings.HasSuffix(upstreams[i].text, "/"+node.HeadRef+" =") ||
 					strings.Contains(upstreams[i].text, "/"+node.HeadRef+" ") ||
 					strings.HasSuffix(upstreams[i].text, "/"+node.HeadRef) {
-					// Extract just the upstream name (first space-separated token)
+					// Extract just the upstream name (first space-separated token).
 					name := upstreams[i].text
 					if idx := strings.Index(name, " "); idx >= 0 {
 						name = name[:idx]
@@ -219,9 +219,9 @@ func RenderAt(roots []*BranchNode, verbose bool, now time.Time, dirtyBranches ma
 			countsColor = colorRed
 		}
 
-		// (upstream colors are per-entry, applied below)
+		// (upstream colors are per-entry, applied below).
 
-		// Apply underline to HEAD branch name within the name column
+		// Apply underline to HEAD branch name within the name column.
 		styledName := l.nameCol
 		if l.headRef != "" {
 			styledName = underlineInString(styledName, l.headRef)

@@ -200,7 +200,7 @@ func TestCommentPersistenceWithLineMoved(t *testing.T) {
 		t.Errorf("expected 1 comment loaded, got %d", loaded)
 	}
 
-	// Comment should now be at line 5 (moved with content)
+	// Comment should now be at line 5 (moved with content).
 	newKey := commentKey{fileIndex: 0, newLineNum: 5}
 	thread, ok := m2.comments[newKey]
 	if !ok || len(thread) == 0 {

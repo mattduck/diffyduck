@@ -181,23 +181,23 @@ func computeSymbols(
 		if isStaged {
 			oldRef = "HEAD"
 		}
-		// For unstaged: oldRef="" means index (staged version)
+		// For unstaged: oldRef="" means index (staged version).
 		oldContent, err := fetchContent(oldRef, oldPath)
 		if err == nil && len(oldContent) > 0 {
 			oldStruct = hl.ExtractStructure(langPath, []byte(oldContent))
 		}
 	}
 
-	// Fetch new content and extract structure
+	// Fetch new content and extract structure.
 	var newStruct *structure.Map
 	if f.NewPath != "/dev/null" {
 		var newContent string
 		var err error
 		if isStaged {
-			// Staged: new content is from the index
+			// Staged: new content is from the index.
 			newContent, err = fetchContent("", newPath)
 		} else if readWorkingFile != nil {
-			// Unstaged: new content is from the working tree
+			// Unstaged: new content is from the working tree.
 			newContent, err = readWorkingFile(newPath)
 		}
 		if err == nil && len(newContent) > 0 {

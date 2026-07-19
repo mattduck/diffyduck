@@ -81,7 +81,7 @@ func (s *Store) ReadComments(ids []string) ([]*Comment, error) {
 	for _, id := range ids {
 		c, err := s.ReadComment(id)
 		if err != nil {
-			// Skip comments that can't be read (may have been deleted)
+			// Skip comments that can't be read (may have been deleted).
 			continue
 		}
 		comments = append(comments, c)
@@ -96,7 +96,7 @@ func (s *Store) ReadCommentsBatch(ids []string) ([]*Comment, error) {
 		return nil, nil
 	}
 
-	// Build input: one ref per line
+	// Build input: one ref per line.
 	var input strings.Builder
 	for _, id := range ids {
 		fmt.Fprintf(&input, "%s:data/%s\n", RefPath, id)
@@ -119,7 +119,7 @@ func (s *Store) ReadCommentsBatch(ids []string) ([]*Comment, error) {
 	idIdx := 0
 
 	for len(data) > 0 && idIdx < len(ids) {
-		// Read header line
+		// Read header line.
 		nl := bytes.IndexByte(data, '\n')
 		if nl == -1 {
 			break
@@ -132,7 +132,7 @@ func (s *Store) ReadCommentsBatch(ids []string) ([]*Comment, error) {
 			continue
 		}
 
-		// Parse "<sha> blob <size>"
+		// Parse "<sha> blob <size>".
 		parts := strings.Fields(header)
 		if len(parts) < 3 || parts[1] != "blob" {
 			idIdx++
@@ -552,7 +552,7 @@ func (s *Store) CurrentBranch() (string, error) {
 
 // Clear removes all comments by deleting the ref.
 func (s *Store) Clear() error {
-	// Ignore error if ref doesn't exist
+	// Ignore error if ref doesn't exist.
 	_ = s.gitCmd("update-ref", "-d", RefPath).Run()
 	return nil
 }

@@ -23,7 +23,7 @@ func FilterBranches(all []git.BranchInfo, since time.Time, defaultBranch string,
 		}
 		t, err := time.Parse(time.RFC3339, b.Date)
 		if err != nil {
-			result = append(result, b) // keep if date unparseable
+			result = append(result, b) // keep if date unparseable.
 			continue
 		}
 		if !t.Before(since) {

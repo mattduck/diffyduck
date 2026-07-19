@@ -24,21 +24,21 @@ func TransformHunk(hunk diff.Hunk) []LinePair {
 			i++
 
 		case diff.Removed:
-			// Collect consecutive removes
+			// Collect consecutive removes.
 			var removes []diff.Line
 			for i < len(hunk.Lines) && hunk.Lines[i].Type == diff.Removed {
 				removes = append(removes, hunk.Lines[i])
 				i++
 			}
 
-			// Collect consecutive adds that follow
+			// Collect consecutive adds that follow.
 			var adds []diff.Line
 			for i < len(hunk.Lines) && hunk.Lines[i].Type == diff.Added {
 				adds = append(adds, hunk.Lines[i])
 				i++
 			}
 
-			// Pair them up
+			// Pair them up.
 			pairs = append(pairs, alignChanges(removes, adds, &oldNum, &newNum)...)
 
 		case diff.Added:

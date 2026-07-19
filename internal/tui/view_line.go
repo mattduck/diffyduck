@@ -36,8 +36,8 @@ func (m Model) renderTruncationIndicator(message string, isCursorRow bool, trunc
 	lineNumWidth := m.lineNumWidth()
 	halfWidth := m.width / 2
 
-	// Calculate content width (same as renderLinePair)
-	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
+	// Calculate content width (same as renderLinePair).
+	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num.
 	if contentWidth < 0 {
 		contentWidth = 0
 	}
@@ -123,8 +123,8 @@ func (m Model) renderBinaryIndicator(message string, isCursorRow bool, binaryOld
 	lineNumWidth := m.lineNumWidth()
 	halfWidth := m.width / 2
 
-	// Calculate content width (same as renderLinePair)
-	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num
+	// Calculate content width (same as renderLinePair).
+	contentWidth := halfWidth - lineNumWidth - 3 // -3 for indicator, space after indicator, and space after line num.
 	if contentWidth < 0 {
 		contentWidth = 0
 	}

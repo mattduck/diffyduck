@@ -227,7 +227,7 @@ func (m Model) FetchSnapshotFilesContent(oldRef, newRef string, startIdx, endIdx
 		return nil
 	}
 
-	// Create a fetcher with the snapshot refs
+	// Create a fetcher with the snapshot refs.
 	fetcher := content.NewFetcher(m.git, content.ModeDiffRefs, oldRef, newRef)
 
 	// Capture the files to fetch

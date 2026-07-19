@@ -40,18 +40,18 @@ func Diff(old, new string) (oldSpans, newSpans []Span) {
 			[]Span{{Start: 0, End: len(new), Type: Unchanged}}
 	}
 
-	// Tokenize into words (preserving positions)
+	// Tokenize into words (preserving positions).
 	oldTokens := tokenize(old)
 	newTokens := tokenize(new)
 
-	// Compute LCS on tokens
+	// Compute LCS on tokens.
 	lcs := computeTokenLCS(oldTokens, newTokens)
 
-	// Build spans from token matching
+	// Build spans from token matching.
 	oldSpans = buildTokenSpans(old, oldTokens, lcs, Removed)
 	newSpans = buildTokenSpans(new, newTokens, lcs, Added)
 
-	// Merge small unchanged gaps between changed spans
+	// Merge small unchanged gaps between changed spans.
 	oldSpans = mergeSmallGaps(oldSpans, Removed)
 	newSpans = mergeSmallGaps(newSpans, Added)
 
@@ -79,7 +79,7 @@ func tokenize(s string) []token {
 			continue
 		}
 
-		// Transition detected
+		// Transition detected.
 		if isWordChar != inWord {
 			tokens = append(tokens, token{
 				text:  s[start:i],
@@ -91,7 +91,7 @@ func tokenize(s string) []token {
 		}
 	}
 
-	// Don't forget the last token
+	// Don't forget the last token.
 	if start < len(s) {
 		tokens = append(tokens, token{
 			text:  s[start:],
@@ -130,7 +130,7 @@ func computeTokenLCS(a, b []token) []string {
 		}
 	}
 
-	// Backtrack
+	// Backtrack.
 	lcs := make([]string, 0, dp[m][n])
 	i, j := m, n
 	for i > 0 && j > 0 {
@@ -145,7 +145,7 @@ func computeTokenLCS(a, b []token) []string {
 		}
 	}
 
-	// Reverse
+	// Reverse.
 	for i, j := 0, len(lcs)-1; i < j; i, j = i+1, j-1 {
 		lcs[i], lcs[j] = lcs[j], lcs[i]
 	}
@@ -171,7 +171,7 @@ func buildTokenSpans(_ string, tokens []token, lcs []string, changeType SpanType
 			spanType = changeType
 		}
 
-		// Extend current span or start new one
+		// Extend current span or start new one.
 		if currentSpan != nil && currentSpan.Type == spanType {
 			currentSpan.End = tok.end
 		} else {

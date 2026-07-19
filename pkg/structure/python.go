@@ -32,7 +32,7 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 
 	nodeType := node.Kind()
 
-	// Handle decorated definitions (functions/classes with @decorators)
+	// Handle decorated definitions (functions/classes with @decorators).
 	if nodeType == "decorated_definition" {
 		// The actual function/class is in the "definition" field
 		defNode := node.ChildByFieldName("definition")
@@ -47,16 +47,16 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 					*entries = append(*entries, *entry)
 				}
 			}
-			// Recurse into the definition to find nested structures (e.g., methods in decorated classes)
+			// Recurse into the definition to find nested structures (e.g., methods in decorated classes).
 			p.walkNode(defNode, content, entries)
 		}
-		// Don't recurse into other children (decorators) to avoid issues
+		// Don't recurse into other children (decorators) to avoid issues.
 		return
 	}
 
-	// Check if this is a structural node type
+	// Check if this is a structural node type.
 	if kind, ok := pythonStructuralTypes[nodeType]; ok {
-		// Skip if parent is decorated_definition (already handled above)
+		// Skip if parent is decorated_definition (already handled above).
 		parent := node.Parent()
 		if parent != nil && parent.Kind() == "decorated_definition" {
 			// Still recurse into children (e.g., methods in a decorated class)
@@ -74,7 +74,7 @@ func (p *pythonExtractor) walkNode(node *tree_sitter.Node, content []byte, entri
 		}
 	}
 
-	// Recurse into children
+	// Recurse into children.
 	childCount := node.ChildCount()
 	for i := uint(0); i < uint(childCount); i++ {
 		child := node.Child(i)
@@ -97,7 +97,7 @@ func (p *pythonExtractor) extractEntry(node *tree_sitter.Node, kind string, cont
 		Kind:      kind,
 	}
 
-	// Only functions have parameters and return types
+	// Only functions have parameters and return types.
 	if node.Kind() == "function_definition" {
 		entry.Params = p.extractParams(node, content)
 		entry.ReturnType = p.extractReturnType(node, content)
@@ -130,12 +130,12 @@ func (p *pythonExtractor) extractParams(node *tree_sitter.Node, content []byte) 
 		child := paramsNode.Child(i)
 		kind := child.Kind()
 
-		// Skip punctuation and comments
+		// Skip punctuation and comments.
 		if kind == "(" || kind == ")" || kind == "," || kind == "comment" {
 			continue
 		}
 
-		// Extract the parameter text, normalized for multiline cases
+		// Extract the parameter text, normalized for multiline cases.
 		params = append(params, normalizeWhitespace(child.Utf8Text(content)))
 	}
 

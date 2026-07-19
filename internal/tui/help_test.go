@@ -102,7 +102,7 @@ func TestHelp_NotActiveInCommentMode(t *testing.T) {
 	m := makeTestModel(30)
 	m.w().commentMode = true
 
-	// C-h in comment mode should act as backspace, not toggle help
+	// C-h in comment mode should act as backspace, not toggle help.
 	m = sendCtrl(m, tea.KeyCtrlH)
 	assert.False(t, m.helpMode, "C-h should not open help in comment mode")
 }

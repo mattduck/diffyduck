@@ -102,12 +102,12 @@ func (d *StructuralDiff) ChangedOnly() []ElementChange {
 func ComputeDiff(oldMap, newMap *Map, addedLines, removedLines map[int]bool) *StructuralDiff {
 	diff := &StructuralDiff{}
 
-	// Handle nil maps
+	// Handle nil maps.
 	if oldMap == nil && newMap == nil {
 		return diff
 	}
 
-	// Build name -> entry maps for matching
+	// Build name -> entry maps for matching.
 	oldByName := make(map[string]*Entry)
 	newByName := make(map[string]*Entry)
 
@@ -127,17 +127,17 @@ func ComputeDiff(oldMap, newMap *Map, addedLines, removedLines map[int]bool) *St
 		}
 	}
 
-	// Track which old entries have been matched
+	// Track which old entries have been matched.
 	matched := make(map[string]bool)
 
-	// Process new entries: check if they exist in old
+	// Process new entries: check if they exist in old.
 	if newMap != nil {
 		for i := range newMap.Entries {
 			newEntry := &newMap.Entries[i]
 			key := entryKey(newEntry)
 
 			if oldEntry, ok := oldByName[key]; ok {
-				// Matched: count lines changed within this element
+				// Matched: count lines changed within this element.
 				matched[key] = true
 
 				linesRemoved := countOverlap(oldEntry.StartLine, oldEntry.EndLine, removedLines)
@@ -156,7 +156,7 @@ func ComputeDiff(oldMap, newMap *Map, addedLines, removedLines map[int]bool) *St
 					LinesRemoved: linesRemoved,
 				})
 			} else {
-				// Only in new: added - count all added lines within its range
+				// Only in new: added - count all added lines within its range.
 				linesAdded := countOverlap(newEntry.StartLine, newEntry.EndLine, addedLines)
 				diff.Changes = append(diff.Changes, ElementChange{
 					Kind:       ChangeAdded,
@@ -167,14 +167,14 @@ func ComputeDiff(oldMap, newMap *Map, addedLines, removedLines map[int]bool) *St
 		}
 	}
 
-	// Process old entries that weren't matched: deleted
+	// Process old entries that weren't matched: deleted.
 	if oldMap != nil {
 		for i := range oldMap.Entries {
 			oldEntry := &oldMap.Entries[i]
 			key := entryKey(oldEntry)
 
 			if !matched[key] {
-				// Deleted: count all removed lines within its range
+				// Deleted: count all removed lines within its range.
 				linesRemoved := countOverlap(oldEntry.StartLine, oldEntry.EndLine, removedLines)
 				diff.Changes = append(diff.Changes, ElementChange{
 					Kind:         ChangeDeleted,

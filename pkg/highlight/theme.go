@@ -11,58 +11,58 @@ type Theme struct {
 func DefaultTheme() Theme {
 	return Theme{
 		Colors: map[Category]lipgloss.Style{
-			// Keywords in blue
+			// Keywords in blue.
 			CategoryKeyword: lipgloss.NewStyle().Foreground(lipgloss.Color("4")),
 
-			// Strings in gray
+			// Strings in gray.
 			CategoryString: lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
 
-			// Numbers in bold yellow
+			// Numbers in bold yellow.
 			CategoryNumber: lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true),
 
-			// Booleans in bold yellow (same as constants)
+			// Booleans in bold yellow (same as constants).
 			CategoryBoolean: lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true),
 
-			// Nil in bold yellow (same as constants)
+			// Nil in bold yellow (same as constants).
 			CategoryNil: lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true),
 
-			// Constants in bold yellow
+			// Constants in bold yellow.
 			CategoryConstant: lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true),
 
-			// Comments in gray
+			// Comments in gray.
 			CategoryComment:    lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
 			CategoryDocComment: lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
 
-			// Functions in bright blue
+			// Functions in bright blue.
 			CategoryFunction:     lipgloss.NewStyle().Foreground(lipgloss.Color("12")),
 			CategoryFunctionCall: lipgloss.NewStyle().Foreground(lipgloss.Color("12")),
 
-			// Types in bright magenta
+			// Types in bright magenta.
 			CategoryType: lipgloss.NewStyle().Foreground(lipgloss.Color("13")),
 
-			// Variables and parameters in default color
+			// Variables and parameters in default color.
 			CategoryVariable:  lipgloss.NewStyle(),
 			CategoryParameter: lipgloss.NewStyle(),
 
-			// Fields/properties in bright cyan
+			// Fields/properties in bright cyan.
 			CategoryField: lipgloss.NewStyle().Foreground(lipgloss.Color("14")),
 
-			// Operators in white
+			// Operators in white.
 			CategoryOperator: lipgloss.NewStyle().Foreground(lipgloss.Color("7")),
 
-			// Punctuation in white
+			// Punctuation in white.
 			CategoryPunctuation: lipgloss.NewStyle().Foreground(lipgloss.Color("7")),
 
-			// Tags (struct tags) in gray
+			// Tags (struct tags) in gray.
 			CategoryTag: lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
 
-			// Attributes/decorators in blue (like keywords)
+			// Attributes/decorators in blue (like keywords).
 			CategoryAttribute: lipgloss.NewStyle().Foreground(lipgloss.Color("4")),
 
-			// Namespace/package in default
+			// Namespace/package in default.
 			CategoryNamespace: lipgloss.NewStyle(),
 
-			// None = default
+			// None = default.
 			CategoryNone: lipgloss.NewStyle(),
 		},
 	}

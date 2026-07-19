@@ -164,7 +164,7 @@ func TestValidateBindings_NoConflict(t *testing.T) {
 
 func TestValidateBindings_Conflict(t *testing.T) {
 	km := DefaultKeyMap()
-	// Add "g" as a direct binding — conflicts with "g g" prefix
+	// Add "g" as a direct binding — conflicts with "g g" prefix.
 	km.Quit = []string{"g"}
 	km.prefixSet = buildPrefixSet(km)
 

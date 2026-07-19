@@ -32,7 +32,7 @@ func Parse(input string) (*Diff, error) {
 	var currentFile *File
 	var currentHunk *Hunk
 	var fileLineCount int
-	var inTruncatedGitDiff bool // true if we saw a diff --git but couldn't create a file due to limit
+	var inTruncatedGitDiff bool // true if we saw a diff --git but couldn't create a file due to limit.
 
 	// saveFile saves the current file to the diff, respecting MaxFiles limit.
 	// Returns true if the file was saved, false if we've hit the limit.
@@ -53,7 +53,7 @@ func Parse(input string) (*Diff, error) {
 
 		// Start of a new file diff
 		if diffHeaderRe.MatchString(line) {
-			// Save the last hunk of the previous file before moving on
+			// Save the last hunk of the previous file before moving on.
 			if currentHunk != nil && currentFile != nil {
 				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
 			}
@@ -64,7 +64,7 @@ func Parse(input string) (*Diff, error) {
 
 			if !saved || len(diff.Files) >= MaxFiles {
 				// We've hit the file limit, don't create new files
-				// Mark that we're in a truncated git diff block so --- doesn't double-count
+				// Mark that we're in a truncated git diff block so --- doesn't double-count.
 				if len(diff.Files) >= MaxFiles && saved {
 					// saveFile() returned true (nothing to save) but we're at limit
 					// Count this new file as truncated
@@ -75,10 +75,10 @@ func Parse(input string) (*Diff, error) {
 				continue
 			}
 
-			currentFile = &File{Similarity: -1} // -1 means not present
+			currentFile = &File{Similarity: -1} // -1 means not present.
 
-			// Extract fallback filenames from "diff --git a/X b/Y" header
-			// These will be overridden by --- and +++ lines if present
+			// Extract fallback filenames from "diff --git a/X b/Y" header.
+			// These will be overridden by --- and +++ lines if present.
 			if m := diffGitPathsRe.FindStringSubmatch(line); m != nil {
 				currentFile.OldPath = "a/" + m[1]
 				currentFile.NewPath = "b/" + m[2]
@@ -86,7 +86,7 @@ func Parse(input string) (*Diff, error) {
 			continue
 		}
 
-		// Git metadata lines (between diff header and ---/+++ lines)
+		// Git metadata lines (between diff header and ---/+++ lines).
 		if currentFile != nil {
 			// New file mode - mark OldPath as /dev/null for proper status display
 			if strings.HasPrefix(line, "new file mode") {
@@ -98,7 +98,7 @@ func Parse(input string) (*Diff, error) {
 				currentFile.NewPath = "/dev/null"
 				continue
 			}
-			// Rename metadata
+			// Rename metadata.
 			if m := renameFromRe.FindStringSubmatch(line); m != nil {
 				currentFile.IsRename = true
 				currentFile.OldPath = "a/" + m[1]
@@ -109,7 +109,7 @@ func Parse(input string) (*Diff, error) {
 				currentFile.NewPath = "b/" + m[1]
 				continue
 			}
-			// Copy metadata
+			// Copy metadata.
 			if m := copyFromRe.FindStringSubmatch(line); m != nil {
 				currentFile.IsCopy = true
 				currentFile.OldPath = "a/" + m[1]
@@ -120,13 +120,13 @@ func Parse(input string) (*Diff, error) {
 				currentFile.NewPath = "b/" + m[1]
 				continue
 			}
-			// Similarity index
+			// Similarity index.
 			if m := similarityRe.FindStringSubmatch(line); m != nil {
 				currentFile.Similarity = mustAtoi(m[1])
 				continue
 			}
 			// Binary file indicator - also extract paths which may differ from diff --git
-			// (e.g., "/dev/null" for new/deleted files)
+			// (e.g., "/dev/null" for new/deleted files).
 			if m := binaryFilesRe.FindStringSubmatch(line); m != nil {
 				currentFile.IsBinary = true
 				currentFile.OldPath = m[1]
@@ -135,7 +135,7 @@ func Parse(input string) (*Diff, error) {
 			}
 		}
 
-		// Old file path (--- line)
+		// Old file path (--- line).
 		if m := oldFileRe.FindStringSubmatch(line); m != nil {
 			// If we're in a truncated git diff block, this --- is for the same file
 			// that was already counted as truncated in the diff --git handler
@@ -157,7 +157,7 @@ func Parse(input string) (*Diff, error) {
 				}
 				saved := saveFile()
 				if !saved {
-					// We've hit the file limit, just count remaining files as truncated
+					// We've hit the file limit, just count remaining files as truncated.
 					currentFile = nil
 					continue
 				}
